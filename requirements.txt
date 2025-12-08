@@ -1,0 +1,9 @@
+alpaca-py
+unusualwhales-python-client
+any-llm
+pydantic
+pandas
+numpy
+pytest
+python-dotenv
+pyyaml
