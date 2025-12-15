@@ -10,15 +10,19 @@ from src.strategies.gap_fill import GapFillStrategy
 
 class MockLogger(StructuredLogger):
     def __init__(self):
+        """Mock implementation."""
         pass
 
     def info(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def error(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def warning(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
 
@@ -88,8 +92,8 @@ def test_fade_gap_up(gf_strategy):
     if sig:
         assert sig.side.value == "sell"
         assert sig.strategy == "gap_fill"
-        assert round(sig.target_price, 2) == 100.0
-        assert sig.stop_price == 102.5
+        assert sig.target_price == pytest.approx(100.0, abs=0.01)
+        assert sig.stop_price == pytest.approx(102.5)
     else:
         # Debug
         pass

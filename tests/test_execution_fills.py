@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.analysis.schema import Trade as DbTrade
 from src.engine.execution import ExecutionEngine
 
@@ -40,7 +42,9 @@ def test_on_fill_persistence():
     state = engine.symbol_states["SPY"]
     assert state.position is not None
     assert state.position.qty == 10
-    assert state.position.avg_price == 100.0
+    assert state.position is not None
+    assert state.position.qty == 10
+    assert state.position.avg_price == pytest.approx(100.0)
 
     # 2. Close Position
     # Sell 10 SPY @ 110 (Profit 100)
@@ -66,5 +70,5 @@ def test_on_fill_persistence():
     trade_obj = args[0]
 
     assert isinstance(trade_obj, DbTrade)
-    assert trade_obj.pnl_gross == 100.0  # (110-100)*10
+    assert trade_obj.pnl_gross == pytest.approx(100.0)  # (110-100)*10
     assert trade_obj.symbol == "SPY"

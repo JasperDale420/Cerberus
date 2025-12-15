@@ -10,15 +10,19 @@ from src.strategies.flow_momentum import FlowMomentumStrategy
 
 class MockLogger(StructuredLogger):
     def __init__(self):
+        """Mock implementation."""
         pass
 
     def info(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def error(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def warning(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
 
@@ -73,7 +77,7 @@ def test_bullish_flow_momentum(fm_strategy):
     if sig:
         assert sig.side.value == "buy"
         assert sig.strategy == "flow_momentum"
-        assert sig.meta["flow_zscore"] == 3.0
+        assert sig.meta["flow_zscore"] == pytest.approx(3.0)
     else:
         # Failure debugging
         pass

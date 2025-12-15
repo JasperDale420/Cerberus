@@ -93,7 +93,7 @@ class PaperLiveHarness:
             return True
         return False
 
-    async def setup_system(self):
+    def setup_system(self):
         self.logger.info("Setting up system components...")
 
         # 1. Config
@@ -147,9 +147,9 @@ class PaperLiveHarness:
             self.alpaca.trading_client.submit_order = faulty_submit
 
             # Monkeypatch Data Stream? (If we were using it)
-            pass
+        # pass removed
 
-    async def inject_force_trade(self):
+    def inject_force_trade(self):
         """
         Injects a synthetic signal to force an order submission.
         """
@@ -218,7 +218,7 @@ class PaperLiveHarness:
         self.logger.info("Force Trade Signal Injected", signal_id=signal.correlation_id)
 
     async def run(self):
-        await self.setup_system()
+        self.setup_system()
         self.inject_failures()
 
         self.logger.info("Starting Run Loop", duration_minutes=self.duration_minutes)
@@ -243,7 +243,7 @@ class PaperLiveHarness:
                 if self.scenario == "force_trade" and not force_trade_triggered:
                     # Wait a bit for system to settle then trigger
                     await asyncio.sleep(5)
-                    await self.inject_force_trade()
+                    self.inject_force_trade()
                     force_trade_triggered = True
 
                 await asyncio.sleep(10)  # Fast loop for test

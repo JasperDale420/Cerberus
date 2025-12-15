@@ -10,15 +10,19 @@ from src.strategies.orb import ORBStrategy
 
 class MockLogger(StructuredLogger):
     def __init__(self):
+        """Mock implementation."""
         pass
 
     def info(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def error(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def warning(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
 

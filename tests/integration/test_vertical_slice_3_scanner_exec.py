@@ -136,7 +136,7 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
     # Verify SymbolState is initialized
     assert "TEST" in engine.symbol_states
     state = engine.symbol_states["TEST"]
-    assert state.meta["gap_pct"] == 0.02
+    assert state.meta["gap_pct"] == pytest.approx(0.02)
 
     # 3. Simulate Market Data (Bars)
     # Scenario: Gap Up (Open 102), then Opening Range (OR) forms.
@@ -237,4 +237,4 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
     assert signal.symbol == "TEST"
     assert signal.strategy == "gap_fill"
     assert signal.side.value == "sell"
-    assert signal.meta["gap_pct"] == 0.02
+    assert signal.meta["gap_pct"] == pytest.approx(0.02)

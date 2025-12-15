@@ -10,15 +10,19 @@ from src.strategies.trend_pullback import TrendPullbackStrategy
 
 class MockLogger(StructuredLogger):
     def __init__(self):
+        """Mock implementation."""
         pass
 
     def info(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def error(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
     def warning(self, msg, **kwargs):
+        """Mock implementation."""
         pass
 
 
@@ -77,7 +81,6 @@ def test_bullish_pullback(tp_strategy):
     )
 
     bars = create_bars(30)
-    bars = create_bars(30)
     # symbol_state removed as it was unused
     # symbol_state = SymbolState(...)
 
@@ -130,4 +133,4 @@ def test_bullish_pullback(tp_strategy):
     # Pullback (20-25) might bring Fast closer to Slow but hopefully not cross if simple pullback.
     # RSI 2 on sharp drop will definitely go < 10.
 
-    pass
+    # RSI 2 on sharp drop will definitely go < 10.

@@ -54,13 +54,9 @@ class FailedBreakoutStrategy(BaseStrategy):
             symbol_state.indicators["prior_day_low"] = pdl
 
         # 2. State Tracking: Did we breach?
-        # We need to track strictly "Did we go ABOVE PDH today?"
-        # symbol_state.indicators is good for this.
-
         has_breached_high = symbol_state.indicators.get("breached_pdh", False)
         has_breached_low = symbol_state.indicators.get("breached_pdl", False)
 
-        # Check current bar for new breaches
         if bar.high > pdh:
             has_breached_high = True
             symbol_state.indicators["breached_pdh"] = True
@@ -70,108 +66,108 @@ class FailedBreakoutStrategy(BaseStrategy):
             symbol_state.indicators["breached_pdl"] = True
 
         # 3. Check for Failure (Fade Setup)
+        signal = self._check_bearish_fade(
+            symbol, bar, symbol_state, market_state, pdh, has_breached_high
+        )
+        if signal:
+            return signal
 
-        # Bearish Fade: We breached High, but now we are Closing BELOW High (or some confirmation)
-        # To avoid noise, we might want "Breached by X amount" or "Time spent above".
-        # Simple Logic: If breached previously, and NOW Close < PDH, and Regime is CHOP/BEAR.
-
-        # We need to ensure we don't just spam signals. We need a "Setup -> Trigger" flow.
-        # Setup: Breached High.
-        # Trigger: Close crosses below High.
-
-        # We can verify the "Cross Below" by looking at previous bar close vs this bar close?
-        # Or just "Is currently below" + "Was detecting breach".
-        # Risk: If it chops around PDH, we get many signals.
-        # Fix: Check if we have an open position? (Handled by engine usually)
-        # Fix: Check if specific 'trigger' happened THIS BAR (e.g. Open > PDH, Close < PDH).
-
-        signal = None
-
-        # BEARISH FADE (Failed Breakout High)
-        if has_breached_high and market_state.regime in [Regime.CHOP, Regime.BEAR]:
-            # Trigger: Price closes back inside range ( < PDH )
-            if bar.close < pdh:
-                # Was previous bar above? Or high of this bar above?
-                # Stronger signal: This bar made a new high (or tested high) and closed weak.
-
-                # Check if we just crossed down
-                # If we were already below, maybe we shouldn't enter late.
-                # Let's require strictly: Close < PDH < High (shooting star / reversal candle logic)
-                # OR prev_close > PDH and curr_close < PDH.
-
-                is_crossing_down = False
-                if len(symbol_state.bars) >= 2:
-                    prev_bar = symbol_state.bars[-2]
-                    if prev_bar.close >= pdh or bar.open >= pdh:
-                        is_crossing_down = True
-                    elif bar.high > pdh:  # Intra-bar rejection
-                        is_crossing_down = True
-
-                if is_crossing_down:
-                    # ENTRY SHORT
-                    # Stop: Day's High (which should be > PDH)
-                    # ENTRY SHORT
-                    # Stop: Day's High (which should be > PDH)
-                    # days_high intent removed as unused
-                    # Check global high tracking roughly? Or just this bar high if it's the pivot?
-                    # Safer: Use this bar's high or a recent swing high.
-                    stop_price = bar.high
-                    if stop_price <= bar.close:
-                        stop_price = bar.close * 1.005
-
-                    risk = stop_price - bar.close
-                    target_price = bar.close - (risk * self.risk_reward)
-
-                    signal = Signal(
-                        symbol=symbol,
-                        side=OrderSide.SELL,
-                        size_hint=0,
-                        entry_price=bar.close,
-                        stop_price=stop_price,
-                        target_price=target_price,
-                        strategy=self.name,
-                        regime=market_state.regime,
-                        generated_at=bar.time,
-                        meta={"pdh": pdh, "type": "fade_high"},
-                        correlation_id=f"{self.name}-short-{symbol}-{bar.time.timestamp()}",
-                    )
-
-        # BULLISH FADE (Failed Breakout Low)
-        if has_breached_low and market_state.regime in [Regime.CHOP, Regime.BULL]:
-            # Trigger: Price closes back inside range ( > PDL )
-            if bar.close > pdl:
-                is_crossing_up = False
-                if len(symbol_state.bars) >= 2:
-                    prev_bar = symbol_state.bars[-2]
-                    if prev_bar.close <= pdl or bar.open <= pdl:
-                        is_crossing_up = True
-                    elif bar.low < pdl:
-                        is_crossing_up = True
-
-                if is_crossing_up:
-                    # ENTRY LONG
-                    stop_price = bar.low
-                    if stop_price >= bar.close:
-                        stop_price = bar.close * 0.995
-
-                    risk = bar.close - stop_price
-                    target_price = bar.close + (risk * self.risk_reward)
-
-                    signal = Signal(
-                        symbol=symbol,
-                        side=OrderSide.BUY,
-                        size_hint=0,
-                        entry_price=bar.close,
-                        stop_price=stop_price,
-                        target_price=target_price,
-                        strategy=self.name,
-                        regime=market_state.regime,
-                        generated_at=bar.time,
-                        meta={"pdl": pdl, "type": "fade_low"},
-                        correlation_id=f"{self.name}-long-{symbol}-{bar.time.timestamp()}",
-                    )
-
+        signal = self._check_bullish_fade(
+            symbol, bar, symbol_state, market_state, pdl, has_breached_low
+        )
         return signal
+
+    def _check_bearish_fade(
+        self, symbol, bar, symbol_state, market_state, pdh, has_breached_high
+    ) -> Optional[Signal]:
+        if not (
+            has_breached_high and market_state.regime in [Regime.CHOP, Regime.BEAR]
+        ):
+            return None
+
+        # Trigger: Price closes back inside range ( < PDH )
+        if bar.close >= pdh:
+            return None
+
+        is_crossing_down = False
+        if len(symbol_state.bars) >= 2:
+            prev_bar = symbol_state.bars[-2]
+            # Check if we were above or rejected intra-bar
+            if (prev_bar.close >= pdh or bar.open >= pdh) or (bar.high > pdh):
+                is_crossing_down = True
+
+        # If history is small, assume crossing if high was above
+        elif bar.high > pdh:
+            is_crossing_down = True
+
+        if not is_crossing_down:
+            return None
+
+        # ENTRY SHORT
+        stop_price = bar.high
+        if stop_price <= bar.close:
+            stop_price = bar.close * 1.005
+
+        risk = stop_price - bar.close
+        target_price = bar.close - (risk * self.risk_reward)
+
+        return Signal(
+            symbol=symbol,
+            side=OrderSide.SELL,
+            size_hint=0,
+            entry_price=bar.close,
+            stop_price=stop_price,
+            target_price=target_price,
+            strategy=self.name,
+            regime=market_state.regime,
+            generated_at=bar.time,
+            meta={"pdh": pdh, "type": "fade_high"},
+            correlation_id=f"{self.name}-short-{symbol}-{bar.time.timestamp()}",
+        )
+
+    def _check_bullish_fade(
+        self, symbol, bar, symbol_state, market_state, pdl, has_breached_low
+    ) -> Optional[Signal]:
+        if not (has_breached_low and market_state.regime in [Regime.CHOP, Regime.BULL]):
+            return None
+
+        # Trigger: Price closes back inside range ( > PDL )
+        if bar.close <= pdl:
+            return None
+
+        is_crossing_up = False
+        if len(symbol_state.bars) >= 2:
+            prev_bar = symbol_state.bars[-2]
+            if (prev_bar.close <= pdl or bar.open <= pdl) or (bar.low < pdl):
+                is_crossing_up = True
+
+        elif bar.low < pdl:
+            is_crossing_up = True
+
+        if not is_crossing_up:
+            return None
+
+        # ENTRY LONG
+        stop_price = bar.low
+        if stop_price >= bar.close:
+            stop_price = bar.close * 0.995
+
+        risk = bar.close - stop_price
+        target_price = bar.close + (risk * self.risk_reward)
+
+        return Signal(
+            symbol=symbol,
+            side=OrderSide.BUY,
+            size_hint=0,
+            entry_price=bar.close,
+            stop_price=stop_price,
+            target_price=target_price,
+            strategy=self.name,
+            regime=market_state.regime,
+            generated_at=bar.time,
+            meta={"pdl": pdl, "type": "fade_low"},
+            correlation_id=f"{self.name}-long-{symbol}-{bar.time.timestamp()}",
+        )
 
     def _compute_prior_levels(self, bars) -> Optional[tuple]:
         # Need to find boundaries of previous day.
