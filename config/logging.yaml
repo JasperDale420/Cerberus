@@ -1,0 +1,5 @@
+logging:
+  format: "json"
+  file_path: "logs/cerberus.log"
+  console_level: "INFO"
+  file_level: "DEBUG"

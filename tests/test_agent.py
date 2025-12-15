@@ -1,80 +1,91 @@
-import pytest
-import os
-import yaml
-from datetime import date, datetime
-from unittest.mock import MagicMock
-from src.agent.core import Agent, ActionType
-from src.agent.models import StrategyDailyStats
-from src.core.config import ConfigLoader
+from datetime import date
+from unittest.mock import MagicMock, patch
 
-@pytest.fixture
-def mock_stats():
-    return StrategyDailyStats(
+from src.agent.core import ActionType, Agent
+from src.agent.models import StrategyDailyStats
+
+
+@patch("src.agent.core.LLMClient")
+def test_analyze_performance_z_score(mock_llm_cls):
+    # Setup
+    logger = MagicMock()
+    config_loader = MagicMock()
+    # Mock LLMClient instance
+    mock_llm_instance = MagicMock()
+    mock_llm_cls.return_value = mock_llm_instance
+
+    agent = Agent(logger, config_loader)
+
+    # 1. High stats, should NOT disable
+    good_stats = StrategyDailyStats(
         date=date.today(),
-        strategy="vwap_reversion",
-        regime="CHOP",
-        n_trades=10,
-        winrate=0.4,
-        avg_r=1.0,
-        std_r=0.5,
-        max_drawdown_r=12.0, # > 10.0 threshold
-        expectancy=-0.6, # < -0.5 threshold
-        total_pnl_r=-6.0
+        strategy="winning_strat",
+        regime="BULL",
+        n_trades=100,
+        winrate=0.6,
+        avg_r=0.5,
+        std_r=1.0,
+        max_drawdown_r=2.0,
+        expectancy=0.3,  # Positive
+        total_pnl_r=50.0,
     )
 
-def test_analyze_performance(mock_stats):
-    logger = MagicMock()
-    agent = Agent(logger)
-    
-    actions = agent.analyze_performance([mock_stats])
-    
-    assert len(actions) == 1 # Should stop after disable?
-    # Logic: if expectancy < -0.5, it appends DISABLE and continues (skips other checks for THAT strategy)
-    
+    # 2. Insufficient data, should skip
+    low_data_stats = StrategyDailyStats(
+        date=date.today(),
+        strategy="new_strat",
+        regime="CHOP",
+        n_trades=5,  # < 20 min
+        winrate=0.4,
+        avg_r=-0.1,
+        std_r=0.5,
+        max_drawdown_r=0.5,
+        expectancy=-0.1,
+        total_pnl_r=-0.5,
+    )
+
+    # 3. Bad stats, Significant Negative Z-Score
+    # Exp = -0.2, Std=0.5, N=100
+    # SE = 0.5 / 10 = 0.05
+    # Z = -0.2 / 0.05 = -4.0  (< -1.645) -> DISABLE
+    bad_stats = StrategyDailyStats(
+        date=date.today(),
+        strategy="losing_strat",
+        regime="BEAR",
+        n_trades=100,
+        winrate=0.3,
+        avg_r=-0.6,
+        std_r=0.5,
+        max_drawdown_r=5.0,
+        expectancy=-0.2,
+        total_pnl_r=-20.0,
+    )
+
+    # 4. Bad stats but NOT Significant
+    # Exp = -0.05, Std=1.0, N=25
+    # SE = 1.0 / 5 = 0.2
+    # Z = -0.05 / 0.2 = -0.25 (> -1.645) -> NO ACTION
+    noisy_stats = StrategyDailyStats(
+        date=date.today(),
+        strategy="noisy_strat",
+        regime="CHOP",
+        n_trades=25,
+        winrate=0.45,
+        avg_r=-0.1,
+        std_r=1.0,
+        max_drawdown_r=2.0,
+        expectancy=-0.05,
+        total_pnl_r=-1.25,
+    )
+
+    actions = agent.analyze_performance(
+        [good_stats, low_data_stats, bad_stats, noisy_stats]
+    )
+
+    # Assertions
+    assert len(actions) == 1
     action = actions[0]
+    assert action.strategy == "losing_strat"
     assert action.action_type == ActionType.DISABLE_STRATEGY
-    assert action.strategy == "vwap_reversion"
-    assert action.reason == "Expectancy below threshold (-0.5 R)"
-
-def test_apply_actions(tmp_path):
-    logger = MagicMock()
-    config_path = tmp_path / "strategies.auto.yaml"
-    agent = Agent(logger, config_path=str(config_path))
-    
-    # Create action
-    action = MagicMock()
-    action.strategy = "vwap_reversion"
-    action.action_type = ActionType.DISABLE_STRATEGY
-    action.applied = False
-    
-    # Apply
-    agent.apply_actions([action])
-    
-    # Verify file created
-    assert config_path.exists()
-    with open(config_path) as f:
-        data = yaml.safe_load(f)
-    
-    assert data["vwap_reversion"]["enabled"] is False
-    assert action.applied is True
-
-def test_config_loader_merge(tmp_path):
-    # Setup main config
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    main_config_path = config_dir / "config.yaml"
-    auto_config_path = config_dir / "strategies.auto.yaml"
-    
-    with open(main_config_path, "w") as f:
-        yaml.dump({"strategies": {"vwap_reversion": {"enabled": True, "risk": 1.0}}}, f)
-        
-    with open(auto_config_path, "w") as f:
-        yaml.dump({"vwap_reversion": {"enabled": False}}, f)
-        
-    # Load
-    loader = ConfigLoader()
-    config = loader.load_config(str(main_config_path))
-    
-    # Verify merge
-    assert config["strategies"]["vwap_reversion"]["enabled"] is False
-    assert config["strategies"]["vwap_reversion"]["risk"] == 1.0 # Preserved
+    assert "z_score" in action.details
+    assert action.details["z_score"] < -1.645

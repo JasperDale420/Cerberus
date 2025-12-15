@@ -1,0 +1,6 @@
+risk:
+  max_daily_loss: 500.0       # USD
+  max_risk_per_trade: 50.0    # USD (Entry - Stop)
+  max_open_risk: 200.0        # Total open risk
+  max_trades_per_day: 20
+  risk_mode: "normal"         # normal, reduced, off

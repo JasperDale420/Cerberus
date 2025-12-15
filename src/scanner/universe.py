@@ -1,28 +1,46 @@
-from typing import List
+from typing import List, cast
+
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+
 
 class UniverseBuilder:
     """
     Constructs the universe of symbols to scan.
     """
+
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.config = config_loader.load_config()
         self.logger = logger
-        
+
     def get_universe(self) -> List[str]:
         """
         Returns a list of symbols.
         Currently supports hardcoded list from config or defaults.
         """
         # 1. Try to get from config
-        universe = self.config.get("universe", [])
-        
+        universe_config = self.config.get("universe", [])
+        if isinstance(universe_config, dict):
+            universe = cast(List[str], universe_config.get("symbols", []))
+        else:
+            universe = cast(List[str], universe_config)
+
         if not universe:
             # 2. Fallback to a default liquid list
-            self.logger.info("No universe found in config, using default liquid symbols.")
+            self.logger.info(
+                "No universe found in config, using default liquid symbols."
+            )
             universe = [
-                "SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "AMD", "TSLA", "AMZN", "GOOGL"
+                "SPY",
+                "QQQ",
+                "IWM",
+                "AAPL",
+                "MSFT",
+                "NVDA",
+                "AMD",
+                "TSLA",
+                "AMZN",
+                "GOOGL",
             ]
-            
+
         return universe

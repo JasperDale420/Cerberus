@@ -1,18 +1,22 @@
+from datetime import datetime
+from typing import Optional
+
 from alpaca.data.live import StockDataStream
 from alpaca.trading.client import TradingClient
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
 from src.data.api_client import CentralApiClient
+
 
 class AlpacaClient:
     """
     Wrapper for Alpaca API clients (Trading, Historical Data, Live Data).
     """
+
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.logger = logger
-        
+
         try:
             self.api_key = config_loader.get_env("ALPACA_API_KEY")
             self.secret_key = config_loader.get_env("ALPACA_SECRET_KEY")
@@ -22,7 +26,9 @@ class AlpacaClient:
             raise
 
         try:
-            self.trading_client = TradingClient(self.api_key, self.secret_key, paper=self.paper)
+            self.trading_client = TradingClient(
+                self.api_key, self.secret_key, paper=self.paper
+            )
             self.central_client = CentralApiClient(config_loader, logger)
             # Stream is initialized on demand or separately as it blocks/runs in a loop
             self.stream_client: Optional[StockDataStream] = None
@@ -40,7 +46,9 @@ class AlpacaClient:
             self.logger.error("Failed to fetch account info", error=str(e))
             raise
 
-    def get_historical_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"):
+    def get_historical_bars(
+        self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"
+    ):
         """
         Fetches historical bars for a symbol via Central API.
         """
@@ -52,7 +60,7 @@ class AlpacaClient:
             # We should probably convert it to our internal Bar model here or in FeaturePipeline.
             # For now, let's return the raw data or a list of dicts, and update FeaturePipeline to handle it.
             # Actually, let's convert to our internal Bar model here to be clean.
-            
+
             data = self.central_client.get_alpaca_bars(symbol, start, end, timeframe)
             # Assuming data structure matches Alpaca SDK or is a list of bars
             # The schema in dataingestion/features/alpaca_data/schemas.py says BarResponse.
@@ -60,11 +68,13 @@ class AlpacaClient:
             # Based on router: `return await ... get_bars`.
             # If get_bars returns a DataFrame or dict, we need to know.
             # Let's assume it returns a list of dicts for now.
-            
+
             # TODO: Robust parsing. For now returning raw to see structure in tests/debug.
             return data
         except Exception as e:
-            self.logger.error("Failed to fetch historical bars", symbol=symbol, error=str(e))
+            self.logger.error(
+                "Failed to fetch historical bars", symbol=symbol, error=str(e)
+            )
             raise
 
     def get_stream_client(self) -> StockDataStream:
@@ -72,5 +82,47 @@ class AlpacaClient:
         Returns a configured StockDataStream client.
         """
         if not self.stream_client:
-             self.stream_client = StockDataStream(self.api_key, self.secret_key)
+            self.stream_client = StockDataStream(self.api_key, self.secret_key)
         return self.stream_client
+
+    async def start_stream(self, callback):
+        """
+        Starts the WebSocket stream and registers the callback.
+        Blocking call (runs loop).
+        """
+        import asyncio
+
+        stream = self.get_stream_client()
+
+        async def on_bar_wrapper(data):
+            symbol = getattr(data, "symbol", "UNKNOWN")
+            if asyncio.iscoroutinefunction(callback):
+                await callback(symbol, data)
+            else:
+                callback(symbol, data)
+
+        self._bar_handler = on_bar_wrapper
+
+        # Subscribe to any pre-existing symbols if logic allows,
+        # but here we expect engine to subscribe after start or during init.
+
+        await stream.run()
+
+    def subscribe(self, symbol: str):
+        """
+        Subscribes to bar data for a symbol.
+        """
+        stream = self.get_stream_client()
+        if hasattr(self, "_bar_handler"):
+            stream.subscribe_bars(self._bar_handler, symbol)
+        else:
+            self.logger.warning(
+                "Subscribe called before start_stream handler registered", symbol=symbol
+            )
+
+    def unsubscribe(self, symbol: str):
+        """
+        Unsubscribes from bar data.
+        """
+        stream = self.get_stream_client()
+        stream.unsubscribe_bars(symbol)

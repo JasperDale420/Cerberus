@@ -1,7 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Optional, Dict, Any, List
 from enum import Enum
+from typing import Any, Dict, Optional
+
 
 class ActionType(str, Enum):
     DISABLE_STRATEGY = "DISABLE_STRATEGY"
@@ -10,6 +11,7 @@ class ActionType(str, Enum):
     INCREASE_RISK = "INCREASE_RISK"
     TUNE_PARAM = "TUNE_PARAM"
     CODE_PROPOSAL = "CODE_PROPOSAL"
+
 
 @dataclass
 class StrategyDailyStats:
@@ -21,8 +23,11 @@ class StrategyDailyStats:
     avg_r: float
     std_r: float
     max_drawdown_r: float
-    expectancy: float # avg_r * winrate - (1-winrate) * avg_loss_r (simplified, or just mean R)
+    expectancy: (
+        float  # avg_r * winrate - (1-winrate) * avg_loss_r (simplified, or just mean R)
+    )
     total_pnl_r: float
+
 
 @dataclass
 class AgentAction:

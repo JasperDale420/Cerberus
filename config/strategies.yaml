@@ -1,0 +1,52 @@
+strategies:
+  vwap_reversion:
+    enabled: true
+    band_sigma: 2.0
+    risk_reward: 2.0
+    time_window_start: "09:45"
+    time_window_end: "15:45"
+    max_hold_minutes: 60
+
+  orb:
+    enabled: true
+    orb_minutes: 15
+    risk_reward: 2.0
+    stop_loss_pct: 0.005 # 0.5% backup stop
+
+  index_mean_reversion:
+    enabled: true
+    bb_len: 20
+    bb_std: 2.0
+    stop_pct: 0.005 # 0.5%
+
+  flow_momentum:
+    enabled: true
+    min_flow_zscore: 2.5
+    vol_mult: 1.5
+    risk_reward: 2.0 # backup stop
+
+  gap_fill:
+    enabled: true
+    min_gap: 0.015
+    max_gap: 0.10
+    risk_reward: 2.0
+    or_time_minutes: 15
+
+  trend_pullback:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+    rsi_len: 2
+    rsi_oversold: 10
+    rsi_overbought: 90
+
+  failed_breakout:
+    enabled: true
+    risk_reward: 2.0
+
+  vwap_trend_rider:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+    vol_mult: 1.2
+    risk_reward: 2.0

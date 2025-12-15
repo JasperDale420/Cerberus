@@ -1,0 +1,13 @@
+universe:
+  # Static list for initial testing / fallback
+  symbols:
+    - SPY
+    - QQQ
+    - IWM
+    - AAPL
+    - MSFT
+    - NVDA
+    - AMD
+    - TSLA
+    - AMZN
+    - GOOGL

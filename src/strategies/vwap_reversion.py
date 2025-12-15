@@ -1,10 +1,11 @@
-from typing import Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict, Optional
+
 import numpy as np
-from src.strategies.base import BaseStrategy, Signal, SymbolState, MarketState
-from src.analysis.regime import Regime
+
+from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
-from src.data.models import Bar
+from src.strategies.base import BaseStrategy
+
 
 class VWAPReversionStrategy(BaseStrategy):
     name: str = "vwap_reversion"
@@ -14,72 +15,63 @@ class VWAPReversionStrategy(BaseStrategy):
         self.band_sigma = config.get("band_sigma", 2.0)
         self.risk_reward = config.get("risk_reward", 2.0)
 
-    def on_bar(self,
-               symbol: str,
-               bar: Bar,
-               symbol_state: SymbolState,
-               market_state: MarketState) -> Optional[Signal]:
-        
+    def on_bar(
+        self,
+        symbol: str,
+        bar: Bar,
+        symbol_state: SymbolState,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
         # Only trade in CHOP regime
         if market_state.regime != Regime.CHOP:
             return None
 
+        # Need enough bars
         if not symbol_state.bars or len(symbol_state.bars) < 20:
             return None
 
-        # Calculate VWAP and Bands
-        # Simplified VWAP calculation for this slice (using typical price)
-        # In production, this should be cumulative from session start
-        prices = [b.close for b in symbol_state.bars]
-        volumes = [getattr(b, 'volume', 1) for b in symbol_state.bars] # Handle mock bars without volume
-        
-        # Using a rolling VWAP for simplicity in this slice, or just typical price mean
-        # Let's use a simple rolling mean/std for "bands" if VWAP is too complex for this slice without full history
-        # But the name is VWAP Reversion, so let's try to approximate or expect VWAP in symbol_state?
-        # For now, let's calculate Bollinger Bands as a proxy for the logic structure
-        
-        closes = np.array(prices)
-        mean = np.mean(closes)
+        # Calculate Cumulative VWAP over the visible window (or use bar.vwap if available/accumulated)
+        # For this implementation, we calculate VWAP over the loaded deque of bars
+        # VWAP = Sum(Typical_Price * Volume) / Sum(Volume)
+
+        bars = list(symbol_state.bars)
+        typical_prices = np.array([(b.high + b.low + b.close) / 3.0 for b in bars])
+        volumes = np.array([b.volume for b in bars])
+
+        # Avoid division by zero
+        total_volume = np.sum(volumes)
+        if total_volume == 0:
+            return None
+
+        vwap = np.sum(typical_prices * volumes) / total_volume
+
+        # Calculate Std Dev for Bands (Standard Deviation of Close prices)
+        # Alternatively, could use Std Dev of (Price - VWAP)
+        # Common simplified implementation: VWAP +/- 2 * StdDev(Close)
+        closes = np.array([b.close for b in bars])
         std = np.std(closes)
-        
-        upper = mean + self.band_sigma * std
-        lower = mean - self.band_sigma * std
-        
+
+        upper = vwap + self.band_sigma * std
+        lower = vwap - self.band_sigma * std
+
         current_price = bar.close
-        
-        # Logic:
-        # If price < lower band -> Buy (Mean Reversion)
-        # If price > upper band -> Sell (Mean Reversion)
-        
+
         signal = None
-        now = datetime.utcnow()
-        
+        signal = None
+        # FIX: deterministic time
+        now = market_state.time
+
         if current_price < lower:
-            # Long
-            stop_loss = current_price - (std * 0.5) # Arbitrary tight stop
-            take_profit = current_price + (current_price - stop_loss) * self.risk_reward
-            
+            # Entry Long (Reversion to mean)
+            # Stop: A bit below the recent low or a fixed ATR multiple
+            # For this slice, using Std Dev based stop
+            stop_loss = current_price - (std * 0.5)
+            risk = current_price - stop_loss
+            take_profit = current_price + (risk * self.risk_reward)
+
             signal = Signal(
                 symbol=symbol,
-                side="buy",
-                size_hint=1.0, # Placeholder
-                entry_price=current_price,
-                stop_price=stop_loss,
-                target_price=take_profit,
-                strategy=self.name,
-                regime=market_state.regime,
-                generated_at=now,
-                meta={"reason": "price_below_lower_band", "lower_band": lower}
-            )
-            
-        elif current_price > upper:
-            # Short
-            stop_loss = current_price + (std * 0.5)
-            take_profit = current_price - (stop_loss - current_price) * self.risk_reward
-            
-            signal = Signal(
-                symbol=symbol,
-                side="sell",
+                side=OrderSide.BUY,
                 size_hint=1.0,
                 entry_price=current_price,
                 stop_price=stop_loss,
@@ -87,7 +79,36 @@ class VWAPReversionStrategy(BaseStrategy):
                 strategy=self.name,
                 regime=market_state.regime,
                 generated_at=now,
-                meta={"reason": "price_above_upper_band", "upper_band": upper}
+                meta={
+                    "reason": "price_below_lower_vwap_band",
+                    "vwap": float(vwap),
+                    "lower_band": float(lower),
+                    "upper_band": float(upper),
+                },
             )
-            
+
+        elif current_price > upper:
+            # Entry Short (Reversion to mean)
+            stop_loss = current_price + (std * 0.5)
+            risk = stop_loss - current_price
+            take_profit = current_price - (risk * self.risk_reward)
+
+            signal = Signal(
+                symbol=symbol,
+                side=OrderSide.SELL,
+                size_hint=1.0,
+                entry_price=current_price,
+                stop_price=stop_loss,
+                target_price=take_profit,
+                strategy=self.name,
+                regime=market_state.regime,
+                generated_at=now,
+                meta={
+                    "reason": "price_above_upper_vwap_band",
+                    "vwap": float(vwap),
+                    "lower_band": float(lower),
+                    "upper_band": float(upper),
+                },
+            )
+
         return signal

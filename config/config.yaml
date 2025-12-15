@@ -1,0 +1,7 @@
+# Cerberus System Configuration
+
+# Global settings
+database_url: "sqlite:///cerberus.db"
+timezone: "US/Eastern"
+index_symbol: "SPY"
+log_level: "INFO"
