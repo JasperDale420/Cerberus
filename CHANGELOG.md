@@ -32,4 +32,6 @@ All notable changes to this project will be documented in this file.
 - **Config**: Extended `config.yaml` to support all new strategies and parameters.
 
 ### Fixed
-- Addressed various linting issues (Cognitive Complexity updates pending major refactor).
+- **Pre-commit**: Resolved all Ruff linting errors, Mypy type-check failures, and Black formatting inconsistencies across the codebase.
+- **Data Pipeline**: Fix incorrect usage of `zip(strict=False)` and unused variables.
+- **Testing**: Fix mock type injection errors in unit tests.
