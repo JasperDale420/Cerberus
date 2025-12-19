@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - **Scanner Core**: Fixed duplicate watchlist entry bug and added sorting by score.
 - **Pipeline**: Removed hardcoded `premarket_volume`; now calculates from intraday data.
 - **Config**: Extended `config.yaml` to support all new strategies and parameters.
+- **Agent**: Updated Stage 3 System and User prompts to be "self-annealing" and PRD-aligned, prioritizing incremental refinement over radical changes.
 
 ### Fixed
 - **Pre-commit**: Resolved all Ruff linting errors, Mypy type-check failures, and Black formatting inconsistencies across the codebase.

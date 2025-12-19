@@ -538,35 +538,59 @@ class Agent:
                         error=str(e),
                     )
 
+            system_prompt = """You are a Senior Quantitative Architect for the Cerberus Trading System.
+Your goal is to iterate on underperforming trading strategies to improve their "expectancy" (average R per trade) and reduce "drawdown".
+You adhere to the following principles:
+1. Scientific Method: Changes must be motivated by data (the provided stats).
+2. Incremental Refinement (Annealing): Prefer small, targeted adjustments (adding a filter, tightening a stop, adjusting a threshold) over rewriting the entire strategy. Radical changes increase risk.
+3. Risk First: Your primary constraint is safety. Never remove risk controls.
+4. Vertical Slice Architecture: The strategy is a self-contained unit. Do not invent external dependencies.
+5. Determinism: Ensure the new logic remains deterministic (no random numbers).
+
+Output valid Python code only."""
+
             prompt = f"""
-            The strategy '{stats.strategy}' is underperforming.
-            
-            Stats:
+            The strategy '{stats.strategy}' is underperforming based on recent trading data.
+
+            Current Performance Stats:
             - Win Rate: {stats.winrate:.2f}
-            - Avg R: {stats.avg_r:.2f}
+            - Avg R (Expectancy): {stats.avg_r:.2f}
             - Max Drawdown R: {stats.max_drawdown_r:.2f}
-            
+            - Number of Trades: {stats.n_trades}
+
             Source Code:
             ```python
             {source_code}
             ```
-            
-            Scanner Profiles (optional context; propose changes only if relevant):
+
+            Scanner Profiles (context for symbol selection):
             ```python
             {scanner_profiles_source}
             ```
 
-            Propose a new version of this strategy class (e.g., V2) that addresses these issues (e.g., add a filter, change exit logic).
-            If scanner profiles are provided above and you think modifying them would materially improve selection quality for this strategy, also propose an updated `src/scanner/profiles.py`.
+            **Task:**
+            Propose a **V2** version of this strategy class to improve its Expectancy (Avg R) and/or reduce its Max Drawdown.
+            The system is in an "annealing" phase—we want to converge on a stable, profitable configuration.
 
-            Return JSON with keys:
-            - "strategy_code": full Python code for the new class
-            - "scanner_profiles_code": full Python code for `src/scanner/profiles.py` (or empty string if no change)
+            **Guidelines:**
+            1. Analyze the logic: identify potential weak points (e.g., entering too early in chop, stops too loose, taking trades against the trend).
+            2. Propose a **targeted** fix. Examples:
+               - Add a regime filter (e.g., only trade if `market_state.regime == Regime.BULL`).
+               - Add a technical filter (e.g., `adx > 25`).
+               - Tighten exit logic (e.g., reduce `max_hold_minutes`).
+               - Adjust entry triggers.
+            3. If the Scanner Profile is too loose, you may propose an updated `src/scanner/profiles.py` as well.
+            4. **Do not** rewrite the entire class structure. Keep specific logic that works.
+            5. Ensure the new class name is `{stats.strategy}_v2` (or increment version).
+
+            **Output format:**
+            Return a JSON object with strictly these keys:
+            - "analysis": "Brief reasoning for the change"
+            - "strategy_code": "Full Python code for the new strategy class"
+            - "scanner_profiles_code": "Full Python code for src/scanner/profiles.py (or empty string if no change)"
             """
 
-            response = self.llm_client.complete(
-                prompt, system_prompt="You are a quantitative developer."
-            )
+            response = self.llm_client.complete(prompt, system_prompt=system_prompt)
             payload = response.replace("```json", "").replace("```", "").strip()
             try:
                 parsed = json.loads(payload)
