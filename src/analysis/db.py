@@ -1,6 +1,7 @@
 import os
+from collections import deque
 from contextlib import contextmanager
-from typing import Generator
+from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -11,9 +12,26 @@ from src.core.logger import StructuredLogger
 
 
 class DatabaseDatabase:
-    def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
-        self.config = config_loader.load_config()
+    def __init__(
+        self,
+        config_loader: ConfigLoader,
+        logger: StructuredLogger,
+        config: Optional[Dict[str, Any]] = None,
+        config_path_or_dir: Optional[str] = None,
+    ):
+        self.config = (
+            config
+            if isinstance(config, dict)
+            else config_loader.load_config(config_path_or_dir)
+        )
         self.logger = logger
+
+        # PRD 11.4: bounded in-memory buffering for transient DB failures.
+        self.db_write_buffer_max: int = int(self.config.get("db_write_buffer_max", 200))
+        self.db_write_flush_max: int = int(self.config.get("db_write_flush_max", 50))
+        self.db_fail_mode: str = str(self.config.get("db_fail_mode", "warn")).lower()
+        self._write_buffer: Deque[Tuple[str, Callable[[Session], None]]] = deque()
+        self.last_db_write_error: Optional[str] = None
 
         # Default to local SQLite if not configured
         db_url = self.config.get("database_url", "sqlite:///cerberus.db")
@@ -60,3 +78,82 @@ class DatabaseDatabase:
             raise
         finally:
             session.close()
+
+    def write(self, kind: str, fn: Callable[[Session], None]) -> bool:
+        """
+        Best-effort write helper with bounded buffering.
+
+        - On success: executes and opportunistically flushes buffered writes.
+        - On failure: buffers the write closure (bounded) unless db_fail_mode == 'raise'.
+        """
+        try:
+            with self.get_session() as session:
+                fn(session)
+
+            # Opportunistically flush any buffered writes after a successful write.
+            if self._write_buffer:
+                self.flush_writes()
+
+            self.last_db_write_error = None
+            return True
+        except Exception as e:
+            self.last_db_write_error = str(e)
+
+            if self.db_fail_mode == "raise":
+                raise
+
+            if len(self._write_buffer) >= self.db_write_buffer_max:
+                self.logger.error(
+                    "DB write buffer full; dropping write",
+                    kind=kind,
+                    buffer_len=len(self._write_buffer),
+                    buffer_max=self.db_write_buffer_max,
+                    error=str(e),
+                )
+                return False
+
+            self._write_buffer.append((kind, fn))
+            log_fn = (
+                self.logger.warning
+                if self.db_fail_mode == "warn"
+                else self.logger.error
+            )
+            log_fn(
+                "DB write failed; buffered for retry",
+                kind=kind,
+                buffer_len=len(self._write_buffer),
+                error=str(e),
+            )
+            return False
+
+    def flush_writes(self) -> int:
+        """
+        Attempts to flush buffered writes in FIFO order.
+        Stops early on first failure to avoid busy-looping on persistent outages.
+        """
+        flushed = 0
+        to_flush = min(len(self._write_buffer), self.db_write_flush_max)
+        for _ in range(to_flush):
+            kind, fn = self._write_buffer[0]
+            try:
+                with self.get_session() as session:
+                    fn(session)
+                self._write_buffer.popleft()
+                flushed += 1
+            except Exception as e:
+                self.last_db_write_error = str(e)
+                self.logger.error(
+                    "DB flush failed; will retry later",
+                    kind=kind,
+                    buffer_len=len(self._write_buffer),
+                    error=str(e),
+                )
+                break
+
+        return flushed
+
+    def write_buffer_len(self) -> int:
+        return len(self._write_buffer)
+
+    def write_buffer_max(self) -> int:
+        return int(self.db_write_buffer_max)

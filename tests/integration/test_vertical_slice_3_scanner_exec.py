@@ -212,7 +212,9 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
     # We can mock the OrderExecutor.submit to verify signal reached execution
     # Note: method name is 'submit' in execution.py
     assert engine.order_executor is not None
-    engine.order_executor.submit = AsyncMock()  # type: ignore[method-assign]
+    # ExecutionEngine calls submit() synchronously, so use a normal mock to avoid
+    # "coroutine was never awaited" warnings.
+    engine.order_executor.submit = MagicMock()  # type: ignore[method-assign]
 
     engine.on_bar("TEST", bar3)
 

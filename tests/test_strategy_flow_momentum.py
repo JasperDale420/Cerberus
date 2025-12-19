@@ -67,7 +67,10 @@ def test_bullish_flow_momentum(fm_strategy):
         position=None,
         open_orders={},
         allowed_strategies=[],
-        meta={"flow_zscore": 3.0},  # Strong Bullish Flow
+        meta={
+            "flow_zscore": 3.0,
+            "call_put_ratio": 2.0,
+        },  # Strong Bullish Flow + confirms
     )
 
     # Strategy access: symbol_state.meta["flow_zscore"]
@@ -78,6 +81,8 @@ def test_bullish_flow_momentum(fm_strategy):
         assert sig.side.value == "buy"
         assert sig.strategy == "flow_momentum"
         assert sig.meta["flow_zscore"] == pytest.approx(3.0)
+        assert sig.meta["call_put_ratio"] == pytest.approx(2.0)
+        assert sig.meta["is_bullish_flow"] is True
     else:
         # Failure debugging
         pass
@@ -117,10 +122,12 @@ def test_bearish_flow_momentum(fm_strategy):
         position=None,
         open_orders={},
         allowed_strategies=[],
-        meta={"flow_zscore": -3.0},  # Strong Bearish
+        meta={"flow_zscore": -3.0, "call_put_ratio": 0.5},  # Strong Bearish + confirms
     )
 
     sig = fm_strategy.on_bar("TEST", b_mom, symbol_state, market_state)
 
     assert sig is not None
     assert sig.side.value == "sell"
+    assert sig.meta["call_put_ratio"] == pytest.approx(0.5)
+    assert sig.meta["is_bullish_flow"] is False

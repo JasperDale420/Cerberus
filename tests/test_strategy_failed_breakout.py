@@ -98,3 +98,81 @@ def test_bearish_fade(fb_strategy):
     assert sig.stop_price > sig.entry_price  # Short stop is higher
     # Stop should be b2.high (105.8) or close*1.005?
     # Logic says max(bar.high, ...).
+
+
+def test_failed_breakout_no_signal_outside_chop(fb_strategy):
+    market_state = MarketState(
+        time=datetime.now(),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    now = datetime.now()
+    today_start = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    bars = [
+        Bar("TEST", yesterday_start, 100, 105, 100, 102, 1000),
+        Bar("TEST", yesterday_start + timedelta(hours=1), 102, 102, 95, 98, 1000),
+    ]
+
+    b1 = Bar("TEST", today_start, 104, 106, 104, 105.5, 1000)
+    b2 = Bar("TEST", today_start + timedelta(minutes=5), 105.5, 105.8, 104, 104.5, 1000)
+
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(bars + [b1, b2]),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={},
+    )
+
+    assert fb_strategy.on_bar("TEST", b2, symbol_state, market_state) is None
+
+
+def test_failed_breakout_uses_scanner_prior_levels_when_no_history(fb_strategy):
+    market_state = MarketState(
+        time=datetime.now(),
+        regime=Regime.CHOP,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    now = datetime.now()
+    today_start = now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+    # Only current-day bars (no prior day history); PDH/PDL must come from scanner snapshot.
+    b1 = Bar("TEST", today_start, 104, 106, 104, 105.5, 1000)
+    b2 = Bar("TEST", today_start + timedelta(minutes=5), 105.5, 105.8, 104, 104.5, 1000)
+
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque([b1]),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={
+            "features_snapshot": {"prior_day_high": 105.0, "prior_day_low": 95.0},
+        },
+    )
+
+    fb_strategy.on_bar("TEST", b1, symbol_state, market_state)
+    symbol_state.bars.append(b2)
+    sig = fb_strategy.on_bar("TEST", b2, symbol_state, market_state)
+
+    assert sig is not None
+    assert sig.side.value == "sell"
+    assert sig.strategy == "failed_breakout"

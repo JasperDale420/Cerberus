@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -117,7 +117,7 @@ class StrategyStatsDaily(Base):
     __tablename__ = "strategy_stats_daily"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[datetime] = mapped_column(DateTime)
+    date: Mapped[date] = mapped_column(Date)
     strategy: Mapped[str] = mapped_column(String)
     regime: Mapped[str] = mapped_column(String)
     n_trades: Mapped[int] = mapped_column(Integer, default=0)

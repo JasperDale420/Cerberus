@@ -8,6 +8,7 @@ from src.strategies.base import BaseStrategy
 class FailedBreakoutStrategy(BaseStrategy):
     """
     Failed Breakout Strategy (Fade).
+    Vertical Slice: 4
     Enters when price breaks a key level (Prior High/Low) but fails to hold, reversing back.
     Ideally for CHOP regimes.
     """
@@ -42,6 +43,21 @@ class FailedBreakoutStrategy(BaseStrategy):
         # Optimization: Only compute once per day/session using _get_daily_levels helper
         pdh = symbol_state.indicators.get("prior_day_high")
         pdl = symbol_state.indicators.get("prior_day_low")
+
+        # Prefer scanner/pipeline-provided levels (PRD 7.2) when available.
+        if pdh is None or pdl is None:
+            snap = symbol_state.meta.get("features_snapshot")
+            if isinstance(snap, dict):
+                if pdh is None:
+                    pdh = snap.get("prior_day_high")
+                if pdl is None:
+                    pdl = snap.get("prior_day_low")
+            try:
+                pdh = float(pdh) if pdh is not None else None
+                pdl = float(pdl) if pdl is not None else None
+            except Exception:
+                pdh = None
+                pdl = None
 
         if pdh is None or pdl is None:
             # Try to compute from bars
@@ -80,9 +96,7 @@ class FailedBreakoutStrategy(BaseStrategy):
     def _check_bearish_fade(
         self, symbol, bar, symbol_state, market_state, pdh, has_breached_high
     ) -> Optional[Signal]:
-        if not (
-            has_breached_high and market_state.regime in [Regime.CHOP, Regime.BEAR]
-        ):
+        if not (has_breached_high and market_state.regime == Regime.CHOP):
             return None
 
         # Trigger: Price closes back inside range ( < PDH )
@@ -122,13 +136,12 @@ class FailedBreakoutStrategy(BaseStrategy):
             regime=market_state.regime,
             generated_at=bar.time,
             meta={"pdh": pdh, "type": "fade_high"},
-            correlation_id=f"{self.name}-short-{symbol}-{bar.time.timestamp()}",
         )
 
     def _check_bullish_fade(
         self, symbol, bar, symbol_state, market_state, pdl, has_breached_low
     ) -> Optional[Signal]:
-        if not (has_breached_low and market_state.regime in [Regime.CHOP, Regime.BULL]):
+        if not (has_breached_low and market_state.regime == Regime.CHOP):
             return None
 
         # Trigger: Price closes back inside range ( > PDL )
@@ -166,7 +179,6 @@ class FailedBreakoutStrategy(BaseStrategy):
             regime=market_state.regime,
             generated_at=bar.time,
             meta={"pdl": pdl, "type": "fade_low"},
-            correlation_id=f"{self.name}-long-{symbol}-{bar.time.timestamp()}",
         )
 
     def _compute_prior_levels(self, bars) -> Optional[tuple]:

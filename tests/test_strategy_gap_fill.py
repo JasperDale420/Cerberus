@@ -1,7 +1,8 @@
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
+import pytz  # type: ignore
 
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
@@ -39,7 +40,7 @@ def gf_strategy():
 
 def test_fade_gap_up(gf_strategy):
     market_state = MarketState(
-        time=datetime.now(),
+        time=datetime.now(timezone.utc),
         regime=Regime.CHOP,
         index_symbol="SPY",
         index_price=100,
@@ -54,7 +55,9 @@ def test_fade_gap_up(gf_strategy):
     # Previous Close: 100.
     # Open: 102 (+2% Gap).
 
-    start_dt = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+    et = pytz.timezone("US/Eastern")
+    start_et = et.localize(datetime(2025, 1, 2, 9, 30, 0))
+    start_dt = start_et.astimezone(timezone.utc)
 
     # OR Bars (15 min) - 3 x 5min bars
     # Bar 1: 09:30-09:35. Open 102. High 102.5. Low 101.8. Close 102.0
@@ -97,3 +100,71 @@ def test_fade_gap_up(gf_strategy):
     else:
         # Debug
         pass
+
+
+def test_gap_fill_rejects_out_of_range_gap(gf_strategy):
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.CHOP,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    et = pytz.timezone("US/Eastern")
+    start_et = et.localize(datetime(2025, 1, 2, 9, 30, 0))
+    start_dt = start_et.astimezone(timezone.utc)
+    b1 = Bar("TEST", start_dt, 102.0, 102.5, 101.8, 102.0, 1000)
+    b2 = Bar("TEST", start_dt + timedelta(minutes=5), 102.0, 102.2, 101.9, 102.1, 1000)
+    b3 = Bar("TEST", start_dt + timedelta(minutes=10), 102.1, 102.3, 102.0, 102.0, 1000)
+    b4 = Bar("TEST", start_dt + timedelta(minutes=15), 102.0, 102.0, 101.5, 101.5, 2000)
+
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque([b1, b2, b3]),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.50},  # 50% gap, out of max_gap=10%
+    )
+
+    assert gf_strategy.on_bar("TEST", b4, symbol_state, market_state) is None
+
+
+def test_gap_fill_rejects_non_chop_regime(gf_strategy):
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    et = pytz.timezone("US/Eastern")
+    start_et = et.localize(datetime(2025, 1, 2, 9, 30, 0))
+    start_dt = start_et.astimezone(timezone.utc)
+    b1 = Bar("TEST", start_dt, 102.0, 102.5, 101.8, 102.0, 1000)
+    b2 = Bar("TEST", start_dt + timedelta(minutes=5), 102.0, 102.2, 101.9, 102.1, 1000)
+    b3 = Bar("TEST", start_dt + timedelta(minutes=10), 102.1, 102.3, 102.0, 102.0, 1000)
+    b4 = Bar("TEST", start_dt + timedelta(minutes=15), 102.0, 102.0, 101.5, 101.5, 2000)
+
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque([b1, b2, b3]),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.02},
+    )
+
+    assert gf_strategy.on_bar("TEST", b4, symbol_state, market_state) is None

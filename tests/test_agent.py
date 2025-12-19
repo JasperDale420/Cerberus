@@ -10,6 +10,16 @@ def test_analyze_performance_z_score(mock_llm_cls):
     # Setup
     logger = MagicMock()
     config_loader = MagicMock()
+    config_loader.load_config.return_value = {
+        "agent": {
+            "stage1": {
+                "window_days": 30,
+                "min_trades": 20,
+                "z_high": 1.645,
+                "max_drawdown_r": 4.0,
+            }
+        }
+    }
     # Mock LLMClient instance
     mock_llm_instance = MagicMock()
     mock_llm_cls.return_value = mock_llm_instance
@@ -56,7 +66,7 @@ def test_analyze_performance_z_score(mock_llm_cls):
         winrate=0.3,
         avg_r=-0.6,
         std_r=0.5,
-        max_drawdown_r=5.0,
+        max_drawdown_r=5.0,  # >= configured max_drawdown_r threshold
         expectancy=-0.2,
         total_pnl_r=-20.0,
     )

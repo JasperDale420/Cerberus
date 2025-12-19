@@ -13,7 +13,7 @@ def test_on_fill_persistence():
     logger = MagicMock()
     db = MagicMock()
     mock_session = MagicMock()
-    db.get_session.return_value.__enter__.return_value = mock_session
+    db.write.side_effect = lambda _kind, fn: (fn(mock_session), True)[1]
 
     engine = ExecutionEngine(config, logger, db=db)
 
@@ -64,7 +64,8 @@ def test_on_fill_persistence():
     assert state.position is None  # Closed
 
     # Check DB Persist
-    # Should have added a DbTrade object
+    # Should have added a DbTrade object via db.write(...)
+    assert db.write.called
     assert mock_session.add.called
     args, _ = mock_session.add.call_args
     trade_obj = args[0]

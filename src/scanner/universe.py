@@ -1,7 +1,12 @@
-from typing import List, cast
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+from src.data.alpaca import AlpacaClient
 
 
 class UniverseBuilder:
@@ -9,38 +14,174 @@ class UniverseBuilder:
     Constructs the universe of symbols to scan.
     """
 
-    def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
-        self.config = config_loader.load_config()
+    def __init__(
+        self,
+        config_loader: ConfigLoader,
+        logger: StructuredLogger,
+        config: Optional[Dict[str, Any]] = None,
+        config_path_or_dir: Optional[str] = None,
+        alpaca_client: Optional[AlpacaClient] = None,
+        clock: Optional[Callable[[], datetime]] = None,
+    ):
+        # Respect caller-provided config (preferred), otherwise load from the same path used by the app.
+        self.config = (
+            config
+            if isinstance(config, dict)
+            else config_loader.load_config(config_path_or_dir)
+        )
         self.logger = logger
+        self.alpaca_client = alpaca_client
+        self.clock: Callable[[], datetime] = clock or (
+            lambda: datetime.now(timezone.utc)
+        )
 
-    def get_universe(self) -> List[str]:
+    def _dedupe_preserve_order(self, symbols: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for s in symbols:
+            sym = str(s).strip().upper()
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            out.append(sym)
+        return out
+
+    def _load_symbol_file(self, path: str) -> List[str]:
+        p = Path(path)
+        if not p.exists():
+            self.logger.warning("Universe static file missing", path=str(p))
+            return []
+        lines = []
+        for raw in p.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Allow CSV lines; take first token.
+            token = line.split(",")[0].strip()
+            if token:
+                lines.append(token.upper())
+        return lines
+
+    def build_universe(self) -> List[str]:
         """
         Returns a list of symbols.
-        Currently supports hardcoded list from config or defaults.
+        Currently supports explicit symbols; static/dynamic sources can be added behind config.
         """
-        # 1. Try to get from config
         universe_config = self.config.get("universe", [])
+        universe: List[str] = []
+
+        explicit: List[str] = []
+        static_files: List[str] = []
+        dyn_cfg: Dict[str, Any] = {}
         if isinstance(universe_config, dict):
-            universe = cast(List[str], universe_config.get("symbols", []))
+            explicit = cast(List[str], universe_config.get("symbols", []))
+            static_files = (
+                cast(List[str], universe_config.get("static_files", []))
+                if universe_config.get("static_files")
+                else []
+            )
+            dyn_cfg = (
+                cast(Dict[str, Any], universe_config.get("dynamic", {}))
+                if universe_config.get("dynamic")
+                else {}
+            )
         else:
-            universe = cast(List[str], universe_config)
+            explicit = cast(List[str], universe_config)
+
+        explicit_added = [str(s).upper() for s in explicit if s]
+        universe.extend(explicit_added)
+
+        static_added: List[str] = []
+        for fp in static_files:
+            static_added.extend(self._load_symbol_file(str(fp)))
+        universe.extend(static_added)
+
+        # Dynamic: previous day top volume among candidates (deterministic).
+        prev_vol_cfg = (
+            dyn_cfg.get("previous_day_top_volume")
+            if isinstance(dyn_cfg, dict)
+            else None
+        )
+        if (
+            isinstance(prev_vol_cfg, dict)
+            and bool(prev_vol_cfg.get("enabled", False))
+            and self.alpaca_client is not None
+        ):
+            top_n = int(prev_vol_cfg.get("top_n", 0))
+            if top_n > 0:
+                candidates = prev_vol_cfg.get("candidates")
+                cand_list: List[str] = []
+                if isinstance(candidates, list) and candidates:
+                    cand_list = [str(x).upper() for x in candidates if x]
+                else:
+                    cand_list = list(universe)
+
+                # Fetch daily volume for the last completed day (best-effort with slack days).
+                from datetime import timedelta
+
+                end = self.clock()
+                start = end - timedelta(days=int(prev_vol_cfg.get("lookback_days", 7)))
+
+                vols: List[tuple[str, float]] = []
+                for sym in sorted(set(cand_list)):
+                    try:
+                        bars = self.alpaca_client.get_historical_bars(
+                            sym, start, end, timeframe="1Day"
+                        )
+                        if isinstance(bars, dict) and "bars" in bars:
+                            bars = bars["bars"]
+                        if not isinstance(bars, list) or not bars:
+                            continue
+                        # Take last bar volume deterministically.
+                        b = bars[-1]
+                        if isinstance(b, dict):
+                            v = (
+                                b.get("v")
+                                if b.get("v") is not None
+                                else b.get("volume")
+                            )
+                        else:
+                            v = getattr(b, "v", None) or getattr(b, "volume", None)
+                        if v is None:
+                            continue
+                        vols.append((sym, float(v)))
+                    except Exception as e:
+                        self.logger.warning(
+                            "Dynamic universe volume fetch failed",
+                            symbol=sym,
+                            error=str(e),
+                        )
+                        continue
+
+                vols_sorted = sorted(vols, key=lambda kv: (-kv[1], kv[0]))
+                dynamic_added = [sym for sym, _v in vols_sorted[:top_n]]
+                universe.extend(dynamic_added)
+            else:
+                dynamic_added = []
+        else:
+            dynamic_added = []
+
+        universe = self._dedupe_preserve_order(universe)
+
+        try:
+            self.logger.info(
+                "Universe built",
+                explicit_count=len(set(explicit_added)),
+                static_count=len(set(static_added)),
+                dynamic_count=len(set(dynamic_added)),
+                total=len(universe),
+            )
+        except Exception:
+            pass
 
         if not universe:
-            # 2. Fallback to a default liquid list
-            self.logger.info(
-                "No universe found in config, using default liquid symbols."
+            self.logger.error("Universe is empty; refusing to proceed")
+            raise ValueError(
+                "Universe is empty; check config/universe.yaml and static files"
             )
-            universe = [
-                "SPY",
-                "QQQ",
-                "IWM",
-                "AAPL",
-                "MSFT",
-                "NVDA",
-                "AMD",
-                "TSLA",
-                "AMZN",
-                "GOOGL",
-            ]
 
         return universe
+
+    def get_universe(self) -> List[str]:
+        # Backwards-compatible alias
+        return self.build_universe()

@@ -1,8 +1,5 @@
 from typing import Any, Dict, Optional
 
-import pandas as pd
-import pandas_ta as ta
-
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -27,6 +24,8 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         self.ema_slow_len = config.get("ema_slow", 50)
         self.vol_mult = config.get("vol_mult", 1.2)  # Volume must be 1.2x average
         self.risk_reward = config.get("risk_reward", 2.0)
+        # PRD 7.2: only in strong trend (trend_score high).
+        self.min_trend_score = float(config.get("min_trend_score", 1.5) or 1.5)
 
     def on_bar(
         self,
@@ -39,59 +38,80 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         if not symbol_state.bars or len(symbol_state.bars) < self.ema_slow_len + 5:
             return None
 
-        # 1. Calculate Indicators
-        bars = list(symbol_state.bars)
-        df = pd.DataFrame([vars(b) for b in bars])
-        close = df["close"].astype(float)
-
-        # EMAs
-        ema_fast = ta.ema(close, length=self.ema_fast_len)
-        ema_slow = ta.ema(close, length=self.ema_slow_len)
-
-        # VWAP (if not in bar, calc it)
-        # Assuming bar has 'vwap' or we calc using pandas_ta
-        # Pipeline usually attaches it, but we re-calc to be safe or verify
-        if "vwap" not in df.columns or df["vwap"].isnull().all():
-            df.ta.vwap(
-                high=df["high"],
-                low=df["low"],
-                close=df["close"],
-                volume=df["volume"],
-                append=True,
-            )
-
-        # Average Volume (Simple Moving Average 20)
-        avg_vol_series = ta.sma(df["volume"], length=20)
-
-        if ema_fast is None or ema_slow is None or avg_vol_series is None:
+        # PRD 7.2: VWAP Trend Rider is BULL/BEAR only and requires strong trend_score.
+        if market_state.regime not in (Regime.BULL, Regime.BEAR):
+            return None
+        trend_score = None
+        if isinstance(getattr(market_state, "meta", None), dict):
+            trend_score = market_state.meta.get("trend_score")
+        try:
+            trend_score_f = float(trend_score) if trend_score is not None else 0.0
+        except Exception:
+            trend_score_f = 0.0
+        if trend_score_f < self.min_trend_score:
             return None
 
-        current_fast = ema_fast.iloc[-1]
-        current_slow = ema_slow.iloc[-1]
+        bars = list(symbol_state.bars)
 
-        # Use latest VWAP (Check column names, pandas_ta produces VWAP_D usually)
-        vwap_col = "VWAP_D" if "VWAP_D" in df.columns else "vwap"
-        if vwap_col not in df.columns:
-            return None  # Can't trade without VWAP
+        # Prefer cached EMAs and volume SMA from engine; fall back to deterministic local computation.
+        current_fast = symbol_state.indicators.get(
+            f"ema_close:{int(self.ema_fast_len)}"
+        )
+        current_slow = symbol_state.indicators.get(
+            f"ema_close:{int(self.ema_slow_len)}"
+        )
+        if current_fast is None or current_slow is None:
 
-        current_vwap = df[vwap_col].iloc[-1]
-        prev_vwap = df[vwap_col].iloc[-2]
+            def _ema_last(values: list[float], period: int) -> float | None:
+                p = max(1, int(period))
+                alpha = 2.0 / (p + 1.0)
+                ema: float | None = None
+                for x in values:
+                    ema = x if ema is None else (alpha * x) + ((1.0 - alpha) * ema)
+                return ema
 
-        current_vol = bar.volume
-        avg_vol = avg_vol_series.iloc[
-            -2
-        ]  # Use prev bar avg to not bias with current? Or current bar SMA?
-        # Current bar is closed (we assume on_bar is called after close usually, or on new bar)
-        # If 'bar' is the *just closed* bar, we use its volume.
+            closes = [float(b.close) for b in bars]
+            current_fast = _ema_last(closes, int(self.ema_fast_len))
+            current_slow = _ema_last(closes, int(self.ema_slow_len))
+
+        if current_fast is None or current_slow is None:
+            return None
+
+        # VWAP is injected by engine as session VWAP (preferred).
+        current_vwap = getattr(bar, "vwap", None)
+        prev_vwap = None
+        if len(bars) >= 2:
+            prev_vwap = getattr(bars[-2], "vwap", None)
+        try:
+            current_vwap_f = float(current_vwap) if current_vwap is not None else None
+            prev_vwap_f = float(prev_vwap) if prev_vwap is not None else None
+        except Exception:
+            current_vwap_f = None
+            prev_vwap_f = None
+        if current_vwap_f is None or prev_vwap_f is None:
+            return None
+
+        current_vol = float(getattr(bar, "volume", 0.0) or 0.0)
+        avg_vol = symbol_state.indicators.get("sma_vol:20:prev")
+        if avg_vol is None:
+            # Local SMA fallback
+            vols = [float(b.volume) for b in bars[-21:-1]]  # prior 20 bars
+            if not vols:
+                return None
+            avg_vol = sum(vols) / len(vols)
+        try:
+            avg_vol_f = float(avg_vol)
+        except Exception:
+            return None
 
         # 2. Determine Trend
-        is_uptrend = current_fast > current_slow
-        is_downtrend = current_fast < current_slow
+        is_uptrend = float(current_fast) > float(current_slow)
+        is_downtrend = float(current_fast) < float(current_slow)
 
         # 3. Check for Reclaim + Volume
 
         # BULLISH RIDER
-        if is_uptrend and market_state.regime in [Regime.BULL, Regime.CHOP]:
+        if is_uptrend and market_state.regime == Regime.BULL:
             # Trigger: Cross OVER VWAP
             # Condition: Previous Close < Prev VWAP (or Low < VWAP)
             #           Current Close > Current VWAP
@@ -99,14 +119,16 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             # More lenient pullback: Low touches VWAP area, Close strong.
             # Strict Reclaim: Close crosses from below to above.
 
-            prev_close = df["close"].iloc[-2]
+            prev_close = float(bars[-2].close) if len(bars) >= 2 else float(bar.close)
 
             # Did we cross UP?
-            cross_up = (prev_close < prev_vwap) and (bar.close > current_vwap)
+            cross_up = (prev_close < prev_vwap_f) and (
+                float(bar.close) > current_vwap_f
+            )
 
             if cross_up:
                 # Check Volume
-                if current_vol > (avg_vol * self.vol_mult):
+                if current_vol > (avg_vol_f * float(self.vol_mult)):
                     # ENTRY LONG
                     stop_loss = min(
                         [b.low for b in bars[-3:]]
@@ -127,20 +149,27 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                         strategy=self.name,
                         regime=market_state.regime,
                         generated_at=bar.time,
-                        meta={"vwap": current_vwap, "vol_mult": current_vol / avg_vol},
-                        correlation_id=f"{self.name}-long-{symbol}-{bar.time.timestamp()}",
+                        meta={
+                            "vwap": float(current_vwap_f),
+                            "vol_mult": (
+                                (current_vol / avg_vol_f) if avg_vol_f else None
+                            ),
+                            "trend_score": float(trend_score_f),
+                        },
                     )
 
         # BEARISH RIDER
-        if is_downtrend and market_state.regime in [Regime.BEAR, Regime.CHOP]:
-            prev_close = df["close"].iloc[-2]
+        if is_downtrend and market_state.regime == Regime.BEAR:
+            prev_close = float(bars[-2].close) if len(bars) >= 2 else float(bar.close)
 
             # Did we cross DOWN?
-            cross_down = (prev_close > prev_vwap) and (bar.close < current_vwap)
+            cross_down = (prev_close > prev_vwap_f) and (
+                float(bar.close) < current_vwap_f
+            )
 
             if cross_down:
                 # Check Volume
-                if current_vol > (avg_vol * self.vol_mult):
+                if current_vol > (avg_vol_f * float(self.vol_mult)):
                     # ENTRY SHORT
                     stop_loss = max([b.high for b in bars[-3:]])
                     if stop_loss <= bar.close:
@@ -159,8 +188,13 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                         strategy=self.name,
                         regime=market_state.regime,
                         generated_at=bar.time,
-                        meta={"vwap": current_vwap, "vol_mult": current_vol / avg_vol},
-                        correlation_id=f"{self.name}-short-{symbol}-{bar.time.timestamp()}",
+                        meta={
+                            "vwap": float(current_vwap_f),
+                            "vol_mult": (
+                                (current_vol / avg_vol_f) if avg_vol_f else None
+                            ),
+                            "trend_score": float(trend_score_f),
+                        },
                     )
 
         return None

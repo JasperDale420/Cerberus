@@ -1,8 +1,5 @@
 from typing import Any, Dict, Optional
 
-import pandas as pd
-import pandas_ta as ta
-
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -22,6 +19,10 @@ class TrendPullbackStrategy(BaseStrategy):
         self.ema_slow_len = config.get("ema_slow", 50)
         self.rsi_len = config.get("rsi_len", 2)  # Fast RSI for trigger
         self.risk_reward = config.get("risk_reward", 2.0)
+        self.pullback_depth_pct = float(config.get("pullback_depth_pct", 0.0) or 0.0)
+        self.entry_confirmation = str(
+            config.get("entry_confirmation", "rsi") or "rsi"
+        ).lower()
 
         # Thresholds
         self.rsi_oversold = config.get("rsi_oversold", 10)
@@ -38,41 +39,96 @@ class TrendPullbackStrategy(BaseStrategy):
         if not symbol_state.bars or len(symbol_state.bars) < self.ema_slow_len + 10:
             return None
 
-        # 1. Calculate Indicators
         bars = list(symbol_state.bars)
-        df = pd.DataFrame([vars(b) for b in bars])
+        current_price = float(bar.close)
 
-        # Ensure 'close' is float
-        close = df["close"].astype(float)
+        # Prefer cached indicators from engine; fall back to deterministic local computation.
+        current_fast = symbol_state.indicators.get(
+            f"ema_close:{int(self.ema_fast_len)}"
+        )
+        current_slow = symbol_state.indicators.get(
+            f"ema_close:{int(self.ema_slow_len)}"
+        )
+        if current_fast is None or current_slow is None:
+            # Local EMA fallback
+            def _ema_last(values: list[float], period: int) -> float | None:
+                p = max(1, int(period))
+                alpha = 2.0 / (p + 1.0)
+                ema: float | None = None
+                for x in values:
+                    ema = x if ema is None else (alpha * x) + ((1.0 - alpha) * ema)
+                return ema
 
-        # Compute EMAs
-        ema_fast = ta.ema(close, length=self.ema_fast_len)
-        ema_slow = ta.ema(close, length=self.ema_slow_len)
-        rsi = ta.rsi(close, length=self.rsi_len)
+            closes = [float(b.close) for b in bars]
+            current_fast = _ema_last(closes, int(self.ema_fast_len))
+            current_slow = _ema_last(closes, int(self.ema_slow_len))
 
-        if ema_fast is None or ema_slow is None or rsi is None:
+        if current_fast is None or current_slow is None:
             return None
 
-        current_fast = ema_fast.iloc[-1]
-        current_slow = ema_slow.iloc[-1]
-        current_rsi = rsi.iloc[-1]
-        prev_rsi = rsi.iloc[-2]
-        current_price = bar.close
+        current_rsi = None
+        prev_rsi = None
+        if self.entry_confirmation == "rsi":
+            current_rsi = symbol_state.indicators.get(f"rsi:{int(self.rsi_len)}")
+            prev_rsi = symbol_state.indicators.get(f"rsi:{int(self.rsi_len)}:prev")
+            if current_rsi is None or prev_rsi is None:
+                # Local RSI fallback (Wilder smoothing), return last two values.
+                closes = [float(b.close) for b in bars]
+                p = max(1, int(self.rsi_len))
+                if len(closes) < p + 2:
+                    return None
+                avg_gain = None
+                avg_loss = None
+                prev_close = closes[0]
+                series: list[float] = []
+                for c in closes[1:]:
+                    change = c - prev_close
+                    gain = max(0.0, change)
+                    loss = max(0.0, -change)
+                    if avg_gain is None or avg_loss is None:
+                        avg_gain = gain
+                        avg_loss = loss
+                    else:
+                        avg_gain = ((avg_gain * (p - 1)) + gain) / p
+                        avg_loss = ((avg_loss * (p - 1)) + loss) / p
+                    prev_close = c
+                    if (avg_loss or 0.0) == 0.0:
+                        series.append(100.0)
+                    else:
+                        rs = float(avg_gain or 0.0) / float(avg_loss)
+                        series.append(100.0 - (100.0 / (1.0 + rs)))
+                if len(series) < 2:
+                    return None
+                prev_rsi = series[-2]
+                current_rsi = series[-1]
 
         # 2. Determine Trend Direction
-        is_bullish = current_fast > current_slow
-        is_bearish = current_fast < current_slow
+        is_bullish = float(current_fast) > float(current_slow)
+        is_bearish = float(current_fast) < float(current_slow)
 
         # 3. Check Signal
         signal = None
 
-        if is_bullish and market_state.regime in [Regime.BULL, Regime.CHOP]:
+        if is_bullish and market_state.regime == Regime.BULL:
+            if self.pullback_depth_pct > 0 and float(current_fast):
+                dist = abs((current_price - float(current_fast)) / float(current_fast))
+                if dist > self.pullback_depth_pct:
+                    return None
             # Bullish Pullback
             # Condition 1: RSI was oversold recently (pullback depth)
             # OR logic: Price touched EMA20? (Implicit in RSI oversold usually)
 
             # Simple RSI trigger: Crossing back UP over threshold
-            if prev_rsi < self.rsi_oversold and current_rsi > self.rsi_oversold:
+            if self.entry_confirmation == "none":
+                confirmed = True
+            else:
+                confirmed = bool(
+                    prev_rsi is not None
+                    and current_rsi is not None
+                    and float(prev_rsi) < self.rsi_oversold
+                    and float(current_rsi) > self.rsi_oversold
+                )
+            if confirmed:
                 # Trigger ENTRY LONG
                 stop_loss = min([b.low for b in bars[-3:]])  # Low of Swing
                 # If stop is too tight, use ATR (omitted for now)
@@ -94,16 +150,28 @@ class TrendPullbackStrategy(BaseStrategy):
                     regime=market_state.regime,
                     generated_at=bar.time,
                     meta={
-                        "ema_fast": current_fast,
-                        "ema_slow": current_slow,
-                        "rsi": current_rsi,
+                        "ema_fast": float(current_fast),
+                        "ema_slow": float(current_slow),
+                        "rsi": float(current_rsi) if current_rsi is not None else None,
                     },
-                    correlation_id=f"{self.name}-{symbol}-{bar.time.timestamp()}",
                 )
 
-        elif is_bearish and market_state.regime in [Regime.BEAR, Regime.CHOP]:
+        elif is_bearish and market_state.regime == Regime.BEAR:
+            if self.pullback_depth_pct > 0 and float(current_fast):
+                dist = abs((current_price - float(current_fast)) / float(current_fast))
+                if dist > self.pullback_depth_pct:
+                    return None
             # Bearish Pullback
-            if prev_rsi > self.rsi_overbought and current_rsi < self.rsi_overbought:
+            if self.entry_confirmation == "none":
+                confirmed = True
+            else:
+                confirmed = bool(
+                    prev_rsi is not None
+                    and current_rsi is not None
+                    and float(prev_rsi) > self.rsi_overbought
+                    and float(current_rsi) < self.rsi_overbought
+                )
+            if confirmed:
                 # Trigger ENTRY SHORT
                 stop_loss = max([b.high for b in bars[-3:]])
 
@@ -124,11 +192,10 @@ class TrendPullbackStrategy(BaseStrategy):
                     regime=market_state.regime,
                     generated_at=bar.time,
                     meta={
-                        "ema_fast": current_fast,
-                        "ema_slow": current_slow,
-                        "rsi": current_rsi,
+                        "ema_fast": float(current_fast),
+                        "ema_slow": float(current_slow),
+                        "rsi": float(current_rsi) if current_rsi is not None else None,
                     },
-                    correlation_id=f"{self.name}-{symbol}-{bar.time.timestamp()}",
                 )
 
         return signal

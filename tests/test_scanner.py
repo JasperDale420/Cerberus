@@ -56,7 +56,7 @@ async def test_scanner_flow():
     scanner = Scanner(mock_universe, mock_pipeline, mock_logger)
 
     # Run scan
-    results = await scanner.scan()
+    results = await scanner.scan(scan_time=datetime.now(timezone.utc))
 
     # Verify
     # TSLA might match other profiles added recently (e.g. GapFill), so allow len >= 1
@@ -69,7 +69,41 @@ async def test_scanner_flow():
 
     # Verify calls
     mock_universe.get_universe.assert_called_once()
-    mock_pipeline.compute_features.assert_called_once_with(["AAPL", "TSLA"])
+    # Determinism: scan_time is passed through as_of
+    assert mock_pipeline.compute_features.call_count == 1
+    args, kwargs = mock_pipeline.compute_features.call_args
+    assert args[0] == ["AAPL", "TSLA"]
+    assert kwargs.get("as_of") is not None
+
+
+@pytest.mark.asyncio
+async def test_scanner_requires_scan_time_or_pipeline_clock() -> None:
+    mock_universe = MagicMock()
+    mock_universe.get_universe.return_value = ["AAPL"]
+
+    mock_pipeline = MagicMock(spec=["compute_features"])
+    mock_pipeline.compute_features = AsyncMock(return_value={})
+
+    scanner = Scanner(mock_universe, mock_pipeline, MagicMock())
+
+    with pytest.raises(ValueError, match="requires scan_time"):
+        await scanner.scan()
+
+
+@pytest.mark.asyncio
+async def test_scanner_feature_pipeline_failure_fails_open() -> None:
+    mock_universe = MagicMock()
+    mock_universe.get_universe.return_value = ["AAPL"]
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.compute_features = AsyncMock(side_effect=RuntimeError("boom"))
+
+    mock_logger = MagicMock()
+    scanner = Scanner(mock_universe, mock_pipeline, mock_logger)
+
+    result = await scanner.scan(scan_time=datetime.now(timezone.utc))
+    assert result.watchlist == []
+    assert mock_logger.error.call_count >= 1
 
 
 def test_vwap_profile():

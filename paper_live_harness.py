@@ -81,6 +81,7 @@ class TestHarness:
         self.config = self.config_loader.load_config(args.config)
         self.engine: Optional[ExecutionEngine] = None
         self.alpaca: Optional[AlpacaClient] = None
+        self.bot_log_path: Optional[str] = None
 
         # Kill Switch Check
         self._check_kill_switch()
@@ -95,6 +96,20 @@ class TestHarness:
         # Inject Run ID into config or environment for other loggers
         os.environ["CERBERUS_RUN_ID"] = self.run_id
 
+        # Configure bot loggers to write into the run artifacts directory so the
+        # harness can deterministically generate stats from structured logs.
+        logging_cfg: Dict[str, Any] = {}
+        if isinstance(self.config.get("logging"), dict):
+            logging_cfg = dict(self.config.get("logging") or {})
+        self.bot_log_path = os.path.join(self.artifacts_path, "bot.log.jsonl")
+        logging_cfg["file_path"] = self.bot_log_path
+
+        def _slog(name: str, level: str = "INFO") -> StructuredLogger:
+            # Use a unique logger name per run_id so handlers don't leak across runs.
+            return StructuredLogger(
+                f"{name}.{self.run_id}", level=level, logging_config=logging_cfg
+            )
+
         # 1. Logger
         # We want the main bot logger to also write to our artifact file if possible,
         # or we rely on the main config to point to a file.
@@ -103,18 +118,24 @@ class TestHarness:
         # But let's stick to the SUT as strict as possible.
 
         # 2. Alpaca Client - Check Paper Mode
-        self.alpaca = AlpacaClient(self.config_loader, StructuredLogger("AlpacaClient"))
+        self.alpaca = AlpacaClient(self.config_loader, _slog("AlpacaClient"))
         if not self.alpaca.paper and not self.args.force_live:
             self.logger.critical("Alpaca Client is NOT in paper mode! Aborting.")
             sys.exit(1)
 
         # 3. Execution Engine
-        db = DatabaseDatabase(self.config_loader, StructuredLogger("DB", level="INFO"))
+        db = DatabaseDatabase(
+            self.config_loader,
+            _slog("DB", level="INFO"),
+            config=self.config,
+            config_path_or_dir=self.args.config,
+        )
+        db.init_db()
         # Using in-memory or paper DB? Config usually points to sqlite.
 
         self.engine = ExecutionEngine(
             self.config,
-            StructuredLogger("Engine", level="INFO"),
+            _slog("Engine", level="INFO"),
             db,
             self.alpaca,
             run_id=self.run_id,  # Pass run_id!
@@ -122,18 +143,30 @@ class TestHarness:
 
         # 4. Scanner & Pipeline
         uw_client = UnusualWhalesClient(
-            self.config_loader, StructuredLogger("UW", level="INFO")
+            self.config_loader,
+            _slog("UW", level="INFO"),
+            config=self.config,
         )
         feature_pipeline = FeaturePipeline(
-            self.alpaca, uw_client, StructuredLogger("Pipeline", level="INFO")
+            self.alpaca,
+            uw_client,
+            _slog("Pipeline", level="INFO"),
+            config=self.config,
+            clock=getattr(self.engine, "clock", None),
         )
         universe_builder = UniverseBuilder(
-            self.config_loader, StructuredLogger("Universe", level="INFO")
+            self.config_loader,
+            _slog("Universe", level="INFO"),
+            config=self.config,
+            config_path_or_dir=self.args.config,
+            alpaca_client=self.alpaca,
+            clock=getattr(self.engine, "clock", None),
         )
         scanner = Scanner(
             universe_builder,
             feature_pipeline,
-            StructuredLogger("Scanner", level="INFO"),
+            _slog("Scanner", level="INFO"),
+            config=self.config,
         )
 
         self.engine.scanner = scanner
@@ -180,14 +213,20 @@ class TestHarness:
             assert self.alpaca is not None
             orders = self.alpaca.trading_client.get_orders()
             positions = self.alpaca.trading_client.get_all_positions()
+            account = self.alpaca.trading_client.get_account()
+
+            def _dump(obj: Any) -> Any:
+                if hasattr(obj, "model_dump"):
+                    return obj.model_dump()
+                if hasattr(obj, "dict"):
+                    return obj.dict()
+                return str(obj)
 
             # Serialize
             data = {
-                "orders": [o.dict() if hasattr(o, "dict") else str(o) for o in orders],
-                "positions": [
-                    p.dict() if hasattr(p, "dict") else str(p) for p in positions
-                ],
-                "account": self.alpaca.trading_client.get_account().dict(),
+                "orders": [_dump(o) for o in orders],
+                "positions": [_dump(p) for p in positions],
+                "account": _dump(account),
             }
 
             export_path = os.path.join(self.artifacts_path, "broker_export.json")
@@ -294,6 +333,7 @@ class TestHarness:
 
         stats: Dict[str, Any] = {
             "signals": 0,
+            "signals_injected": 0,
             "approved": 0,
             "rejected": 0,
             "submitted": 0,
@@ -304,35 +344,86 @@ class TestHarness:
 
         exceptions = 0
 
+        seen_signals: set[str] = set()
+        seen_approved: set[str] = set()
+        seen_rejected: set[str] = set()
+        seen_submitted: set[str] = set()
+        seen_exec_errors: set[str] = set()
+
+        def _iter_jsonl(path: str):
+            try:
+                with open(path, "r") as f:
+                    for line in f:
+                        try:
+                            yield json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+            except FileNotFoundError:
+                return
+
         try:
-            with open(log_path, "r") as f:
-                for line in f:
-                    try:
-                        record = json.loads(line)
-                        msg = record.get("message", "")
+            for record in _iter_jsonl(log_path):
+                msg = record.get("message", "")
+                if record.get("level") == "ERROR":
+                    exceptions += 1
+                if "Injecting Synthetic Signal" in msg:
+                    stats["signals_injected"] += 1
 
-                        if record.get("level") == "ERROR":
-                            exceptions += 1
+            if self.bot_log_path:
+                for record in _iter_jsonl(self.bot_log_path):
+                    msg = record.get("message", "")
+                    correlation_id = (
+                        str(record.get("correlation_id") or "").strip() or None
+                    )
 
-                        if "Processing signal" in msg:
+                    if record.get("level") == "ERROR":
+                        exceptions += 1
+
+                    if "Processing signal" in msg:
+                        if correlation_id is None or correlation_id not in seen_signals:
                             stats["signals"] += 1
-                        elif "Signal approved" in msg:
+                            if correlation_id is not None:
+                                seen_signals.add(correlation_id)
+                    elif "Signal approved" in msg:
+                        if (
+                            correlation_id is None
+                            or correlation_id not in seen_approved
+                        ):
                             stats["approved"] += 1
-                        elif "Signal rejected" in msg:
+                            if correlation_id is not None:
+                                seen_approved.add(correlation_id)
+                    elif "Signal rejected" in msg:
+                        if (
+                            correlation_id is None
+                            or correlation_id not in seen_rejected
+                        ):
                             stats["rejected"] += 1
-                            reason = record.get("reason_code", "UNKNOWN")
-                            stats["reasons"][reason] = (
-                                stats["reasons"].get(reason, 0) + 1
-                            )
-                        elif "Order submitted" in msg:
+                            if correlation_id is not None:
+                                seen_rejected.add(correlation_id)
+                        reason = record.get("reason_code", "UNKNOWN")
+                        stats["reasons"][reason] = stats["reasons"].get(reason, 0) + 1
+                    elif "Order submitted" in msg:
+                        if (
+                            correlation_id is None
+                            or correlation_id not in seen_submitted
+                        ):
                             stats["submitted"] += 1
-                            if "exec_latency_ms" in record:
-                                stats["latencies"].append(record["exec_latency_ms"])
-                        elif "Order execution failed" in msg:
+                            if correlation_id is not None:
+                                seen_submitted.add(correlation_id)
+                        if "exec_latency_ms" in record:
+                            stats["latencies"].append(record["exec_latency_ms"])
+                    elif (
+                        "Order execution failed" in msg
+                        or "ORDER_SUBMIT_FAILED" in msg
+                        or "Order submission failed" in msg
+                    ):
+                        if (
+                            correlation_id is None
+                            or correlation_id not in seen_exec_errors
+                        ):
                             stats["exec_errors"] += 1
-
-                    except json.JSONDecodeError:
-                        pass
+                            if correlation_id is not None:
+                                seen_exec_errors.add(correlation_id)
 
             # Calculate Latency Stats
             # Calculate Latency Stats
@@ -370,7 +461,12 @@ class TestHarness:
 
         # Risk Scenario Expectation
         if self.args.scenario == "risk":
-            if stats["rejected"] > 0:
+            # PASS if at least one injected signal was blocked before submission.
+            if (
+                stats["signals_injected"] > 0
+                and stats["submitted"] == 0
+                and stats["approved"] == 0
+            ):
                 outcome = "PASS (Risk Blocked)"
             else:
                 outcome = "FAIL (Risk Did Not Block)"
@@ -384,6 +480,7 @@ class TestHarness:
             "stats": stats,
             "exceptions": exceptions,
             "pass": "PASS" in outcome,
+            "bot_log_path": self.bot_log_path,
         }
 
         with open(report_path, "w") as f:

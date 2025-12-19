@@ -168,3 +168,82 @@ def test_bullish_reclaim(vtr_strategy):
         # If no signal, might be EMAs didn't cross or Volume not enough?
         # 1500 > 1000 * 1.2 (1200). Volume ok.
         pass
+
+
+def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
+    logger = MockLogger()
+    strategy = VWAPTrendRiderStrategy(
+        {
+            "ema_fast": 2,
+            "ema_slow": 3,
+            "vol_mult": 1.0,
+            "risk_reward": 2.0,
+            "min_trend_score": 1.5,
+        },
+        logger,
+    )
+
+    market_state = MarketState(
+        time=datetime.now(),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={"trend_score": 2.0},
+    )
+
+    start_dt = datetime.now() - timedelta(minutes=200)
+    bars = []
+    for i in range(25):
+        price = 100.0 + i * 0.1
+        b = Bar(
+            "TEST",
+            start_dt + timedelta(minutes=i),
+            price,
+            price,
+            price,
+            price,
+            1000,
+            vwap=price,
+        )
+        bars.append(b)
+
+    # Force a reclaim condition:
+    # prev_close < prev_vwap and current_close > current_vwap
+    bars[-2] = Bar(
+        "TEST",
+        bars[-2].time,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        1000,
+        vwap=101.0,
+    )
+    bars[-1] = Bar(
+        "TEST",
+        bars[-1].time,
+        102.0,
+        102.0,
+        102.0,
+        102.0,
+        2000,
+        vwap=101.5,
+    )
+
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(bars),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={},
+    )
+
+    sig = strategy.on_bar("TEST", bars[-1], symbol_state, market_state)
+    assert sig is not None
+    assert sig.meta.get("vwap") == pytest.approx(101.5)

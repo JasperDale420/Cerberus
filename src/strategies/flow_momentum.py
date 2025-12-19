@@ -1,9 +1,6 @@
 from typing import Any, Dict, Optional
 
-import pandas as pd
-import pandas_ta as ta
-
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -30,6 +27,9 @@ class FlowMomentumStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # PRD: flow-confirmed momentum is intended for trending regimes.
+        if market_state.regime not in (Regime.BULL, Regime.BEAR):
+            return None
         # 1. Check Flow Direction (Meta from Scanner/Pipeline usually passed here?)
         # Strategy usually doesn't see SymbolFeatures directly.
         # We need flow_zscore in 'symbol_state.indicators' or 'meta'.
@@ -48,7 +48,8 @@ class FlowMomentumStrategy(BaseStrategy):
         # If not, we might need to rely on the fact that if it's in the list, it has flow.
         # But we need DIRECTION.
 
-        flow_score = symbol_state.meta.get("flow_zscore", 0.0)
+        flow_score = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
+        call_put_ratio = float(symbol_state.meta.get("call_put_ratio", 0.0) or 0.0)
 
         # Fallback: Maybe mapped in config or separate lookup?
         # Let's rely on passed meta for now. If missing, we verify later.
@@ -60,6 +61,13 @@ class FlowMomentumStrategy(BaseStrategy):
                 return None
 
         is_bullish_flow = flow_score > 0
+        if call_put_ratio <= 0:
+            return None
+        # PRD: require flow_zscore + call_put_ratio agreement.
+        if is_bullish_flow and call_put_ratio < 1.0:
+            return None
+        if (not is_bullish_flow) and call_put_ratio > 1.0:
+            return None
 
         # 2. Check Momentum (Price + Volume)
         # Need history for Avg Vol
@@ -67,14 +75,16 @@ class FlowMomentumStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
-        df = pd.DataFrame([vars(b) for b in bars])
-
-        # Avg Vol
-        avg_vol_series = ta.sma(df["volume"], length=20)
-        if avg_vol_series is None:
+        avg_vol = symbol_state.indicators.get("sma_vol:20")
+        if avg_vol is None:
+            vols = [float(b.volume) for b in bars[-20:]]
+            if not vols:
+                return None
+            avg_vol = sum(vols) / len(vols)
+        try:
+            avg_vol_f = float(avg_vol)
+        except Exception:
             return None
-
-        avg_vol = avg_vol_series.iloc[-1]
 
         # Candle Strength
         # Current bar body
@@ -86,7 +96,7 @@ class FlowMomentumStrategy(BaseStrategy):
         is_green = close > open_
         is_red = close < open_
 
-        vol_ok = bar.volume > (avg_vol * self.vol_mult)
+        vol_ok = float(bar.volume) > (avg_vol_f * float(self.vol_mult))
 
         signal = None
 
@@ -111,8 +121,12 @@ class FlowMomentumStrategy(BaseStrategy):
                 strategy=self.name,
                 regime=market_state.regime,
                 generated_at=bar.time,
-                meta={"flow_zscore": flow_score, "vol_mult": bar.volume / avg_vol},
-                correlation_id=f"{self.name}-long-{symbol}-{bar.time.timestamp()}",
+                meta={
+                    "flow_zscore": flow_score,
+                    "call_put_ratio": call_put_ratio,
+                    "is_bullish_flow": bool(is_bullish_flow),
+                    "vol_mult": (float(bar.volume) / avg_vol_f) if avg_vol_f else None,
+                },
             )
 
         # BEARISH MOMENTUM
@@ -135,8 +149,12 @@ class FlowMomentumStrategy(BaseStrategy):
                 strategy=self.name,
                 regime=market_state.regime,
                 generated_at=bar.time,
-                meta={"flow_zscore": flow_score, "vol_mult": bar.volume / avg_vol},
-                correlation_id=f"{self.name}-short-{symbol}-{bar.time.timestamp()}",
+                meta={
+                    "flow_zscore": flow_score,
+                    "call_put_ratio": call_put_ratio,
+                    "is_bullish_flow": bool(is_bullish_flow),
+                    "vol_mult": (float(bar.volume) / avg_vol_f) if avg_vol_f else None,
+                },
             )
 
         return signal

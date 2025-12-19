@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.core.domain import SymbolFeatures
+from src.core.domain import Regime, SymbolFeatures
 
 
 class ScannerProfile(ABC):
@@ -8,19 +8,25 @@ class ScannerProfile(ABC):
     Base class for strategy-specific scanner profiles.
     """
 
-    @abstractmethod
     def filter(self, features: SymbolFeatures) -> bool:
         """
-        Returns True if the symbol passes the strategy's filter.
+        Backwards-compatible alias for PRD terminology.
         """
-        pass
+        return self.min_requirements(features)
 
     @abstractmethod
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
+        """
+        PRD: Hard prerequisites; if false, symbol not considered for this strategy.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         """
         Returns a score (0.0 to 100.0) indicating how well the symbol fits the strategy.
         """
-        pass
+        raise NotImplementedError
 
 
 class VWAPReversionProfile(ScannerProfile):
@@ -31,14 +37,14 @@ class VWAPReversionProfile(ScannerProfile):
     def __init__(
         self,
         min_price: float = 10.0,
-        min_volume: float = 100000,
+        min_volume: float = 0.0,
         min_sigma: float = 2.0,
     ):
         self.min_price = min_price
         self.min_volume = min_volume
         self.min_sigma = min_sigma
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         # Basic liquidity checks
         if features.price < self.min_price:
             return False
@@ -49,7 +55,7 @@ class VWAPReversionProfile(ScannerProfile):
         # For now, just liquidity.
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         # Base score
         score = 50.0
 
@@ -61,9 +67,6 @@ class VWAPReversionProfile(ScannerProfile):
         score += features.atr_pct * 1000
 
         sigma = abs(features.price_zscore)
-        # This line assumes self.min_sigma is defined, which it is not in __init__.
-        # This might cause an AttributeError at runtime.
-        # Keeping it as per instruction to faithfully apply the provided code edit.
         score += (sigma - self.min_sigma) * 20.0
 
         return min(max(score, 0.0), 100.0)
@@ -78,13 +81,13 @@ class FlowMomentumProfile(ScannerProfile):
     def __init__(self, min_flow_zscore: float = 2.5):
         self.min_flow_zscore = min_flow_zscore
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         # Check absolute flow score
         if abs(features.flow_zscore) < self.min_flow_zscore:
             return False
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 60.0  # Base high because flow is rare/strong
 
         # Reward magnitude of flow
@@ -109,7 +112,7 @@ class GapProfile(ScannerProfile):
         self.min_gap = min_gap
         self.max_gap = max_gap
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         gap = abs(features.gap_pct)
         if gap < self.min_gap:
             return False
@@ -117,7 +120,7 @@ class GapProfile(ScannerProfile):
             return False
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         # Score based on how "perfect" the gap is.
         # Maybe 3-5% is sweet spot?
         gap = abs(features.gap_pct)
@@ -139,7 +142,7 @@ class ORBScannerProfile(ScannerProfile):
         self.min_gap_pct = min_gap_pct
         self.min_price = min_price
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         if features.price < self.min_price:
             return False
 
@@ -149,7 +152,7 @@ class ORBScannerProfile(ScannerProfile):
 
         return has_gap or has_flow
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0
 
         # Reward Gap Size
@@ -174,7 +177,7 @@ class TrendPullbackProfile(ScannerProfile):
         self.min_adx = min_adx
         self.max_dist_ema20 = max_dist_ema20
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         # Check Trend Strength
         if features.adx < self.min_adx:
             return False
@@ -186,7 +189,7 @@ class TrendPullbackProfile(ScannerProfile):
 
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0
 
         # Reward strong trend
@@ -211,7 +214,7 @@ class FailedBreakoutProfile(ScannerProfile):
     def __init__(self, proximity_pct: float = 0.02):
         self.proximity_pct = proximity_pct
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         pdh = features.prior_day_high
         pdl = features.prior_day_low
         price = features.price
@@ -226,7 +229,7 @@ class FailedBreakoutProfile(ScannerProfile):
         # We want to be watching it if it is near these levels
         return (dist_high < self.proximity_pct) or (dist_low < self.proximity_pct)
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0
 
         pdh = features.prior_day_high
@@ -262,12 +265,12 @@ class VWAPTrendRiderProfile(ScannerProfile):
     def __init__(self, min_adx: float = 20.0):
         self.min_adx = min_adx
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         if features.adx < self.min_adx:
             return False
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0
         score += (features.adx - 20.0) * 1.0
 
@@ -289,11 +292,11 @@ class IndexMeanReversionProfile(ScannerProfile):
     def __init__(self, min_sigma: float = 2.0):
         self.min_sigma = min_sigma
 
-    def filter(self, features: SymbolFeatures) -> bool:
+    def min_requirements(self, features: SymbolFeatures) -> bool:
         if abs(features.price_zscore) < self.min_sigma:
             return False
         return True
 
-    def score(self, features: SymbolFeatures, regime: str) -> float:
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0 + (abs(features.price_zscore) * 10.0)
         return min(max(score, 0.0), 100.0)

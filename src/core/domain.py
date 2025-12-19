@@ -1,5 +1,6 @@
+import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Deque, Dict, List, Optional
 
@@ -64,6 +65,28 @@ class Signal:
     meta: Dict[str, Any] = field(default_factory=dict)  # indicators, features, etc.
     correlation_id: str = ""  # for cross‑module tracing
 
+    def __post_init__(self) -> None:
+        # PRD 3.2 / 2.1: correlation_id is required for cross-module tracing.
+        # If a strategy does not supply one, derive a deterministic ID from the inputs.
+        if not self.correlation_id:
+            generated_at = self.generated_at
+            if isinstance(generated_at, datetime):
+                if generated_at.tzinfo is None:
+                    generated_at = generated_at.replace(tzinfo=timezone.utc)
+                epoch_ms = int(generated_at.timestamp() * 1000)
+                iso_ts = generated_at.isoformat(timespec="microseconds")
+            else:
+                epoch_ms = 0
+                iso_ts = "0"
+
+            side_value = getattr(self.side, "value", str(self.side))
+            canonical = (
+                f"{self.strategy}|{self.symbol}|{side_value}|{iso_ts}|"
+                f"{repr(self.entry_price)}|{repr(self.stop_price)}|{repr(self.target_price)}"
+            )
+            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+            self.correlation_id = f"{self.strategy}-{self.symbol}-{epoch_ms}-{digest}"
+
 
 @dataclass
 class OrderIntent:
@@ -92,6 +115,18 @@ class Position:
     unrealized_pnl: float
     realized_pnl: float
     strategy: str
+    entry_time: Optional[datetime] = None
+    correlation_id: str = ""
+    regime_at_entry: Optional[Regime] = None
+    open_risk: Optional[float] = None
+    stop_price: Optional[float] = None
+    target_price: Optional[float] = None
+    entry_features: Optional[dict] = None
+    mae_r: float = 0.0
+    mfe_r: float = 0.0
+    commission: float = 0.0
+    slippage_estimate: float = 0.0
+    max_hold_seconds: Optional[int] = None
 
 
 @dataclass
@@ -154,6 +189,30 @@ class SymbolFeatures:
     # misc
     last_updated: datetime
     extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BaselineInfo:
+    """
+    PRD 4.3: baseline filter output structure.
+    """
+
+    symbol: str
+    last_price: float
+    avg_volume: float
+    atr_pct: float
+
+
+@dataclass
+class StrategyCandidate:
+    """
+    PRD 4.5: per-strategy candidate before symbol grouping.
+    """
+
+    symbol: str
+    strategy: str
+    score: float
+    features: SymbolFeatures
 
 
 @dataclass

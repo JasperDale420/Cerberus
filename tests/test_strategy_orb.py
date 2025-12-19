@@ -1,7 +1,8 @@
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
+import pytz  # type: ignore
 
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
@@ -33,14 +34,19 @@ def orb_strategy():
 
 
 def create_bar(t_str: str, o, h, low_px, c):
-    dt = datetime.strptime(f"2023-10-27 {t_str}", "%Y-%m-%d %H:%M:%S")
-    # Make timezone aware if needed, ORB strategy uses bar.time.time()
-    return Bar(symbol="TEST", time=dt, open=o, high=h, low=low_px, close=c, volume=1000)
+    # Interpret input as a US/Eastern session time and convert to UTC timestamps
+    # to match production Alpaca bar timestamps.
+    et = pytz.timezone("US/Eastern")
+    dt_et = et.localize(datetime.strptime(f"2023-10-27 {t_str}", "%Y-%m-%d %H:%M:%S"))
+    dt_utc = dt_et.astimezone(timezone.utc)
+    return Bar(
+        symbol="TEST", time=dt_utc, open=o, high=h, low=low_px, close=c, volume=1000
+    )
 
 
 def test_orb_logic(orb_strategy):
     market_state = MarketState(
-        time=datetime.now(),
+        time=datetime.now(timezone.utc),
         regime=Regime.BULL,
         index_symbol="SPY",
         index_price=100,
@@ -57,7 +63,7 @@ def test_orb_logic(orb_strategy):
         position=None,
         open_orders={},
         allowed_strategies=[],
-        meta={},
+        meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
     )
 
     # 1. Opening Range (09:30 - 09:45)
@@ -89,11 +95,14 @@ def test_orb_logic(orb_strategy):
     assert sig.side.value == "buy"
     assert sig.strategy == "orb"
     assert sig.stop_price == 99  # Low of range (from b1)
+    assert sig.meta.get("gap_pct") == pytest.approx(0.02)
+    assert sig.meta.get("flow_zscore") == pytest.approx(3.0)
+    assert sig.meta.get("premarket_volume") == pytest.approx(12345.0)
 
 
 def test_orb_bearish_breakout(orb_strategy):
     market_state = MarketState(
-        time=datetime.now(),
+        time=datetime.now(timezone.utc),
         regime=Regime.BEAR,
         index_symbol="SPY",
         index_price=100,
@@ -110,7 +119,7 @@ def test_orb_bearish_breakout(orb_strategy):
         position=None,
         open_orders={},
         allowed_strategies=[],
-        meta={},
+        meta={"gap_pct": -0.02, "flow_zscore": -3.0, "premarket_volume": 20000.0},
     )
 
     # Breakout Down
@@ -119,3 +128,6 @@ def test_orb_bearish_breakout(orb_strategy):
     sig = orb_strategy.on_bar("TEST", b, symbol_state, market_state)
     assert sig is not None
     assert sig.side.value == "sell"
+    assert sig.meta.get("gap_pct") == pytest.approx(-0.02)
+    assert sig.meta.get("flow_zscore") == pytest.approx(-3.0)
+    assert sig.meta.get("premarket_volume") == pytest.approx(20000.0)

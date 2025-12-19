@@ -47,12 +47,15 @@ class CentralApiClient:
             )
             raise
 
-    def get_uw_flow(self, ticker: str) -> Dict[str, Any]:
+    def get_uw_flow(self, ticker: str, date: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetches options flow from the centralized service.
         """
         try:
-            response = self.client.get(f"/uw/flow/{ticker}")
+            params: Dict[str, Any] = {}
+            if date:
+                params["date"] = date
+            response = self.client.get(f"/uw/flow/{ticker}", params=params or None)
             response.raise_for_status()
             return cast(Dict[str, Any], response.json())
         except httpx.HTTPError as e:

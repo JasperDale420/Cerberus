@@ -133,4 +133,31 @@ def test_bullish_pullback(tp_strategy):
     # Pullback (20-25) might bring Fast closer to Slow but hopefully not cross if simple pullback.
     # RSI 2 on sharp drop will definitely go < 10.
 
+
+def test_trend_pullback_no_signal_in_chop(tp_strategy):
+    market_state = MarketState(
+        time=datetime.now(),
+        regime=Regime.CHOP,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    bars = create_bars(30)
+    state = SymbolState(
+        symbol="TEST",
+        bars=deque(bars),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={},
+    )
+    sig = tp_strategy.on_bar("TEST", bars[-1], state, market_state)
+    assert sig is None
+
     # RSI 2 on sharp drop will definitely go < 10.

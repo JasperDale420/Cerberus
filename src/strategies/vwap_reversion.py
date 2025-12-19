@@ -1,6 +1,9 @@
+from datetime import datetime, timezone
+from datetime import time as time_type
 from typing import Any, Dict, Optional
 
 import numpy as np
+import pytz  # type: ignore
 
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
@@ -12,8 +15,86 @@ class VWAPReversionStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.band_sigma = config.get("band_sigma", 2.0)
+        # PRD naming: sigma_band (support existing band_sigma for backward compatibility).
+        sigma_band = config.get("sigma_band")
+        band_sigma = config.get("band_sigma", 2.0)
+        self.band_sigma = float(sigma_band if sigma_band is not None else band_sigma)
         self.risk_reward = config.get("risk_reward", 2.0)
+        self.time_window_start = str(config.get("time_window_start", "09:45"))
+        self.time_window_end = str(config.get("time_window_end", "15:45"))
+        self.max_hold_minutes = int(config.get("max_hold_minutes", 60))
+        self.confirmation = str(config.get("confirmation", "rsi")).lower()
+        self.rsi_len = int(config.get("rsi_len", 2))
+        self.rsi_oversold = float(config.get("rsi_oversold", 10))
+        self.rsi_overbought = float(config.get("rsi_overbought", 90))
+
+    def _in_time_window(self, dt: datetime) -> bool:
+        try:
+            # PRD time windows assume US equities session time (US/Eastern).
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt_et = dt.astimezone(pytz.timezone("US/Eastern"))
+
+            start_h, start_m = [int(x) for x in self.time_window_start.split(":")]
+            end_h, end_m = [int(x) for x in self.time_window_end.split(":")]
+            start = time_type(start_h, start_m)
+            end = time_type(end_h, end_m)
+            t = dt_et.time()
+            return start <= t <= end
+        except Exception:
+            return True
+
+    def _rsi(self, closes: np.ndarray, length: int) -> Optional[float]:
+        if length <= 0:
+            return None
+        if closes.size < length + 1:
+            return None
+        diffs = np.diff(closes.astype(float))
+        gains = np.maximum(diffs, 0.0)
+        losses = np.maximum(-diffs, 0.0)
+        avg_gain = float(np.mean(gains[-length:])) if gains.size >= length else 0.0
+        avg_loss = float(np.mean(losses[-length:])) if losses.size >= length else 0.0
+        if avg_loss == 0.0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return float(100.0 - (100.0 / (1.0 + rs)))
+
+    def _confirm_reversal(
+        self, closes: np.ndarray, side: OrderSide
+    ) -> tuple[bool, dict]:
+        if self.confirmation == "none":
+            return True, {"confirmation": "none"}
+
+        if self.confirmation != "rsi":
+            return False, {
+                "confirmation": self.confirmation,
+                "error": "unsupported_confirmation",
+            }
+
+        if closes.size < self.rsi_len + 2:
+            return False, {"confirmation": "rsi", "error": "insufficient_history"}
+
+        prev_rsi = self._rsi(closes[:-1], self.rsi_len)
+        curr_rsi = self._rsi(closes, self.rsi_len)
+        if prev_rsi is None or curr_rsi is None:
+            return False, {"confirmation": "rsi", "error": "rsi_unavailable"}
+
+        if side == OrderSide.BUY:
+            ok = prev_rsi < self.rsi_oversold and curr_rsi > self.rsi_oversold
+        else:
+            ok = prev_rsi > self.rsi_overbought and curr_rsi < self.rsi_overbought
+
+        return (
+            bool(ok),
+            {
+                "confirmation": "rsi",
+                "rsi_len": self.rsi_len,
+                "rsi_prev": float(prev_rsi),
+                "rsi_curr": float(curr_rsi),
+                "rsi_oversold": float(self.rsi_oversold),
+                "rsi_overbought": float(self.rsi_overbought),
+            },
+        )
 
     def on_bar(
         self,
@@ -30,8 +111,16 @@ class VWAPReversionStrategy(BaseStrategy):
         if not symbol_state.bars or len(symbol_state.bars) < 20:
             return None
 
-        # Calculate Cumulative VWAP over the visible window (or use bar.vwap if available/accumulated)
-        # For this implementation, we calculate VWAP over the loaded deque of bars
+        # Prefer intraday/session VWAP injected by the engine (PRD 7.2).
+        vwap = getattr(bar, "vwap", None)
+        if vwap is None:
+            vwap = symbol_state.indicators.get("session_vwap")
+        try:
+            vwap = float(vwap) if vwap is not None else None
+        except Exception:
+            vwap = None
+
+        # Fallback: compute VWAP over currently available bars.
         # VWAP = Sum(Typical_Price * Volume) / Sum(Volume)
 
         bars = list(symbol_state.bars)
@@ -43,7 +132,8 @@ class VWAPReversionStrategy(BaseStrategy):
         if total_volume == 0:
             return None
 
-        vwap = np.sum(typical_prices * volumes) / total_volume
+        if vwap is None:
+            vwap = np.sum(typical_prices * volumes) / total_volume
 
         # Calculate Std Dev for Bands (Standard Deviation of Close prices)
         # Alternatively, could use Std Dev of (Price - VWAP)
@@ -56,12 +146,15 @@ class VWAPReversionStrategy(BaseStrategy):
 
         current_price = bar.close
 
-        signal = None
-        signal = None
-        # FIX: deterministic time
+        # Deterministic time
         now = market_state.time
+        if not self._in_time_window(now):
+            return None
 
         if current_price < lower:
+            ok, confirm_meta = self._confirm_reversal(closes, OrderSide.BUY)
+            if not ok:
+                return None
             # Entry Long (Reversion to mean)
             # Stop: A bit below the recent low or a fixed ATR multiple
             # For this slice, using Std Dev based stop
@@ -72,7 +165,7 @@ class VWAPReversionStrategy(BaseStrategy):
             signal = Signal(
                 symbol=symbol,
                 side=OrderSide.BUY,
-                size_hint=1.0,
+                size_hint=0,
                 entry_price=current_price,
                 stop_price=stop_loss,
                 target_price=take_profit,
@@ -84,10 +177,14 @@ class VWAPReversionStrategy(BaseStrategy):
                     "vwap": float(vwap),
                     "lower_band": float(lower),
                     "upper_band": float(upper),
+                    **confirm_meta,
                 },
             )
 
         elif current_price > upper:
+            ok, confirm_meta = self._confirm_reversal(closes, OrderSide.SELL)
+            if not ok:
+                return None
             # Entry Short (Reversion to mean)
             stop_loss = current_price + (std * 0.5)
             risk = stop_loss - current_price
@@ -96,7 +193,7 @@ class VWAPReversionStrategy(BaseStrategy):
             signal = Signal(
                 symbol=symbol,
                 side=OrderSide.SELL,
-                size_hint=1.0,
+                size_hint=0,
                 entry_price=current_price,
                 stop_price=stop_loss,
                 target_price=take_profit,
@@ -108,6 +205,7 @@ class VWAPReversionStrategy(BaseStrategy):
                     "vwap": float(vwap),
                     "lower_band": float(lower),
                     "upper_band": float(upper),
+                    **confirm_meta,
                 },
             )
 

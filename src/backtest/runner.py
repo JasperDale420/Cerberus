@@ -7,7 +7,7 @@ from src.backtest.mock_executor import MockOrderExecutor
 from src.core.config import ConfigLoader
 from src.core.domain import Bar
 from src.core.logger import StructuredLogger
-from src.data.api_client import CentralApiClient
+from src.data.alpaca import AlpacaClient
 from src.engine.execution import ExecutionEngine
 
 
@@ -24,7 +24,7 @@ class BacktestRunner:
         self.start_date = datetime.fromisoformat(start_date)
         self.end_date = datetime.fromisoformat(end_date)
 
-        self.central_client = CentralApiClient(self.config_loader, self.logger)
+        self.alpaca_client = AlpacaClient(self.config_loader, self.logger)
 
         # Mock Executor
         self.mock_executor = MockOrderExecutor(self.logger)
@@ -73,12 +73,20 @@ class BacktestRunner:
         # Fetch Data
         for symbol in self.universe:
             self.logger.info("Fetching data", symbol=symbol)
-            bars_data = self.central_client.get_alpaca_bars(
+            import asyncio
+
+            # PRD 1.1: Default to 1Min for Intraday Scalping support
+            timeframe = self.config.get("timeframe", "1Min")
+            bars_data = await asyncio.to_thread(
+                self.alpaca_client.get_historical_bars,
                 symbol,
                 self.start_date,
                 self.end_date,
-                timeframe="1Day",
+                timeframe,
             )
+            # Expect dict with "bars" or list of dicts.
+            if isinstance(bars_data, dict) and "bars" in bars_data:
+                bars_data = bars_data["bars"]
 
             bars = self._parse_bars(bars_data, symbol)
             self.logger.info("Loaded bars", count=len(bars))

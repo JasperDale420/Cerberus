@@ -29,15 +29,8 @@ class MockOrderExecutor:
             qty=intent.qty,
         )
 
-        # In a simple backtest, we might assume immediate fill at current price
-        # But usually we wait for the next bar.
-        # For this slice, let's assume immediate fill if we have a 'current_price' context,
-        # but the executor doesn't know the price unless passed or looked up.
-        # We'll just record the order and let the Runner handle the fill logic
-        # OR we assume the intent comes with a price limit/stop or we use the last known price.
-
-        # To keep it simple for the Runner:
-        # The Runner will call 'execute_fills' using the next bar's data.
+        # Backtests fill orders via `fill_orders()` (typically on the next bar) to keep
+        # fill behavior explicit and deterministic.
 
         order_id = f"mock_{len(self.orders) + 1}"
         order = {
