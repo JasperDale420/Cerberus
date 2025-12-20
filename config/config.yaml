@@ -5,3 +5,66 @@ database_url: "sqlite:///cerberus.db"
 timezone: "US/Eastern"
 index_symbol: "SPY"
 log_level: "INFO"
+start_time_utc: ""
+auto_eod_agent: true
+position_mismatch_mode: "halt"   # halt|warn
+max_bar_latency_ms: 1000         # PRD 11.2 observability threshold (warn-only)
+
+# PRD 11.4: DB fault tolerance controls
+# - db_fail_mode: behavior when a DB write fails (buffer+warn, buffer+error, or raise)
+# - db_write_buffer_max/db_write_flush_max: bounded buffering for transient outages
+# - db_trading_mode: how trading behaves under persistent DB failures
+db_fail_mode: "warn"              # warn|error|raise
+db_write_buffer_max: 200          # bounded in-memory queue size
+db_write_flush_max: 50            # max buffered writes to flush per successful write
+db_trading_mode: "warn"           # warn|halt
+db_trading_halt_buffer_len: 100   # halt threshold (buffer length) when db_trading_mode=halt
+
+# Offline agent configuration (PRD 9.1 Stage 1)
+agent:
+  stage1:
+    window_days: 30
+    min_trades: 20
+    z_high: 1.645
+    max_drawdown_r: 10.0
+  stage2:
+    enabled: false
+    window_days: 30
+    search_space: {}
+    # PRD 9.2: deterministic offline evaluation source (no live network).
+    offline_bars_dir: ""
+  stage3:
+    enabled: false
+    # PRD 9.3: requires explicit human approval before writing any proposal files.
+    # Set env var CERBERUS_STAGE3_APPROVED=true (or change approval_env_var).
+    approval_env_var: "CERBERUS_STAGE3_APPROVED"
+    # If true, writes proposals under src/strategies/proposals; otherwise uses artifacts/proposals.
+    write_to_src: false
+    # If true, Stage 3 may also propose scanner profile changes (still gated by approval_env_var).
+    propose_scanner_profiles: false
+    # PRD 9.3: deterministic offline backtest source (no live network).
+    offline_bars_dir: ""
+
+# Unusual Whales flow configuration (PRD 10.6)
+unusual_whales:
+  # HTTP URL template; must include `{symbol}` and should accept `?date=YYYY-MM-DD`.
+  # Example: "https://my-uw-proxy.internal/uw/flow/{symbol}"
+  flow_url_template: ""
+
+# Strategy routing by regime (PRD 6.4 / 7.2)
+strategy_routing:
+  bull:
+    - orb
+    - trend_pullback
+    - vwap_trend_rider
+    - flow_momentum
+  bear:
+    - orb
+    - trend_pullback
+    - vwap_trend_rider
+    - flow_momentum
+  chop:
+    - vwap_reversion
+    - failed_breakout
+    - index_mean_reversion
+    - gap_fill

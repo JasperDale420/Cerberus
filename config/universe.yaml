@@ -1,5 +1,5 @@
 universe:
-  # Static list for initial testing / fallback
+  # Explicit symbols (always included)
   symbols:
     - SPY
     - QQQ
@@ -11,3 +11,16 @@ universe:
     - TSLA
     - AMZN
     - GOOGL
+
+  # Optional static symbol files (one symbol per line; CSV allowed, first column used)
+  static_files:
+    - "config/universe_sp500.txt"
+    - "config/universe_nasdaq100.txt"
+
+  # Optional dynamic universe sources
+  dynamic:
+    previous_day_top_volume:
+      enabled: false
+      top_n: 0
+      lookback_days: 7
+      candidates: []

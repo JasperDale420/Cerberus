@@ -18,3 +18,4 @@ pytest-cov
 detect-secrets
 types-PyYAML
 types-requests
+types-pytz

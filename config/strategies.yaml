@@ -2,6 +2,12 @@ strategies:
   vwap_reversion:
     enabled: true
     band_sigma: 2.0
+    # PRD name (kept in sync with band_sigma by ConfigLoader).
+    sigma_band: 2.0
+    confirmation: "rsi"
+    rsi_len: 2
+    rsi_oversold: 10
+    rsi_overbought: 90
     risk_reward: 2.0
     time_window_start: "09:45"
     time_window_end: "15:45"
@@ -12,9 +18,13 @@ strategies:
     orb_minutes: 15
     risk_reward: 2.0
     stop_loss_pct: 0.005 # 0.5% backup stop
+    # PRD-listed optional filters
+    min_gap_pct: 0.0
+    min_flow_zscore: 0.0
 
   index_mean_reversion:
     enabled: true
+    symbols: ["SPY", "QQQ"]
     bb_len: 20
     bb_std: 2.0
     stop_pct: 0.005 # 0.5%
@@ -31,6 +41,8 @@ strategies:
     max_gap: 0.10
     risk_reward: 2.0
     or_time_minutes: 15
+    # PRD: allow CHOP / weak trend (optional); used only if market_state.meta.trend_score is available
+    weak_trend_max_score: 1.0
 
   trend_pullback:
     enabled: true
@@ -39,6 +51,9 @@ strategies:
     rsi_len: 2
     rsi_oversold: 10
     rsi_overbought: 90
+    # PRD-listed parameters
+    pullback_depth_pct: 0.0
+    entry_confirmation: "rsi"
 
   failed_breakout:
     enabled: true
@@ -50,3 +65,4 @@ strategies:
     ema_slow: 50
     vol_mult: 1.2
     risk_reward: 2.0
+    min_trend_score: 1.5

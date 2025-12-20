@@ -291,7 +291,7 @@ class AlpacaClient:
         stream = self.get_trading_stream_client()
         loop = asyncio.get_running_loop()
 
-        def on_trade_update(data: Any) -> None:
+        async def on_trade_update(data: Any) -> None:
             try:
                 if asyncio.iscoroutinefunction(callback):
                     asyncio.run_coroutine_threadsafe(callback(data), loop)

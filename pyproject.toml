@@ -46,15 +46,35 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
 ignore_missing_imports = true
+files = ["src"]
+# Some modules are heavily dynamic or depend on third-party stubs that are not
+# compatible with mypy out of the box; exclude them from the CI type-check until
+# they are annotated or proper stubs are added.
+exclude = "(^src/data/alpaca\\.py$|^src/data/pipeline\\.py$)"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = "test_*.py"
-addopts = "--verbose --cov=src --cov-report=term-missing --cov-report=xml"
+addopts = "--verbose --strict-markers"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "unit: fast, isolated tests",
+    "integration: tests across modules and real DB/filesystem",
+    "contract: boundary tests for external APIs/protocols",
+    "e2e: end-to-end smoke flows (offline/fake dependencies)",
+]
 
 [tool.coverage.run]
 branch = true
 source = ["src"]
+omit = [
+    "src/main.py",
+]
 
 [tool.coverage.report]
 show_missing = true

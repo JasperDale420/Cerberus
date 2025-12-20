@@ -43,12 +43,13 @@ async def test_scanner_flow():
     mock_universe.get_universe.return_value = ["AAPL", "TSLA"]
 
     mock_pipeline = MagicMock()
-    # Mock features return
+    # Mock features return (Stage 1 technicals)
     mock_features = {
         "AAPL": create_features("AAPL", price=150.0, volume=200000),
         "TSLA": create_features("TSLA", price=200.0, volume=50000),  # Low volume
     }
-    mock_pipeline.compute_features = AsyncMock(return_value=mock_features)
+    mock_pipeline.compute_technicals_only = AsyncMock(return_value=mock_features)
+    mock_pipeline.append_flow_features = AsyncMock(return_value=mock_features)
 
     mock_logger = MagicMock()
 
@@ -70,10 +71,15 @@ async def test_scanner_flow():
     # Verify calls
     mock_universe.get_universe.assert_called_once()
     # Determinism: scan_time is passed through as_of
-    assert mock_pipeline.compute_features.call_count == 1
-    args, kwargs = mock_pipeline.compute_features.call_args
+    assert mock_pipeline.compute_technicals_only.call_count == 1
+    args, kwargs = mock_pipeline.compute_technicals_only.call_args
     assert args[0] == ["AAPL", "TSLA"]
     assert kwargs.get("as_of") is not None
+
+    # Verify Stage 2 called for survivors
+    # AAPL passed valid price/vol filters; TSLA also passed?
+    # min_volume default 0.0, so both pass baseline.
+    assert mock_pipeline.append_flow_features.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -81,8 +87,8 @@ async def test_scanner_requires_scan_time_or_pipeline_clock() -> None:
     mock_universe = MagicMock()
     mock_universe.get_universe.return_value = ["AAPL"]
 
-    mock_pipeline = MagicMock(spec=["compute_features"])
-    mock_pipeline.compute_features = AsyncMock(return_value={})
+    mock_pipeline = MagicMock(spec=["compute_technicals_only"])
+    mock_pipeline.compute_technicals_only = AsyncMock(return_value={})
 
     scanner = Scanner(mock_universe, mock_pipeline, MagicMock())
 
@@ -96,7 +102,7 @@ async def test_scanner_feature_pipeline_failure_fails_open() -> None:
     mock_universe.get_universe.return_value = ["AAPL"]
 
     mock_pipeline = MagicMock()
-    mock_pipeline.compute_features = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_pipeline.compute_technicals_only = AsyncMock(side_effect=RuntimeError("boom"))
 
     mock_logger = MagicMock()
     scanner = Scanner(mock_universe, mock_pipeline, mock_logger)

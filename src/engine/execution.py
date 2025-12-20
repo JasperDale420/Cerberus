@@ -1149,7 +1149,7 @@ class ExecutionEngine:
             except Exception:
                 pass
 
-    def on_trade_update(self, update: Any) -> None:
+    async def on_trade_update(self, update: Any) -> None:
         """
         Handles Alpaca trade updates (order lifecycle + fills).
 

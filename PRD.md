@@ -302,7 +302,18 @@ class SymbolFeatures:
     distance_from_vwap: float
     premarket_volume: float
 
-    # options flow (Unusual Whales)
+    # Trend & Mean Reversion
+    adx: float                 # Trend Strength
+    distance_from_ema20: float # (Price - EMA20) / EMA20
+    bb_upper: float            # Bollinger Band Upper (20, 2)
+    bb_lower: float            # Bollinger Band Lower (20, 2)
+    price_zscore: float        # Z-Score of price vs 20-period mean/std
+
+    # Key Levels
+    prior_day_high: float
+    prior_day_low: float
+
+    # Options flow (Unusual Whales)
     flow_zscore: float
     call_put_ratio: float
     large_sweeps_count: int
@@ -923,11 +934,12 @@ High‑level design:
 	5.	Gate:
 	•	Only if candidate passes objective thresholds.
 	6.	Human approval:
-	•	Agent outputs a patch/diff and summary.
-	•	Human developer merges / deploys manually.
+	•	Agent outputs a patch/diff and summary (artifacts/proposals).
+	•	Human developer reviews and merges manually.
+	•	(Optional) Automated application via explicit environment variable opt-in (e.g., CERBERUS_STAGE3_APPROVED=1).
 
 Constraints:
-	•	Stage 3 must not change live trading behavior without explicit human approval.
+	•	Stage 3 must not change live trading behavior without explicit human approval (or explicit configuration opt-in).
 	•	Stages 1 & 2 can change:
 	•	Risk downward.
 	•	Disable strategies.

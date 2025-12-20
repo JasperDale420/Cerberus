@@ -42,42 +42,36 @@ class FeaturePipeline:
         # Cache structure: {symbol: {"start": datetime, "bars": List[dict]}}
         self._bars_cache: Dict[str, Dict[str, Any]] = {}
 
-    async def compute_features(
+    async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
     ) -> Dict[str, SymbolFeatures]:
         """
-        Computes features for a list of symbols.
+        Stage 1: Compute technical features only (Alpaca data).
+        Returns features with neutral/empty flow data.
         """
         features: Dict[str, SymbolFeatures] = {}
         if as_of is None:
             raise ValueError(
-                "FeaturePipeline.compute_features requires as_of for deterministic behavior"
+                "FeaturePipeline.compute_technicals_only requires as_of for deterministic behavior"
             )
 
-        import time as _time
-
-        start_wall = _time.perf_counter()
-
-        # PRD 11.3: summarize failures per data source deterministically.
+        # Initialize metrics for this run
         metrics: Dict[str, int] = {
             "symbols_total": int(len(symbols)),
             "features_ok": 0,
             "alpaca_fetch_fail": 0,
             "alpaca_no_bars": 0,
             "technicals_fail": 0,
-            "uw_fetch_fail": 0,
+            "uw_fetch_fail": 0,  # explicit 0 here
             "cache_hits": 0,
             "incremental_fetches": 0,
         }
-
-        # Bounded concurrency per symbol for deterministic scan behavior.
-        # Alpaca historical fetch runs in a worker thread; UW flow fetch is async.
 
         import asyncio
 
         sem = asyncio.Semaphore(max(1, int(self.max_concurrency)))
 
-        async def _compute_one(
+        async def _compute_one_tech(
             symbol: str,
         ) -> tuple[str, Optional[SymbolFeatures], Dict[str, int]]:
             local: Dict[str, int] = {
@@ -85,7 +79,6 @@ class FeaturePipeline:
                 "alpaca_fetch_fail": 0,
                 "alpaca_no_bars": 0,
                 "technicals_fail": 0,
-                "uw_fetch_fail": 0,
             }
             sym = str(symbol).strip().upper()
 
@@ -95,8 +88,6 @@ class FeaturePipeline:
                     if isinstance(end, datetime) and end.tzinfo is None:
                         end = end.replace(tzinfo=timezone.utc)
 
-                    # PRD 4.3/7.2: features like premarket_volume and true gap_pct
-                    # require premarket + session open context; use an ET-based window.
                     et_tz = pytz.timezone("US/Eastern")
                     end_et = end.astimezone(et_tz)
                     start_day = end_et.date()
@@ -113,7 +104,6 @@ class FeaturePipeline:
                     if cached and cached.get("start") == start:
                         existing_bars = cached.get("bars", [])
                         if existing_bars:
-                            # Resume fetch from last bar timestamp
                             last_bar = existing_bars[-1]
                             raw_ts = last_bar.get("t") or last_bar.get("timestamp")
                             if raw_ts:
@@ -121,14 +111,11 @@ class FeaturePipeline:
                                     last_ts = datetime.fromisoformat(
                                         raw_ts.replace("Z", "+00:00")
                                     )
-                                    fetch_start = last_ts + timedelta(
-                                        seconds=1
-                                    )  # Avoid overlap
+                                    fetch_start = last_ts + timedelta(seconds=1)
                                 except Exception:
                                     pass
 
                     bars_data = []
-                    # Only fetch if there is a gap to cover
                     if fetch_start < end:
                         try:
                             new_bars = await asyncio.to_thread(
@@ -140,7 +127,6 @@ class FeaturePipeline:
                             )
                             if isinstance(new_bars, dict) and "bars" in new_bars:
                                 new_bars = new_bars["bars"]
-
                             if new_bars:
                                 bars_data = new_bars
                                 if existing_bars:
@@ -153,82 +139,22 @@ class FeaturePipeline:
                                 symbol=sym,
                                 error=str(e),
                             )
-                            # Fallback to existing bars if we have them?
-                            # For robustness, yes, but logging error.
                             if not existing_bars:
                                 return sym, None, local
 
-                    # Merge and Update Cache
                     if existing_bars:
                         metrics["cache_hits"] += 1
-                        # Simple append; assuming time-ordered and no overlap due to fetch_start logic
                         final_bars = existing_bars + bars_data
                     else:
                         final_bars = bars_data
 
-                    # Update cache
                     self._bars_cache[sym] = {"start": start, "bars": final_bars}
                     bars_data = final_bars
 
                     if not bars_data:
-                        self.logger.warning("No bars found for symbol", symbol=sym)
                         local["alpaca_no_bars"] += 1
+                        self.logger.warning("No bars found for symbol", symbol=sym)
                         return sym, None, local
-
-                    def _session_open_price(
-                        bars: List[Any], now_utc: datetime
-                    ) -> float:
-                        """
-                        Best-effort first regular-session (>=09:30 ET) bar open price for the ET trading day.
-                        """
-                        open_px = 0.0
-                        et = pytz.timezone("US/Eastern")
-                        now_et = now_utc.astimezone(et)
-                        day = now_et.date()
-                        market_open = time(9, 30)
-
-                        best_ts: Optional[datetime] = None
-                        for b in bars:
-                            bd = (
-                                b
-                                if isinstance(b, dict)
-                                else getattr(b, "__dict__", {}) or {}
-                            )
-                            ts = (
-                                bd.get("t")
-                                or bd.get("timestamp")
-                                or getattr(b, "t", None)
-                            )
-                            if isinstance(ts, str):
-                                try:
-                                    ts = datetime.fromisoformat(
-                                        ts.replace("Z", "+00:00")
-                                    )
-                                except Exception:
-                                    continue
-                            if not isinstance(ts, datetime):
-                                continue
-                            if ts.tzinfo is None:
-                                ts = ts.replace(tzinfo=timezone.utc)
-                            ts_et = ts.astimezone(et)
-                            if ts_et.date() != day:
-                                continue
-                            if ts_et.time() < market_open:
-                                continue
-
-                            o = (
-                                bd.get("o")
-                                if bd.get("o") is not None
-                                else bd.get("open")
-                            )
-                            try:
-                                o_f = float(o) if o is not None else 0.0
-                            except Exception:
-                                continue
-                            if best_ts is None or ts < best_ts:
-                                best_ts = ts
-                                open_px = o_f
-                        return float(open_px)
 
                     try:
                         tech_result = self._compute_technicals(bars_data)
@@ -262,7 +188,6 @@ class FeaturePipeline:
                             self.daily_volume_lookback_days,
                         )
 
-                        # PRD 4.3/7.2: compute true gap_pct as (session open - prior close) / prior close.
                         p_high, p_low, p_close = await asyncio.to_thread(
                             self._fetch_prior_day_stats,
                             sym,
@@ -273,9 +198,58 @@ class FeaturePipeline:
                                 prior_day_high = p_high
                                 prior_day_low = p_low
 
+                        def _session_open_price(
+                            bars: List[Any], now_utc: datetime
+                        ) -> float:
+                            open_px = 0.0
+                            et = pytz.timezone("US/Eastern")
+                            now_et = now_utc.astimezone(et)
+                            day = now_et.date()
+                            market_open = time(9, 30)
+                            best_ts: Optional[datetime] = None
+                            for b in bars:
+                                bd = (
+                                    b
+                                    if isinstance(b, dict)
+                                    else getattr(b, "__dict__", {}) or {}
+                                )
+                                ts = (
+                                    bd.get("t")
+                                    or bd.get("timestamp")
+                                    or getattr(b, "t", None)
+                                )
+                                if isinstance(ts, str):
+                                    try:
+                                        ts = datetime.fromisoformat(
+                                            ts.replace("Z", "+00:00")
+                                        )
+                                    except Exception:
+                                        continue
+                                if not isinstance(ts, datetime):
+                                    continue
+                                if ts.tzinfo is None:
+                                    ts = ts.replace(tzinfo=timezone.utc)
+                                ts_et = ts.astimezone(et)
+                                if ts_et.date() != day:
+                                    continue
+                                if ts_et.time() < market_open:
+                                    continue
+                                o = (
+                                    bd.get("o")
+                                    if bd.get("o") is not None
+                                    else bd.get("open")
+                                )
+                                try:
+                                    o_f = float(o) if o is not None else 0.0
+                                except Exception:
+                                    continue
+                                if best_ts is None or ts < best_ts:
+                                    best_ts = ts
+                                    open_px = o_f
+                            return float(open_px)
+
                         session_open = _session_open_price(
-                            bars_data if isinstance(bars_data, list) else [],
-                            end,
+                            bars_data if isinstance(bars_data, list) else [], end
                         )
                         if p_close > 0 and session_open > 0:
                             gap_pct = (session_open - p_close) / p_close
@@ -287,28 +261,7 @@ class FeaturePipeline:
                         )
                         return sym, None, local
 
-                    try:
-                        flow_data = await self.unusual_whales_client.get_option_flow(
-                            sym, end.strftime("%Y-%m-%d")
-                        )
-                    except Exception as e:
-                        local["uw_fetch_fail"] += 1
-                        self.logger.warning(
-                            "Options flow unavailable; using neutral flow features",
-                            error_code=ErrorCode.UW_FLOW_FETCH_FAILED.value,
-                            symbol=sym,
-                            error=str(e),
-                        )
-                        flow_data = []
-
-                    (
-                        call_put_ratio,
-                        flow_zscore,
-                        sweep_count,
-                        aggressive_flow_share,
-                        flow_bias,
-                    ) = self._compute_flow_metrics(flow_data)
-
+                    # Create features with NEUTRAL flow data
                     feat = SymbolFeatures(
                         symbol=sym,
                         last_updated=(
@@ -328,7 +281,7 @@ class FeaturePipeline:
                         intraday_range_pct=intraday_range_pct,
                         gap_pct=gap_pct,
                         ema20_slope=ema20_slope,
-                        ema_trend_strength=abs(ema20_slope),  # Proxy
+                        ema_trend_strength=abs(ema20_slope),
                         distance_from_vwap=distance_from_vwap,
                         premarket_volume=premarket_vol,
                         adx=adx,
@@ -338,14 +291,14 @@ class FeaturePipeline:
                         bb_upper=bb_upper,
                         bb_lower=bb_lower,
                         price_zscore=price_zscore,
-                        flow_zscore=flow_zscore,
-                        call_put_ratio=call_put_ratio,
-                        large_sweeps_count=sweep_count,
-                        aggressive_flow_share=aggressive_flow_share,
+                        # Neutral flow details
+                        flow_zscore=0.0,
+                        call_put_ratio=0.0,
+                        large_sweeps_count=0,
+                        aggressive_flow_share=0.0,
                         extra={
-                            "flow_raw_count": len(flow_data) if flow_data else 0,
-                            # Preserve the previous normalized volume imbalance for analytics/backward compatibility.
-                            "flow_bias": float(flow_bias),
+                            "flow_raw_count": 0,
+                            "flow_bias": 0.0,
                             "volatility": atr_pct,
                             "last_bar_volume": float(volume),
                             "avg_daily_volume_days": int(
@@ -356,27 +309,115 @@ class FeaturePipeline:
 
                     local["features_ok"] += 1
                     return sym, feat, local
+
                 except Exception as e:
                     self.logger.error(
-                        "Failed to compute features", symbol=sym, error=str(e)
+                        "Failed to compute technicals (outer)", symbol=sym, error=str(e)
                     )
                     return sym, None, local
 
-        results = await asyncio.gather(*[_compute_one(s) for s in list(symbols)])
+        results = await asyncio.gather(*[_compute_one_tech(s) for s in list(symbols)])
         for sym, feat, local in results:
             for k, v in local.items():
                 metrics[k] = int(metrics.get(k, 0)) + int(v)
             if feat is not None:
                 features[sym] = feat
 
-        # Emit one summary log per scan for PRD 11.3.
+        # Store intermediate metrics? Or merge later.
+        # We'll merge in the wrapper.
+        self.last_run_metrics = dict(metrics)  # partial update
+        return features
+
+    async def append_flow_features(
+        self, features_map: Dict[str, SymbolFeatures]
+    ) -> Dict[str, SymbolFeatures]:
+        """
+        Stage 2: Fetch and append UW options flow data for existing features.
+        """
+        if not features_map:
+            return {}
+
+        import asyncio
+
+        # UW API is strict (429s observed). Enforce serial fetching + delay.
+        sem_flow = asyncio.Semaphore(1)
+
+        metrics = dict(getattr(self, "last_run_metrics", {}))
+        metrics["uw_fetch_fail"] = 0  # reset for this stage increment
+
+        async def _enrich_one(feat: SymbolFeatures) -> SymbolFeatures:
+            sym = feat.symbol
+            local_fail = 0
+
+            async with sem_flow:
+                # Add delay to respect rate limits (approx 2 req/sec safe limit?)
+                await asyncio.sleep(0.5)
+                try:
+                    # We need a date for the flow fetch. feature.last_updated should be consistent with as_of.
+                    date_str = feat.last_updated.strftime("%Y-%m-%d")
+                    flow_data = await self.unusual_whales_client.get_option_flow(
+                        sym, date_str
+                    )
+                except Exception as e:
+                    local_fail = 1
+                    self.logger.warning(
+                        "Unusual Whales flow fetch failed; using neutral flow",
+                        error_code=ErrorCode.UW_FLOW_FETCH_FAILED.value,
+                        symbol=sym,
+                        error=str(e),
+                    )
+                    flow_data = []
+
+            (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = (
+                self._compute_flow_metrics(flow_data)
+            )
+
+            # Update feature object (dataclass is mutable-ish or we allow direct field update)
+            # Python dataclasses are mutable by default.
+            feat.flow_zscore = f_zscore
+            feat.call_put_ratio = c_p_ratio
+            feat.large_sweeps_count = sw_count
+            feat.aggressive_flow_share = agg_share
+            if feat.extra is None:
+                feat.extra = {}
+            feat.extra["flow_raw_count"] = len(flow_data) if flow_data else 0
+            feat.extra["flow_bias"] = f_bias
+
+            if local_fail:
+                metrics["uw_fetch_fail"] = int(metrics.get("uw_fetch_fail", 0)) + 1
+
+            return feat
+
+        # Only fetch for symbols present in map
+        tasks = [_enrich_one(f) for f in features_map.values()]
+        await asyncio.gather(*tasks)
+
+        # Update metrics
         try:
-            metrics["max_concurrency"] = int(self.max_concurrency)
-            metrics["duration_ms"] = int((_time.perf_counter() - start_wall) * 1000)
+            # Add stage 2 duration to whatever Stage 1 was? Or just track total in wrapper.
+            # We'll update global metrics mainly related to fetch failures.
             self.last_run_metrics = dict(metrics)
-            self.logger.info("FeaturePipeline summary", **self.last_run_metrics)
         except Exception:
             pass
+
+        return features_map
+
+    async def compute_features(
+        self, symbols: List[str], as_of: Optional[datetime] = None
+    ) -> Dict[str, SymbolFeatures]:
+        """
+        Computes features for a list of symbols (Full Pipeline).
+        """
+        # Run Stage 1
+        features = await self.compute_technicals_only(symbols, as_of=as_of)
+
+        # Run Stage 2 (on ALL symbols, preserving legacy behavior)
+        # Using a copy of keys to pass list is implied by append_flow_features taking the dict
+        await self.append_flow_features(features)
+
+        # Finalize metrics
+        if hasattr(self, "last_run_metrics"):
+            self.logger.info("FeaturePipeline summary", **self.last_run_metrics)
 
         return features
 

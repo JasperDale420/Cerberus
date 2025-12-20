@@ -105,18 +105,20 @@ class Scanner:
                 scan_time = start_time
         if isinstance(scan_time, datetime) and scan_time.tzinfo is None:
             scan_time = scan_time.replace(tzinfo=timezone.utc)
+        # Stage 1: Fetch Technicals Only
         try:
-            features_map = await self.feature_pipeline.compute_features(
+            features_map = await self.feature_pipeline.compute_technicals_only(
                 symbols, as_of=scan_time
             )
         except Exception as e:
             self.logger.error(
-                "FeaturePipeline.compute_features failed; continuing with empty feature set",
+                "FeaturePipeline.compute_technicals_only failed; continuing with empty feature set",
                 regime=regime.value,
                 universe_size=universe_size,
                 error=str(e),
             )
             features_map = {}
+
         features_returned = len(features_map)
 
         scanner_cfg = (
@@ -129,9 +131,8 @@ class Scanner:
         max_atr_pct = float(scanner_cfg.get("max_atr_pct", float("inf")))
         top_k_per_strategy = int(scanner_cfg.get("top_k_per_strategy", 10))
 
-        # PRD 4.5: build per-strategy candidate lists then group by symbol.
-        candidates_by_strategy: Dict[str, List[StrategyCandidate]] = defaultdict(list)
-
+        # Check baseline technicals to filter down universe before hitting expensive UW API
+        stage1_survivors: Dict[str, SymbolFeatures] = {}
         baseline_filtered = 0
 
         def _passes_baseline(f: Any) -> bool:
@@ -148,9 +149,32 @@ class Scanner:
                 return False
 
         for symbol, features in features_map.items():
-            if not _passes_baseline(features):
+            if _passes_baseline(features):
+                stage1_survivors[symbol] = features
+            else:
                 baseline_filtered += 1
-                continue
+
+        self.logger.info(
+            "Stage 1 technical filter complete",
+            total=features_returned,
+            passed=len(stage1_survivors),
+            filtered=baseline_filtered,
+        )
+
+        # Stage 2: Fetch Flow for Survivors (in-place update of features objects)
+        if stage1_survivors:
+            try:
+                await self.feature_pipeline.append_flow_features(stage1_survivors)
+            except Exception as e:
+                self.logger.error(
+                    "FeaturePipeline.append_flow_features failed; proceeding with neutral flow",
+                    error=str(e),
+                )
+
+        # PRD 4.5: build per-strategy candidate lists then group by symbol.
+        candidates_by_strategy: Dict[str, List[StrategyCandidate]] = defaultdict(list)
+
+        for symbol, features in stage1_survivors.items():
             if not isinstance(features, SymbolFeatures):
                 continue
             for strat_name, profile in self.profiles.items():
