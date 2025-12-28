@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional, Set, cast
+from typing import Any, Callable, Optional, Set, cast
 
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.live import StockDataStream
@@ -169,15 +169,52 @@ class AlpacaClient:
             )
         return self.trading_stream_client
 
-    async def start_stream(self, callback, on_reconnect=None):
-        """
-        Starts the WebSocket stream and registers the callback.
-        Blocking call (runs loop).
-        """
-        import asyncio
+    def _inspect_arity(self, callback: Callable) -> int:
         import inspect
 
-        stream = self.get_stream_client()
+        try:
+            sig = inspect.signature(callback)
+            params = [
+                p
+                for p in sig.parameters.values()
+                if p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            return len([p for p in params if p.default is inspect.Parameter.empty])
+        except Exception:
+            return -1
+
+    async def _invoke_bar_callback(
+        self, callback: Callable, bar: Bar, symbol: str, arity: int
+    ) -> None:
+        import asyncio
+
+        # Helper for common invocation pattern
+        async def _call(cb, *args):
+            if asyncio.iscoroutinefunction(cb):
+                await cb(*args)
+            else:
+                cb(*args)
+
+        if arity == 1:
+            await _call(callback, bar)
+        elif arity >= 2:
+            await _call(callback, symbol, bar)
+        else:
+            # Fallback: try (bar) then (symbol, bar)
+            try:
+                await _call(callback, bar)
+            except TypeError:
+                await _call(callback, symbol, bar)
+
+    def _make_bar_handler(self, callback):
+        """
+        Creates a bar handler that normalizes data and safely invokes the callback.
+        """
+        arity = self._inspect_arity(callback)
 
         async def on_bar_wrapper(data):
             symbol = getattr(data, "symbol", "UNKNOWN")
@@ -188,151 +225,111 @@ class AlpacaClient:
                     "Failed to normalize bar", symbol=symbol, error=str(e)
                 )
                 return
-            # PRD 6.2: the handler should call `ExecutionEngine.on_bar(bar)`.
-            # Backward-compatible: if the callback expects (symbol, bar), call that instead.
-            try:
-                sig = inspect.signature(callback)
-                params = [
-                    p
-                    for p in sig.parameters.values()
-                    if p.kind
-                    in (
-                        inspect.Parameter.POSITIONAL_ONLY,
-                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    )
-                ]
-                required = len(
-                    [p for p in params if p.default is inspect.Parameter.empty]
-                )
-            except Exception:
-                required = -1
 
-            async def _call_with_bar_only() -> None:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(bar)
-                else:
-                    callback(bar)
+            await self._invoke_bar_callback(callback, bar, symbol, arity)
 
-            async def _call_with_symbol_and_bar() -> None:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(symbol, bar)
-                else:
-                    callback(symbol, bar)
+        return on_bar_wrapper
 
-            if required == 1:
-                await _call_with_bar_only()
-            elif required >= 2:
-                await _call_with_symbol_and_bar()
+    async def _invoke_callback_safely(self, callback: Any) -> None:
+        import asyncio
+
+        try:
+            if asyncio.iscoroutinefunction(callback):
+                await callback()
             else:
-                # Best-effort: try the PRD form first, then fallback.
-                try:
-                    await _call_with_bar_only()
-                except TypeError:
-                    await _call_with_symbol_and_bar()
+                callback()
+        except Exception as e:
+            self.logger.error("Callback execution failed", error=str(e))
 
-        # Alpaca's StockDataStream requires coroutine handlers and will await them.
-        self._bar_handler = on_bar_wrapper
+    def _stop_stream_safely(self, stream: Any) -> None:
+        try:
+            stream.stop()
+        except Exception:
+            pass
 
-        async def _flush_pending() -> None:
-            for sym in sorted(self._pending_symbols):
-                try:
-                    stream.subscribe_bars(self._bar_handler, sym)
-                    self._subscribed_symbols.add(sym)
-                except Exception as e:
-                    self.logger.error(
-                        "Failed to subscribe queued symbol", symbol=sym, error=str(e)
-                    )
-            self._pending_symbols.clear()
+    def _flush_subscriptions(self, stream: Any) -> None:
+        handler = getattr(self, "_bar_handler", None)
+        if not handler:
+            return
 
-        # Best-effort reconnect/backoff loop (PRD 11.4). SDK behavior may differ.
+        for sym in sorted(self._pending_symbols):
+            try:
+                stream.subscribe_bars(handler, sym)
+                self._subscribed_symbols.add(sym)
+            except Exception as e:
+                self.logger.error(
+                    "Failed to subscribe queued symbol", symbol=sym, error=str(e)
+                )
+        self._pending_symbols.clear()
+
+    async def _run_stream_with_backoff(
+        self,
+        stream: Any,
+        on_reconnect: Any,
+        pre_run_hook: Optional[Callable[[Any], None]] = None,
+    ) -> None:
+        import asyncio
+
         backoff = 1.0
         backoff_max = 30.0
         had_failure = False
-        while True:
-            if had_failure and on_reconnect is not None:
-                try:
-                    if asyncio.iscoroutinefunction(on_reconnect):
-                        await on_reconnect()
-                    else:
-                        on_reconnect()
-                except Exception as e:
-                    self.logger.error("Reconnect hook failed", error=str(e))
 
-            await _flush_pending()
+        while True:
+            if had_failure and on_reconnect:
+                await self._invoke_callback_safely(on_reconnect)
+
+            if pre_run_hook:
+                try:
+                    pre_run_hook(stream)
+                except Exception as e:
+                    self.logger.error("Pre-run hook failed", error=str(e))
+
             try:
                 await asyncio.to_thread(stream.run)
-                # If run returns normally, reset backoff and exit.
                 return
             except asyncio.CancelledError:
-                try:
-                    stream.stop()
-                except Exception:
-                    pass
+                self._stop_stream_safely(stream)
                 raise
             except Exception as e:
                 self.logger.error(
-                    "Alpaca stream failed; retrying",
-                    error=str(e),
-                    backoff_sec=backoff,
+                    "Stream failed; retrying", error=str(e), backoff_sec=backoff
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2.0, backoff_max)
                 had_failure = True
 
+    async def start_stream(self, callback, on_reconnect=None):
+        """
+        Starts the WebSocket stream and registers the callback.
+        Blocking call (runs loop).
+        """
+        stream = self.get_stream_client()
+        self._bar_handler = self._make_bar_handler(callback)
+        await self._run_stream_with_backoff(
+            stream, on_reconnect, pre_run_hook=self._flush_subscriptions
+        )
+
     async def start_trade_stream(self, callback, on_reconnect=None) -> None:
         """
         Starts Alpaca trading updates stream (fills/order lifecycle) with backoff.
-
-        The Alpaca `TradingStream.run()` method is synchronous; we run it in a thread but
-        marshal callbacks back onto the main asyncio loop for safety.
         """
         import asyncio
 
         stream = self.get_trading_stream_client()
         loop = asyncio.get_running_loop()
 
-        async def on_trade_update(data: Any) -> None:
+        # Sync callback for the Thread-based stream, dispatching to loop
+        def on_trade_update(data: Any) -> None:
             try:
                 if asyncio.iscoroutinefunction(callback):
                     asyncio.run_coroutine_threadsafe(callback(data), loop)
                 else:
                     loop.call_soon_threadsafe(callback, data)
             except Exception as e:
-                # Best-effort; do not crash the stream thread due to callback issues.
                 self.logger.error("Trade update callback failed", error=str(e))
 
         stream.subscribe_trade_updates(on_trade_update)
-
-        backoff = 1.0
-        backoff_max = 30.0
-        had_failure = False
-        while True:
-            try:
-                if had_failure and on_reconnect is not None:
-                    try:
-                        if asyncio.iscoroutinefunction(on_reconnect):
-                            await on_reconnect()
-                        else:
-                            on_reconnect()
-                    except Exception as e:
-                        self.logger.error("Trade reconnect hook failed", error=str(e))
-                await asyncio.to_thread(stream.run)
-                return
-            except asyncio.CancelledError:
-                try:
-                    stream.stop()
-                except Exception:
-                    pass
-                raise
-            except Exception as e:
-                self.logger.error(
-                    "Alpaca trade stream failed; retrying",
-                    error=str(e),
-                    backoff_sec=backoff,
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2.0, backoff_max)
-                had_failure = True
+        await self._run_stream_with_backoff(stream, on_reconnect)
 
     def subscribe(self, symbol: str):
         """

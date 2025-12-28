@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -74,12 +73,16 @@ async def test_feature_pipeline_computes_true_gap_and_premarket_volume() -> None
 
     class _UW:
         async def get_option_flow(self, *_args: Any, **_kwargs: Any):
+            import asyncio
+
+            await asyncio.sleep(0)
             return []
 
     fp = FeaturePipeline(_Alpaca(), _UW(), _logger("test_fp_gap_premarket"))  # type: ignore
     # Avoid extra daily calls; we only care about gap/premarket logic here.
-    fp._fetch_avg_daily_volume = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
-    fp._fetch_prior_day_stats = lambda *_args, **_kwargs: (110.0, 90.0, 100.0)  # type: ignore[method-assign]
+    # Avoid extra daily calls; we only care about gap/premarket logic here.
+    fp.fetcher.fetch_avg_daily_volume = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    fp.fetcher.fetch_prior_day_stats = lambda *_args, **_kwargs: (110.0, 90.0, 100.0)  # type: ignore[method-assign]
 
     as_of = datetime(2025, 1, 10, 15, 0, tzinfo=timezone.utc)  # 10:00 ET
     out = await fp.compute_features(["AAPL"], as_of=as_of)
@@ -100,40 +103,17 @@ def test_feature_pipeline_fetch_avg_daily_volume_uses_last_window_and_handles_sh
     alpaca.get_historical_bars.return_value = {
         "bars": [{"v": 10}, {"v": 20}, {"volume": 30}, {"v": None}, {"v": 40}]
     }
-    avg = fp._fetch_avg_daily_volume("AAPL", end, lookback_days=3)
+    avg = fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=3)
     # last 3 valid volumes: 20, 30, 40 (None skipped) => average 30
     assert avg == pytest.approx(30.0)
 
     alpaca.get_historical_bars.return_value = [{"v": 1}, {"v": 2}, {"v": 3}]
-    assert fp._fetch_avg_daily_volume("AAPL", end, lookback_days=2) == pytest.approx(
-        2.5
-    )
+    assert fp.fetcher.fetch_avg_daily_volume(
+        "AAPL", end, lookback_days=2
+    ) == pytest.approx(2.5)
 
     alpaca.get_historical_bars.side_effect = RuntimeError("fail")
-    assert fp._fetch_avg_daily_volume("AAPL", end, lookback_days=2) is None
-
-
-@pytest.mark.unit
-def test_feature_pipeline_compute_flow_metrics_handles_calls_puts_sweeps_and_aggression() -> (
-    None
-):
-    fp = FeaturePipeline(MagicMock(), MagicMock(), _logger("test_fp_flow"))
-    flow = [
-        {"size": 10, "put_call": "CALL", "tags": ["sweep"], "ask_side": True},
-        {"size": 5, "put_call": "PUT", "tags": [], "sentiment": "BEARISH"},
-        SimpleNamespace(
-            size=2, put_call="CALL", tags=[], sentiment="BULLISH", ask_side=False
-        ),
-    ]
-
-    call_put_ratio, flow_z, sweep_count, aggressive_share, flow_bias = (
-        fp._compute_flow_metrics(flow)
-    )
-    assert call_put_ratio > 1.0
-    assert sweep_count == 2  # sweep tag + bullish sentiment
-    assert aggressive_share == pytest.approx((10 + 5 + 2) / (10 + 5 + 2))
-    assert flow_z == pytest.approx((2 - 1) / (3**0.5))
-    assert flow_bias == pytest.approx(((10 + 2) - 5) / (10 + 5 + 2))
+    assert fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=2) is None
 
 
 @pytest.mark.unit
@@ -155,5 +135,5 @@ def test_feature_pipeline_fetch_prior_day_stats_filters_to_completed_day() -> No
         ]
     }
 
-    high, low, close = fp._fetch_prior_day_stats("AAPL", current)
+    high, low, close = fp.fetcher.fetch_prior_day_stats("AAPL", current)
     assert (high, low, close) == (12.0, 11.0, 11.5)

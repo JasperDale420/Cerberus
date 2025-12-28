@@ -51,7 +51,29 @@ async def main():
         default="",
         help="EOD target date in YYYY-MM-DD (defaults to today UTC)",
     )
+    parser.add_argument(
+        "--scheduler",
+        action="store_true",
+        help="Run as a persistent scheduler process (replaces Chronos)",
+    )
     args = parser.parse_args()
+
+    # 0. Scheduler Mode
+    if args.scheduler:
+        from src.scheduler import CerberusScheduler
+
+        # Load minimal config just for scheduler (timezone, logging)
+        bootstrap_logger = StructuredLogger("Bootstrap", level="INFO")
+        config_loader = ConfigLoader(logger=bootstrap_logger)
+        config = config_loader.load_config(args.config)
+
+        # Inject config path specifically for the subprocess
+        scheduler_config = config.copy() if isinstance(config, dict) else {}
+        scheduler_config["config_path"] = args.config
+
+        scheduler = CerberusScheduler(scheduler_config)
+        scheduler.start()
+        return
 
     # 1. Setup
     bootstrap_logger = StructuredLogger("Bootstrap", level="INFO")

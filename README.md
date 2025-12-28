@@ -1,157 +1,203 @@
-# Cerberus: Multi-Strategy Intraday Scalping System
+# Cerberus Trading System
 
-## 1. Project Overview
-Cerberus is a deterministic, vertical-slice-architected intraday trading system tailored for US equities. It integrates **Alpaca** for real-time data and execution with **Unusual Whales** for options flow-based signal enhancement. The system is designed to run multiple plug-and-play strategies simultaneously across a dynamic watchlist, leveraging a market regime classifier (Bull, Bear, Chop) to adapt strategy behavior in real-time. It prioritizes "fail-fast" engineering, comprehensive logging, and agentic continuous improvement.
+**Current Version**: 1.0.0 (Dec 2025)
 
-## 2. Current Capabilities
-- **Multi-Strategy Execution Engine**: Runs deterministic strategies like `VWAP Reversion`, `Trend Pullback`, `ORB`, and `Gap Fill`.
-- **Market Regime Detection**: Real-time classification of market state (BULL, BEAR, CHOP) using rolling SPY returns and volatility.
-- **Data Pipeline**:
-  - Real-time bar aggregation via Alpaca WebSocket.
-  - Options flow analysis via Unusual Whales API (flow scores, call/put ratios).
-  - Feature engineering (ATR, RSI, Z-scores, Relative Volume).
-- **Scanner**: Periodically scans the universe to update the active watchlist based on strategy-specific criteria.
-- **Risk Management**:
-  - Account-level checks (daily loss limit, max open risk).
-  - Strategy-level limits (max R per trade).
-  - Symbol-level exposure caps.
-- **Analytics & Persistence**:
-  - SQLite database (`cerberus.db`) storing trades, signals, orders, fills, and regime history.
-  - End-of-Day (EOD) aggregations for performance tracking.
-- **Agentic Loop (Stage 1)**: Automated analysis of daily performance to adjust risk limits strategies.
+Cerberus is an automated, modular algorithmic trading system designed for both live and paper trading on US equities. It integrates real-time market data from Alpaca and options flow from Unusual Whales to drive a suite of technical and flow-based strategies. The system features a robust execution engine, a comprehensive feature pipeline, and an agentic analytics layer for daily performance review.
 
-## 3. Non-Capabilities / Explicit Non-Goals
-- **Overnight Holds**: Strictly intraday. All positions are flattened at market close (16:00 ET).
-- **Options Trading**: The system does NOT trade options contracts; it only consumes options flow data as a signal for equities.
-- **Generative AI Strategy Creation**: Strategies are currently code-based and deterministic, not hallucinated by LLMs in real-time.
-- **Docker/Containerization**: Container support is currently **missing/inprogress** (see Known Gaps).
+## Current Capabilities
 
-## 4. Architecture Overview
-The system follows a **vertical slice** architecture where features cut across these layers:
+- **Live & Paper Trading**: Seamless switching between paper simulation and live execution via `--mode`.
+- **Modular Strategy Engine**: Plug-and-play strategy support including:
+  - VWAP Reversion & Trend Rider
+  - Opening Range Breakout (ORB)
+  - Trend Pullback
+  - Failed Breakout
+  - Gap Fill
+  - Flow Momentum & Index Mean Reversion
+- **Advanced Data Pipeline**:
+  - Real-time bar aggregation and technical indicator calculation (Pandas-TA).
+  - Unusual Whales options flow integration.
+  - Multi-stage scanner with data quality gates.
+- **Resilient Execution**:
+  - Automated market open/close handling.
+  - End-of-Day (EOD) position flattening (`flat-on-close`).
+  - "Noop" executor mode for safe logic verification.
+- **Agentic Analytics**: Automated EOD performance analysis and database aggregation.
+- **Internal Scheduler**: Native `APScheduler` integration for persistent process management (replaces external cron).
 
-- **Config Layer**: YAML-based configuration for strategies, risk, and universe.
-- **Data Layer (`src/data`)**: Adapters for Alpaca and Unusual Whales.
-- **Scanner (`src/scanner`)**: Filters universe -> calculates features -> ranks symbols.
-- **Engine (`src/engine`)**: Event loop handling bars -> Strategy Engine -> Signals -> Risk Manager -> Order Executor.
-- **Strategy Layer (`src/strategies`)**: Isolated, stateless logic classes implementing `BaseStrategy`.
-- **Analysis (`src/analysis`)**: DB access, analytics engine, and agentic feedback loop.
+## Non-Capabilities / Explicit Non-Goals
 
-Data flows from **Market Data** -> **Engine** -> **Strategies** -> **Signals** -> **Risk** -> **Execution**.
+- **High-Frequency Trading (HFT)**: Not designed for microsecond-latency arbitrage.
+- **Crypto/Forex**: strictly US Equities focused.
+- **Multi-Broker**: Currently tightly coupled to Alpaca for execution.
+- **Overnight Holds**: Strictly intraday; all positions are closed at 16:00 ET.
 
-## 5. Repository Structure
+## Architecture Overview
+
+Cerberus follows a vertical-slice architecture optimized for reliability and testability:
+
+1.  **Scanner (`src/scanner`)**: Filters the universe of 8000+ tickers down to actionable candidates using technicals and flow.
+2.  **Feature Pipeline (`src/data`)**: Ingests raw data (Alpaca/UW), computes features, and caches results.
+3.  **Strategy Engine (`src/strategies`)**: Evaluates candidates against active strategies to generate Signals.
+4.  **Execution Engine (`src/engine`)**: Converts Signals into Orders, manages Risk (sizing/limits), and handles Fills.
+5.  **Analytics (`src/analysis`)**: Persists trade state to SQLite (`cerberus.db`) and generates reports.
+
+## Repository Structure
+
 ```
-├── config/                 # YAML Configuration files
-├── patches/                # Agentic code patches
-├── scripts/                # Helper scripts for paper/continuous runs
+├── .github/                # CI/CD workflows
+├── artifacts/              # Generated reports and logs
+├── config/                 # Application configuration (YAML)
+├── scripts/                # Utility scripts (ingestion, manual loops)
 ├── src/
-│   ├── agent/              # Agentic loop logic
-│   ├── analysis/           # Database and Analytics engine
-│   ├── backtest/           # Backtesting harness (stub/wip)
-│   ├── core/               # Shared domain models (Bar, Signal, etc.)
-│   ├── data/               # Alpaca/Unusual Whales clients & pipeline
-│   ├── engine/             # Execution loop, Risk Manager, Order Executor
-│   ├── scanner/            # Universe selection and feature generation
-│   ├── strategies/         # Strategy implementations (VWAP, ORB, etc.)
-│   └── main.py             # Application entry point
-├── tests/                  # Pytest suite
-│   ├── unit/               # Fast, isolated tests
-│   ├── integration/        # Data/DB integration tests
-│   └── e2e/                # Full flow tests
-├── Makefile                # Command shortcuts
-├── PRD.md                  # Detailed Product Requirements Document
-├── requirements.txt        # Python dependencies
-├── DEVELOPER_NOTES.md      # IDE and workflow tips
-└── CONTRIBUTING.md         # Contribution guidelines
+│   ├── analysis/           # Database, Schema, Analytics Engine
+│   ├── data/               # Data Fetchers, Pipeline, Alpaca/UW Clients
+│   ├── engine/             # Execution Engine, Order Management
+│   ├── scanner/            # Universe Selection, Profiles, Validation
+│   ├── strategies/         # Strategy Implementations
+│   ├── main.py             # Application Entry Point
+│   └── scheduler.py        # Internal Scheduler Service
+├── tests/                  # Pytest Suite (Unit, Integration, E2E)
+├── Dockerfile              # Container definition
+├── Makefile                # Dev automation commands
+├── pyproject.toml          # Tool configuration (Ruff, Mypy, Pytest)
+└── requirements.txt        # Python dependencies
 ```
 
-## 6. Setup & Installation
-1.  **Prerequisites**: Python 3.11+, Make.
-2.  **Environment Setup**:
+## Setup & Installation
+
+### Prerequisites
+- Python 3.11+
+- SQLite3
+- Alpaca API Credentials (Paper or Live)
+- Unusual Whales API Token (Optional, for flow strategies)
+
+### Local Setup
+1.  **Clone the repository**:
     ```bash
-    # Create virtual environment (optional but recommended)
-    python -m venv .venv
-    source .venv/bin/activate
-    
-    # Install dependencies
+    git clone https://github.com/EmpireTrading/Cerberus.git
+    cd Cerberus
+    ```
+2.  **Install dependencies**:
+    ```bash
     pip install -r requirements.txt
-    
-    # Install dev tools and pre-commit hooks
-    pip install pre-commit
-    pre-commit install
     ```
-3.  **Credentials**: 
-    Create a `.env` file in the root directory (see `.env.example` if available, or PRD/Config refs) containing:
-    ```env
-    ALPACA_API_KEY=...
-    ALPACA_SECRET_KEY=...
-    UNUSUAL_WHALES_API_KEY=...
-    # Optional overrides
-    LOG_LEVEL=INFO
-    ALPACA_PAPER=true
+3.  **Environment Configuration**:
+    Create a `.env` file or export variables:
+    ```bash
+    export APCA_API_KEY_ID="<your_key>"
+    export APCA_API_SECRET_KEY="<your_secret>"
+    export UNUSUAL_WHALES_API_TOKEN="<your_token>"
     ```
 
-## 7. How to Run
+### Docker Setup
+1.  **Build image**:
+    ```bash
+    docker build -t cerberus .
+    ```
+2.  **Run container**:
+    ```bash
+    docker run --env-file .env cerberus
+    ```
 
-### Local Paper Trading
-Run the main entry point:
-```bash
-python -m src.main --mode paper --config config/config.yaml
-```
+## How to Run
 
-### Verification Mode (Run Once)
-Run a single scan cycle and exit to verify connectivity and logic:
+### Development / Paper Trading
+Run a single pass of the system in paper mode:
 ```bash
 python -m src.main --mode paper --run-once
 ```
 
-### Tests
-Use the Makefile for standard testing workflows:
+Run the continuous trading loop (paper):
 ```bash
-make test          # Run all tests with coverage
-make test-unit     # Run fast unit tests
-make test-e2e      # Run end-to-end smoke tests
+python -m src.main --mode paper
 ```
 
-## 8. Configuration
-Configuration is driven by YAML files in `config/`:
-- **config.yaml**: Main system config (API keys, global settings, logging).
-- **strategies.yaml**: Enable/disable strategies and tune parameters (e.g., `sigma_band`, `risk_reward`).
-- **risk.yaml**: Define risk limits (e.g., `max_daily_loss`, `max_order_size`).
-- **universe.yaml**: Source lists for the scanner (e.g., SP500, NASDAQ100).
+### Production / Live Trading
+**WARNING**: Real money risk. Ensure `APCA_API_BASE_URL` points to live API.
+```bash
+python -m src.main --mode live --config config/prod.yaml
+```
 
-Overrides can be provided via `.env` variables or `strategies.auto.yaml` (generated by the Agent).
+### Persistent Scheduler
+Run as a background service that auto-starts trading at market open:
+```bash
+python -m src.main --scheduler
+```
 
-## 9. Error Handling & Logging
-- **Structured Logging**: All logs are JSON-structured (or structured key-value) via `StructuredLogger`.
-- **Log Levels**:
-  - `INFO`: Normal operation (state changes, orders).
-  - `WARNING`: Recoverable issues (API timeouts, skipped symbols).
-  - `ERROR`: Logic failures or critical I/O errors.
-- **Fail Fast**: The system is designed to crash on startup configuration errors or critical infrastructure failures, rather than running in an invalid state.
-- **Output**: Logs are printed to stdout and can be configured to write to `logs/` directory.
+### Utility Commands
+- **Ingest SEC Tickers**: `python scripts/ingest_sec_tickers.py`
+- **Run EOD Analytics**: `python -m src.main --eod`
 
-## 10. Testing Status
-- **Framework**: `pytest` with `pytest-cov`.
-- **Coverage**: High coverage enforced (>70% global, aimed at 100% for core logic).
-- **Categories**:
-  - **Unit**: Strategy logic, domain models, risk calculations.
-  - **Integration**: Database persistence, Client adapters (mocked I/O).
-  - **E2E**: Full system loops using `paper_live_harness.py`.
-- **CI**: GitHub Actions runs `make test-ci` on PRs.
+### Backtesting
+Run a historical replay using the full `ExecutionEngine` (portfolio-style, across all symbols):
+```bash
+python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10
+```
 
-## 11. Safety & Risk Notes
-- **Intraday Only**: Ensure the process triggers the "flatten all" logic at 16:00 ET.
-- **Risk Limits**: Always verify `risk.yaml` limits before live trading.
-- **Paper Trading**: Default mode is `paper`. Explicitly set `--mode live` only when ready to deploy capital.
-- **Stop Losses**: Strategies generate stop prices, but ensure the `OrderExecutor` is correctly handling `stop_loss` parameters if supported by the broker, or that the engine is monitoring them reliably.
+For deterministic offline runs (no Alpaca historical fetch), provide JSONL bars:
+```bash
+python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/bars
+```
+Bars directory format: `{SYMBOL}_{timeframe}.jsonl` (example: `AAPL_1Min.jsonl`) with one JSON object per line:
+`{"t":"2025-01-01T14:30:00+00:00","o":1,"h":1,"l":1,"c":1,"v":100}`.
 
-## 12. Known Gaps & TODOs
-- **Docker**: No `Dockerfile` or `docker-compose.yml` present in the root. Containerization is currently manual or missing.
-- **Backtesting**: `src/backtest` exists but `runner.py` and full historical simulation capabilities may be experimental or incomplete compared to the live engine.
-- **Options Execution**: Not implemented (Scope: Equities only).
+Accuracy notes:
+- Backtests enforce **flat-at-close** by flattening at the end of each session (robust even when your dataset has no `16:00` bar).
+- Optional realism knobs (in `risk:`): `slippage_bps`, `spread_bps`, `commission_per_share`, `min_commission`.
+- Optional stale order cancel (top-level): `max_open_order_age_sec`.
+- If `scanner.enabled: true` and `scanner.interval_minutes > 0`, backtests replay scanner gating at that cadence using technical features computed from the loaded bars (flow features are neutral unless you implement an offline flow source).
+- Output keys:
+  - `metrics`: engine-native summary derived from closed trades
+  - `engine_trades`: per-trade records (net/gross, MAE/MFE, holding time, etc.)
+  - `metrics_fills`: legacy fill-based analyzer output (useful for debugging but less accurate)
 
-## 13. Contribution Notes
-- **Vertical Slices**: Submit PRs that implement full features (Config -> Data -> Logic -> Test), not horizontal layers.
-- **Linting**: Strict `ruff`, `black`, and `mypy` enforcement. Run `make ci` before pushing.
-- **Commit Messages**: Use clear, descriptive comments.
-- **Documentation**: Update this README or `PRD.md` if architectural changes are made.
+## Configuration
+
+Configuration is managed via `config/config.yaml` and environment variables. Key sections:
+
+-   **`trading`**: Risk limits, leverage, max positions.
+-   **`scanner`**: Universe filters, min volume/price.
+-   **`strategies`**: Enable/disable specific strategies and tune parameters.
+-   **`logging`**: Log levels and formatting.
+
+## Error Handling & Logging
+
+-   **Structured Logging**: JSON-formatted logs written to `logs/` and stdout.
+-   **Error Policy**: Fails fast on startup/config errors. During trading, catches strategy exceptions to prevent system crash, logging them as `ERROR` while maintaining the main loop.
+-   **Observability**: Key metrics (fetch failures, scan times) are logged for monitoring.
+
+## Testing Status
+
+The project maintains high test coverage via `pytest`.
+
+-   **Unit Tests**: `tests/unit/` - Core logic verification.
+-   **Integration Tests**: `tests/integration/` - Database and Component interaction.
+-   **E2E Tests**: `tests/e2e/` - Full flow validation with mocked Broker.
+
+**Run all tests**:
+```bash
+pytest
+```
+**Run with coverage**:
+```bash
+pytest --cov=src
+```
+
+## Safety & Risk Notes
+
+-   **Noop Executor**: Use `--order-executor noop` to verify logic without sending orders to Alpaca.
+-   **Flatten on Close**: The main loop enforces a hard exit at 16:00 ET, attempting to close all positions.
+-   **Database Buffer**: Writes are buffered to SQLite to handle high-throughput periods, but this implies a potential (small) data loss risk on hard crash.
+
+## Known Gaps & TODOs
+
+-   **Data Quality**: Scanner validation is implemented but could be expanded for complex flow anomalies.
+-   **Backfill**: Historical data backfill tooling is basic (`scripts/ingest_sec_tickers.py` restored, but full OHLCV backfill is manual).
+-   **LLM Integration**: `LLMClient` stubbed in code; full agentic reasoning loop is in early stages ("Agent Stage 1").
+
+## Contribution Notes
+
+1.  **Vertical Slices**: Implement complete features (API -> DB), not horizontal layers.
+2.  **Testing**: New features must include unit tests. Run `make lint` and `pytest` before PR.
+3.  **Docs**: Update `CHANGELOG.md` upon merging.

@@ -35,12 +35,18 @@ class TrendPullbackStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # 0. Cooldown Check
+        if not self._check_cooldown(symbol, bar.time):
+            return None
+
         # Need history
         if not symbol_state.bars or len(symbol_state.bars) < self.ema_slow_len + 10:
             return None
 
         bars = list(symbol_state.bars)
         current_price = float(bar.close)
+
+        # ... (unchanged core logic) ...
 
         # Prefer cached indicators from engine; fall back to deterministic local computation.
         current_fast = symbol_state.indicators.get(
@@ -138,6 +144,7 @@ class TrendPullbackStrategy(BaseStrategy):
                     return None
 
                 target_price = current_price + (risk * self.risk_reward)
+                self.last_signal_time[symbol] = bar.time
 
                 signal = Signal(
                     symbol=symbol,
@@ -180,6 +187,7 @@ class TrendPullbackStrategy(BaseStrategy):
                     return None
 
                 target_price = current_price - (risk * self.risk_reward)
+                self.last_signal_time[symbol] = bar.time
 
                 signal = Signal(
                     symbol=symbol,

@@ -115,6 +115,7 @@ class RiskManager:
         symbol_state: SymbolState,
         market_state: MarketState,
         current_positions: Optional[List[Any]] = None,
+        account_equity: float = 0.0,
     ) -> List[OrderIntent]:
         """
         Evaluates a signal and returns a list of OrderIntents if approved, or an empty list if rejected.
@@ -333,6 +334,21 @@ class RiskManager:
 
         qty_limit = effective_max_risk / risk_per_share
         qty_limit = int(qty_limit)  # Floor to be safe
+
+        # 2a. Dynamic Position Sizing (Constraint: 5% of Total Available Liquidity/Equity)
+        if account_equity > 0 and signal.entry_price > 0:
+            # 5% of total equity
+            max_equity_allocation = account_equity * 0.05
+            max_qty_equity = int(max_equity_allocation / signal.entry_price)
+            if max_qty_equity < qty_limit:
+                qty_limit = max_qty_equity
+                self.logger.info(
+                    "Risk sizing constrained by equity",
+                    symbol=signal.symbol,
+                    equity=account_equity,
+                    max_equity_qty=max_qty_equity,
+                    risk_qty=int(effective_max_risk / risk_per_share),
+                )
 
         # If signal provides a size hint, respect it UP TO the limit
         if signal.size_hint:

@@ -46,8 +46,11 @@ class Scanner:
         self.feature_pipeline = feature_pipeline
         self.logger = logger
         self.config = config or {}
+        from src.scanner.validation import DataValidator
 
-        # Initialize profiles (PRD 4.4/4.6: injectable strategy profiles).
+        self.validator = DataValidator(logger)
+
+        # Initialize profiles
         self.profiles: Dict[str, ScannerProfile] = strategy_profiles or {
             "vwap_reversion": VWAPReversionProfile(),
             "orb": ORBScannerProfile(),
@@ -63,140 +66,173 @@ class Scanner:
         self, regime: Regime = Regime.CHOP, scan_time: Optional[datetime] = None
     ) -> ScanResult:
         """
-        Runs the scan:
-        1. Get Universe
-        2. Fetch Features
-        3. Apply Profiles
-        4. Return Results
+        Runs the scan orchestration.
         """
+        scan_time = self._resolve_scan_time(scan_time, regime)
+        if isinstance(scan_time, datetime) and scan_time.tzinfo is None:
+            scan_time = scan_time.replace(tzinfo=timezone.utc)
+
         symbols = self.universe_builder.get_universe()
         universe_size = len(symbols)
         self.logger.info(
             "Starting scan", universe_size=universe_size, regime=regime.value
         )
 
-        # Fetch features (batch or async loop inside pipeline).
-        # PRD 4.6 expects `run_scan(regime)` to be callable without extra wiring.
-        # Determinism (PRD 11.1): require explicit scan_time or an injected pipeline clock.
-        # Optional deterministic fallback: allow config.start_time_utc.
-        if scan_time is None:
-            clock = getattr(self.feature_pipeline, "clock", None)
-            if callable(clock):
-                scan_time = clock()
-            else:
-                start_time = None
-                if isinstance(self.config, dict):
-                    raw = str(self.config.get("start_time_utc", "") or "").strip()
-                    if raw:
-                        try:
-                            start_time = datetime.fromisoformat(
-                                raw.replace("Z", "+00:00")
-                            )
-                        except Exception:
-                            start_time = None
-                if start_time is None:
-                    self.logger.error(
-                        "Scanner.scan requires scan_time (or feature_pipeline.clock) for deterministic behavior",
-                        regime=regime.value,
-                    )
-                    raise ValueError(
-                        "Scanner.scan requires scan_time (or feature_pipeline.clock) for deterministic behavior"
-                    )
-                scan_time = start_time
-        if isinstance(scan_time, datetime) and scan_time.tzinfo is None:
-            scan_time = scan_time.replace(tzinfo=timezone.utc)
-        # Stage 1: Fetch Technicals Only
-        try:
-            features_map = await self.feature_pipeline.compute_technicals_only(
-                symbols, as_of=scan_time
-            )
-        except Exception as e:
-            self.logger.error(
-                "FeaturePipeline.compute_technicals_only failed; continuing with empty feature set",
-                regime=regime.value,
-                universe_size=universe_size,
-                error=str(e),
-            )
-            features_map = {}
-
+        # Stage 1: Fetch Technicals
+        features_map = await self._fetch_technicals(
+            symbols, scan_time, regime, universe_size
+        )
         features_returned = len(features_map)
 
-        scanner_cfg = (
-            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
-        )
-        min_price = float(scanner_cfg.get("min_price", 0.0))
-        max_price = float(scanner_cfg.get("max_price", float("inf")))
-        min_volume = float(scanner_cfg.get("min_volume", 0.0))
-        min_atr_pct = float(scanner_cfg.get("min_atr_pct", 0.0))
-        max_atr_pct = float(scanner_cfg.get("max_atr_pct", float("inf")))
-        top_k_per_strategy = int(scanner_cfg.get("top_k_per_strategy", 10))
-
-        # Check baseline technicals to filter down universe before hitting expensive UW API
-        stage1_survivors: Dict[str, SymbolFeatures] = {}
-        baseline_filtered = 0
-
-        def _passes_baseline(f: Any) -> bool:
-            try:
-                if f.price < min_price or f.price > max_price:
-                    return False
-                if f.avg_volume < min_volume:
-                    return False
-                # PRD 4.1/4.3: configurable volatility filter.
-                if f.atr_pct < min_atr_pct or f.atr_pct > max_atr_pct:
-                    return False
-                return True
-            except Exception:
-                return False
-
-        for symbol, features in features_map.items():
-            if _passes_baseline(features):
-                stage1_survivors[symbol] = features
-            else:
-                baseline_filtered += 1
+        # Stage 2: Validate and Filter
+        survivors, baseline_filtered = self._apply_data_validation(features_map)
 
         self.logger.info(
             "Stage 1 technical filter complete",
             total=features_returned,
-            passed=len(stage1_survivors),
+            passed=len(survivors),
             filtered=baseline_filtered,
         )
 
-        # Stage 2: Fetch Flow for Survivors (in-place update of features objects)
-        if stage1_survivors:
-            try:
-                await self.feature_pipeline.append_flow_features(stage1_survivors)
-            except Exception as e:
-                self.logger.error(
-                    "FeaturePipeline.append_flow_features failed; proceeding with neutral flow",
-                    error=str(e),
-                )
+        # Stage 3: Fetch Flow
+        if survivors:
+            await self._fetch_flow_for_survivors(survivors)
 
-        # PRD 4.5: build per-strategy candidate lists then group by symbol.
-        candidates_by_strategy: Dict[str, List[StrategyCandidate]] = defaultdict(list)
+        # Stage 4: Score Strategies
+        candidates = self._score_strategies(survivors, regime)
 
-        for symbol, features in stage1_survivors.items():
+        # Stage 5: Build Watchlist
+        watchlist = self._build_watchlist(
+            candidates, universe_size, features_returned, baseline_filtered
+        )
+
+        return ScanResult(generated_at=scan_time, regime=regime, watchlist=watchlist)
+
+    def _resolve_scan_time(
+        self, scan_time: Optional[datetime], regime: Regime
+    ) -> datetime:
+        if scan_time is not None:
+            return scan_time
+
+        clock = getattr(self.feature_pipeline, "clock", None)
+        if callable(clock):
+            return clock()  # type: ignore
+
+        if isinstance(self.config, dict):
+            raw = str(self.config.get("start_time_utc", "") or "").strip()
+            if raw:
+                try:
+                    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+        self.logger.error(
+            "Scanner.scan requires scan_time for deterministic behavior",
+            regime=regime.value,
+        )
+        raise ValueError("Scanner.scan requires scan_time")
+
+    async def _fetch_technicals(
+        self,
+        symbols: List[str],
+        scan_time: datetime,
+        regime: Regime,
+        universe_size: int,
+    ) -> Dict[str, SymbolFeatures]:
+        try:
+            return await self.feature_pipeline.compute_technicals_only(
+                symbols, as_of=scan_time
+            )
+        except Exception as e:
+            self.logger.error(
+                "FeaturePipeline failed",
+                regime=regime.value,
+                universe_size=universe_size,
+                error=str(e),
+            )
+            return {}
+
+    def _apply_data_validation(
+        self, features_map: Dict[str, SymbolFeatures]
+    ) -> Tuple[Dict[str, SymbolFeatures], int]:
+        survivors = {}
+        baseline_filtered = 0
+
+        scanner_cfg = (
+            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
+        )
+
+        # Extract filter params
+        params = {
+            "min_price": float(scanner_cfg.get("min_price", 0.0)),
+            "max_price": float(scanner_cfg.get("max_price", float("inf"))),
+            "min_volume": float(scanner_cfg.get("min_volume", 0.0)),
+            "min_atr_pct": float(scanner_cfg.get("min_atr_pct", 0.0)),
+            "max_atr_pct": float(scanner_cfg.get("max_atr_pct", float("inf"))),
+        }
+
+        for symbol, features in features_map.items():
+            if self.validator.validate_technicals(features, **params):
+                survivors[symbol] = features
+            else:
+                baseline_filtered += 1
+
+        return survivors, baseline_filtered
+
+    async def _fetch_flow_for_survivors(
+        self, survivors: Dict[str, SymbolFeatures]
+    ) -> None:
+        try:
+            await self.feature_pipeline.append_flow_features(survivors)
+        except Exception as e:
+            self.logger.error(
+                "FeaturePipeline.append_flow_features failed",
+                error=str(e),
+            )
+
+    def _score_strategies(
+        self, survivors: Dict[str, SymbolFeatures], regime: Regime
+    ) -> List[StrategyCandidate]:
+        candidates = []
+        for symbol, features in survivors.items():
             if not isinstance(features, SymbolFeatures):
                 continue
             for strat_name, profile in self.profiles.items():
-                if not profile.filter(features):
-                    continue
-                score = float(profile.score(features, regime))
-                candidates_by_strategy[strat_name].append(
-                    StrategyCandidate(
-                        symbol=symbol,
-                        strategy=strat_name,
-                        score=score,
-                        features=features,
+                if profile.filter(features):
+                    score = float(profile.score(features, regime))
+                    candidates.append(
+                        StrategyCandidate(
+                            symbol=symbol,
+                            strategy=strat_name,
+                            score=score,
+                            features=features,
+                        )
                     )
-                )
+        return candidates
 
-        # Keep top-K per strategy deterministically.
-        pruned: List[StrategyCandidate] = []
-        for _strat_name, cands in candidates_by_strategy.items():
+    def _build_watchlist(
+        self,
+        candidates: List[StrategyCandidate],
+        universe_size: int,
+        features_returned: int,
+        baseline_filtered: int,
+    ) -> List[WatchlistSymbol]:
+        scanner_cfg = (
+            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
+        )
+        top_k = int(scanner_cfg.get("top_k_per_strategy", 10))
+
+        # Group by strategy and prune
+        by_viz: Dict[str, List[StrategyCandidate]] = defaultdict(list)
+        for c in candidates:
+            by_viz[c.strategy].append(c)
+
+        pruned = []
+        for cands in by_viz.values():
             cands_sorted = sorted(cands, key=lambda c: (-c.score, c.symbol))
-            pruned.extend(cands_sorted[: max(0, top_k_per_strategy)])
+            pruned.extend(cands_sorted[: max(0, top_k)])
 
-        # Group by symbol.
+        # Group by symbol
         by_symbol: Dict[str, Tuple[float, List[str], Any]] = {}
         for c in pruned:
             if c.symbol not in by_symbol:
@@ -207,37 +243,32 @@ class Scanner:
                     strategies.append(c.strategy)
                 by_symbol[c.symbol] = (max(best, c.score), strategies, feats)
 
-        watchlist: List[WatchlistSymbol] = []
-        for symbol, (best_score, strategies, feats) in by_symbol.items():
-            watchlist.append(
-                WatchlistSymbol(
-                    symbol=symbol,
-                    score=float(best_score),
-                    strategies=sorted(strategies),
-                    features=feats,
-                )
+        watchlist = [
+            WatchlistSymbol(
+                symbol=sym,
+                score=float(score),
+                strategies=sorted(strats),
+                features=feats,
             )
-
+            for sym, (score, strats, feats) in by_symbol.items()
+        ]
         watchlist.sort(key=lambda w: (-w.score, w.symbol))
 
-        max_watchlist_size = int(
-            (self.config.get("scanner") or {}).get("max_watchlist_size", 30)
-        )
-        # PRD 1.1: Alpaca live data stream practical limit (~30 tickers).
-        if max_watchlist_size > 30:
+        # Clamp size
+        max_size = int(scanner_cfg.get("max_watchlist_size", 30))
+        if max_size > 30:
             self.logger.warning(
-                "Clamping watchlist size to Alpaca WS limit",
-                requested=max_watchlist_size,
-                clamped=30,
+                "Clamping watchlist size", requested=max_size, clamped=30
             )
-            max_watchlist_size = 30
-        if max_watchlist_size > 0:
-            watchlist = watchlist[:max_watchlist_size]
+            max_size = 30
+
+        if max_size > 0:
+            watchlist = watchlist[:max_size]
 
         self.logger.info(
             "Scan complete",
             matches=len(watchlist),
-            max_watchlist_size=max_watchlist_size,
+            max_watchlist_size=max_size,
             universe_size=universe_size,
             features_returned=features_returned,
             baseline_filtered=baseline_filtered,
@@ -245,8 +276,7 @@ class Scanner:
                 self.feature_pipeline, "last_run_metrics", {}
             ),
         )
-
-        return ScanResult(generated_at=scan_time, regime=regime, watchlist=watchlist)
+        return watchlist
 
     def run_scan(
         self, regime: Regime, scan_time: Optional[datetime] = None

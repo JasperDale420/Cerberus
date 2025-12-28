@@ -146,3 +146,12 @@ class AgentAction(Base):
     details_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     human_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class SecTicker(Base):
+    __tablename__ = "sec_tickers"
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    cik: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -6,21 +6,23 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.analysis.db import DatabaseDatabase
-from src.analysis.regime import Regime, RegimeDetector
+from src.analysis.regime import Regime
 from src.analysis.schema import Fill as DbFill
 from src.analysis.schema import Order as DbOrder
-from src.analysis.schema import RegimeHistory, ScannerSnapshot
+from src.analysis.schema import ScannerSnapshot
 from src.analysis.schema import Signal as DbSignal
 from src.analysis.schema import Trade as DbTrade
 from src.core.domain import Position, ScanResult, Side, WatchlistSymbol
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+from src.engine.health import HealthMonitor
+from src.engine.market import MarketStateManager
 from src.engine.orders import OrderExecutor
 from src.engine.position_manager import PositionManager
 from src.engine.risk import RiskManager
 from src.engine.strategy_engine import StrategyEngine, StrategyRouting
 from src.scanner.core import Scanner
-from src.strategies.base import BaseStrategy, MarketState, Signal, SymbolState
+from src.strategies.base import BaseStrategy, Signal, SymbolState
 
 
 def _opt_float(value: Any) -> Optional[float]:
@@ -72,39 +74,73 @@ class ExecutionEngine:
         self.strategy_engine: Optional[StrategyEngine] = None
         self.position_manager = PositionManager()
         self.symbol_states: Dict[str, SymbolState] = {}
-        self.market_state = MarketState(time=self.clock(), regime=Regime.CHOP)
+        # In-memory trade capture for backtests and offline analysis (best-effort).
+        self.closed_trades: List[Any] = []
+
+        # Extracted Collaborators
+        self.health = HealthMonitor(config, logger, run_id, self.clock)
+        self.market_manager = MarketStateManager(
+            config, logger, db, self.clock, on_error=self._inc_error
+        )
+
+        # For backward compatibility (tests accessing engine.market_state)
+        # We wrap the manager's state property.
+        # Ideally tests should update to use self.market_manager.state, but property is safer for refactor.
 
         # Throttling config
         self.max_churn_per_scan = config.get("max_churn_per_scan", 2)
 
-        # PRD 11.3 minimal health metrics
-        self.bars_processed = 0
-        self.signals_generated = 0
-        self.orders_submitted = 0
-        self.error_counts: Dict[str, int] = {
-            "execution": 0,
-            "scanner": 0,
-            "regime": 0,
-            "strategy": 0,
-            "risk": 0,
-            "orders": 0,
-            "db": 0,
-        }
-        self._last_health_log_time: Optional[datetime] = None
-        self._health_log_interval_sec = int(config.get("health_log_interval_sec", 300))
-
-        self.regime_detector = RegimeDetector(
-            logger=logger, on_error=lambda: self._inc_error("regime")
-        )
+        # Fail-fast Config
+        self.consecutive_on_bar_errors = 0
+        self.max_consecutive_errors = int(config.get("max_consecutive_errors", 5))
 
         # PRD 3.3: keep MarketState.risk_mode aligned with RiskManager at startup.
         self._set_risk_mode(self.risk_manager.risk_mode)
 
+        self.account = None  # Holds Alpaca Account object
+
+    @property
+    def market_state(self):
+        return self.market_manager.state
+
+    @market_state.setter
+    def market_state(self, value):
+        self.market_manager.state = value
+
+    @property
+    def bars_processed(self):
+        return self.health.bars_processed
+
+    @bars_processed.setter
+    def bars_processed(self, value):
+        self.health.bars_processed = value
+
+    @property
+    def signals_generated(self):
+        return self.health.signals_generated
+
+    @signals_generated.setter
+    def signals_generated(self, value):
+        self.health.signals_generated = value
+
+    @property
+    def orders_submitted(self):
+        return self.health.orders_submitted
+
+    @orders_submitted.setter
+    def orders_submitted(self, value):
+        self.health.orders_submitted = value
+
+    @property
+    def error_counts(self):
+        return self.health.error_counts
+
+    @error_counts.setter
+    def error_counts(self, value):
+        self.health.error_counts = value
+
     def _inc_error(self, module: str) -> None:
-        try:
-            self.error_counts[module] = int(self.error_counts.get(module, 0)) + 1
-        except Exception:
-            pass
+        self.health.record_error(module)
 
     def _set_risk_mode(self, mode: str) -> None:
         """
@@ -115,16 +151,8 @@ class ExecutionEngine:
             self.risk_manager.risk_mode = m
         except Exception:
             pass
-        try:
-            from src.core.domain import RiskMode
 
-            self.market_state.risk_mode = (
-                RiskMode.OFF
-                if m == "off"
-                else RiskMode.REDUCED if m == "reduced" else RiskMode.NORMAL
-            )
-        except Exception:
-            pass
+        self.market_manager.set_risk_mode(m)
 
     def _sanitize_features_snapshot(self, value: Any) -> Any:
         """
@@ -331,21 +359,7 @@ class ExecutionEngine:
             self.logger.info("Flatten complete", reason=reason)
 
     def _maybe_log_health(self, now: datetime) -> None:
-        if self._last_health_log_time is None:
-            self._last_health_log_time = now
-            return
-        delta = (now - self._last_health_log_time).total_seconds()
-        if delta < self._health_log_interval_sec:
-            return
-        self._last_health_log_time = now
-        self.logger.info(
-            "Health",
-            bars_processed=self.bars_processed,
-            signals_generated=self.signals_generated,
-            orders_submitted=self.orders_submitted,
-            error_counts=self.error_counts,
-            run_id=self.run_id,
-        )
+        self.health.check_and_log(now)
 
     def register_strategy(self, strategy: BaseStrategy):
         """
@@ -365,9 +379,7 @@ class ExecutionEngine:
         self.max_churn_per_scan = config.get(
             "max_churn_per_scan", self.max_churn_per_scan
         )
-        self._health_log_interval_sec = int(
-            config.get("health_log_interval_sec", self._health_log_interval_sec)
-        )
+        self.health.update_config(config)
         # RiskManager reads its config at runtime; keep object but swap config reference.
         self.risk_manager.config = config
         risk_cfg = (
@@ -499,56 +511,7 @@ class ExecutionEngine:
             )
             # Update Market State (if symbol is index)
             if symbol == self.config.get("index_symbol", "SPY"):
-                self.market_state.regime = self.regime_detector.update(bar)
-                # Determinism: Use bar timestamp if available; otherwise fall back to injected clock.
-                self.market_state.time = bar_time or self.clock()
-                self.market_state.index_symbol = str(
-                    self.config.get("index_symbol", "SPY")
-                )
-                self.market_state.index_price = float(getattr(bar, "close", 0.0) or 0.0)
-                self.market_state.index_return = float(
-                    getattr(self.regime_detector, "last_cum_ret", 0.0) or 0.0
-                )
-                self.market_state.realized_vol = float(
-                    getattr(self.regime_detector, "last_vol", 0.0) or 0.0
-                )
-                # Expose regime metrics for strategy gating (PRD 7.2 VWAP Trend Rider).
-                try:
-                    meta = (
-                        self.market_state.meta
-                        if isinstance(self.market_state.meta, dict)
-                        else {}
-                    )
-                    meta = dict(meta)
-                    meta["trend_score"] = float(
-                        getattr(self.regime_detector, "last_trend_score", 0.0) or 0.0
-                    )
-                    self.market_state.meta = meta
-                except Exception:
-                    pass
-
-                # PRD 5.4: persist regime updates for analytics.
-                if self.db:
-                    ok = self.db.write(
-                        "regime_history",
-                        lambda session: session.add(
-                            RegimeHistory(
-                                timestamp=self.market_state.time,
-                                regime=self.market_state.regime.value,
-                                index_symbol=self.market_state.index_symbol,
-                                index_price=float(getattr(bar, "close", 0.0) or 0.0),
-                                cum_ret=getattr(
-                                    self.regime_detector, "last_cum_ret", None
-                                ),
-                                trend_score=getattr(
-                                    self.regime_detector, "last_trend_score", None
-                                ),
-                                vol=getattr(self.regime_detector, "last_vol", None),
-                            )
-                        ),
-                    )
-                    if not ok:
-                        self._inc_error("db")
+                self.market_manager.update(bar, index_symbol=symbol)
 
             # Update Symbol State
             if symbol not in self.symbol_states:
@@ -616,6 +579,7 @@ class ExecutionEngine:
                 signals = self.strategy_engine.on_bar(
                     symbol, bar, state, self.market_state
                 )
+
                 for sig in signals:
                     s_bind = getattr(log, "bind", None)
                     slog = (
@@ -703,6 +667,7 @@ class ExecutionEngine:
             except Exception:
                 pass
         except Exception as e:
+            self.consecutive_on_bar_errors += 1
             self._inc_error("execution")
             from src.core.errors import ErrorCode
 
@@ -721,9 +686,20 @@ class ExecutionEngine:
                     self.market_state.regime, "value", str(self.market_state.regime)
                 ),
                 error=str(e),
+                consecutive_errors=self.consecutive_on_bar_errors,
                 run_id=self.run_id,
             )
+
+            if self.consecutive_on_bar_errors >= self.max_consecutive_errors:
+                log.error(
+                    "CRITICAL: Max consecutive execution errors exceeded. Crashing process.",
+                    max_consecutive_errors=self.max_consecutive_errors,
+                )
+                raise RuntimeError("Max consecutive execution errors exceeded") from e
             return
+
+        # If we reached here, the bar was processed successfully (or minor errors were suppressed)
+        self.consecutive_on_bar_errors = 0
 
     def _process_signal(self, signal: Signal):
         """
@@ -768,9 +744,10 @@ class ExecutionEngine:
                 self.symbol_states[signal.symbol],
                 self.market_state,
                 current_positions=active_positions,
+                account_equity=float(getattr(self.account, "equity", 0.0) or 0.0),
             )
         except Exception as e:
-            self.error_counts["risk"] += 1
+            self._inc_error("risk")
             from src.core.errors import ErrorCode
 
             log.error(
@@ -1102,6 +1079,10 @@ class ExecutionEngine:
 
         if decision.closed_trade is not None:
             closed = decision.closed_trade
+            try:
+                self.closed_trades.append(closed)
+            except Exception:
+                pass
 
             if self.db:
 
@@ -1465,6 +1446,7 @@ class ExecutionEngine:
             return resp if isinstance(resp, list) else []
 
         try:
+            self.account = await asyncio.to_thread(trading_client.get_account)  # type: ignore
             positions = await asyncio.to_thread(trading_client.get_all_positions)
             orders = await asyncio.to_thread(_get_orders_list, QueryOrderStatus.OPEN)
         except Exception as e:

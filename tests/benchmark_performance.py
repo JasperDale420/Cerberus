@@ -85,7 +85,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         )
 
         # Mock dependencies
-        engine.regime_detector = MagicMock()
+        engine.market_manager = MagicMock()
         engine.strategy_engine = MagicMock()
         engine.strategy_engine.on_bar.return_value = []  # No signals for baseline
 
@@ -105,9 +105,6 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
 
         avg = sum(stats) / len(stats)
         p99 = sorted(stats)[int(0.99 * len(stats))]
-
-        print(f"\nExecutionEngine.on_bar Benchmark: Avg={avg:.4f}ms, P99={p99:.4f}ms")
-        self.assertLess(p99, 10.0, f"on_bar P99 latency too high: {p99:.2f}ms")
 
         print(f"\nExecutionEngine.on_bar Benchmark: Avg={avg:.4f}ms, P99={p99:.4f}ms")
         self.assertLess(p99, 10.0, f"on_bar P99 latency too high: {p99:.2f}ms")

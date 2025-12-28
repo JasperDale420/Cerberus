@@ -20,6 +20,11 @@ def test_parse_bars_accepts_list_of_dicts_with_iso_timestamps(monkeypatch) -> No
     monkeypatch.setattr(runner_mod, "ConfigLoader", MagicMock(return_value=fake_loader))
     monkeypatch.setattr(runner_mod, "AlpacaClient", MagicMock())
 
+    # Mock UniverseBuilder to prevent empty universe error
+    mock_ub = MagicMock()
+    mock_ub.build_universe.return_value = ["AAPL"]
+    monkeypatch.setattr(runner_mod, "UniverseBuilder", MagicMock(return_value=mock_ub))
+
     r = BacktestRunner("ignored", "2025-01-01", "2025-01-02")
 
     bars = r._parse_bars(
@@ -52,6 +57,11 @@ def test_backtest_runner_run_feeds_bars_and_fills_orders(monkeypatch) -> None:
     monkeypatch.setattr(runner_mod, "ConfigLoader", MagicMock(return_value=fake_loader))
     monkeypatch.setattr(runner_mod, "AlpacaClient", MagicMock())
 
+    # Mock UniverseBuilder to prevent empty universe error
+    mock_ub = MagicMock()
+    mock_ub.build_universe.return_value = ["AAPL"]
+    monkeypatch.setattr(runner_mod, "UniverseBuilder", MagicMock(return_value=mock_ub))
+
     r = BacktestRunner("ignored", "2025-01-01", "2025-01-03")
     r.universe = ["AAPL"]
 
@@ -77,9 +87,11 @@ def test_backtest_runner_run_feeds_bars_and_fills_orders(monkeypatch) -> None:
     }
 
     r.engine.on_bar = MagicMock()  # type: ignore
-    r.mock_executor.fill_orders = MagicMock()  # type: ignore
+    r.mock_executor.fill_pending_for_bar = MagicMock()  # type: ignore
+    r.mock_executor.maybe_trigger_bracket_exit = MagicMock()  # type: ignore
 
     asyncio.run(r.run())
 
-    assert r.mock_executor.fill_orders.call_count == 2
+    assert r.mock_executor.fill_pending_for_bar.call_count == 2
+    assert r.mock_executor.maybe_trigger_bracket_exit.call_count == 2
     assert r.engine.on_bar.call_count == 2

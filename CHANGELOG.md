@@ -25,12 +25,15 @@ All notable changes to this project will be documented in this file.
     - `Analytics` layer for trade statistics and efficiency auditing.
     - `Scheduler` integration for automated functionality.
 - **Testing**: Added unit tests for all strategies (`tests/test_strategy_*.py`).
+- **Docker**: Added `Dockerfile`, `.dockerignore`, `docker-compose.yml` and `make` targets (`up`, `down`, `logs`) for full containerized orchestration.
+- **Scheduler**: Added internal `APScheduler` implementation (`src/scheduler.py`) to replace external Chronos dependency. Run via `python -m src.main --scheduler`.
 
 ### Changed
 - **Scanner Core**: Fixed duplicate watchlist entry bug and added sorting by score.
 - **Pipeline**: Removed hardcoded `premarket_volume`; now calculates from intraday data.
 - **Config**: Extended `config.yaml` to support all new strategies and parameters.
 - **Agent**: Updated Stage 3 System and User prompts to be "self-annealing" and PRD-aligned, prioritizing incremental refinement over radical changes.
+- **Config**: Added `unusual_whales.enabled` flags to toggle external flow data integration (disabled by default).
 
 ### Fixed
 - **Pre-commit**: Resolved all Ruff linting errors, Mypy type-check failures, and Black formatting inconsistencies across the codebase.

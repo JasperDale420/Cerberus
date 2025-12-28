@@ -3,19 +3,12 @@ universe:
   symbols:
     - SPY
     - QQQ
-    - IWM
-    - AAPL
-    - MSFT
     - NVDA
-    - AMD
     - TSLA
-    - AMZN
-    - GOOGL
+    - AMD
 
   # Optional static symbol files (one symbol per line; CSV allowed, first column used)
-  static_files:
-    - "config/universe_sp500.txt"
-    - "config/universe_nasdaq100.txt"
+  static_files: []
 
   # Optional dynamic universe sources
   dynamic:

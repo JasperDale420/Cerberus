@@ -36,3 +36,19 @@ pre-commit:
 security:
 	bandit -ll -r src
 	detect-secrets-hook --baseline .secrets.baseline
+
+docker-build:
+	docker build -t empire/cerberus:latest .
+
+.PHONY: up down logs logs-follow
+up:
+	docker-compose up -d
+
+down:
+	docker-compose down
+
+logs:
+	docker-compose logs cerberus-scheduler
+
+logs-follow:
+	docker-compose logs -f cerberus-scheduler

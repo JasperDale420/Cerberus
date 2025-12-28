@@ -1,14 +1,29 @@
-import argparse
 import asyncio
-from datetime import datetime
-from typing import Any, List
+from collections import deque
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
-from src.backtest.mock_executor import MockOrderExecutor
+from src.agent.bars_provider import JsonlBarsProvider
+from src.backtest.feature_pipeline import BacktestFeaturePipeline
+from src.backtest.mock_executor import BacktestOrderExecutor
+from src.backtest.stats import BacktestAnalyzer
 from src.core.config import ConfigLoader
-from src.core.domain import Bar
+from src.core.domain import Bar, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
 from src.engine.execution import ExecutionEngine
+from src.scanner.core import Scanner
+from src.scanner.universe import UniverseBuilder
+from src.strategies.failed_breakout import FailedBreakoutStrategy
+from src.strategies.flow_momentum import FlowMomentumStrategy
+from src.strategies.gap_fill import GapFillStrategy
+from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
+from src.strategies.orb import ORBStrategy
+from src.strategies.trend_pullback import TrendPullbackStrategy
+from src.strategies.vwap_reversion import VWAPReversionStrategy
+from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
 
 
 class BacktestRunner:
@@ -16,26 +31,133 @@ class BacktestRunner:
     Runs a backtest by feeding historical data to the ExecutionEngine.
     """
 
-    def __init__(self, config_path: str, start_date: str, end_date: str):
+    def __init__(
+        self,
+        config_path: str,
+        start_date: str,
+        end_date: str,
+        *,
+        offline_bars_dir: Optional[str] = None,
+    ):
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(config_path)
-        self.logger = StructuredLogger("Backtester")
+        self.logger = StructuredLogger(
+            "Backtester", logging_config=self.config.get("logging")
+        )
 
-        self.start_date = datetime.fromisoformat(start_date)
-        self.end_date = datetime.fromisoformat(end_date)
+        self.start_date = self._parse_dt(start_date)
+        self.end_date = self._parse_dt(end_date)
+        self.offline_bars_dir = (
+            str(offline_bars_dir).strip() if offline_bars_dir else ""
+        )
+        self.offline_provider = (
+            JsonlBarsProvider(Path(self.offline_bars_dir))
+            if self.offline_bars_dir
+            else None
+        )
 
-        self.alpaca_client = AlpacaClient(self.config_loader, self.logger)
+        self.alpaca_client = (
+            None
+            if self.offline_provider is not None
+            else AlpacaClient(self.config_loader, self.logger)
+        )
 
         # Mock Executor
-        self.mock_executor = MockOrderExecutor(self.logger)
+        self.mock_executor = BacktestOrderExecutor(
+            self.logger,
+            initial_cash=float(self.config.get("initial_cash", 100000.0) or 100000.0),
+        )
+        self.mock_executor.set_risk_config(
+            self.config.get("risk")
+            if isinstance(self.config.get("risk"), dict)
+            else None
+        )
+        self.mock_executor.set_max_open_order_age_sec(
+            self.config.get("max_open_order_age_sec", 0)
+        )
 
         # Engine with Mock Executor
         self.engine = ExecutionEngine(self.config, self.logger, alpaca_client=None)
-        self.engine.order_executor = self.mock_executor  # type: ignore # Inject mock
+        self.engine.order_executor = self.mock_executor  # type: ignore[assignment] # Inject mock
 
-        # We need to inject a mock scanner or just manually set the universe
-        # For simplicity, let's just test one symbol
-        self.universe = ["AAPL"]
+        # Track last known prices for Mark-to-Market metrics / equity
+        self.last_prices: Dict[str, float] = {}
+
+        # Use UniverseBuilder to determine universe from config
+        self.universe_builder = UniverseBuilder(
+            config_loader=self.config_loader,
+            logger=self.logger,
+            config=self.config,
+            alpaca_client=self.alpaca_client,
+        )
+        self.universe = self.universe_builder.build_universe()
+
+        # Register Strategies (replicates src/main.py logic)
+        strategy_registry = {
+            "vwap_reversion": VWAPReversionStrategy,
+            "orb": ORBStrategy,
+            "trend_pullback": TrendPullbackStrategy,
+            "failed_breakout": FailedBreakoutStrategy,
+            "vwap_trend_rider": VWAPTrendRiderStrategy,
+            "index_mean_reversion": IndexMeanReversionStrategy,
+            "flow_momentum": FlowMomentumStrategy,
+            "gap_fill": GapFillStrategy,
+        }
+
+        strategies_cfg = self.config.get("strategies", {})
+        if not isinstance(strategies_cfg, dict):
+            strategies_cfg = {}
+
+        for name in sorted(strategies_cfg.keys()):
+            strat_cfg = strategies_cfg.get(name)
+            if not isinstance(strat_cfg, dict):
+                continue
+            if not bool(strat_cfg.get("enabled", True)):
+                continue
+            cls = strategy_registry.get(str(name))
+            if cls is None:
+                self.logger.warning(
+                    "Unknown strategy in config; skipping", strategy=str(name)
+                )
+                continue
+            strategy_instance = cls(strat_cfg, self.logger)  # type: ignore[abstract]
+            self.engine.register_strategy(strategy_instance)
+            # Track registered strategies to enable them for all symbols in backtest
+            if not hasattr(self, "enabled_strategies"):
+                self.enabled_strategies = []
+            self.enabled_strategies.append(str(name))
+
+        # Account equity proxy for risk sizing (engine reads `self.engine.account.equity`)
+        class _BacktestAccount:
+            def __init__(self, runner: "BacktestRunner"):
+                self._runner = runner
+
+            @property
+            def equity(self) -> float:
+                # Basic equity estimate: cash + mark-to-market of open engine positions.
+                eq = float(self._runner.mock_executor.cash)
+                for st in self._runner.engine.symbol_states.values():
+                    pos = getattr(st, "position", None)
+                    if pos is None:
+                        continue
+                    mark = float(self._runner.last_prices.get(st.symbol, 0.0) or 0.0)
+                    if mark <= 0.0:
+                        continue
+                    qty = float(pos.qty)
+                    if pos.side.value == "long":
+                        eq += mark * qty
+                    else:
+                        eq -= mark * qty
+                return float(eq)
+
+        self.engine.account = _BacktestAccount(self)  # type: ignore[assignment]
+
+    def _parse_dt(self, value: str) -> datetime:
+        dt = datetime.fromisoformat(str(value))
+        if dt.tzinfo is None:
+            # Default to UTC; bars are typically UTC from Alpaca.
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
     def _parse_bars(self, bars_data: Any, symbol: str) -> List[Bar]:
         bars: List[Bar] = []
@@ -67,56 +189,343 @@ class BacktestRunner:
                     )
         return bars
 
+    async def _load_bars_for_symbol(self, symbol: str, timeframe: str) -> List[Bar]:
+        if self.offline_provider is not None:
+            return list(
+                self.offline_provider.get_bars(
+                    symbol, self.start_date, self.end_date, timeframe=timeframe
+                )
+            )
+        if self.alpaca_client is None:
+            return []
+
+        bars_data = await asyncio.to_thread(
+            self.alpaca_client.get_historical_bars,
+            symbol,
+            self.start_date,
+            self.end_date,
+            timeframe,
+        )
+        if isinstance(bars_data, dict) and "bars" in bars_data:
+            bars_data = bars_data["bars"]
+        return self._parse_bars(bars_data, symbol)
+
+    def _build_event_stream(
+        self, bars_by_symbol: Dict[str, List[Bar]]
+    ) -> List[Tuple[datetime, str, Bar]]:
+        out: List[Tuple[datetime, str, Bar]] = []
+        for sym, bars in bars_by_symbol.items():
+            for b in bars:
+                bt = b.time
+                if bt.tzinfo is None:
+                    bt = bt.replace(tzinfo=timezone.utc)
+                    b.time = bt
+                out.append((bt, sym, b))
+
+        # Deterministic ordering: time, then index first, then symbol.
+        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
+        out.sort(key=lambda x: (x[0], 0 if x[1] == index_symbol else 1, x[1]))
+        return out
+
+    def _scanner_enabled(self) -> bool:
+        scanner_cfg = (
+            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
+        )
+        if not isinstance(scanner_cfg, dict):
+            return False
+        # Default to disabled unless explicitly enabled.
+        return bool(scanner_cfg.get("enabled", False))
+
+    def _scanner_interval_minutes(self) -> int:
+        scanner_cfg = (
+            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
+        )
+        if not isinstance(scanner_cfg, dict):
+            return 0
+        try:
+            return int(scanner_cfg.get("interval_minutes", 0) or 0)
+        except Exception:
+            return 0
+
+    def _ceil_time_to_interval(
+        self, t: datetime, minutes: int, tz: ZoneInfo
+    ) -> datetime:
+        if minutes <= 0:
+            return t
+        local = t.astimezone(tz).replace(second=0, microsecond=0)
+        mod = int(local.minute) % int(minutes)
+        if mod == 0:
+            return local.astimezone(timezone.utc)
+        delta = int(minutes) - mod
+        return (local + timedelta(minutes=delta)).astimezone(timezone.utc)
+
+    def _flatten_session_end(self, *, ts: datetime, reason: str) -> None:
+        self.mock_executor.cancel_all_orders()
+        self.mock_executor.close_all_positions(
+            self.engine,
+            timestamp=ts,
+            prices=dict(self.last_prices),
+            reason=reason,
+        )
+
     async def run(self):
         self.logger.info("Starting Backtest", start=self.start_date, end=self.end_date)
 
-        # Fetch Data
-        for symbol in self.universe:
-            self.logger.info("Fetching data", symbol=symbol)
-            import asyncio
-
-            # PRD 1.1: Default to 1Min for Intraday Scalping support
-            timeframe = self.config.get("timeframe", "1Min")
-            bars_data = await asyncio.to_thread(
-                self.alpaca_client.get_historical_bars,
-                symbol,
-                self.start_date,
-                self.end_date,
-                timeframe,
+        self.logger.info("Initializing Symbol States", count=len(self.universe))
+        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
+        if index_symbol and index_symbol not in self.engine.symbol_states:
+            self.engine.symbol_states[index_symbol] = SymbolState(
+                symbol=index_symbol,
+                bars=deque(maxlen=100),
+                position=None,
+                indicators={},
+                open_orders={},
+                allowed_strategies=[],
+                meta={},
             )
-            # Expect dict with "bars" or list of dicts.
-            if isinstance(bars_data, dict) and "bars" in bars_data:
-                bars_data = bars_data["bars"]
 
-            bars = self._parse_bars(bars_data, symbol)
-            self.logger.info("Loaded bars", count=len(bars))
+        scanner_enabled = self._scanner_enabled()
+        if not scanner_enabled:
+            for symbol in self.universe:
+                # Pre-initialize symbol state to ensure allowed_strategies are set
+                # (no scanner gating in this mode).
+                if symbol not in self.engine.symbol_states:
+                    self.engine.symbol_states[symbol] = SymbolState(
+                        symbol=symbol,
+                        bars=deque(maxlen=100),
+                        position=None,
+                        indicators={},
+                        open_orders={},
+                        allowed_strategies=getattr(self, "enabled_strategies", []),
+                        meta={},
+                    )
+        timeframe = str(self.config.get("timeframe", "1Min") or "1Min")
 
-            await asyncio.sleep(0)  # Yield control
+        # Load bars for all symbols (portfolio replay requires chronological merging).
+        bars_by_symbol: Dict[str, List[Bar]] = {}
+        for symbol in self.universe:
+            self.logger.info(
+                "Fetching data",
+                symbol=symbol,
+                timeframe=timeframe,
+                offline=bool(self.offline_provider),
+            )
+            bars = await self._load_bars_for_symbol(symbol, timeframe)
+            self.logger.info("Loaded bars", symbol=symbol, count=len(bars))
+            bars_by_symbol[symbol] = bars
 
-            # Run Loop
-            for bar in bars:
-                # 1. Fill pending orders from previous bar (at Open)
-                self.mock_executor.fill_orders(symbol, bar.open, bar.time)
+        events = self._build_event_stream(bars_by_symbol)
+        self.logger.info("Built event stream", events=len(events))
 
-                # 2. Process Bar (Strategy Logic)
-                self.engine.on_bar(symbol, bar)
+        tz_name = str(self.config.get("timezone", "US/Eastern") or "US/Eastern")
+        try:
+            market_tz = ZoneInfo(tz_name)
+        except Exception:
+            market_tz = ZoneInfo("US/Eastern")
 
-                # 3. (Optional) Fill orders at Close if strategy trades on close
-                # self.mock_executor.fill_orders(symbol, bar.close, bar.time)
+        scan_interval = self._scanner_interval_minutes()
+        scanner_replay = scanner_enabled and scan_interval > 0
+        if scanner_replay:
+            pipeline = BacktestFeaturePipeline(
+                bars_by_symbol,
+                self.logger,
+                config=self.config if isinstance(self.config, dict) else {},
+                clock=lambda: self.engine.market_state.time,
+            )
+            self.engine.scanner = Scanner(
+                universe_builder=self.universe_builder,
+                feature_pipeline=pipeline,  # type: ignore[arg-type]
+                logger=self.logger,
+                config=self.config if isinstance(self.config, dict) else {},
+            )
+
+        current_session: Optional[date] = None
+        last_session_ts: Optional[datetime] = None
+
+        last_scan_ts: Optional[datetime] = None
+        next_scan_ts: Optional[datetime] = None
+
+        # Replay loop (chronological across all symbols)
+        for bt, symbol, bar in events:
+            local_date = bt.astimezone(market_tz).date()
+            if current_session is None:
+                current_session = local_date
+            elif local_date != current_session:
+                self.logger.info(
+                    "Session boundary flatten",
+                    session_date=str(current_session),
+                    timestamp=(
+                        last_session_ts.isoformat() if last_session_ts else None
+                    ),
+                )
+                self._flatten_session_end(
+                    ts=(last_session_ts if last_session_ts is not None else bt),
+                    reason="SESSION_END",
+                )
+                current_session = local_date
+            last_session_ts = bt
+
+            # Ensure engine time advances deterministically even if index bars are absent.
+            try:
+                self.engine.market_state.time = bt
+            except Exception:
+                pass
+
+            if scanner_replay:
+                if next_scan_ts is None:
+                    next_scan_ts = self._ceil_time_to_interval(
+                        bt, scan_interval, market_tz
+                    )
+                if bt >= next_scan_ts and (last_scan_ts is None or bt != last_scan_ts):
+                    try:
+                        await self.engine.run_scan()
+                    except Exception as e:
+                        self.logger.error("Backtest scan failed", error=str(e))
+                    last_scan_ts = bt
+                    next_scan_ts = self._ceil_time_to_interval(
+                        bt + timedelta(minutes=scan_interval), scan_interval, market_tz
+                    )
+
+            # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
+            if symbol != index_symbol and symbol not in self.engine.symbol_states:
+                continue
+
+            # Mark-to-market reference price.
+            self.last_prices[symbol] = float(bar.close)
+
+            # 1) Fill pending orders for this symbol (market/limit, deterministic).
+            self.mock_executor.fill_pending_for_bar(self.engine, symbol, bar)
+
+            # 2) Broker-managed bracket exits (stop/target) using intrabar extremes.
+            self.mock_executor.maybe_trigger_bracket_exit(self.engine, symbol, bar)
+
+            # 3) Strategy + risk + order generation.
+            self.engine.on_bar(symbol, bar)
+
+        if last_session_ts is not None:
+            self._flatten_session_end(ts=last_session_ts, reason="BACKTEST_END")
 
         # Report
         self.logger.info("Backtest Complete")
+
+        # Analyze Results
+        analyzer = BacktestAnalyzer(
+            initial_cash=self.config.get("initial_cash", 100000.0)
+        )
+        fills_metrics = analyzer.calculate_statistics(
+            self.mock_executor.fills, current_prices=self.last_prices
+        )
+
+        engine_trades_raw = list(getattr(self.engine, "closed_trades", []) or [])
+        engine_trades_raw.sort(key=lambda t: getattr(t, "exit_time", None) or "")
+
+        def _dt(v: Any) -> Optional[str]:
+            if isinstance(v, datetime):
+                return v.isoformat()
+            return None
+
+        engine_trades: List[Dict[str, Any]] = []
+        for t in engine_trades_raw:
+            engine_trades.append(
+                {
+                    "symbol": getattr(t, "symbol", None),
+                    "strategy": getattr(t, "strategy", None),
+                    "regime_at_entry": getattr(t, "regime_at_entry", None),
+                    "regime_at_exit": getattr(t, "regime_at_exit", None),
+                    "side": getattr(t, "side", None),
+                    "qty": float(getattr(t, "qty", 0.0) or 0.0),
+                    "entry_time": _dt(getattr(t, "entry_time", None)),
+                    "exit_time": _dt(getattr(t, "exit_time", None)),
+                    "entry_price": float(getattr(t, "entry_price", 0.0) or 0.0),
+                    "exit_price": float(getattr(t, "exit_price", 0.0) or 0.0),
+                    "pnl_gross": float(getattr(t, "pnl_gross", 0.0) or 0.0),
+                    "pnl_net": float(getattr(t, "pnl_net", 0.0) or 0.0),
+                    "commission": float(getattr(t, "commission", 0.0) or 0.0),
+                    "slippage_estimate": float(
+                        getattr(t, "slippage_estimate", 0.0) or 0.0
+                    ),
+                    "pnl_r": (
+                        float(getattr(t, "pnl_r", 0.0) or 0.0)
+                        if getattr(t, "pnl_r", None) is not None
+                        else None
+                    ),
+                    "holding_period_seconds": (
+                        float(getattr(t, "holding_period_seconds", 0.0) or 0.0)
+                        if getattr(t, "holding_period_seconds", None) is not None
+                        else None
+                    ),
+                    "correlation_id": getattr(t, "correlation_id", None),
+                }
+            )
+
+        pnls_net = [float(t.get("pnl_net", 0.0) or 0.0) for t in engine_trades]
+        wins = [p for p in pnls_net if p > 0]
+        losses = [p for p in pnls_net if p <= 0]
+        gross_profit = float(sum(wins))
+        gross_loss = float(abs(sum(losses)))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
+
+        equity = float(analyzer.initial_cash)
+        peak = equity
+        max_dd = 0.0
+        for p in pnls_net:
+            equity += float(p)
+            if equity > peak:
+                peak = equity
+            if peak > 0:
+                max_dd = max(max_dd, (peak - equity) / peak)
+
+        engine_equity = None
+        try:
+            engine_equity = float(getattr(self.engine.account, "equity", 0.0) or 0.0)
+        except Exception:
+            engine_equity = None
+
+        engine_metrics = {
+            "total_trades": int(len(engine_trades)),
+            "total_closed_pnl_gross": round(
+                float(
+                    sum(float(t.get("pnl_gross", 0.0) or 0.0) for t in engine_trades)
+                ),
+                2,
+            ),
+            "total_closed_pnl_net": round(float(sum(pnls_net)), 2),
+            "win_rate": round((len(wins) / len(pnls_net)) if pnls_net else 0.0, 4),
+            "profit_factor": round(float(profit_factor), 4),
+            "average_pnl_net": round(
+                (float(sum(pnls_net)) / len(pnls_net)) if pnls_net else 0.0, 2
+            ),
+            "max_drawdown_pct": round(float(max_dd) * 100.0, 2),
+            "final_equity": (
+                round(float(engine_equity), 2) if engine_equity is not None else None
+            ),
+        }
+
         self.logger.info("Final Cash", cash=self.mock_executor.cash)
-        self.logger.info("Positions", positions=self.mock_executor.positions)
-        self.logger.info("Total Fills", count=len(self.mock_executor.fills))
+        self.logger.info("Total Trades", count=engine_metrics["total_trades"])
+        self.logger.info("Total PnL (net)", pnl=engine_metrics["total_closed_pnl_net"])
+        self.logger.info("Win Rate", rate=engine_metrics["win_rate"])
 
+        engine_realized_pnl = 0.0
+        try:
+            engine_realized_pnl = float(
+                getattr(
+                    getattr(self.engine, "risk_manager", None), "current_daily_pnl", 0.0
+                )
+                or 0.0
+            )
+        except Exception:
+            engine_realized_pnl = 0.0
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--start", required=True)
-    parser.add_argument("--end", required=True)
-    parser.add_argument("--config", default="config/config.yaml")
-    args = parser.parse_args()
-
-    runner = BacktestRunner(args.config, args.start, args.end)
-    asyncio.run(runner.run())
+        return {
+            "config": self.config,
+            "start": self.start_date.isoformat(),
+            "end": self.end_date.isoformat(),
+            "initial_cash": analyzer.initial_cash,
+            "final_cash_balance": round(self.mock_executor.cash, 2),
+            "final_equity": engine_metrics.get("final_equity"),
+            "engine_realized_pnl": engine_realized_pnl,
+            "metrics": engine_metrics,
+            "engine_trades": engine_trades,
+            "metrics_fills": fills_metrics,
+        }

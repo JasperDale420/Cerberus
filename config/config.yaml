@@ -4,11 +4,18 @@
 database_url: "sqlite:///cerberus.db"
 timezone: "US/Eastern"
 index_symbol: "SPY"
+schedule_time: "09:25"   # Daily start time for scheduler (ET)
 log_level: "INFO"
 start_time_utc: ""
 auto_eod_agent: true
 position_mismatch_mode: "halt"   # halt|warn
 max_bar_latency_ms: 1000         # PRD 11.2 observability threshold (warn-only)
+
+# Logging Configuration
+logging:
+  file_path: "logs/cerberus.log"
+  file_level: "INFO"
+  console_level: "INFO"
 
 # PRD 11.4: DB fault tolerance controls
 # - db_fail_mode: behavior when a DB write fails (buffer+warn, buffer+error, or raise)
@@ -47,6 +54,8 @@ agent:
 
 # Unusual Whales flow configuration (PRD 10.6)
 unusual_whales:
+  # PRD 10.6: Toggle to enable/disable external flow data integration.
+  enabled: false
   # HTTP URL template; must include `{symbol}` and should accept `?date=YYYY-MM-DD`.
   # Example: "https://my-uw-proxy.internal/uw/flow/{symbol}"
   flow_url_template: ""
@@ -68,3 +77,100 @@ strategy_routing:
     - failed_breakout
     - index_mean_reversion
     - gap_fill
+
+strategies:
+  vwap_reversion:
+    enabled: true
+    band_sigma: 2.0
+    sigma_band: 2.0
+    confirmation: "rsi"
+    rsi_len: 2
+    rsi_oversold: 10
+    rsi_overbought: 90
+    risk_reward: 2.0
+    time_window_start: "09:45"
+    time_window_end: "15:45"
+    max_hold_minutes: 60
+  orb:
+    enabled: true
+    orb_minutes: 15
+    risk_reward: 2.0
+    stop_loss_pct: 0.005
+    min_gap_pct: 0.0
+    min_flow_zscore: 0.0
+  index_mean_reversion:
+    enabled: true
+    symbols: ["SPY", "QQQ"]
+    bb_len: 20
+    bb_std: 2.0
+    stop_pct: 0.005
+  flow_momentum:
+    enabled: true
+    min_flow_zscore: 2.5
+    vol_mult: 1.5
+    risk_reward: 2.0
+  gap_fill:
+    enabled: true
+    min_gap: 0.015
+    max_gap: 0.1
+    risk_reward: 2.0
+    or_time_minutes: 15
+    weak_trend_max_score: 1.0
+  trend_pullback:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+    rsi_len: 2
+    rsi_oversold: 10
+    rsi_overbought: 90
+    pullback_depth_pct: 0.0
+    entry_confirmation: "rsi"
+  failed_breakout:
+    enabled: true
+    risk_reward: 2.0
+  vwap_trend_rider:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+    vol_mult: 1.2
+    risk_reward: 2.0
+    min_trend_score: 1.5
+
+risk:
+  max_daily_loss: 500.0
+  max_risk_per_trade: 50.0
+  max_open_risk: 200.0
+  max_trades_per_day: 100
+  max_open_positions: 5
+  max_positions_per_strategy: 3
+  max_notional_per_order: 5000.0
+  max_notional_per_symbol: 5000.0
+  time_in_force: "day"
+  risk_mode: "normal"
+  commission_per_share: 0.0
+  min_commission: 0.0
+  slippage_bps: 0.0
+
+scanner:
+  enabled: false
+  interval_minutes: 5
+  max_watchlist_size: 10
+  top_k_per_strategy: 10
+  min_price: 10.0
+  max_price: 200.0
+  min_volume: 500000
+
+universe:
+  symbols:
+    - "SPY"
+    - "QQQ"
+    - "NVDA"
+    - "TSLA"
+    - "AMD"
+  static_files: []
+  dynamic:
+    previous_day_top_volume:
+      enabled: false
+      top_n: 0
+      lookback_days: 7
+      candidates: []
