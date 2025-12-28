@@ -31,6 +31,8 @@ class BacktestRunner:
     Runs a backtest by feeding historical data to the ExecutionEngine.
     """
 
+    DEFAULT_TIMEZONE = "US/Eastern"
+
     def __init__(
         self,
         config_path: str,
@@ -93,6 +95,37 @@ class BacktestRunner:
         self.universe = self.universe_builder.build_universe()
 
         # Register Strategies (replicates src/main.py logic)
+        self._register_strategies()
+
+        # Account equity proxy for risk sizing (engine reads `self.engine.account.equity`)
+        class _BacktestAccount:
+            def __init__(self, runner: "BacktestRunner"):
+                self._runner = runner
+
+            @property
+            def equity(self) -> float:
+                # Basic equity estimate: cash + mark-to-market of open engine positions.
+                eq = float(self._runner.mock_executor.cash)
+                for st in self._runner.engine.symbol_states.values():
+                    pos = getattr(st, "position", None)
+                    if pos is None:
+                        continue
+                    mark = float(self._runner.last_prices.get(st.symbol, 0.0) or 0.0)
+                    if mark <= 0.0:
+                        continue
+                    qty = float(pos.qty)
+                    if pos.side.value == "long":
+                        eq += mark * qty
+                    else:
+                        eq -= mark * qty
+                return float(eq)
+
+        self.engine.account = _BacktestAccount(self)  # type: ignore[assignment]
+
+    def _register_strategies(self) -> None:
+        """
+        Register enabled strategies from config.
+        """
         strategy_registry = {
             "vwap_reversion": VWAPReversionStrategy,
             "orb": ORBStrategy,
@@ -127,31 +160,6 @@ class BacktestRunner:
                 self.enabled_strategies = []
             self.enabled_strategies.append(str(name))
 
-        # Account equity proxy for risk sizing (engine reads `self.engine.account.equity`)
-        class _BacktestAccount:
-            def __init__(self, runner: "BacktestRunner"):
-                self._runner = runner
-
-            @property
-            def equity(self) -> float:
-                # Basic equity estimate: cash + mark-to-market of open engine positions.
-                eq = float(self._runner.mock_executor.cash)
-                for st in self._runner.engine.symbol_states.values():
-                    pos = getattr(st, "position", None)
-                    if pos is None:
-                        continue
-                    mark = float(self._runner.last_prices.get(st.symbol, 0.0) or 0.0)
-                    if mark <= 0.0:
-                        continue
-                    qty = float(pos.qty)
-                    if pos.side.value == "long":
-                        eq += mark * qty
-                    else:
-                        eq -= mark * qty
-                return float(eq)
-
-        self.engine.account = _BacktestAccount(self)  # type: ignore[assignment]
-
     def _parse_dt(self, value: str) -> datetime:
         dt = datetime.fromisoformat(str(value))
         if dt.tzinfo is None:
@@ -159,34 +167,40 @@ class BacktestRunner:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
 
+    def _parse_single_bar(self, b: Dict[str, Any], symbol: str) -> Optional[Bar]:
+        """Parse a single bar dictionary into a Bar object."""
+        # Handle different formats (raw vs parsed)
+        t = b.get("t") or b.get("timestamp")
+        o = b.get("o") or b.get("open")
+        h = b.get("h") or b.get("high")
+        low_price = b.get("l") or b.get("low")
+        c = b.get("c") or b.get("close")
+        v = b.get("v") or b.get("volume")
+
+        if not t:
+            return None
+
+        return Bar(
+            symbol=symbol,
+            time=(
+                datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+                if isinstance(t, str)
+                else t
+            ),
+            open=float(o or 0.0),
+            high=float(h or 0.0),
+            low=float(low_price or 0.0),
+            close=float(c or 0.0),
+            volume=float(v or 0.0),
+        )
+
     def _parse_bars(self, bars_data: Any, symbol: str) -> List[Bar]:
         bars: List[Bar] = []
         if isinstance(bars_data, list):
             for b in bars_data:
-                # Handle different formats (raw vs parsed)
-                t = b.get("t") or b.get("timestamp")
-                o = b.get("o") or b.get("open")
-                h = b.get("h") or b.get("high")
-                low_price = b.get("l") or b.get("low")
-                c = b.get("c") or b.get("close")
-                v = b.get("v") or b.get("volume")
-
-                if t:
-                    bars.append(
-                        Bar(
-                            symbol=symbol,
-                            time=(
-                                datetime.fromisoformat(str(t).replace("Z", "+00:00"))
-                                if isinstance(t, str)
-                                else t
-                            ),
-                            open=float(o),
-                            high=float(h),
-                            low=float(low_price),
-                            close=float(c),
-                            volume=float(v),
-                        )
-                    )
+                bar = self._parse_single_bar(b, symbol)
+                if bar:
+                    bars.append(bar)
         return bars
 
     async def _load_bars_for_symbol(self, symbol: str, timeframe: str) -> List[Bar]:
@@ -268,11 +282,10 @@ class BacktestRunner:
             reason=reason,
         )
 
-    async def run(self):
-        self.logger.info("Starting Backtest", start=self.start_date, end=self.end_date)
-
+    def _initialize_symbol_states(
+        self, index_symbol: str, scanner_enabled: bool
+    ) -> None:
         self.logger.info("Initializing Symbol States", count=len(self.universe))
-        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
         if index_symbol and index_symbol not in self.engine.symbol_states:
             self.engine.symbol_states[index_symbol] = SymbolState(
                 symbol=index_symbol,
@@ -284,7 +297,6 @@ class BacktestRunner:
                 meta={},
             )
 
-        scanner_enabled = self._scanner_enabled()
         if not scanner_enabled:
             for symbol in self.universe:
                 # Pre-initialize symbol state to ensure allowed_strategies are set
@@ -299,9 +311,8 @@ class BacktestRunner:
                         allowed_strategies=getattr(self, "enabled_strategies", []),
                         meta={},
                     )
-        timeframe = str(self.config.get("timeframe", "1Min") or "1Min")
 
-        # Load bars for all symbols (portfolio replay requires chronological merging).
+    async def _load_all_bars(self, timeframe: str) -> Dict[str, List[Bar]]:
         bars_by_symbol: Dict[str, List[Bar]] = {}
         for symbol in self.universe:
             self.logger.info(
@@ -313,111 +324,24 @@ class BacktestRunner:
             bars = await self._load_bars_for_symbol(symbol, timeframe)
             self.logger.info("Loaded bars", symbol=symbol, count=len(bars))
             bars_by_symbol[symbol] = bars
+        return bars_by_symbol
 
-        events = self._build_event_stream(bars_by_symbol)
-        self.logger.info("Built event stream", events=len(events))
-
-        tz_name = str(self.config.get("timezone", "US/Eastern") or "US/Eastern")
-        try:
-            market_tz = ZoneInfo(tz_name)
-        except Exception:
-            market_tz = ZoneInfo("US/Eastern")
-
-        scan_interval = self._scanner_interval_minutes()
-        scanner_replay = scanner_enabled and scan_interval > 0
-        if scanner_replay:
-            pipeline = BacktestFeaturePipeline(
-                bars_by_symbol,
-                self.logger,
-                config=self.config if isinstance(self.config, dict) else {},
-                clock=lambda: self.engine.market_state.time,
-            )
-            self.engine.scanner = Scanner(
-                universe_builder=self.universe_builder,
-                feature_pipeline=pipeline,  # type: ignore[arg-type]
-                logger=self.logger,
-                config=self.config if isinstance(self.config, dict) else {},
-            )
-
-        current_session: Optional[date] = None
-        last_session_ts: Optional[datetime] = None
-
-        last_scan_ts: Optional[datetime] = None
-        next_scan_ts: Optional[datetime] = None
-
-        # Replay loop (chronological across all symbols)
-        for bt, symbol, bar in events:
-            local_date = bt.astimezone(market_tz).date()
-            if current_session is None:
-                current_session = local_date
-            elif local_date != current_session:
-                self.logger.info(
-                    "Session boundary flatten",
-                    session_date=str(current_session),
-                    timestamp=(
-                        last_session_ts.isoformat() if last_session_ts else None
-                    ),
-                )
-                self._flatten_session_end(
-                    ts=(last_session_ts if last_session_ts is not None else bt),
-                    reason="SESSION_END",
-                )
-                current_session = local_date
-            last_session_ts = bt
-
-            # Ensure engine time advances deterministically even if index bars are absent.
-            try:
-                self.engine.market_state.time = bt
-            except Exception:
-                pass
-
-            if scanner_replay:
-                if next_scan_ts is None:
-                    next_scan_ts = self._ceil_time_to_interval(
-                        bt, scan_interval, market_tz
-                    )
-                if bt >= next_scan_ts and (last_scan_ts is None or bt != last_scan_ts):
-                    try:
-                        await self.engine.run_scan()
-                    except Exception as e:
-                        self.logger.error("Backtest scan failed", error=str(e))
-                    last_scan_ts = bt
-                    next_scan_ts = self._ceil_time_to_interval(
-                        bt + timedelta(minutes=scan_interval), scan_interval, market_tz
-                    )
-
-            # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
-            if symbol != index_symbol and symbol not in self.engine.symbol_states:
-                continue
-
-            # Mark-to-market reference price.
-            self.last_prices[symbol] = float(bar.close)
-
-            # 1) Fill pending orders for this symbol (market/limit, deterministic).
-            self.mock_executor.fill_pending_for_bar(self.engine, symbol, bar)
-
-            # 2) Broker-managed bracket exits (stop/target) using intrabar extremes.
-            self.mock_executor.maybe_trigger_bracket_exit(self.engine, symbol, bar)
-
-            # 3) Strategy + risk + order generation.
-            self.engine.on_bar(symbol, bar)
-
-        if last_session_ts is not None:
-            self._flatten_session_end(ts=last_session_ts, reason="BACKTEST_END")
-
-        # Report
-        self.logger.info("Backtest Complete")
-
-        # Analyze Results
-        analyzer = BacktestAnalyzer(
-            initial_cash=self.config.get("initial_cash", 100000.0)
+    def _setup_scanner_replay(self, bars_by_symbol: Dict[str, List[Bar]]) -> None:
+        pipeline = BacktestFeaturePipeline(
+            bars_by_symbol,
+            self.logger,
+            config=self.config if isinstance(self.config, dict) else {},
+            clock=lambda: self.engine.market_state.time,
         )
-        fills_metrics = analyzer.calculate_statistics(
-            self.mock_executor.fills, current_prices=self.last_prices
+        self.engine.scanner = Scanner(
+            universe_builder=self.universe_builder,
+            feature_pipeline=pipeline,  # type: ignore[arg-type]
+            logger=self.logger,
+            config=self.config if isinstance(self.config, dict) else {},
         )
 
-        engine_trades_raw = list(getattr(self.engine, "closed_trades", []) or [])
-        engine_trades_raw.sort(key=lambda t: getattr(t, "exit_time", None) or "")
+    def _format_trades(self, raw_trades: List[Any]) -> List[Dict[str, Any]]:
+        raw_trades.sort(key=lambda t: getattr(t, "exit_time", None) or "")
 
         def _dt(v: Any) -> Optional[str]:
             if isinstance(v, datetime):
@@ -425,7 +349,7 @@ class BacktestRunner:
             return None
 
         engine_trades: List[Dict[str, Any]] = []
-        for t in engine_trades_raw:
+        for t in raw_trades:
             engine_trades.append(
                 {
                     "symbol": getattr(t, "symbol", None),
@@ -457,7 +381,11 @@ class BacktestRunner:
                     "correlation_id": getattr(t, "correlation_id", None),
                 }
             )
+        return engine_trades
 
+    def _calculate_metrics(
+        self, engine_trades: List[Dict[str, Any]], initial_cash: float
+    ) -> Dict[str, Any]:
         pnls_net = [float(t.get("pnl_net", 0.0) or 0.0) for t in engine_trades]
         wins = [p for p in pnls_net if p > 0]
         losses = [p for p in pnls_net if p <= 0]
@@ -465,7 +393,7 @@ class BacktestRunner:
         gross_loss = float(abs(sum(losses)))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
 
-        equity = float(analyzer.initial_cash)
+        equity = float(initial_cash)
         peak = equity
         max_dd = 0.0
         for p in pnls_net:
@@ -481,7 +409,7 @@ class BacktestRunner:
         except Exception:
             engine_equity = None
 
-        engine_metrics = {
+        return {
             "total_trades": int(len(engine_trades)),
             "total_closed_pnl_gross": round(
                 float(
@@ -500,6 +428,20 @@ class BacktestRunner:
                 round(float(engine_equity), 2) if engine_equity is not None else None
             ),
         }
+
+    def _analyze_results(self) -> Dict[str, Any]:
+        analyzer = BacktestAnalyzer(
+            initial_cash=self.config.get("initial_cash", 100000.0)
+        )
+        fills_metrics = analyzer.calculate_statistics(
+            self.mock_executor.fills, current_prices=self.last_prices
+        )
+
+        engine_trades_raw = list(getattr(self.engine, "closed_trades", []) or [])
+        engine_trades = self._format_trades(engine_trades_raw)
+        engine_metrics = self._calculate_metrics(
+            engine_trades, float(analyzer.initial_cash)
+        )
 
         self.logger.info("Final Cash", cash=self.mock_executor.cash)
         self.logger.info("Total Trades", count=engine_metrics["total_trades"])
@@ -529,3 +471,134 @@ class BacktestRunner:
             "engine_trades": engine_trades,
             "metrics_fills": fills_metrics,
         }
+
+    async def _process_loop_event(
+        self,
+        bt: datetime,
+        symbol: str,
+        bar: Bar,
+        market_tz: ZoneInfo,
+        scanner_replay: bool,
+        scan_interval: int,
+        last_session_ts: Optional[datetime],
+        current_session: Optional[date],
+        last_scan_ts: Optional[datetime],
+        next_scan_ts: Optional[datetime],
+        index_symbol: str,
+    ) -> Tuple[
+        Optional[datetime], Optional[date], Optional[datetime], Optional[datetime]
+    ]:
+        local_date = bt.astimezone(market_tz).date()
+        if current_session is None:
+            current_session = local_date
+        elif local_date != current_session:
+            self.logger.info(
+                "Session boundary flatten",
+                session_date=str(current_session),
+                timestamp=(last_session_ts.isoformat() if last_session_ts else None),
+            )
+            self._flatten_session_end(
+                ts=(last_session_ts if last_session_ts is not None else bt),
+                reason="SESSION_END",
+            )
+            current_session = local_date
+        last_session_ts = bt
+
+        # Ensure engine time advances deterministically even if index bars are absent.
+        try:
+            self.engine.market_state.time = bt
+        except Exception:
+            pass
+
+        if scanner_replay:
+            if next_scan_ts is None:
+                next_scan_ts = self._ceil_time_to_interval(bt, scan_interval, market_tz)
+            if bt >= next_scan_ts and (last_scan_ts is None or bt != last_scan_ts):
+                try:
+                    await self.engine.run_scan()
+                except Exception as e:
+                    self.logger.error("Backtest scan failed", error=str(e))
+                last_scan_ts = bt
+                next_scan_ts = self._ceil_time_to_interval(
+                    bt + timedelta(minutes=scan_interval), scan_interval, market_tz
+                )
+
+        # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
+        if symbol != index_symbol and symbol not in self.engine.symbol_states:
+            return last_session_ts, current_session, last_scan_ts, next_scan_ts
+
+        # Mark-to-market reference price.
+        self.last_prices[symbol] = float(bar.close)
+
+        # 1) Fill pending orders for this symbol (market/limit, deterministic).
+        self.mock_executor.fill_pending_for_bar(self.engine, symbol, bar)
+
+        # 2) Broker-managed bracket exits (stop/target) using intrabar extremes.
+        self.mock_executor.maybe_trigger_bracket_exit(self.engine, symbol, bar)
+
+        # 3) Strategy + risk + order generation.
+        self.engine.on_bar(symbol, bar)
+
+        return last_session_ts, current_session, last_scan_ts, next_scan_ts
+
+    async def run(self):
+        self.logger.info("Starting Backtest", start=self.start_date, end=self.end_date)
+
+        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
+        scanner_enabled = self._scanner_enabled()
+
+        self._initialize_symbol_states(index_symbol, scanner_enabled)
+
+        timeframe = str(self.config.get("timeframe", "1Min") or "1Min")
+        bars_by_symbol = await self._load_all_bars(timeframe)
+
+        events = self._build_event_stream(bars_by_symbol)
+        self.logger.info("Built event stream", events=len(events))
+
+        tz_name = str(
+            self.config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE
+        )
+        try:
+            market_tz = ZoneInfo(tz_name)
+        except Exception:
+            market_tz = ZoneInfo(self.DEFAULT_TIMEZONE)
+
+        scan_interval = self._scanner_interval_minutes()
+        scanner_replay = scanner_enabled and scan_interval > 0
+        if scanner_replay:
+            self._setup_scanner_replay(bars_by_symbol)
+
+        current_session: Optional[date] = None
+        last_session_ts: Optional[datetime] = None
+        last_scan_ts: Optional[datetime] = None
+        next_scan_ts: Optional[datetime] = None
+
+        # Replay loop (chronological across all symbols)
+        for bt, symbol, bar in events:
+            (
+                last_session_ts,
+                current_session,
+                last_scan_ts,
+                next_scan_ts,
+            ) = await self._process_loop_event(
+                bt,
+                symbol,
+                bar,
+                market_tz,
+                scanner_replay,
+                scan_interval,
+                last_session_ts,
+                current_session,
+                last_scan_ts,
+                next_scan_ts,
+                index_symbol,
+            )
+
+        if last_session_ts is not None:
+            self._flatten_session_end(ts=last_session_ts, reason="BACKTEST_END")
+
+        # Report
+        self.logger.info("Backtest Complete")
+
+        # Analyze Results
+        return self._analyze_results()

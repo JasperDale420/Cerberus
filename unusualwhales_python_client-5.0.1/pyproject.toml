@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "unusualwhales-python-client"
+version = "5.0.1"
+description = "A client library for accessing Unusual Whales API"
+authors = ["Mac Anderson <mac@macanderson.com>"]
+readme = "README.md"
+packages = [{ include = "unusualwhales" }]
+include = ["unusualwhales/py.typed"]
+
+[tool.poetry.dependencies]
+python = "^3.10.0"
+httpx = ">=0.20.0,<0.28.0"
+attrs = "^23.2.0"
+python-dateutil = "^2.8.0"
+python-dotenv = "^0.21.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F", "I", "UP"]
