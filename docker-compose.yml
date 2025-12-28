@@ -1,0 +1,21 @@
+services:
+  cerberus-scheduler:
+    build: .
+    image: empire/cerberus:latest
+    container_name: cerberus_scheduler
+    command: python -m src.main --scheduler
+    restart: unless-stopped
+    # Load environment variables (API Keys, etc.)
+    env_file:
+      - .env
+    volumes:
+      # Persist logs
+      - ./logs:/app/logs
+      # Mount config so changes apply to next daily run without rebuilding
+      - ./config:/app/config:ro
+      # Persist the database
+      - ./cerberus.db:/app/cerberus.db
+    environment:
+      # key=value overrides if needed
+      - PYTHONUNBUFFERED=1
+      - TZ=America/New_York

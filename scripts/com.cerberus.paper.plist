@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.cerberus.paper</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jacobmcmillan/Empire/Cerberus</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/Users/jacobmcmillan/Empire/Cerberus/scripts/run_paper_continuous.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PYTHON_BIN</key>
+      <string>/Users/jacobmcmillan/Empire/Cerberus/.venv/bin/python</string>
+      <key>CONFIG_PATH</key>
+      <string>/Users/jacobmcmillan/Empire/Cerberus/artifacts/shakedown_config/config.yaml</string>
+      <key>SCENARIO</key>
+      <string>happy</string>
+      <key>DURATION_MINUTES</key>
+      <string>1440</string>
+      <key>INJECT_SIGNAL</key>
+      <string>false</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jacobmcmillan/Empire/Cerberus/artifacts/launchd.paper.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jacobmcmillan/Empire/Cerberus/artifacts/launchd.paper.err.log</string>
+  </dict>
+</plist>
+
