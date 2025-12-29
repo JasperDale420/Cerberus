@@ -1835,6 +1835,16 @@ class ExecutionEngine:
                         )
                         continue
 
+                # M4 fix: Skip reconciliation for symbols with pending orders
+                # Prevents partial fill issues where broker shows mid-fill state
+                if state.open_orders:
+                    self.logger.debug(
+                        "Skipping position reconciliation, pending orders exist",
+                        symbol=sym,
+                        pending_order_count=len(state.open_orders),
+                    )
+                    continue
+
                 state.position = Position(
                     symbol=sym,
                     side=side,
