@@ -34,6 +34,29 @@ class RiskConfig(BaseModel):
     # Map strategies by name
     strategies: Dict[str, StrategyConfig] = Field(default_factory=dict)
 
+    # PRD Addendum: Regime-based risk multipliers
+    regime_risk_multipliers: Dict[str, Dict[str, float]] = Field(
+        default_factory=lambda: {
+            "vol": {
+                "low": 1.10,
+                "normal": 1.00,
+                "high": 0.60,
+                "shock": 0.00,
+            },
+            "liquidity": {
+                "good": 1.00,
+                "thin": 0.75,
+                "stressed": 0.00,
+            },
+            "risk": {
+                "risk_on": 1.00,
+                "neutral": 0.85,
+                "risk_off": 0.50,
+            },
+        },
+        description="Multipliers applied to position sizing based on regime axes",
+    )
+
     # L5 fix: Bounds validation for critical risk parameters
     @field_validator("max_daily_loss")
     @classmethod
