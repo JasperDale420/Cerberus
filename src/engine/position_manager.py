@@ -133,11 +133,12 @@ class PositionManager:
         pos = symbol_state.position
         if pos is None:
             return
-        if pos.side.value == "long":
+        # H3 fix: Use enum comparison for type safety
+        if pos.side == Side.LONG:
             pos.unrealized_pnl = (float(mark_price) - float(pos.avg_price)) * float(
                 pos.qty
             )
-        else:
+        else:  # Side.SHORT
             pos.unrealized_pnl = (float(pos.avg_price) - float(mark_price)) * float(
                 pos.qty
             )
@@ -447,14 +448,15 @@ class PositionManager:
             if open_risk is not None and open_risk != 0.0 and pos.qty > 0:
                 risk_per_share = float(open_risk) / float(pos.qty)
             if risk_per_share and risk_per_share > 0:
-                if pos.side.value == "long":
+                # H3 fix: Use enum comparison for type safety
+                if pos.side == Side.LONG:
                     adverse_r = abs(
                         min(0.0, (last_bar.low - pos.avg_price) / risk_per_share)
                     )
                     favorable_r = max(
                         0.0, (last_bar.high - pos.avg_price) / risk_per_share
                     )
-                else:
+                else:  # Side.SHORT
                     adverse_r = abs(
                         min(0.0, (pos.avg_price - last_bar.high) / risk_per_share)
                     )
@@ -481,8 +483,9 @@ class PositionManager:
                 held = (market_state.time - pos.entry_time).total_seconds()
                 if held >= float(pos.max_hold_seconds):
                     reason = "MAX_HOLD_EXCEEDED"
+                    # H3 fix: Use enum comparison for type safety
                     exit_side = (
-                        OrderSide.SELL if pos.side.value == "long" else OrderSide.BUY
+                        OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
                     )
                     intent = OrderIntent(
                         symbol=pos.symbol,
@@ -511,12 +514,13 @@ class PositionManager:
 
         hit_stop = False
         hit_target = False
-        if pos.side.value == "long":
+        # H3 fix: Use enum comparison for type safety
+        if pos.side == Side.LONG:
             if stop_price is not None and last_bar.low <= stop_price:
                 hit_stop = True
             if target_price is not None and last_bar.high >= target_price:
                 hit_target = True
-        else:
+        else:  # Side.SHORT
             if stop_price is not None and last_bar.high >= stop_price:
                 hit_stop = True
             if target_price is not None and last_bar.low <= target_price:
@@ -527,7 +531,8 @@ class PositionManager:
 
         # Deterministic choice if both hit in same bar: prioritize stop.
         reason = "STOP_HIT" if hit_stop else "TARGET_HIT"
-        exit_side = OrderSide.SELL if pos.side.value == "long" else OrderSide.BUY
+        # H3 fix: Use enum comparison for type safety
+        exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
 
         intent = OrderIntent(
             symbol=pos.symbol,
