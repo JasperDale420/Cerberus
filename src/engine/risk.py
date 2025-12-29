@@ -279,9 +279,25 @@ class RiskManager:
         return qty
 
     def _check_notional_limits(
-        self, notional: float, symbol_state: SymbolState
+        self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0
     ) -> bool:
-        if notional > self.max_notional_per_order:
+        # Calculate effective notional limit: prefer % of equity, fallback to fixed limit
+        max_notional_pct = getattr(self.risk_cfg, "max_notional_pct", 0.05)
+        if account_equity > 0 and max_notional_pct > 0:
+            effective_limit = account_equity * max_notional_pct
+        elif self.max_notional_per_order > 0:
+            effective_limit = self.max_notional_per_order
+        else:
+            effective_limit = float("inf")  # No limit
+
+        if notional > effective_limit:
+            self.logger.warning(
+                "Signal rejected: Max notional per order exceeded",
+                symbol=symbol_state.symbol,
+                notional=round(notional, 2),
+                limit=round(effective_limit, 2),
+                reason_code="MAX_NOTIONAL",
+            )
             self.last_rejection_reason = "MAX_NOTIONAL"
             return False
 
@@ -377,7 +393,7 @@ class RiskManager:
             return []
 
         notional = qty * signal.entry_price
-        if not self._check_notional_limits(notional, symbol_state):
+        if not self._check_notional_limits(notional, symbol_state, account_equity):
             self._log_rejection(signal)
             return []
 
