@@ -361,6 +361,9 @@ class PositionManager:
             - float(pos.commission or 0.0)
             - float(pos.slippage_estimate or 0.0)
         )
+
+        # H2 fix: Safe R-multiple calculation with division by zero protection
+        # If initial_risk is 0 (breakeven stop: entry == stop) or None, R-multiple is undefined
         pnl_r = None
         if pos.open_risk is not None and float(pos.open_risk) != 0.0:
             pnl_r = float(pnl) / float(pos.open_risk)
