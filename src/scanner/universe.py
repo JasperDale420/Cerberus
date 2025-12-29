@@ -173,16 +173,37 @@ class UniverseBuilder:
                 else:
                     cand_list = list(universe)
 
+                from concurrent.futures import ThreadPoolExecutor, as_completed
                 from datetime import timedelta
 
                 end = self.clock()
                 start = end - timedelta(days=int(prev_vol_cfg.get("lookback_days", 7)))
 
                 vols: List[tuple[str, float]] = []
-                for sym in sorted(set(cand_list)):
-                    vol = self._get_symbol_volume(sym, start, end)
-                    if vol is not None and vol > 0:
-                        vols.append((sym, vol))
+                sorted_candidates = sorted(set(cand_list))
+
+                # Use ThreadPoolExecutor for parallel volume fetching
+                max_workers = min(10, len(sorted_candidates))
+                if max_workers > 0:
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        futures = {
+                            executor.submit(
+                                self._get_symbol_volume, sym, start, end
+                            ): sym
+                            for sym in sorted_candidates
+                        }
+                        for future in as_completed(futures):
+                            sym = futures[future]
+                            try:
+                                vol = future.result()
+                                if vol is not None and vol > 0:
+                                    vols.append((sym, vol))
+                            except Exception as e:
+                                self.logger.warning(
+                                    "Dynamic universe volume fetch failed",
+                                    symbol=sym,
+                                    error=str(e),
+                                )
 
                 vols_sorted = sorted(vols, key=lambda kv: (-kv[1], kv[0]))
                 dynamic_added = [sym for sym, _v in vols_sorted[:top_n]]

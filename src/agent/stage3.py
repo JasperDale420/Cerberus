@@ -190,8 +190,27 @@ class DeterministicStage3Evaluator:
         strat = cls(dict(strategy_params), self.logger)
 
         pnl_r_series: List[float] = []
+
+        # Pre-fetch bars for all symbols in parallel
+        from concurrent.futures import ThreadPoolExecutor
+
+        bars_by_symbol: Dict[str, List[Bar]] = {}
+        max_workers = min(10, len(symbols))
+        if max_workers > 0:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._fetch_bars, sym, start, end): sym
+                    for sym in symbols
+                }
+                for future in futures:
+                    sym = futures[future]
+                    try:
+                        bars_by_symbol[sym] = future.result()
+                    except Exception:
+                        bars_by_symbol[sym] = []
+
         for sym in symbols:
-            bars = self._fetch_bars(sym, start, end)
+            bars = bars_by_symbol.get(sym, [])
             if len(bars) < 3:
                 continue
 
