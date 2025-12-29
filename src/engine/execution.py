@@ -317,6 +317,7 @@ class ExecutionEngine:
 
     def _flatten_cancel_orders(self, reason: str) -> None:
         """Cancel all open orders (best-effort)."""
+        assert self.alpaca_client is not None
         try:
             self.alpaca_client.trading_client.cancel_orders()
         except Exception as e:
@@ -326,6 +327,7 @@ class ExecutionEngine:
 
     def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
         """Close all positions (best-effort)."""
+        assert self.alpaca_client is not None
         try:
             self.alpaca_client.trading_client.close_all_positions(cancel_orders=True)
         except Exception as e:
@@ -345,6 +347,7 @@ class ExecutionEngine:
         positions_confirmed = False
         orders_confirmed = False
 
+        assert self.alpaca_client is not None
         try:
             open_positions = list(self.alpaca_client.trading_client.get_all_positions())
             positions_confirmed = True
@@ -478,9 +481,9 @@ class ExecutionEngine:
         """Rebuild strategy engine with current config and routing."""
         cfg = self.config or {}
         routing_cfg = cfg.get("strategy_routing") or {}
-        strategies_cfg = (
+        strategies_cfg: Dict[str, Any] = (
             cfg.get("strategies") if isinstance(cfg.get("strategies"), dict) else {}
-        )
+        ) or {}
 
         routing = StrategyRouting(
             strategies_by_regime={
@@ -1121,6 +1124,7 @@ class ExecutionEngine:
         self, intent: Any, log: Any, risk_latency: float, perf_counter: Any
     ) -> None:
         """Submit a single order intent."""
+        assert self.order_executor is not None
         try:
             start_exec = perf_counter()
             self.order_executor.submit(intent)
@@ -1672,6 +1676,7 @@ class ExecutionEngine:
             )
             broker_ids = [str(r.broker_order_id) for r in rows if r.broker_order_id]
 
+        assert self.db is not None
         self.db.write("collect_pending_cancel", _collect)
         return broker_ids
 

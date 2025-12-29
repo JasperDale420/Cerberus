@@ -473,19 +473,21 @@ class BacktestOrderExecutor:
 
         open_px = float(bar.open)
         if hit_stop:
+            assert stop_price is not None
             exit_price = self._calculate_gap_aware_exit(
                 pos,
                 open_px,
                 float(stop_price),
-                is_stop=True,  # type: ignore[arg-type]
+                is_stop=True,
             )
             return exit_price, "STOP_HIT"
         else:
+            assert target_price is not None
             exit_price = self._calculate_gap_aware_exit(
                 pos,
                 open_px,
                 float(target_price),
-                is_stop=False,  # type: ignore[arg-type]
+                is_stop=False,
             )
             return exit_price, "TARGET_HIT"
 
