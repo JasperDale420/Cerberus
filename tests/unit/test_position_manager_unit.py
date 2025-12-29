@@ -22,7 +22,10 @@ def _bar(symbol: str, t: datetime, *, o: float, h: float, low: float, c: float) 
 
 
 @pytest.mark.unit
-def test_position_manager_prioritizes_stop_when_stop_and_target_hit_same_bar() -> None:
+def test_position_manager_prioritizes_target_when_stop_and_target_hit_same_bar() -> (
+    None
+):
+    """M3 fix: When both stop and target trigger on same bar, target wins (trader-friendly)."""
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     pos = Position(
         symbol="AAPL",
@@ -50,10 +53,11 @@ def test_position_manager_prioritizes_stop_when_stop_and_target_hit_same_bar() -
     market = MarketState(time=now, regime=Regime.CHOP)
 
     decision = PositionManager().on_bar(state, market)
-    assert decision.reason == "STOP_HIT"
+    # M3: Target takes priority over stop when both hit (more favorable for trader)
+    assert decision.reason == "TARGET_HIT"
     assert decision.intent is not None
     assert decision.intent.order_type == OrderType.MARKET
-    assert decision.intent.meta.get("exit_reason") == "STOP_HIT"
+    assert decision.intent.meta.get("exit_reason") == "TARGET_HIT"
 
 
 @pytest.mark.unit

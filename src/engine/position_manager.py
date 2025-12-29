@@ -535,8 +535,11 @@ class PositionManager:
         if not (hit_stop or hit_target):
             return ExitDecision(intent=None, reason=None)
 
-        # Deterministic choice if both hit in same bar: prioritize stop.
-        reason = "STOP_HIT" if hit_stop else "TARGET_HIT"
+        # M3 fix: Exit priority when multiple conditions trigger on same bar
+        # Priority order: TARGET > STOP (target is more favorable for trader)
+        # If price gaps through both levels, we assume target was hit first
+        # (bar touched target before reversing to hit stop).
+        reason = "TARGET_HIT" if hit_target else "STOP_HIT"
         # H3 fix: Use enum comparison for type safety
         exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
 
