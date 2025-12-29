@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RegimeConfig(BaseModel):
@@ -32,3 +32,43 @@ class RiskConfig(BaseModel):
 
     # Map strategies by name
     strategies: Dict[str, StrategyConfig] = Field(default_factory=dict)
+
+    # L5 fix: Bounds validation for critical risk parameters
+    @field_validator("max_daily_loss")
+    @classmethod
+    def validate_max_daily_loss(cls, v: float) -> float:
+        """Ensure max_daily_loss is positive and reasonable (max $100k)."""
+        if v < 0:
+            raise ValueError("max_daily_loss must be non-negative")
+        if v > 100000:
+            raise ValueError("max_daily_loss exceeds maximum allowed ($100,000)")
+        return v
+
+    @field_validator("max_risk_per_trade")
+    @classmethod
+    def validate_max_risk_per_trade(cls, v: float) -> float:
+        """Ensure max_risk_per_trade is positive and reasonable (max $10k)."""
+        if v < 0:
+            raise ValueError("max_risk_per_trade must be non-negative")
+        if v > 10000:
+            raise ValueError("max_risk_per_trade exceeds maximum allowed ($10,000)")
+        return v
+
+    @field_validator("max_open_positions")
+    @classmethod
+    def validate_max_open_positions(cls, v: int) -> int:
+        """Ensure max_open_positions is reasonable (1-100)."""
+        if v < 0:
+            raise ValueError("max_open_positions must be non-negative")
+        if v > 100:
+            raise ValueError("max_open_positions exceeds maximum allowed (100)")
+        return v
+
+    @field_validator("risk_mode")
+    @classmethod
+    def validate_risk_mode(cls, v: str) -> str:
+        """Ensure risk_mode is one of the valid options."""
+        valid_modes = ("normal", "reduced", "off")
+        if v.lower() not in valid_modes:
+            raise ValueError(f"risk_mode must be one of: {valid_modes}")
+        return v.lower()
