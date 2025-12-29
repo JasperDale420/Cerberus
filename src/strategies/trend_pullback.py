@@ -3,30 +3,25 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import TrendPullbackConfig
 
 
 class TrendPullbackStrategy(BaseStrategy):
-    """
-    Trend Pullback Strategy.
-    Enters on pullbacks to EMA20 in the direction of the trend (EMA20 vs EMA50).
-    """
+    """Trend Pullback (EMA Crossover + RSI Pullback entry)."""
 
     name = "trend_pullback"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.ema_fast_len = config.get("ema_fast", 20)
-        self.ema_slow_len = config.get("ema_slow", 50)
-        self.rsi_len = config.get("rsi_len", 2)  # Fast RSI for trigger
-        self.risk_reward = config.get("risk_reward", 2.0)
-        self.pullback_depth_pct = float(config.get("pullback_depth_pct", 0.0) or 0.0)
-        self.entry_confirmation = str(
-            config.get("entry_confirmation", "rsi") or "rsi"
-        ).lower()
-
-        # Thresholds
-        self.rsi_oversold = config.get("rsi_oversold", 10)
-        self.rsi_overbought = config.get("rsi_overbought", 90)
+        cfg = TrendPullbackConfig(**config)
+        self.ema_fast_len = cfg.ema_fast
+        self.ema_slow_len = cfg.ema_slow
+        self.rsi_len = cfg.rsi_len
+        self.risk_reward = cfg.risk_reward
+        self.pullback_depth_pct = cfg.pullback_depth_pct
+        self.entry_confirmation = cfg.entry_confirmation.lower()
+        self.rsi_oversold = cfg.rsi_oversold
+        self.rsi_overbought = cfg.rsi_overbought
 
     def on_bar(
         self,

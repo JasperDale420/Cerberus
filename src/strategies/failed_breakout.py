@@ -3,22 +3,22 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import FailedBreakoutConfig
 
 
 class FailedBreakoutStrategy(BaseStrategy):
     """
-    Failed Breakout Strategy (Fade).
-    Vertical Slice: 4
-    Enters when price breaks a key level (Prior High/Low) but fails to hold, reversing back.
-    Ideally for CHOP regimes.
+    Failed Breakout (Fade) Strategy.
+    Fades breakouts of prior day high/low that fail immediately.
     """
 
     name = "failed_breakout"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.lookback_days = config.get("lookback_days", 1)  # Usually 1 for PDH/PDL
-        self.risk_reward = config.get("risk_reward", 2.0)
+        cfg = FailedBreakoutConfig(**config)
+        self.lookback_days = cfg.lookback_days
+        self.risk_reward = cfg.risk_reward
 
         # We need to know the Key Levels.
         # Ideally these come from SymbolFeatures (Scanner) or we re-calc.

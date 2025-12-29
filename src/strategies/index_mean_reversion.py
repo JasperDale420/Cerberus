@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import IndexMeanReversionConfig
 
 
 class IndexMeanReversionStrategy(BaseStrategy):
@@ -15,19 +16,13 @@ class IndexMeanReversionStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.bb_len = config.get("bb_len", 20)
-        self.bb_std = config.get("bb_std", 2.0)
-        self.risk_reward = config.get("risk_reward", 2.0)
-        self.stop_std = config.get(
-            "stop_std", 3.0
-        )  # Stop at 3 sigma deviation? Or fixed pct?
-        # Fixed pct might be safer for index scalping.
-        self.stop_pct = config.get(
-            "stop_pct", 0.005
-        )  # 0.5% stop on index is decent width for M5
-        self.allowed_symbols = {
-            str(s).upper() for s in (config.get("symbols") or ["SPY", "QQQ"])
-        }
+        cfg = IndexMeanReversionConfig(**config)
+        self.bb_len = cfg.bb_len
+        self.bb_std = cfg.bb_std
+        self.risk_reward = cfg.risk_reward
+        self.stop_std = cfg.stop_std
+        self.stop_pct = cfg.stop_pct
+        self.allowed_symbols = set(cfg.symbols)
 
     def on_bar(
         self,
@@ -82,16 +77,13 @@ class IndexMeanReversionStrategy(BaseStrategy):
 
             # Sanity check: is target > price?
             if target_price > price:
-                signal = Signal(
+                signal = self._create_signal(
                     symbol=symbol,
                     side=OrderSide.BUY,
-                    size_hint=0,
-                    entry_price=price,
+                    bar=bar,
+                    market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    strategy=self.name,
-                    regime=market_state.regime,
-                    generated_at=bar.time,
                     meta={"z_score": -2.0, "full_reversion": True},
                 )
 
@@ -102,16 +94,13 @@ class IndexMeanReversionStrategy(BaseStrategy):
             target_price = current_bbm
 
             if target_price < price:
-                signal = Signal(
+                signal = self._create_signal(
                     symbol=symbol,
                     side=OrderSide.SELL,
-                    size_hint=0,
-                    entry_price=price,
+                    bar=bar,
+                    market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    strategy=self.name,
-                    regime=market_state.regime,
-                    generated_at=bar.time,
                     meta={"z_score": 2.0, "full_reversion": True},
                 )
 

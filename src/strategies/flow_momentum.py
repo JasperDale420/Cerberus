@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import FlowMomentumConfig
 
 
 class FlowMomentumStrategy(BaseStrategy):
@@ -16,9 +17,10 @@ class FlowMomentumStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.min_flow_zscore = config.get("min_flow_zscore", 3.0)
-        self.vol_mult = config.get("vol_mult", 1.5)
-        self.risk_reward = config.get("risk_reward", 2.0)
+        cfg = FlowMomentumConfig(**config)
+        self.min_flow_zscore = cfg.min_flow_zscore
+        self.vol_mult = cfg.vol_mult
+        self.risk_reward = cfg.risk_reward
 
     def on_bar(
         self,
@@ -111,16 +113,13 @@ class FlowMomentumStrategy(BaseStrategy):
             risk = close - stop_price
             target_price = close + (risk * self.risk_reward)
 
-            signal = Signal(
+            signal = self._create_signal(
                 symbol=symbol,
                 side=OrderSide.BUY,
-                size_hint=0,
-                entry_price=close,
+                bar=bar,
+                market_state=market_state,
                 stop_price=stop_price,
                 target_price=target_price,
-                strategy=self.name,
-                regime=market_state.regime,
-                generated_at=bar.time,
                 meta={
                     "flow_zscore": flow_score,
                     "call_put_ratio": call_put_ratio,
@@ -139,16 +138,13 @@ class FlowMomentumStrategy(BaseStrategy):
             risk = stop_price - close
             target_price = close - (risk * self.risk_reward)
 
-            signal = Signal(
+            signal = self._create_signal(
                 symbol=symbol,
                 side=OrderSide.SELL,
-                size_hint=0,
-                entry_price=close,
+                bar=bar,
+                market_state=market_state,
                 stop_price=stop_price,
                 target_price=target_price,
-                strategy=self.name,
-                regime=market_state.regime,
-                generated_at=bar.time,
                 meta={
                     "flow_zscore": flow_score,
                     "call_put_ratio": call_put_ratio,

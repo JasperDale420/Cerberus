@@ -6,32 +6,33 @@ from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import ORBConfig
 
 
 class ORBStrategy(BaseStrategy):
     """
-    Opening Range Breakout Strategy.
-    Trades the breakout of the first X minutes (e.g., 15 mins).
+    Opening Range Breakout (ORB) Strategy.
+    Uses the first N minutes (default 15) to define the range.
+    Breaks above/below that range trigger signals.
     """
 
     name = "orb"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+        cfg = ORBConfig(**config)
         self.orb_start = time_type(9, 30)
-        self.orb_minutes = int(config.get("orb_minutes", 15))
+        self.orb_minutes = cfg.orb_minutes
         base = datetime(2000, 1, 1, self.orb_start.hour, self.orb_start.minute)
         self.orb_end = (base + timedelta(minutes=self.orb_minutes)).time()
         self.entry_window_end = time_type(10, 30)  # Don't enter after this
 
         # Pull from config or defaults
-        self.risk_reward = config.get("risk_reward", 2.0)
-        self.stop_loss_pct = config.get(
-            "stop_loss_pct", 0.005
-        )  # Backup stop if candle range too small/large
-        self.min_gap_pct = float(config.get("min_gap_pct", 0.0))
-        self.min_flow_zscore = float(config.get("min_flow_zscore", 0.0))
-        self.min_premarket_volume = float(config.get("min_premarket_volume", 0.0))
+        self.risk_reward = cfg.risk_reward
+        self.stop_loss_pct = cfg.stop_loss_pct
+        self.min_gap_pct = cfg.min_gap_pct
+        self.min_flow_zscore = cfg.min_flow_zscore
+        self.min_premarket_volume = cfg.min_premarket_volume
 
     def _to_et_time(self, dt: datetime) -> time_type:
         """Convert datetime to US/Eastern time-of-day."""
@@ -109,7 +110,7 @@ class ORBStrategy(BaseStrategy):
 
         # Long Breakout (PRD: BULL)
         if bar.close > orb_high and market_state.regime == Regime.BULL:
-            return self._create_signal(
+            return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.BUY,
@@ -126,7 +127,7 @@ class ORBStrategy(BaseStrategy):
 
         # Short Breakout (PRD: BEAR)
         if bar.close < orb_low and market_state.regime == Regime.BEAR:
-            return self._create_signal(
+            return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.SELL,
@@ -143,7 +144,7 @@ class ORBStrategy(BaseStrategy):
 
         return None
 
-    def _create_signal(
+    def _create_orb_signal(
         self,
         symbol: str,
         bar: Bar,
@@ -163,19 +164,22 @@ class ORBStrategy(BaseStrategy):
         else:
             target_price = bar.close - (risk * self.risk_reward)
 
-        out_meta: Dict[str, Any] = {"orb_high": orb_high, "orb_low": orb_low}
+        # Build metadata
+        out_meta = {
+            "or_high": float(orb_high),
+            "or_low": float(orb_low),
+            "breakout_type": "high" if side == OrderSide.BUY else "low",
+        }
         if isinstance(meta, dict):
             out_meta.update(meta)
 
-        return Signal(
+        # Use base class helper
+        return super()._create_signal(
             symbol=symbol,
             side=side,
-            size_hint=0,
-            entry_price=bar.close,
+            bar=bar,
+            market_state=market_state,
             stop_price=stop_price,
             target_price=target_price,
-            strategy=self.name,
-            regime=market_state.regime,
-            generated_at=bar.time,
             meta=out_meta,
         )

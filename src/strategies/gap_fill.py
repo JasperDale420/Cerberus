@@ -8,6 +8,7 @@ from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import GapFillConfig
 
 
 class GapFillStrategy(BaseStrategy):
@@ -22,13 +23,12 @@ class GapFillStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.min_gap = float(config.get("min_gap", 0.015) or 0.015)
-        self.max_gap = float(config.get("max_gap", 0.10) or 0.10)
-        self.risk_reward = float(config.get("risk_reward", 2.0) or 2.0)
-        self.or_time_minutes = int(config.get("or_time_minutes", 15) or 15)
-        self.weak_trend_max_score = float(
-            config.get("weak_trend_max_score", 1.0) or 1.0
-        )
+        cfg = GapFillConfig(**config)
+        self.min_gap = cfg.min_gap
+        self.max_gap = cfg.max_gap
+        self.risk_reward = cfg.risk_reward
+        self.or_time_minutes = cfg.or_time_minutes
+        self.weak_trend_max_score = cfg.weak_trend_max_score
 
     def on_bar(
         self,

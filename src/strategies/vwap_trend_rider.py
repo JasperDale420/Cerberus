@@ -3,29 +3,25 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import VWAPTrendRiderConfig
 
 
 class VWAPTrendRiderStrategy(BaseStrategy):
     """
-    VWAP Trend Rider.
-    Enters when price pulls back to VWAP and then RECLAIMS it in the direction of the dominant trend.
-    Requires:
-    1. Trend (EMA20 vs EMA50)
-    2. Pullback (Price touches/crosses VWAP)
-    3. Reclaim (Price crosses back above/below VWAP)
-    4. Volume Confirmation (Volume > Avg Volume * mult)
+    VWAP Trend Rider Strategy.
+    Rides trends that align with VWAP slope and EMA crossover.
     """
 
     name = "vwap_trend_rider"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        self.ema_fast_len = config.get("ema_fast", 20)
-        self.ema_slow_len = config.get("ema_slow", 50)
-        self.vol_mult = config.get("vol_mult", 1.2)  # Volume must be 1.2x average
-        self.risk_reward = config.get("risk_reward", 2.0)
-        # PRD 7.2: only in strong trend (trend_score high).
-        self.min_trend_score = float(config.get("min_trend_score", 1.5) or 1.5)
+        cfg = VWAPTrendRiderConfig(**config)
+        self.ema_fast_len = cfg.ema_fast
+        self.ema_slow_len = cfg.ema_slow
+        self.vol_mult = cfg.vol_mult
+        self.risk_reward = cfg.risk_reward
+        self.min_trend_score = cfg.min_trend_score
 
     def on_bar(
         self,

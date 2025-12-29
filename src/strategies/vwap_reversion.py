@@ -9,25 +9,26 @@ from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+from src.strategies.config_models import VWAPReversionConfig
 
 
 class VWAPReversionStrategy(BaseStrategy):
+    """VWAP Reversion (Mean Reversion off VWAP Bands)."""
+
     name: str = "vwap_reversion"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
-        # PRD naming: sigma_band (support existing band_sigma for backward compatibility).
-        sigma_band = config.get("sigma_band")
-        band_sigma = config.get("band_sigma", 2.0)
-        self.band_sigma = float(sigma_band if sigma_band is not None else band_sigma)
-        self.risk_reward = config.get("risk_reward", 2.0)
-        self.time_window_start = str(config.get("time_window_start", "09:45"))
-        self.time_window_end = str(config.get("time_window_end", "15:45"))
-        self.max_hold_minutes = int(config.get("max_hold_minutes", 60))
-        self.confirmation = str(config.get("confirmation", "rsi")).lower()
-        self.rsi_len = int(config.get("rsi_len", 2))
-        self.rsi_oversold = float(config.get("rsi_oversold", 10))
-        self.rsi_overbought = float(config.get("rsi_overbought", 90))
+        cfg = VWAPReversionConfig(**config)
+        self.band_sigma = cfg.effective_band_sigma
+        self.risk_reward = cfg.risk_reward
+        self.time_window_start = cfg.time_window_start
+        self.time_window_end = cfg.time_window_end
+        self.max_hold_minutes = cfg.max_hold_minutes
+        self.confirmation = cfg.confirmation.lower()
+        self.rsi_len = cfg.rsi_len
+        self.rsi_oversold = cfg.rsi_oversold
+        self.rsi_overbought = cfg.rsi_overbought
 
     def _in_time_window(self, dt: datetime) -> bool:
         """Check if datetime is within configured trading window."""
