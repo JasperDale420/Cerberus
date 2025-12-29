@@ -84,6 +84,9 @@ class VWAPReversionStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # P4 fix: Check cooldown before processing
+        if not self._check_cooldown(symbol, bar.time):
+            return None
         # Only trade in CHOP regime
         if market_state.regime != Regime.CHOP:
             return None
@@ -107,6 +110,14 @@ class VWAPReversionStrategy(BaseStrategy):
         # VWAP = Sum(Typical_Price * Volume) / Sum(Volume)
 
         bars = list(symbol_state.bars)
+
+        # P1 fix: Filter to current session bars for std calculation
+        current_date = bar.time.date()
+        session_bars = [b for b in bars if b.time.date() == current_date]
+        if len(session_bars) < 5:
+            # Not enough session bars for meaningful std
+            session_bars = bars[-20:]  # Fallback to recent 20 bars
+
         typical_prices = np.array([(b.high + b.low + b.close) / 3.0 for b in bars])
         volumes = np.array([b.volume for b in bars])
 
@@ -118,11 +129,11 @@ class VWAPReversionStrategy(BaseStrategy):
         if vwap is None:
             vwap = np.sum(typical_prices * volumes) / total_volume
 
-        # Calculate Std Dev for Bands (Standard Deviation of Close prices)
-        # Alternatively, could use Std Dev of (Price - VWAP)
-        # Common simplified implementation: VWAP +/- 2 * StdDev(Close)
-        closes = np.array([b.close for b in bars])
-        std = np.std(closes)
+        # P1 fix: Calculate Std Dev from session bars only
+        session_closes = np.array([b.close for b in session_bars])
+        std = np.std(session_closes)
+        # Use session closes for confirmation as well
+        closes = session_closes
 
         upper = vwap + self.band_sigma * std
         lower = vwap - self.band_sigma * std
