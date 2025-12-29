@@ -260,12 +260,40 @@ class ExecutionEngine:
             # Best-effort: do not break trading.
             self._inc_error("execution")
 
-    def flatten_all(self, reason: str = "manual") -> None:
+    def flatten_all(self, *, reason: str = "eod") -> None:
         """
-        PRD: no overnight holds. Cancel open orders and close all positions.
+        Emergency flatten: close all positions and cancel all orders.
 
-        This is best-effort but will raise if position_mismatch_mode is 'halt' and
-        the broker still reports open positions/orders after flatten requests.
+        Critical safety function used at end-of-day or when risk limits are breached.
+        Executes with best-effort semantics to aggressively flatten the entire book.
+
+        Workflow:
+        1. Cancel all open orders via Alpaca
+        2. Close all open positions via Alpaca
+        3. Reset local position and watchlist state
+        4. Log confirmation status (success/failure)
+
+        Args:
+            reason: Reason for flattening ("eod", "risk_breach", "manual", etc.)
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If position_mismatch_mode is 'halt' and confirmation fails
+
+        Side Effects:
+            - Sends cancel_all_orders request to Alpaca
+            - Sends close_all_positions request to Alpaca
+            - Clears self.watchlist and all position state
+            - Logs ERROR with FLATTEN_CONFIRMATION_FAILED if positions remain
+            - May halt trading if confirmation fails (based on config)
+
+        Note:
+            - Best-effort operation; individual cancels/closes may fail
+            - PRD 11.2: Includes confirmation check for position_mismatch_mode
+            - Always executed at market close (16:00 ET) if flat_on_close enabled
+            - Does not stop execution engine; use stop() for full shutdown
         """
         if not self.alpaca_client:
             self.logger.warning("Flatten requested but no Alpaca client", reason=reason)
