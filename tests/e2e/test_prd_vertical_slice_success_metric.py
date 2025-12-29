@@ -102,12 +102,12 @@ def test_prd_success_metric_vertical_slice_offline(tmp_path: Path) -> None:
         tmp_path / "risk.yaml",
         {
             "risk": {
-                "max_daily_loss": 1_000_000.0,
+                "max_daily_loss": 10_000.0,
                 "max_risk_per_trade": 50.0,
-                "max_open_risk": 1_000_000.0,
+                "max_open_risk": 100_000.0,
                 "max_trades_per_day": 1000,
-                "max_notional_per_order": 1_000_000.0,
-                "max_notional_per_symbol": 1_000_000.0,
+                "max_notional_per_order": 100_000.0,
+                "max_notional_per_symbol": 100_000.0,
                 "risk_mode": "normal",
             }
         },

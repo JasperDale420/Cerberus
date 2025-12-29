@@ -317,14 +317,14 @@ class Agent:
         self, db: Any, as_of: Optional[datetime] = None
     ) -> List[AgentAction]:
         """
-        Run full agent cycle: load stats, analyze, persist actions.
-        Backward compatibility wrapper for the refactored API.
+        Run full agent cycle: load stats, analyze, persist actions, apply config changes.
         """
         now = as_of or datetime.now(timezone.utc)
         stats_list = self._load_recent_stats(db, as_of=now)
         actions = self.analyze_performance(stats_list, as_of=now)
         if actions:
             self._persist_actions(db, actions)
+            self.apply_actions(actions)
         return actions
 
     def apply_actions(self, actions: List[AgentAction]) -> None:
@@ -369,11 +369,54 @@ class Agent:
                 ActionType.DISABLE_STRATEGY,
                 ActionType.REDUCE_RISK,
             ):
-                # These require direct config file modification
-                # For now, log that they need manual intervention
-                self.logger.warning(
-                    "Agent action requires manual config update",
+                # PRD 9.1: Write risk adjustments to strategies.auto.yaml
+                path = Path(self.config_path)
+                if path.exists():
+                    with open(path) as f:
+                        data = yaml.safe_load(f) or {}
+                else:
+                    data = {}
+
+                if action.strategy not in data:
+                    data[action.strategy] = {}
+
+                # Determine target config location based on regime
+                if action.regime:
+                    # Regime-specific override
+                    if "regimes" not in data[action.strategy]:
+                        data[action.strategy]["regimes"] = {}
+                    if action.regime not in data[action.strategy]["regimes"]:
+                        data[action.strategy]["regimes"][action.regime] = {}
+                    target_cfg = data[action.strategy]["regimes"][action.regime]
+                else:
+                    # Strategy-level override (no regime specified)
+                    target_cfg = data[action.strategy]
+
+                if action.action_type == ActionType.DISABLE_STRATEGY:
+                    target_cfg["enabled"] = False
+                    target_cfg["disabled_at"] = action.timestamp.strftime("%Y-%m-%d")
+                    target_cfg["disabled_reason"] = action.reason
+                else:  # REDUCE_RISK
+                    # Halve the risk per trade (PRD 9.1 default action)
+                    current_risk = float(target_cfg.get("max_risk_per_trade", 50.0))
+                    new_risk = current_risk / 2.0
+                    # Floor at 0 when below epsilon
+                    target_cfg["max_risk_per_trade"] = (
+                        0.0 if new_risk < 0.1 else new_risk
+                    )
+                    target_cfg["risk_reduced_at"] = action.timestamp.strftime(
+                        "%Y-%m-%d"
+                    )
+                    target_cfg["risk_reduced_reason"] = action.reason
+
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with open(path, "w") as f:
+                    yaml.safe_dump(data, f, default_flow_style=False)
+
+                self.logger.info(
+                    "Agent action applied to config",
                     action_type=action.action_type.value,
                     strategy=action.strategy,
                     regime=action.regime,
+                    config_path=str(path),
                 )

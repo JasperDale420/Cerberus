@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - **H1 Logic Audit (New)**: Fix `VWAPReversionStrategy.on_bar()` unbound variable crash when price is within VWAP bands. Initialize `signal = None` before conditional blocks.
 - **H2 Logic Audit (New)**: Fix `FlowMomentumStrategy` threshold logic that allowed weak flow signals. Now properly rejects all signals below `min_flow_zscore`.
 - **H3 Logic Audit (New)**: Fix `BacktestAnalyzer._calculate_drawdown()` inconsistency with unrealized PnL. Peak tracking now based only on closed trades for consistency; added clarifying docstring.
+- **Agent.run_cycle_with_db**: Now calls `apply_actions()` after persisting actions to DB, ensuring `strategies.auto.yaml` is automatically written.
+- **Agent.apply_actions**: Fully implements REDUCE_RISK and DISABLE_STRATEGY actions: writes config to `strategies.auto.yaml`, supports both strategy-level and regime-specific overrides, adds floor at 0.0 when risk drops below threshold.
+- **E2E Test Risk Values**: Update `test_prd_vertical_slice_success_metric.py` to use valid risk values within the new RiskConfig validation limits ($10k daily loss, not $1M).
 - **M1 Logic Audit (New)**: Add DEBUG-level logging to silent exception handlers in `PositionManager` for MAE/MFE tracking and max-hold check failures. Improves observability without breaking trading.
 - **M2 Logic Audit (New)**: Fix `RiskManager` positions_carried_forward tracking to capture count BEFORE session rollover reset for accurate logging.
 - **M3 Logic Audit (New)**: Raise `Scanner` watchlist cap from 30 to 50 with documented PRD recommendation. Configurable limit with clearer warning message.
