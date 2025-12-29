@@ -5,9 +5,101 @@ This module provides type-safe configuration classes for each strategy,
 eliminating duplicate config.get() patterns and providing compile-time validation.
 """
 
-from typing import List, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator
+
+if TYPE_CHECKING:
+    from src.engine.strategy_engine import StrategyActivationPolicy
+
+
+class ActivationConfig(BaseModel):
+    """
+    Configuration for strategy activation based on multi-axis regimes.
+
+    Parsed from strategies.yaml activation block:
+    ```yaml
+    activation:
+      session: [opening, midday]
+      trend: [flat]
+      vol: [low, normal]
+      min_confidence: 0.6
+    ```
+    """
+
+    session: List[str] = Field(
+        default_factory=list, description="Allowed session regimes"
+    )
+    trend: List[str] = Field(default_factory=list, description="Allowed trend regimes")
+    vol: List[str] = Field(default_factory=list, description="Allowed vol regimes")
+    liquidity: List[str] = Field(
+        default_factory=list, description="Allowed liquidity regimes"
+    )
+    risk: List[str] = Field(default_factory=list, description="Allowed risk regimes")
+    min_confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Minimum confidence threshold"
+    )
+
+    def to_activation_policy(self) -> "StrategyActivationPolicy":
+        """Convert to StrategyActivationPolicy with resolved enums."""
+        from src.core.domain import (
+            LiquidityRegime,
+            RiskRegime,
+            SessionRegime,
+            TrendRegime,
+            VolRegime,
+        )
+        from src.engine.strategy_engine import StrategyActivationPolicy
+
+        def _resolve(values: List[str], enum_cls: type) -> Tuple[Any, ...]:
+            """Resolve string values to enum members."""
+            resolved = []
+            for v in values:
+                try:
+                    resolved.append(enum_cls(v.lower()))
+                except ValueError:
+                    pass  # Skip invalid values
+            return tuple(resolved)
+
+        return StrategyActivationPolicy(
+            session=_resolve(self.session, SessionRegime),
+            trend=_resolve(self.trend, TrendRegime),
+            vol=_resolve(self.vol, VolRegime),
+            liquidity=_resolve(self.liquidity, LiquidityRegime),
+            risk=_resolve(self.risk, RiskRegime),
+            min_confidence=self.min_confidence,
+        )
+
+
+def build_activation_policies_from_config(
+    strategies_config: Dict[str, Any],
+) -> Dict[str, "StrategyActivationPolicy"]:
+    """
+    Build activation policies for all strategies from config dict.
+
+    Args:
+        strategies_config: The 'strategies' section from strategies.yaml
+
+    Returns:
+        Mapping of strategy name to StrategyActivationPolicy
+    """
+    policies: Dict[str, Any] = {}
+
+    for name, params in strategies_config.items():
+        if not isinstance(params, dict):
+            continue
+
+        activation_data = params.get("activation")
+        if activation_data and isinstance(activation_data, dict):
+            try:
+                config = ActivationConfig(**activation_data)
+                policies[name] = config.to_activation_policy()
+            except Exception:
+                pass  # Skip invalid configs
+
+    return policies
 
 
 class BaseStrategyConfig(BaseModel):
