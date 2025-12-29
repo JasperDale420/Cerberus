@@ -17,7 +17,52 @@ from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
 
 
-async def main():
+async def async_main():
+    """
+    Application entry point - initializes and runs the Cerberus trading system.
+
+    Orchestrates the complete lifecycle of the trading system:
+    1. Loads configuration from config.yaml
+    2. Initializes database and analytics
+    3. Sets up Alpaca broker connection and WebSocket streams
+    4. Creates ExecutionEngine with strategies and risk management
+    5. Starts internal scheduler for daily tasks (if enabled)
+    6. Runs main trading loop processing market data
+    7. Handles end-of-day position flattening
+    8. Executes optional EOD analytics agent
+
+    The main loop continues until:
+    - User interrupts (Ctrl+C)
+    - Fatal error occurs
+    - Market closes (depending on configuration)
+
+    Args:
+        None (reads from config.yaml and environment variables)
+
+    Returns:
+        None
+
+    Raises:
+        Exception: Logs and re-raises any fatal errors from main loop
+        KeyboardInterrupt: Gracefully shuts down on user interrupt
+
+    Side Effects:
+        - Creates cerberus.db SQLite database if not exists
+        - Starts WebSocket connection to Alpaca
+        - Creates log files in logs/ directory
+        - Optionally runs EOD agent and updates config
+        - Flattens all positions at market close (if flat_on_close enabled)
+
+    Environment Variables:
+        - CERBERUS_STAGE3_APPROVED: Required for Stage 3 agent proposals
+        - Log levels and other config can be set via env vars
+
+    Note:
+        - PRD 11.2: Main loop includes observability hooks
+        - PRD 6.4: Strategy routing by market regime
+        - PRD 9.1: Automated EOD analytics and risk adjustment
+        - Uses async/await for concurrent WebSocket and scheduler
+    """
     parser = argparse.ArgumentParser(description="Scalper Trading Bot")
     parser.add_argument(
         "--mode", choices=["paper", "live"], default="paper", help="Trading mode"
@@ -365,4 +410,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(async_main())
