@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 from src.core.domain import SymbolFeatures
@@ -62,10 +63,49 @@ class DataValidator:
 
     def validate_flow(self, features: SymbolFeatures) -> bool:
         """
-        Validates flow metrics.
+        Validates flow metrics for NaN, Inf, and basic sanity.
+
+        P1 fix: Properly check for non-finite values that could corrupt scoring.
         """
-        # Currently just a placeholder for future flow sanity checks
-        # e.g., if flow_zscore is infinite or NaN
-        if features.extra and features.extra.get("flow_raw_count", 0) < 0:
+        try:
+            # Check flow_zscore for NaN/Inf
+            if features.flow_zscore is not None:
+                if not math.isfinite(features.flow_zscore):
+                    if self.logger:
+                        self.logger.warning(
+                            "Invalid flow_zscore",
+                            symbol=features.symbol,
+                            flow_zscore=features.flow_zscore,
+                        )
+                    return False
+
+            # Check extra flow metrics if present
+            if features.extra:
+                raw_count = features.extra.get("flow_raw_count", 0)
+                if raw_count is not None and raw_count < 0:
+                    return False
+
+                # Check for any NaN/Inf in extra numeric fields
+                for key in ("flow_premium", "flow_volume", "call_volume", "put_volume"):
+                    val = features.extra.get(key)
+                    if val is not None and isinstance(val, (int, float)):
+                        if not math.isfinite(val):
+                            if self.logger:
+                                self.logger.warning(
+                                    "Invalid flow metric",
+                                    symbol=features.symbol,
+                                    key=key,
+                                    value=val,
+                                )
+                            return False
+
+            return True
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    "Flow validation failed",
+                    symbol=getattr(features, "symbol", "UNKNOWN"),
+                    error=str(e),
+                )
             return False
-        return True

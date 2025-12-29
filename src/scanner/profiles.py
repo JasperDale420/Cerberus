@@ -1,11 +1,27 @@
+import math
 from abc import ABC, abstractmethod
+from typing import Any
 
 from src.core.domain import Regime, SymbolFeatures
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """P2 fix: Safely convert value to float, returning default for None/NaN/Inf."""
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        return f if math.isfinite(f) else default
+    except (TypeError, ValueError):
+        return default
 
 
 class ScannerProfile(ABC):
     """
     Base class for strategy-specific scanner profiles.
+
+    P2 fix: Score functions should use _safe_float() for defensive access
+    to feature attributes that may be None or non-finite.
     """
 
     def filter(self, features: SymbolFeatures) -> bool:
@@ -219,7 +235,7 @@ class FailedBreakoutProfile(ScannerProfile):
         pdl = features.prior_day_low
         price = features.price
 
-        if pdh == 0.0 or pdl == 0.0:
+        if pdh <= 0.0 or pdl <= 0.0:
             return False
 
         # Check proximity
@@ -236,7 +252,7 @@ class FailedBreakoutProfile(ScannerProfile):
         pdl = features.prior_day_low
         price = features.price
 
-        if pdh == 0 or pdl == 0:
+        if pdh <= 0 or pdl <= 0:
             return 0.0
 
         dist_high = abs(price - pdh) / pdh
