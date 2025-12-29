@@ -108,6 +108,10 @@ class ORBConfig(BaseStrategyConfig):
     min_premarket_volume: float = Field(
         default=0.0, ge=0, description="Minimum premarket volume filter"
     )
+    # P2 fix: ATR-based buffer for stop placement
+    stop_buffer_atr_mult: float = Field(
+        default=0.0, ge=0, description="ATR multiplier for stop buffer (0=disabled)"
+    )
 
 
 class TrendPullbackConfig(BaseStrategyConfig):

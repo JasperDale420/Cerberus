@@ -33,6 +33,8 @@ class ORBStrategy(BaseStrategy):
         self.min_gap_pct = cfg.min_gap_pct
         self.min_flow_zscore = cfg.min_flow_zscore
         self.min_premarket_volume = cfg.min_premarket_volume
+        # P2 fix: ATR-based buffer for stop placement
+        self.stop_buffer_atr_mult = cfg.stop_buffer_atr_mult
 
     def _to_et_time(self, dt: datetime) -> time_type:
         """Convert datetime to US/Eastern time-of-day."""
@@ -69,6 +71,22 @@ class ORBStrategy(BaseStrategy):
         symbol_state.indicators["orb_high"] = max(current_high, bar.high)
         symbol_state.indicators["orb_low"] = min(current_low, bar.low)
         symbol_state.indicators["orb_complete"] = False
+
+    def _calculate_atr(self, symbol_state: SymbolState, period: int = 14) -> float:
+        """Calculate ATR from available bars for stop buffer."""
+        bars = list(symbol_state.bars)
+        if len(bars) < 2:
+            return 0.0
+
+        trs = []
+        for i in range(1, min(len(bars), period + 1)):
+            high = bars[-i].high
+            low = bars[-i].low
+            prev_close = bars[-i - 1].close if i < len(bars) else bars[-i].close
+            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+            trs.append(tr)
+
+        return sum(trs) / len(trs) if trs else 0.0
 
     def _check_breakout(
         self,
@@ -110,11 +128,16 @@ class ORBStrategy(BaseStrategy):
 
         # Long Breakout (PRD: BULL)
         if bar.close > orb_high and market_state.regime == Regime.BULL:
+            # P2 fix: Apply ATR buffer to stop
+            stop = orb_low
+            if self.stop_buffer_atr_mult > 0:
+                atr = self._calculate_atr(symbol_state)
+                stop = orb_low - (atr * self.stop_buffer_atr_mult)
             return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.BUY,
-                orb_low,
+                stop,
                 market_state,
                 orb_high,
                 orb_low,
@@ -127,11 +150,16 @@ class ORBStrategy(BaseStrategy):
 
         # Short Breakout (PRD: BEAR)
         if bar.close < orb_low and market_state.regime == Regime.BEAR:
+            # P2 fix: Apply ATR buffer to stop
+            stop = orb_high
+            if self.stop_buffer_atr_mult > 0:
+                atr = self._calculate_atr(symbol_state)
+                stop = orb_high + (atr * self.stop_buffer_atr_mult)
             return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.SELL,
-                orb_high,
+                stop,
                 market_state,
                 orb_high,
                 orb_low,
