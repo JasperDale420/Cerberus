@@ -37,9 +37,9 @@ class TrendPullbackStrategy(BaseStrategy):
     ) -> Optional[Signal]:
         if not self._check_cooldown(symbol, bar.time):
             return None
-
-        # Need history
-        if not symbol_state.bars or len(symbol_state.bars) < self.ema_slow_len + 10:
+        # 1. Filters
+        # Need enough data for the slowest EMA plus some room
+        if not self._require_min_bars(symbol_state, self.ema_slow_len + 10):
             return None
 
         bars = list(symbol_state.bars)

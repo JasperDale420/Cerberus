@@ -97,9 +97,11 @@ class VWAPReversionStrategy(BaseStrategy):
         # Only trade in CHOP regime
         if market_state.regime != Regime.CHOP:
             return None
+        # 3) Require time window (to avoid gap-up extremes, etc.)
+        if not self._in_time_window(bar.time):
+            return None
 
-        # Need enough bars
-        if not symbol_state.bars or len(symbol_state.bars) < 20:
+        if not self._require_min_bars(symbol_state, 20):
             return None
 
         # Prefer intraday/session VWAP injected by the engine (PRD 7.2).

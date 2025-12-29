@@ -33,6 +33,37 @@ class BaseStrategy(ABC):
             return False
         return True
 
+    def _require_min_bars(
+        self, symbol_state: SymbolState, min_count: int, log: bool = True
+    ) -> bool:
+        """
+        Check if symbol_state has minimum required bars for analysis.
+
+        This helper eliminates duplicate bar count validation across strategies.
+
+        Args:
+            symbol_state: Symbol state containing bars
+            min_count: Minimum number of bars required
+            log: Whether to log when insufficient bars (default True)
+
+        Returns:
+            True if sufficient bars available, False otherwise
+
+        Example:
+            if not self._require_min_bars(symbol_state, 20):
+                return None
+        """
+        bars = symbol_state.bars
+        if not bars or len(bars) < min_count:
+            if log:
+                self.logger.debug(
+                    f"{self.name}: insufficient bars",
+                    min_required=min_count,
+                    available=len(bars) if bars else 0,
+                )
+            return False
+        return True
+
     def _create_signal(
         self,
         symbol: str,
