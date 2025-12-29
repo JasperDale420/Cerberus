@@ -137,20 +137,20 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                         stop_loss = bar.close * 0.995  # fallback
 
                     risk = bar.close - stop_loss
-                    target_price = bar.close + (risk * self.risk_reward)
+                    target_price = bar.close + (risk * float(self.risk_reward))
 
-                    return Signal(
+                    return self._create_signal(
                         symbol=symbol,
                         side=OrderSide.BUY,
-                        size_hint=0,
-                        entry_price=bar.close,
+                        bar=bar,
+                        market_state=market_state,
                         stop_price=stop_loss,
                         target_price=target_price,
-                        strategy=self.name,
-                        regime=market_state.regime,
-                        generated_at=bar.time,
                         meta={
+                            "ema_fast": float(current_fast),
+                            "ema_slow": float(current_slow),
                             "vwap": float(current_vwap_f),
+                            "trigger": "pullback_bounce",
                             "vol_mult": (
                                 (current_vol / avg_vol_f) if avg_vol_f else None
                             ),
@@ -176,20 +176,20 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                         stop_loss = bar.close * 1.005
 
                     risk = stop_loss - bar.close
-                    target_price = bar.close - (risk * self.risk_reward)
+                    target_price = bar.close - (risk * float(self.risk_reward))
 
-                    return Signal(
+                    return self._create_signal(
                         symbol=symbol,
                         side=OrderSide.SELL,
-                        size_hint=0,
-                        entry_price=bar.close,
+                        bar=bar,
+                        market_state=market_state,
                         stop_price=stop_loss,
                         target_price=target_price,
-                        strategy=self.name,
-                        regime=market_state.regime,
-                        generated_at=bar.time,
                         meta={
+                            "ema_fast": float(current_fast),
+                            "ema_slow": float(current_slow),
                             "vwap": float(current_vwap_f),
+                            "trigger": "pullback_bounce",
                             "vol_mult": (
                                 (current_vol / avg_vol_f) if avg_vol_f else None
                             ),

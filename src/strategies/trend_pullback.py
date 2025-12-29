@@ -192,27 +192,27 @@ class TrendPullbackStrategy(BaseStrategy):
             return None
 
         # Trigger ENTRY LONG
-        stop_loss = min([b.low for b in bars[-3:]])
-        risk = current_price - stop_loss
+        recent_lows = [b.low for b in bars[-3:]]
+        stop_price = float(min(recent_lows))
+        if stop_price >= current_price:
+            stop_price = current_price * 0.995
+
+        risk = current_price - stop_price
         if risk <= 0:
             return None
 
-        target_price = current_price + (risk * self.risk_reward)
-        self.last_signal_time[symbol] = bar.time
+        target_price = current_price + (risk * float(self.risk_reward))
 
-        return Signal(
+        return self._create_signal(
             symbol=symbol,
             side=OrderSide.BUY,
-            size_hint=0,
-            entry_price=current_price,
-            stop_price=stop_loss,
+            bar=bar,
+            market_state=market_state,
+            stop_price=stop_price,
             target_price=target_price,
-            strategy=self.name,
-            regime=market_state.regime,
-            generated_at=bar.time,
             meta={
-                "ema_fast": current_fast,
-                "ema_slow": current_slow,
+                "ema_fast": float(current_fast),
+                "ema_slow": float(current_slow),
                 "rsi": float(current_rsi) if current_rsi is not None else None,
             },
         )
@@ -250,27 +250,27 @@ class TrendPullbackStrategy(BaseStrategy):
             return None
 
         # Trigger ENTRY SHORT
-        stop_loss = max([b.high for b in bars[-3:]])
-        risk = stop_loss - current_price
+        recent_highs = [b.high for b in bars[-3:]]
+        stop_price = float(max(recent_highs))
+        if stop_price <= current_price:
+            stop_price = current_price * 1.005
+
+        risk = stop_price - current_price
         if risk <= 0:
             return None
 
-        target_price = current_price - (risk * self.risk_reward)
-        self.last_signal_time[symbol] = bar.time
+        target_price = current_price - (risk * float(self.risk_reward))
 
-        return Signal(
+        return self._create_signal(
             symbol=symbol,
             side=OrderSide.SELL,
-            size_hint=0,
-            entry_price=current_price,
-            stop_price=stop_loss,
+            bar=bar,
+            market_state=market_state,
+            stop_price=stop_price,
             target_price=target_price,
-            strategy=self.name,
-            regime=market_state.regime,
-            generated_at=bar.time,
             meta={
-                "ema_fast": current_fast,
-                "ema_slow": current_slow,
+                "ema_fast": float(current_fast),
+                "ema_slow": float(current_slow),
                 "rsi": float(current_rsi) if current_rsi is not None else None,
             },
         )
