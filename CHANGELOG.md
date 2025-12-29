@@ -11,7 +11,10 @@ All notable changes to this project will be documented in this file.
 - **H1 Logic Audit**: Add timestamp-based reconciliation race condition prevention. Position now tracks `last_updated` timestamp, and reconciliation skips positions modified within last 2 seconds to prevent fill data loss during async broker reconciliation. ([#74a1979](https://github.com/JasperDale420/Cerberus/commit/74a1979))
 - **M1 Logic Audit**: Clear feature cache on market regime changes, not just daily boundaries. Prevents strategies from using stale regime-sensitive indicators (VWAP, RSI, etc.) for hours after regime transitions. Cache now clears 2-6 times per day instead of once. ([#2b88542](https://github.com/JasperDale420/Cerberus/commit/2b88542))
 - **M2 Logic Audit**: Track positions carried forward at session rollover for observability. RiskManager now logs number of overnight positions at session boundaries to help diagnose position limit issues. ([#7e2a665](https://github.com/JasperDale420/Cerberus/commit/7e2a665))
-- **M3 Logic Audit**: Prioritize target over stop when both exit conditions trigger on same bar. More trader-friendly since target is the better exit. Updated test to verify new behavior. ([#pending](https://github.com/JasperDale420/Cerberus/commit/pending))
+- **M3 Logic Audit**: Prioritize target over stop when both exit conditions trigger on same bar. More trader-friendly since target is the better exit. Updated test to verify new behavior. ([#5514691](https://github.com/JasperDale420/Cerberus/commit/5514691))
+- **M4 Logic Audit**: Skip position reconciliation for symbols with pending orders. Prevents partial fill state corruption during mid-fill broker queries. ([#dd857ee](https://github.com/JasperDale420/Cerberus/commit/dd857ee))
+- **M5 Logic Audit**: Already fixed - MAE/MFE tracking happens before broker_managed_exits check, so updates on every bar
+- **M6 Logic Audit**: Added optional est_exit_commission parameter to update_unrealized_pnl() for more accurate net PnL (subtracts estimated exit costs)
 
 ### Added
 - **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
