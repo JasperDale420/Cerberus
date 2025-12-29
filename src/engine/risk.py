@@ -67,11 +67,12 @@ class RiskManager:
         self.current_daily_pnl = 0.0
         self.daily_order_count = 0
         self.daily_entry_count = 0
-        self.per_strategy_entry_count: Dict[str, int] = {}
         self.daily_completed_trade_count = 0
+        self.per_strategy_entry_count: Dict[str, int] = {}
         self.per_strategy_completed_trade_count: Dict[str, int] = {}
-
         self._session_date: Optional[date] = None
+        # M2 fix: Track positions carried from previous session
+        self.positions_carried_forward = 0
         self.last_rejection_reason: Optional[str] = None
 
     def _session_date_for(self, as_of: datetime) -> date:
@@ -99,6 +100,16 @@ class RiskManager:
         if session_date == self._session_date:
             return
 
+        # M2 fix: Log positions carried forward for observability
+        # Note: Actual position limit enforcement happens in _check_position_gates
+        # using current_positions which is always accurate
+        self.logger.info(
+            "Session rollover",
+            old_date=str(self._session_date),
+            new_date=str(session_date),
+            positions_carried_forward=self.positions_carried_forward,
+        )
+
         self._session_date = session_date
         self.current_daily_pnl = 0.0
         self.daily_order_count = 0
@@ -106,6 +117,8 @@ class RiskManager:
         self.daily_completed_trade_count = 0
         self.per_strategy_entry_count.clear()
         self.per_strategy_completed_trade_count.clear()
+        # M2 fix: Track positions carried from previous session
+        self.positions_carried_forward = 0
         self.last_rejection_reason = None
 
     def _get_strategy_config(self, strategy_name: str) -> Optional[StrategyConfig]:
@@ -322,6 +335,10 @@ class RiskManager:
         """
         Evaluates a signal and returns a list of OrderIntents if approved, or an empty list if rejected.
         """
+        # M2 fix: Track current position count for rollover observability
+        if current_positions is not None:
+            self.positions_carried_forward = len(current_positions)
+
         self._maybe_rollover(getattr(market_state, "time", None))
         self.last_rejection_reason = None
 
