@@ -65,6 +65,9 @@ class ExecutionEngine:
 
         # Extracted Collaborators
         self.health = HealthMonitor(config, logger, run_id, self.clock)
+        self._last_regime: Optional[Regime] = None  # M1 fix: Track regime changes
+        self._last_cache_clear_date: Optional[str] = None  # M1 fix: Track daily clears
+        self._reconcile_interval_sec = 0  # set from config.health
         self.market_manager = MarketStateManager(
             config, logger, db, self.clock, on_error=self._inc_error
         )
@@ -641,6 +644,44 @@ class ExecutionEngine:
     def _update_symbol_state(self, symbol: str, bar: Any, bar_time: Any) -> SymbolState:
         # Update Market State (if symbol is index)
         if symbol == self.config.get("index_symbol", "SPY"):
+            # M1 fix: Clear feature cache on regime change or daily boundary
+            current_regime = getattr(bar, "regime", self.market_manager.state.regime)
+            current_date = (
+                (bar_time or self.clock()).date().isoformat()
+                if hasattr((bar_time or self.clock()), "date")
+                else None
+            )
+
+            # Clear on regime change
+            if self._last_regime and current_regime != self._last_regime:
+                self.logger.info(
+                    "Market regime changed, clearing feature cache",
+                    old_regime=(
+                        self._last_regime.value
+                        if hasattr(self._last_regime, "value")
+                        else str(self._last_regime)
+                    ),
+                    new_regime=(
+                        current_regime.value
+                        if hasattr(current_regime, "value")
+                        else str(current_regime)
+                    ),
+                )
+                self._clear_all_features()
+
+            # Clear daily (safety net)
+            if current_date and self._last_cache_clear_date != current_date:
+                self.logger.debug(
+                    "Daily feature cache clear",
+                    date=current_date,
+                )
+                self._clear_all_features()
+                self._last_cache_clear_date = current_date
+
+            # Update regime tracking
+            self._last_regime = current_regime
+
+            # Now update market state
             self.market_manager.update(bar, index_symbol=symbol)
 
         # Update Symbol State
@@ -1834,6 +1875,22 @@ class ExecutionEngine:
             )
             if mode in ("halt", "stop"):
                 self._set_risk_mode("off")
+
+    def _clear_all_features(self) -> None:
+        """
+        M1 fix: Clear all cached indicators across all symbol states.
+
+        Called on:
+        - Market regime changes (to prevent stale regime-sensitive indicators)
+        - Daily boundaries (safety net)
+        """
+        for state in self.symbol_states.values():
+            state.indicators.clear()
+
+        self.logger.debug(
+            "Cleared feature cache",
+            symbols_cleared=len(self.symbol_states),
+        )
 
     def _reconcile_orders(
         self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
