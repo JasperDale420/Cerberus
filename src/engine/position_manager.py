@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.core.domain import (
@@ -275,6 +275,9 @@ class PositionManager:
             except Exception:
                 pass
 
+            # H1 fix: Mark position as updated to prevent reconciliation races
+            symbol_state.position.last_updated = datetime.now(timezone.utc)
+
             return FillDecision(
                 event="opened",
                 realized_pnl_delta=0.0,
@@ -322,6 +325,9 @@ class PositionManager:
             )
 
         pos.qty = float(pos.qty) - float(close_qty)
+
+        # H1 fix: Mark position as updated to prevent reconciliation races
+        pos.last_updated = datetime.now(timezone.utc)
 
         if pos.qty > 0:
             try:

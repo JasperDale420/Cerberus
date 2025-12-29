@@ -127,6 +127,8 @@ class Position:
     commission: float = 0.0
     slippage_estimate: float = 0.0
     max_hold_seconds: Optional[int] = None
+    # H1 fix: Track when position last modified to prevent reconciliation race conditions
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass

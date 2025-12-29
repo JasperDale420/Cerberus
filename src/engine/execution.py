@@ -1777,6 +1777,23 @@ class ExecutionEngine:
                     )
                     self.symbol_states[sym] = state
 
+                # H1 fix: Skip reconciliation if position was recently updated by a fill
+                # This prevents race conditions where fills arrive during reconciliation
+                if state.position:
+                    time_since_update = (
+                        datetime.now(timezone.utc) - state.position.last_updated
+                    ).total_seconds()
+
+                    # Skip if updated within last 2 seconds (configurable)
+                    reconcile_skip_window_sec = 2.0
+                    if time_since_update < reconcile_skip_window_sec:
+                        self.logger.debug(
+                            "Skipping position reconciliation, recently updated",
+                            symbol=sym,
+                            seconds_since_update=round(time_since_update, 2),
+                        )
+                        continue
+
                 state.position = Position(
                     symbol=sym,
                     side=side,
