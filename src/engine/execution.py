@@ -505,10 +505,45 @@ class ExecutionEngine:
 
     def on_bar(self, symbol_or_bar: Any, bar: Optional[Any] = None) -> None:
         """
-        Process a new bar for a symbol.
+        Process bar data for symbol (main trading loop entry point).
 
-        PRD 6.2: the WebSocket data handler should call `ExecutionEngine.on_bar(bar)`.
-        Backward-compatible: callers may also call `on_bar(symbol, bar)`.
+        Primary bar processing pipeline processing OHLCV data, updating technical indicators,
+        evaluating strategy signals, checking exits, and managing scanner-based watchlist updates.
+        This is the core heartbeat of the trading engine, called for each new bar.
+
+        Workflow:
+        1. Normalize bar data (handle both symbol+bar or single bar object)
+        2. Update market state with current bar timestamp
+        3. Update symbol state and technical indicator cache
+        4. Run strategies for signal generation
+        5. Manage positions (exit checks via PositionManager.on_bar())
+        6. Process scanner results if interval reached
+        7. Increment bars_processed counter
+
+        Args:
+            symbol_or_bar: Either symbol string OR bar object (backward compatibility)
+            bar: Bar data or None. If symbol_or_bar is bar object, this is ignored.
+                 Bar contains: timestamp/time, open, high, low, close, volume, symbol
+
+        Returns:
+            None
+
+        Side Effects:
+            - Updates market_state.time and regime
+            - Updates symbol_state and indicator cache
+            - Calls PositionManager.on_bar() for exit checks
+            - Routes to StrategyEngine.on_bar() for signal generation
+            - Processes signals (riskchecks, order submission)
+            - Triggers scanner refresh if interval reached
+            - Increments bars_processed counter
+            - Logs bar processing, latency metrics, and errors
+
+        Note:
+            - PRD 6.2: WebSocket handlers call on_bar(bar) or on_bar(symbol, bar)
+            - PRD 6.4: Strategy routing by market regime
+            - Scanner refresh happens every N bars (scanner_interval config)
+            - Best-effort processing (errors logged, not raised)
+            - Latency metrics logged for bar processing performance
         """
         if bar is None:
             bar = symbol_or_bar
