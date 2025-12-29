@@ -193,6 +193,27 @@ class RiskManager:
             return effective_max_risk * 0.5
         return effective_max_risk
 
+    def _get_regime_multiplier(self, market_state: MarketState) -> float:
+        """
+        Compute combined regime risk multiplier from multi-axis regime snapshot.
+
+        Returns product of vol, liquidity, and risk axis multipliers.
+        Returns 1.0 if no regime snapshot available.
+        """
+        snapshot = market_state.regime_snapshot
+        if snapshot is None:
+            return 1.0
+
+        multipliers = self.risk_cfg.regime_risk_multipliers
+
+        # Get multiplier for each axis (default to 1.0 if not configured)
+        vol_mult = multipliers.get("vol", {}).get(snapshot.vol.value, 1.0)
+        liq_mult = multipliers.get("liquidity", {}).get(snapshot.liquidity.value, 1.0)
+        risk_mult = multipliers.get("risk", {}).get(snapshot.risk.value, 1.0)
+
+        combined = vol_mult * liq_mult * risk_mult
+        return max(combined, 0.0)
+
     def _apply_strategy_limits(
         self,
         effective_max_risk: float,
@@ -244,7 +265,11 @@ class RiskManager:
         return qty_limit
 
     def _calculate_qty(
-        self, signal: Signal, account_equity: float, strat_cfg: Optional[StrategyConfig]
+        self,
+        signal: Signal,
+        account_equity: float,
+        strat_cfg: Optional[StrategyConfig],
+        market_state: Optional[MarketState] = None,
     ) -> int:
         risk_per_share = abs(signal.entry_price - signal.stop_price)
         if risk_per_share <= 0:
@@ -275,6 +300,35 @@ class RiskManager:
         if qty <= 0:
             self.last_rejection_reason = "ZERO_QTY"
             return 0
+
+        # PRD Addendum: Apply regime-based risk multiplier
+        if market_state is not None:
+            regime_mult = self._get_regime_multiplier(market_state)
+            if regime_mult < 1e-9:
+                self.last_rejection_reason = "REGIME_RISK_ZERO"
+                self.logger.info(
+                    "Signal rejected: Regime risk multiplier is zero",
+                    symbol=signal.symbol,
+                    strategy=signal.strategy,
+                    regime_tags=getattr(
+                        market_state.regime_snapshot, "regime_tags", {}
+                    ),
+                )
+                return 0
+            if regime_mult < 1.0:
+                orig_qty = qty
+                qty = max(1, int(qty * regime_mult))
+                if qty < 1:
+                    self.last_rejection_reason = "REGIME_RISK_BELOW_MIN"
+                    return 0
+                if qty != orig_qty:
+                    self.logger.debug(
+                        "Qty adjusted by regime multiplier",
+                        symbol=signal.symbol,
+                        orig_qty=orig_qty,
+                        adjusted_qty=qty,
+                        regime_mult=round(regime_mult, 3),
+                    )
 
         return qty
 
@@ -387,7 +441,7 @@ class RiskManager:
             return []
 
         # Calculate Qty
-        qty = self._calculate_qty(signal, account_equity, strat_cfg)
+        qty = self._calculate_qty(signal, account_equity, strat_cfg, market_state)
         if qty <= 0:
             self._log_rejection(signal)
             return []
