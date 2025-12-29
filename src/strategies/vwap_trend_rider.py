@@ -34,8 +34,8 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # Need history
-        if not symbol_state.bars or len(symbol_state.bars) < self.ema_slow_len + 5:
+        # Need enough data for slow EMA
+        if not self._require_min_bars(symbol_state, self.ema_slow_len + 5):
             return None
 
         # PRD 7.2: VWAP Trend Rider is BULL/BEAR only and requires strong trend_score.

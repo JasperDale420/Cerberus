@@ -70,8 +70,8 @@ class FlowMomentumStrategy(BaseStrategy):
             return None
 
         # 2. Check Momentum (Price + Volume)
-        # Need history for Avg Vol
-        if not symbol_state.bars or len(symbol_state.bars) < 21:
+        # Filter: Check minimum bars for EMA
+        if not self._require_min_bars(symbol_state, 21):
             return None
 
         bars = list(symbol_state.bars)

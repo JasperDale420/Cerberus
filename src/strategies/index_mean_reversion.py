@@ -43,8 +43,8 @@ class IndexMeanReversionStrategy(BaseStrategy):
         if market_state.regime != Regime.CHOP:
             return None
 
-        # 2. History Check
-        if not symbol_state.bars or len(symbol_state.bars) < self.bb_len + 1:
+        # Require enough history for BB calculation
+        if not self._require_min_bars(symbol_state, self.bb_len + 1):
             return None
 
         bars = list(symbol_state.bars)
