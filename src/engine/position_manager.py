@@ -14,20 +14,7 @@ from src.core.domain import (
     Side,
     SymbolState,
 )
-
-
-def _opt_float(value: Any) -> Optional[float]:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _opt_int(value: Any) -> Optional[int]:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+from src.core.type_utils import safe_float, safe_int
 
 
 @dataclass(frozen=True)
@@ -146,17 +133,17 @@ class PositionManager:
                 correlation_id=corr,
                 regime_at_entry=market_state.regime,
                 open_risk=(
-                    _opt_float(entry_ctx.get("open_risk"))
+                    safe_float(entry_ctx.get("open_risk"))
                     if isinstance(entry_ctx, dict)
                     else None
                 ),
                 stop_price=(
-                    _opt_float(entry_ctx.get("stop_price"))
+                    safe_float(entry_ctx.get("stop_price"))
                     if isinstance(entry_ctx, dict)
                     else None
                 ),
                 target_price=(
-                    _opt_float(entry_ctx.get("target_price"))
+                    safe_float(entry_ctx.get("target_price"))
                     if isinstance(entry_ctx, dict)
                     else None
                 ),
@@ -168,7 +155,7 @@ class PositionManager:
                 commission=0.0,
                 slippage_estimate=0.0,
                 max_hold_seconds=(
-                    _opt_int(entry_ctx.get("max_hold_seconds"))
+                    safe_int(entry_ctx.get("max_hold_seconds"))
                     if isinstance(entry_ctx, dict)
                     else None
                 ),

@@ -25,20 +25,6 @@ from src.scanner.core import Scanner
 from src.strategies.base import BaseStrategy, Signal, SymbolState
 
 
-def _opt_float(value: Any) -> Optional[float]:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _opt_int(value: Any) -> Optional[int]:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 class ExecutionEngine:
     """
     Orchestrates data flow, strategy execution, and order management.
