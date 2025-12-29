@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **H2 Logic Audit**: Document safe R-multiple calculation with division by zero protection for breakeven stops (initial_risk = 0). Added comprehensive test suite covering all edge cases. ([#3ec7125](https://github.com/JasperDale420/Cerberus/commit/3ec7125))
 - **H3 Logic Audit**: Standardize position side comparisons to use enum (`Side.LONG`/`Side.SHORT`) consistently instead of string comparisons (`pos.side.value == "long"`). Makes code more type-safe and refactoring-friendly. ([#df32aa3](https://github.com/JasperDale420/Cerberus/commit/df32aa3))
 - **H1 Logic Audit**: Add timestamp-based reconciliation race condition prevention. Position now tracks `last_updated` timestamp, and reconciliation skips positions modified within last 2 seconds to prevent fill data loss during async broker reconciliation. ([#74a1979](https://github.com/JasperDale420/Cerberus/commit/74a1979))
+- **M1 Logic Audit**: Clear feature cache on market regime changes, not just daily boundaries. Prevents strategies from using stale regime-sensitive indicators (VWAP, RSI, etc.) for hours after regime transitions. Cache now clears 2-6 times per day instead of once. ([#2b88542](https://github.com/JasperDale420/Cerberus/commit/2b88542))
 
 ### Added
 - **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
