@@ -51,7 +51,13 @@ class DataFetcher:
         try:
             last_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
             return last_ts + timedelta(seconds=1), existing
-        except Exception:
+        except Exception as e:
+            self.logger.debug(
+                "Timestamp parsing failed",
+                operation="parse_bar_timestamp",
+                symbol=symbol,
+                error=str(e),
+            )
             return start, existing
 
     async def _fetch_alpaca_bars_internal(
@@ -124,7 +130,12 @@ class DataFetcher:
             else:
                 v = getattr(bar, "v", None) or getattr(bar, "volume", None)
             return float(v) if v is not None else None
-        except Exception:
+        except Exception as e:
+            self.logger.debug(
+                "Volume extraction failed",
+                operation="extract_volume",
+                error=str(e),
+            )
             return None
 
     def fetch_avg_daily_volume(
@@ -175,7 +186,12 @@ class DataFetcher:
             else:
                 dt = datetime.fromisoformat(str(raw_t).replace("Z", "+00:00"))
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-        except Exception:
+        except Exception as e:
+            self.logger.debug(
+                "Bar time parsing failed",
+                operation="parse_bar_time",
+                error=str(e),
+            )
             return None
 
     def _get_bar_field(self, bar: Any, keys: List[str]) -> float:

@@ -197,7 +197,7 @@ class PositionManager:
             try:
                 self.update_unrealized_pnl(symbol_state, float(fill_price))
             except Exception:
-                pass
+                pass  # Best-effort PnL update
             return FillDecision(
                 event="increased",
                 realized_pnl_delta=0.0,
@@ -243,7 +243,7 @@ class PositionManager:
         try:
             holding_period_seconds = (exit_time - entry_time_final).total_seconds()
         except Exception:
-            holding_period_seconds = None
+            holding_period_seconds = None  # Best-effort calculation
 
         regime_at_entry = (
             pos.regime_at_entry.value
@@ -373,7 +373,7 @@ class PositionManager:
                     )
                     return ExitDecision(intent=intent, reason=reason)
         except Exception:
-            pass
+            pass  # Best-effort MAE/MFE tracking
 
         # PRD 6.7: only check stop/target crossing when exits are not fully delegated
         # to the broker (e.g., when bracket orders are not used).

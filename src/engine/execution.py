@@ -135,8 +135,12 @@ class ExecutionEngine:
         m = str(mode or "normal").lower()
         try:
             self.risk_manager.risk_mode = m
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug(
+                "Bar processing metrics update failed",
+                operation="update_bar_metrics",
+                error=str(e),
+            )
 
         self.market_manager.set_risk_mode(m)
 
@@ -529,8 +533,12 @@ class ExecutionEngine:
                         bars_processed=self.bars_processed,
                         run_id=self.run_id,
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(
+                    "Latency logging failed",
+                    operation="log_bar_latency",
+                    error=str(e),
+                )
         except Exception as e:
             self.consecutive_on_bar_errors += 1
             self._inc_error("execution")
