@@ -23,6 +23,8 @@ class TrendPullbackStrategy(BaseStrategy):
         self.entry_confirmation = cfg.entry_confirmation.lower()
         self.rsi_oversold = cfg.rsi_oversold
         self.rsi_overbought = cfg.rsi_overbought
+        # P3 fix: Configurable stop lookback
+        self.stop_lookback_bars = cfg.stop_lookback_bars
 
     def on_bar(
         self,
@@ -153,8 +155,8 @@ class TrendPullbackStrategy(BaseStrategy):
         if not confirmed:
             return None
 
-        # Trigger ENTRY LONG
-        recent_lows = [b.low for b in bars[-3:]]
+        # P3 fix: Use configurable lookback instead of hardcoded 3
+        recent_lows = [b.low for b in bars[-self.stop_lookback_bars :]]
         stop_price = float(min(recent_lows))
         if stop_price >= current_price:
             stop_price = current_price * 0.995
@@ -211,8 +213,8 @@ class TrendPullbackStrategy(BaseStrategy):
         if not confirmed:
             return None
 
-        # Trigger ENTRY SHORT
-        recent_highs = [b.high for b in bars[-3:]]
+        # P3 fix: Use configurable lookback instead of hardcoded 3
+        recent_highs = [b.high for b in bars[-self.stop_lookback_bars :]]
         stop_price = float(max(recent_highs))
         if stop_price <= current_price:
             stop_price = current_price * 1.005

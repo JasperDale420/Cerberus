@@ -129,6 +129,10 @@ class TrendPullbackConfig(BaseStrategyConfig):
     rsi_overbought: float = Field(
         default=90, ge=0, le=100, description="RSI overbought threshold"
     )
+    # P3 fix: Configurable stop lookback instead of hardcoded 3
+    stop_lookback_bars: int = Field(
+        default=5, ge=1, description="Number of bars for stop placement"
+    )
 
 
 class VWAPReversionConfig(BaseStrategyConfig):
