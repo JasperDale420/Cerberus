@@ -112,6 +112,7 @@ class BacktestFeaturePipeline:
     async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
     ) -> Dict[str, SymbolFeatures]:
+        # Complies with Scanner interface which is async
         if as_of is None:
             raise ValueError(
                 "BacktestFeaturePipeline.compute_technicals_only requires as_of for deterministic behavior"
@@ -136,52 +137,35 @@ class BacktestFeaturePipeline:
             if not bars:
                 metrics["no_bars"] += 1
                 continue
-            tech = self.calculator.compute_technicals(bars, current_time=now)
+            tech = self.calculator.compute_technicals(bars)
             if not tech:
                 metrics["technicals_fail"] += 1
                 continue
 
-            (
-                price,
-                volume,
-                timestamp,
-                atr_pct,
-                intraday_range_pct,
-                gap_pct,
-                ema20_slope,
-                distance_from_vwap,
-                adx,
-                distance_from_ema20,
-                prior_day_high,
-                prior_day_low,
-                bb_upper,
-                bb_lower,
-                price_zscore,
-                premarket_vol,
-            ) = tech
-
             avg_daily_volume = self._avg_daily_volume(sym, now)
             feat = SymbolFeatures(
                 symbol=sym,
-                last_updated=timestamp if isinstance(timestamp, datetime) else now,
-                price=float(price),
-                avg_volume=float(
-                    avg_daily_volume if avg_daily_volume is not None else volume
+                last_updated=(
+                    tech.timestamp if isinstance(tech.timestamp, datetime) else now
                 ),
-                atr_pct=float(atr_pct),
-                intraday_range_pct=float(intraday_range_pct),
-                gap_pct=float(gap_pct),
-                ema20_slope=float(ema20_slope),
-                ema_trend_strength=float(abs(float(ema20_slope))),
-                distance_from_vwap=float(distance_from_vwap),
-                premarket_volume=float(premarket_vol),
-                adx=float(adx),
-                distance_from_ema20=float(distance_from_ema20),
-                prior_day_high=float(prior_day_high),
-                prior_day_low=float(prior_day_low),
-                bb_upper=float(bb_upper),
-                bb_lower=float(bb_lower),
-                price_zscore=float(price_zscore),
+                price=float(tech.price),
+                avg_volume=float(
+                    avg_daily_volume if avg_daily_volume is not None else tech.volume
+                ),
+                atr_pct=float(tech.atr_pct),
+                intraday_range_pct=float(tech.intraday_range_pct),
+                gap_pct=float(tech.gap_pct),
+                ema20_slope=float(tech.ema20_slope),
+                ema_trend_strength=float(abs(float(tech.ema20_slope))),
+                distance_from_vwap=float(tech.distance_from_vwap),
+                premarket_volume=float(tech.premarket_volume),
+                adx=float(tech.adx),
+                distance_from_ema20=float(tech.distance_from_ema20),
+                prior_day_high=float(tech.prior_day_high),
+                prior_day_low=float(tech.prior_day_low),
+                bb_upper=float(tech.bb_upper),
+                bb_lower=float(tech.bb_lower),
+                price_zscore=float(tech.price_zscore),
                 flow_zscore=0.0,
                 call_put_ratio=0.0,
                 large_sweeps_count=0,
@@ -189,8 +173,8 @@ class BacktestFeaturePipeline:
                 extra={
                     "flow_raw_count": 0,
                     "flow_bias": 0.0,
-                    "volatility": float(atr_pct),
-                    "last_bar_volume": float(volume),
+                    "volatility": float(tech.atr_pct),
+                    "last_bar_volume": float(tech.volume),
                     "avg_daily_volume_days": int(self.daily_volume_lookback_days),
                 },
             )
@@ -203,5 +187,6 @@ class BacktestFeaturePipeline:
     async def append_flow_features(
         self, features_map: Dict[str, SymbolFeatures]
     ) -> Dict[str, SymbolFeatures]:
+        # Complies with Scanner interface which is async
         # Deterministic backtests do not fetch external flow by default.
         return features_map

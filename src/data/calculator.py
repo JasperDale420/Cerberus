@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
 
+from src.core.domain import TechnicalFeatures
 from src.core.indicators import RollingEMA, RollingStd
 
 
@@ -16,10 +17,10 @@ class FeatureCalculator:
     DEFAULT_TIMEZONE = "US/Eastern"
     UTC_OFFSET_STR = "+00:00"
 
-    def compute_technicals(self, bars_data: List[Any]) -> Optional[tuple]:
+    def compute_technicals(self, bars_data: List[Any]) -> Optional[TechnicalFeatures]:
         """
         Computes technical indicators from a list of bar data.
-        Returns a tuple of features or None if data is insufficient.
+        Returns a TechnicalFeatures object or None if data is insufficient.
         """
         if not bars_data:
             return None
@@ -62,23 +63,23 @@ class FeatureCalculator:
         bb_upper, bb_lower, price_zscore = self._compute_bollinger(closes, price)
         premarket_vol = self._compute_premarket_volume(timestamps, volumes)
 
-        return (
-            price,
-            volume,
-            timestamp,
-            atr_pct,
-            intraday_range_pct,
-            gap_pct,
-            ema20_slope,
-            distance_from_vwap,
-            adx_val,
-            distance_from_ema20,
-            prior_day_high,
-            prior_day_low,
-            bb_upper,
-            bb_lower,
-            price_zscore,
-            premarket_vol,
+        return TechnicalFeatures(
+            price=price,
+            volume=volume,
+            timestamp=timestamp,
+            atr_pct=atr_pct,
+            intraday_range_pct=intraday_range_pct,
+            gap_pct=gap_pct,
+            ema20_slope=ema20_slope,
+            distance_from_vwap=distance_from_vwap,
+            adx=adx_val,
+            distance_from_ema20=distance_from_ema20,
+            prior_day_high=prior_day_high,
+            prior_day_low=prior_day_low,
+            bb_upper=bb_upper,
+            bb_lower=bb_lower,
+            price_zscore=price_zscore,
+            premarket_volume=premarket_vol,
         )
 
     def _parse_ts(self, v: Any) -> Optional[datetime]:
@@ -88,10 +89,9 @@ class FeatureCalculator:
             dt = v
         else:
             s = str(v)
-            try:
-                dt = datetime.fromisoformat(s.replace("Z", self.UTC_OFFSET_STR))
-            except Exception:
-                return None
+            # Fail fast if format is invalid
+            dt = datetime.fromisoformat(s.replace("Z", self.UTC_OFFSET_STR))
+
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
@@ -99,10 +99,7 @@ class FeatureCalculator:
     def _to_float(self, v: Any) -> Optional[float]:
         if v is None:
             return None
-        try:
-            return float(v)
-        except Exception:
-            return None
+        return float(v)
 
     def _parse_bars(self, bars_data: List[Any]) -> List[tuple]:
         rows = []

@@ -1,6 +1,7 @@
 # Cerberus Trading System
 
-**Current Version**: 1.0.0 (Dec 2025)
+**Current Version**: 1.0.0 (Dec 2025)  
+**License**: [MIT](LICENSE) | **Security**: [SECURITY.md](SECURITY.md)
 
 Cerberus is an automated, modular algorithmic trading system designed for both live and paper trading on US equities. It integrates real-time market data from Alpaca and options flow from Unusual Whales to drive a suite of technical and flow-based strategies. The system features a robust execution engine, a comprehensive feature pipeline, and an agentic analytics layer for daily performance review.
 
@@ -83,12 +84,18 @@ Cerberus follows a vertical-slice architecture optimized for reliability and tes
     pip install -r requirements.txt
     ```
 3.  **Environment Configuration**:
-    Create a `.env` file or export variables:
+    Copy the example environment file and fill in your credentials:
     ```bash
-    export APCA_API_KEY_ID="<your_key>"
-    export APCA_API_SECRET_KEY="<your_secret>"
-    export UNUSUAL_WHALES_API_TOKEN="<your_token>"
+    cp .env.example .env
+    # Edit .env with your actual API keys (never commit this file!)
     ```
+    
+    Required variables:
+    - `ALPACA_API_KEY` - Your Alpaca API key
+    - `ALPACA_SECRET_KEY` - Your Alpaca secret key
+    - `UW_API_TOKEN` - (Optional) Unusual Whales API token for flow strategies
+    
+    See [.env.example](.env.example) for all configuration options.
 
 ### Docker Setup
 1.  **Build image**:
@@ -126,6 +133,9 @@ python -m src.main --scheduler
 ```
 
 ### Utility Commands
+- **Healthcheck**: `python -m src.main --healthcheck`
+  - Verifies database connectivity, API credentials, and overall system health
+  - Useful for monitoring and operational readiness checks
 - **Ingest SEC Tickers**: `python scripts/ingest_sec_tickers.py`
 - **Run EOD Analytics**: `python -m src.main --eod`
 

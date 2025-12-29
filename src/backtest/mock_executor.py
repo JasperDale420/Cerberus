@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -169,29 +170,32 @@ class BacktestOrderExecutor:
         else:
             self.cash += (qty_f * px) - commission
 
-        pos = self._positions.get(symbol)
-        if pos is None:
-            pos = {"qty": 0.0, "avg_price": 0.0}
-            self._positions[symbol] = pos
-
+        pos = self._positions.setdefault(symbol, {"qty": 0.0, "avg_price": 0.0})
         prev_qty = float(pos["qty"])
+
         if str(side).lower() == "buy":
             new_qty = prev_qty + qty_f
         else:
             new_qty = prev_qty - qty_f
 
         # Simple average price handling: only maintain avg on same-direction adds.
-        if (
-            prev_qty == 0.0
-            or (prev_qty > 0 and new_qty > 0)
-            or (prev_qty < 0 and new_qty < 0)
-        ):
-            if prev_qty == 0.0:
-                pos["avg_price"] = px
-            else:
-                total_cost = (abs(prev_qty) * float(pos["avg_price"])) + (qty_f * px)
-                pos["avg_price"] = total_cost / max(1e-9, abs(new_qty))
-        if new_qty == 0.0:
+        # If closing (reducing size) or flipping, avg_price doesn't mathematically change
+        # for the remaining portion until the flip occurs, but here we simplify:
+        # If we flip from short to long or long to short, or start from 0, reset avg_price.
+        is_same_dir_increase = (prev_qty > 0 and new_qty > prev_qty) or (
+            prev_qty < 0 and new_qty < prev_qty
+        )
+
+        if math.isclose(prev_qty, 0.0, abs_tol=1e-9):
+            pos["avg_price"] = px
+        elif is_same_dir_increase:
+            total_cost = (abs(prev_qty) * float(pos["avg_price"])) + (qty_f * px)
+            pos["avg_price"] = total_cost / max(1e-9, abs(new_qty))
+
+        # If we crossed zero or reached zero, reset logic might apply, but basic avg price
+        # maintenance for valid open positions is covered above.
+
+        if math.isclose(new_qty, 0.0, abs_tol=1e-9):
             pos["qty"] = 0.0
             pos["avg_price"] = 0.0
         else:
@@ -237,129 +241,115 @@ class BacktestOrderExecutor:
         """
         now = _ensure_dt(bar.time)
         for o in self._orders:
-            if o.status != "new":
-                continue
-            if o.intent.symbol != symbol:
-                continue
-            if now <= o.submitted_at:
+            if not self._can_fill_order(o, symbol, now):
                 continue
 
-            if self._max_open_order_age_sec > 0:
-                try:
-                    age = (now - o.submitted_at).total_seconds()
-                except Exception:
-                    age = 0.0
-                if age >= float(self._max_open_order_age_sec):
-                    o.status = "canceled"
-                    self.logger.info(
-                        "Backtest order canceled due to age",
-                        order_id=o.id,
-                        symbol=o.intent.symbol,
-                        correlation_id=o.intent.correlation_id,
-                        age_sec=float(age),
-                        max_age_sec=int(self._max_open_order_age_sec),
-                    )
-                    continue
+            if self._check_and_cancel_expired(o, now):
+                continue
 
             raw_px = self._maybe_fill_price_for_order(o.intent, bar)
             if raw_px is None or raw_px <= 0.0:
                 continue
 
-            fill_px = self._apply_slippage(
-                o.intent.side.value,
-                self._apply_spread(o.intent.side.value, raw_px),
-            )
-            fill_ts = now
+            self._execute_order_fill(engine, o, raw_px, now, symbol)
 
-            # Update portfolio model first (cash), then engine state.
-            self._update_cash_and_positions(
-                symbol=symbol,
-                side=o.intent.side.value,
-                qty=float(o.intent.qty),
-                price=fill_px,
-            )
-            engine.on_fill(
-                {
-                    "symbol": symbol,
-                    "side": o.intent.side.value,
-                    "qty": float(o.intent.qty),
-                    "price": float(fill_px),
-                    "timestamp": fill_ts,
-                    "strategy": o.intent.strategy,
-                    "correlation_id": o.intent.correlation_id,
-                    "broker_order_id": o.id,
-                    "trade_event": "fill",
-                }
-            )
+    def _can_fill_order(self, o: _PendingOrder, symbol: str, now: datetime) -> bool:
+        if o.status != "new":
+            return False
+        if o.intent.symbol != symbol:
+            return False
+        if now <= o.submitted_at:
+            return False
+        return True
 
-            o.status = "filled"
-            self._record_fill(
-                order_id=o.id,
-                intent=o.intent,
-                fill_price=fill_px,
-                filled_at=fill_ts,
-                kind="order",
-            )
+    def _check_and_cancel_expired(self, o: _PendingOrder, now: datetime) -> bool:
+        if self._max_open_order_age_sec <= 0:
+            return False
+
+        try:
+            age = (now - o.submitted_at).total_seconds()
+        except Exception:
+            age = 0.0
+
+        if age >= float(self._max_open_order_age_sec):
+            o.status = "canceled"
             self.logger.info(
-                "Backtest order filled",
+                "Backtest order canceled due to age",
                 order_id=o.id,
-                symbol=symbol,
-                side=o.intent.side.value,
-                price=float(fill_px),
-                qty=float(o.intent.qty),
+                symbol=o.intent.symbol,
                 correlation_id=o.intent.correlation_id,
+                age_sec=float(age),
+                max_age_sec=int(self._max_open_order_age_sec),
             )
+            return True
+        return False
+
+    def _execute_order_fill(
+        self,
+        engine: ExecutionEngine,
+        o: _PendingOrder,
+        raw_px: float,
+        fill_ts: datetime,
+        symbol: str,
+    ) -> None:
+        fill_px = self._apply_slippage(
+            o.intent.side.value,
+            self._apply_spread(o.intent.side.value, raw_px),
+        )
+
+        # Update portfolio model first (cash), then engine state.
+        self._update_cash_and_positions(
+            symbol=symbol,
+            side=o.intent.side.value,
+            qty=float(o.intent.qty),
+            price=fill_px,
+        )
+        engine.on_fill(
+            {
+                "symbol": symbol,
+                "side": o.intent.side.value,
+                "qty": float(o.intent.qty),
+                "price": float(fill_px),
+                "timestamp": fill_ts,
+                "strategy": o.intent.strategy,
+                "correlation_id": o.intent.correlation_id,
+                "broker_order_id": o.id,
+                "trade_event": "fill",
+            }
+        )
+
+        o.status = "filled"
+        self._record_fill(
+            order_id=o.id,
+            intent=o.intent,
+            fill_price=fill_px,
+            filled_at=fill_ts,
+            kind="order",
+        )
+        self.logger.info(
+            "Backtest order filled",
+            order_id=o.id,
+            symbol=symbol,
+            side=o.intent.side.value,
+            price=float(fill_px),
+            qty=float(o.intent.qty),
+            correlation_id=o.intent.correlation_id,
+        )
 
     def maybe_trigger_bracket_exit(
         self, engine: ExecutionEngine, symbol: str, bar: Bar
     ) -> None:
         """
         Simulate broker-managed stop/target exits using intrabar extremes.
-        Stop has priority if both stop and target cross within the same bar.
         """
         state = engine.symbol_states.get(symbol)
         pos = state.position if state is not None else None
         if pos is None:
             return
 
-        stop_price = getattr(pos, "stop_price", None)
-        target_price = getattr(pos, "target_price", None)
-        if stop_price is None and target_price is None:
+        exit_price, reason = self._calculate_bracket_exit(pos, bar)
+        if exit_price is None:
             return
-
-        low = float(bar.low)
-        high = float(bar.high)
-        open_px = float(bar.open)
-
-        hit_stop = False
-        hit_target = False
-        if pos.side == Side.LONG:
-            if stop_price is not None and low <= float(stop_price):
-                hit_stop = True
-            if target_price is not None and high >= float(target_price):
-                hit_target = True
-        else:
-            if stop_price is not None and high >= float(stop_price):
-                hit_stop = True
-            if target_price is not None and low <= float(target_price):
-                hit_target = True
-
-        if not (hit_stop or hit_target):
-            return
-
-        # Gap-aware fill: if the open is past the stop/target, fill at open (worse).
-        if hit_stop:
-            stop_px = float(stop_price)  # type: ignore[arg-type]
-            if pos.side == Side.LONG:
-                exit_price = open_px if open_px <= stop_px else stop_px
-            else:
-                exit_price = open_px if open_px >= stop_px else stop_px
-        else:
-            tgt_px = float(target_price)  # type: ignore[arg-type]
-            if pos.side == Side.LONG:
-                exit_price = open_px if open_px >= tgt_px else tgt_px
-            else:
-                exit_price = open_px if open_px <= tgt_px else tgt_px
 
         exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
         now = _ensure_dt(bar.time)
@@ -419,8 +409,79 @@ class BacktestOrderExecutor:
             side=exit_side.value,
             price=float(exit_px),
             qty=float(qty),
-            reason="STOP_HIT" if hit_stop else "TARGET_HIT",
+            reason=reason,
         )
+
+    def _check_bracket_hits(
+        self,
+        pos: Any,
+        bar: Bar,
+        stop_price: Optional[float],
+        target_price: Optional[float],
+    ) -> tuple[bool, bool]:
+        """Check if stop or target were hit during the bar."""
+        low = float(bar.low)
+        high = float(bar.high)
+        hit_stop = False
+        hit_target = False
+
+        if pos.side == Side.LONG:
+            if stop_price is not None and low <= float(stop_price):
+                hit_stop = True
+            if target_price is not None and high >= float(target_price):
+                hit_target = True
+        else:
+            if stop_price is not None and high >= float(stop_price):
+                hit_stop = True
+            if target_price is not None and low <= float(target_price):
+                hit_target = True
+
+        return hit_stop, hit_target
+
+    def _calculate_gap_aware_exit(
+        self, pos: Any, open_px: float, price: float, is_stop: bool
+    ) -> float:
+        """Calculate exit price accounting for gaps past stop/target."""
+        is_long = pos.side == Side.LONG
+
+        # For stops: gap through = worse fill (fill at open)
+        # For targets: gap through = better fill (fill at open)
+        if is_stop:
+            if is_long:
+                return min(open_px, price)
+            else:
+                return max(open_px, price)
+        else:
+            if is_long:
+                return max(open_px, price)
+            else:
+                return min(open_px, price)
+
+    def _calculate_bracket_exit(
+        self, pos: Any, bar: Bar
+    ) -> tuple[Optional[float], str]:
+        stop_price = getattr(pos, "stop_price", None)
+        target_price = getattr(pos, "target_price", None)
+        if stop_price is None and target_price is None:
+            return None, ""
+
+        hit_stop, hit_target = self._check_bracket_hits(
+            pos, bar, stop_price, target_price
+        )
+        if not (hit_stop or hit_target):
+            return None, ""
+
+        open_px = float(bar.open)
+        if hit_stop:
+            exit_price = self._calculate_gap_aware_exit(
+                pos, open_px, float(stop_price), is_stop=True  # type: ignore[arg-type]
+            )
+            return exit_price, "STOP_HIT"
+        else:
+            exit_price = self._calculate_gap_aware_exit(
+                pos, open_px, float(target_price), is_stop=False  # type: ignore[arg-type]
+            )
+            return exit_price, "TARGET_HIT"
 
     def close_all_positions(
         self,
@@ -431,7 +492,7 @@ class BacktestOrderExecutor:
         reason: str,
     ) -> None:
         ts = _ensure_dt(timestamp)
-        for sym, st in list(engine.symbol_states.items()):
+        for sym, st in engine.symbol_states.items():
             pos = getattr(st, "position", None)
             if pos is None:
                 continue

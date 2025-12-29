@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from src.config.models import RiskConfig, StrategyConfig
 from src.core.domain import MarketState, OrderIntent, OrderType, Signal, SymbolState
 from src.core.logger import StructuredLogger
 
@@ -14,69 +15,63 @@ class RiskManager:
     DEFAULT_TIMEZONE = "US/Eastern"
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
-        self.config = config
+        self.raw_config = config
         self.logger = logger
-        risk_cfg = (
-            config.get("risk") if isinstance(config.get("risk"), dict) else None
-        ) or {}
 
-        # Account-level / global risk (prefer nested risk.yaml config; fallback to flat keys)
-        self.max_daily_loss = float(
-            risk_cfg.get("max_daily_loss", config.get("max_daily_loss", 1000.0))
+        # Load risk config using Pydantic
+        # Prefer nested "risk" key, but support flat config for backward compat if needed
+        risk_data = (
+            config.get("risk") if isinstance(config.get("risk"), dict) else config
         )
-        self.max_risk_per_trade = float(
-            risk_cfg.get("max_risk_per_trade", config.get("max_risk_per_trade", 50.0))
-        )  # dollars risk = |entry-stop| * qty
-        self.max_open_risk = float(
-            risk_cfg.get("max_open_risk", config.get("max_open_risk", 0.0))
-        )
-        self.max_trades_per_day = int(
-            risk_cfg.get("max_trades_per_day", config.get("max_trades_per_day", 0))
-        )
-        self.max_trades_per_strategy = int(
-            risk_cfg.get(
-                "max_trades_per_strategy", config.get("max_trades_per_strategy", 0)
-            )
-        )
-        self.risk_mode = str(
-            risk_cfg.get("risk_mode", config.get("risk_mode", "normal"))
-        ).lower()
 
-        # Non-PRD limits retained for safety/backward compatibility
-        self.max_orders_per_day = int(config.get("max_orders_per_day", 100))
-        self.max_open_positions = int(
-            risk_cfg.get("max_open_positions", config.get("max_open_positions", 5))
-        )
-        self.max_notional_per_order = float(
-            risk_cfg.get(
-                "max_notional_per_order", config.get("max_notional_per_order", 5000.0)
-            )
-        )
-        self.max_notional_per_symbol = float(
-            risk_cfg.get(
-                "max_notional_per_symbol", config.get("max_notional_per_symbol", 0.0)
-            )
-        )
+        # Strategies config is often at root level in legacy configs, we might need to map it
+        # However, new standard should be under risk or root.
+        # Attempt to conform to model.
+        try:
+            # If strategies are at root, we might want to inject them into risk_data if not present
+            if "strategies" not in risk_data and "strategies" in config:
+                risk_data = risk_data.copy()
+                risk_data["strategies"] = config["strategies"]
+
+            self.risk_cfg = RiskConfig(**risk_data)
+        except Exception as e:
+            self.logger.error("Invalid Risk Configuration", error=str(e))
+            # Fallback to defaults if critical failure, or re-raise?
+            # Fail fast is better, but to stay safe we create a default config
+            self.risk_cfg = RiskConfig()
+
+        # Shortcuts from pydantic context
+        self.max_daily_loss = self.risk_cfg.max_daily_loss
+        self.max_risk_per_trade = self.risk_cfg.max_risk_per_trade
+        self.max_open_risk = self.risk_cfg.max_open_risk
+        self.max_trades_per_day = self.risk_cfg.max_trades_per_day
+        self.max_trades_per_strategy = self.risk_cfg.max_trades_per_strategy
+        self.risk_mode = self.risk_cfg.risk_mode.lower()
+
+        # Non-PRD limits retained via pydantic defaults
+        self.max_orders_per_day = int(
+            config.get("max_orders_per_day", 100)
+        )  # Keep this one legacy/root check if not in model?
+        # Actually max_orders_per_day was not in the new model I defined. Let's keep reading it from root or default.
+
+        self.max_open_positions = self.risk_cfg.max_open_positions
+        self.max_notional_per_order = self.risk_cfg.max_notional_per_order
+        self.max_notional_per_symbol = self.risk_cfg.max_notional_per_symbol
 
         self.current_daily_pnl = 0.0
         self.daily_order_count = 0
-        # PRD 6.5: "max_trades_per_day/per strategy" is enforced on accepted entry attempts
-        # (i.e., approved signals), not completed round-trip trades.
         self.daily_entry_count = 0
         self.per_strategy_entry_count: Dict[str, int] = {}
-
-        # Completed trades are tracked separately for reporting/observability.
         self.daily_completed_trade_count = 0
         self.per_strategy_completed_trade_count: Dict[str, int] = {}
 
-        # Deterministic daily rollover keyed to market/session date.
         self._session_date: Optional[date] = None
         self.last_rejection_reason: Optional[str] = None
 
     def _session_date_for(self, as_of: datetime) -> date:
-        # Use configured timezone when available; default to US equities session time.
         tz_name = str(
-            self.config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE
+            self.raw_config.get("timezone", self.DEFAULT_TIMEZONE)
+            or self.DEFAULT_TIMEZONE
         )
         try:
             tz = ZoneInfo(tz_name)
@@ -89,11 +84,6 @@ class RiskManager:
         return dt.astimezone(tz).date()
 
     def _maybe_rollover(self, as_of: Optional[datetime]) -> None:
-        """
-        Deterministic daily reset based on market time (PRD 11.1).
-
-        This allows multi-day backtests/replays without requiring a process restart.
-        """
         if not isinstance(as_of, datetime):
             return
         session_date = self._session_date_for(as_of)
@@ -103,7 +93,6 @@ class RiskManager:
         if session_date == self._session_date:
             return
 
-        # New session/day: reset daily counters deterministically.
         self._session_date = session_date
         self.current_daily_pnl = 0.0
         self.daily_order_count = 0
@@ -113,26 +102,11 @@ class RiskManager:
         self.per_strategy_completed_trade_count.clear()
         self.last_rejection_reason = None
 
-    def _check_strategy_config(self, signal: Signal) -> Optional[Dict[str, Any]]:
-        strat_cfg = None
-        if isinstance(self.config.get("strategies"), dict):
-            strat_cfg = (self.config.get("strategies") or {}).get(signal.strategy)
+    def _get_strategy_config(self, strategy_name: str) -> Optional[StrategyConfig]:
+        return self.risk_cfg.strategies.get(strategy_name)
 
-        if isinstance(strat_cfg, dict):
-            enabled = bool(strat_cfg.get("enabled", True))
-            regimes_cfg = strat_cfg.get("regimes")
-            if isinstance(regimes_cfg, dict):
-                r_key = getattr(signal.regime, "value", str(signal.regime))
-                r_cfg = regimes_cfg.get(r_key)
-                if isinstance(r_cfg, dict) and "enabled" in r_cfg:
-                    enabled = bool(r_cfg.get("enabled"))
-
-            if not enabled:
-                return None
-        return strat_cfg if isinstance(strat_cfg, dict) else {}
-
-    def _check_basic_gates(self, strat_cfg: Optional[Dict[str, Any]]) -> bool:
-        if strat_cfg is None:
+    def _check_basic_gates(self, strat_cfg: Optional[StrategyConfig]) -> bool:
+        if strat_cfg is not None and not strat_cfg.enabled:
             self.last_rejection_reason = "STRATEGY_DISABLED"
             return False
 
@@ -175,17 +149,7 @@ class RiskManager:
             self.last_rejection_reason = "MAX_POSITIONS"
             return False
 
-        risk_cfg = (
-            self.config.get("risk")
-            if isinstance(self.config.get("risk"), dict)
-            else None
-        ) or {}
-        max_strat_pos = int(
-            risk_cfg.get(
-                "max_positions_per_strategy",
-                self.config.get("max_positions_per_strategy", 3),
-            )
-        )
+        max_strat_pos = self.risk_cfg.max_positions_per_strategy
         strat_positions = [
             p
             for p in current_positions
@@ -210,27 +174,31 @@ class RiskManager:
         return effective_max_risk
 
     def _apply_strategy_limits(
-        self, effective_max_risk: float, signal: Signal, strat_cfg: Dict[str, Any]
+        self,
+        effective_max_risk: float,
+        signal: Signal,
+        strat_cfg: Optional[StrategyConfig],
     ) -> float:
-        if strat_cfg.get("max_risk_per_trade") is not None:
-            try:
-                effective_max_risk = min(
-                    effective_max_risk, float(strat_cfg["max_risk_per_trade"])
-                )
-            except Exception:
-                pass
+        if strat_cfg is None:
+            return effective_max_risk
 
-        regimes_cfg = strat_cfg.get("regimes")
-        if isinstance(regimes_cfg, dict):
+        if strat_cfg.max_risk_per_trade is not None:
+            effective_max_risk = min(effective_max_risk, strat_cfg.max_risk_per_trade)
+
+        # Regime override
+        if strat_cfg.regimes:
             r_key = getattr(signal.regime, "value", str(signal.regime))
-            r_cfg = regimes_cfg.get(r_key)
-            if isinstance(r_cfg, dict) and r_cfg.get("max_risk_per_trade") is not None:
-                try:
+            r_cfg = strat_cfg.regimes.get(r_key)
+            if r_cfg:
+                if not r_cfg.enabled:
+                    # Strategy logic should have filtered this, but safety check
+                    # We can't block easily here returning float, but risk=0 blocks it
+                    return 0.0
+                if r_cfg.max_risk_per_trade is not None:
                     effective_max_risk = min(
-                        effective_max_risk, float(r_cfg["max_risk_per_trade"])
+                        effective_max_risk, r_cfg.max_risk_per_trade
                     )
-                except Exception:
-                    pass
+
         return effective_max_risk
 
     def _apply_equity_constraints(
@@ -256,7 +224,7 @@ class RiskManager:
         return qty_limit
 
     def _calculate_qty(
-        self, signal: Signal, account_equity: float, strat_cfg: Dict[str, Any]
+        self, signal: Signal, account_equity: float, strat_cfg: Optional[StrategyConfig]
     ) -> int:
         risk_per_share = abs(signal.entry_price - signal.stop_price)
         if risk_per_share <= 0:
@@ -268,6 +236,10 @@ class RiskManager:
         effective_max_risk = self._apply_strategy_limits(
             effective_max_risk, signal, strat_cfg
         )
+
+        if effective_max_risk <= 0:
+            self.last_rejection_reason = "ZERO_RISK_LIMIT"
+            return 0
 
         qty_limit = int(effective_max_risk / risk_per_share)
         qty_limit = self._apply_equity_constraints(
@@ -318,12 +290,7 @@ class RiskManager:
         return True
 
     def _create_intent(self, signal: Signal, qty: int) -> OrderIntent:
-        risk_cfg = (
-            self.config.get("risk")
-            if isinstance(self.config.get("risk"), dict)
-            else None
-        ) or {}
-        time_in_force = str(risk_cfg.get("time_in_force", "day") or "day")
+        time_in_force = self.risk_cfg.time_in_force
         return OrderIntent(
             symbol=signal.symbol,
             side=signal.side,
@@ -352,11 +319,20 @@ class RiskManager:
         self._maybe_rollover(getattr(market_state, "time", None))
         self.last_rejection_reason = None
 
-        strat_cfg = self._check_strategy_config(signal)
-        # Removed unused 'signal' parameter
+        strat_cfg = self._get_strategy_config(signal.strategy)
+
         if not self._check_basic_gates(strat_cfg):
             self._log_rejection(signal)
             return []
+
+        # Check regime-specific enable
+        if strat_cfg and strat_cfg.regimes:
+            r_key = getattr(signal.regime, "value", str(signal.regime))
+            r_cfg = strat_cfg.regimes.get(r_key)
+            if r_cfg and not r_cfg.enabled:
+                self.last_rejection_reason = "REGIME_DISABLED"
+                self._log_rejection(signal)
+                return []
 
         if not self._check_volume_gates(signal):
             self._log_rejection(signal)
@@ -371,7 +347,7 @@ class RiskManager:
             return []
 
         # Calculate Qty
-        qty = self._calculate_qty(signal, account_equity, strat_cfg or {})
+        qty = self._calculate_qty(signal, account_equity, strat_cfg)
         if qty <= 0:
             self._log_rejection(signal)
             return []

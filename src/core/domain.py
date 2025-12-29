@@ -153,6 +153,31 @@ class MarketState:
     meta: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class TechnicalFeatures:
+    """
+    Standard container for calculated features (replacing raw tuples).
+    See: src/data/calculator.py
+    """
+
+    price: float
+    volume: float
+    timestamp: datetime
+    atr_pct: float
+    intraday_range_pct: float
+    gap_pct: float
+    ema20_slope: float
+    distance_from_vwap: float
+    adx: float
+    distance_from_ema20: float
+    prior_day_high: float
+    prior_day_low: float
+    bb_upper: float
+    bb_lower: float
+    price_zscore: float
+    premarket_volume: float
+
+
 # --- Scanner / Features (PRD 4.3) ---
 
 

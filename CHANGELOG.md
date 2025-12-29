@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Repository Hygiene (PR #1)**: Added project identity files for open-source readiness
+  - LICENSE file (MIT License) for legal clarity
+  - SECURITY.md with vulnerability disclosure policy and trading-specific security guidelines
+  - .env.example template with safe defaults and comprehensive documentation
+  - Updated README.md to reference LICENSE, SECURITY.md, and .env.example
+- **Repository Hygiene (PR #2)**: Reorganized root-level utilities for clarity
+  - Created `tools/` directory with comprehensive README
+  - Moved `verify_architecture.py`, `verify_deepseek.py`, `paper_live_harness.py` to tools/
+  - Archived obsolete `codereview_notes.md` to artifacts/archive/
+- **Repository Hygiene (PR #3)**: Added operational maturity tooling
+  - Created `docs/runbook.md` with 6 failure scenarios, diagnostics, and recovery procedures
+  - Implemented `src/core/health.py` with database/API/system health checks
+  - Added `--healthcheck` CLI flag for operational readiness verification
+  - Updated README.md with healthcheck usage documentation
 - **Strategies**: Implemented full suite of 8 remediation strategies:
     - VWAP Mean Reversion
     - Opening Range Breakout (ORB)

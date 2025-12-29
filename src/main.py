@@ -56,9 +56,19 @@ async def main():
         action="store_true",
         help="Run as a persistent scheduler process (replaces Chronos)",
     )
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Run system healthcheck and exit",
+    )
     args = parser.parse_args()
 
-    # 0. Scheduler Mode
+    # 0. Healthcheck Mode
+    if args.healthcheck:
+        from src.core.health import run_healthcheck
+
+        run_healthcheck(verbose=True)
+        return
     if args.scheduler:
         from src.scheduler import CerberusScheduler
 
