@@ -110,7 +110,10 @@ class PositionManager:
         return None  # Valid
 
     def update_unrealized_pnl(
-        self, symbol_state: SymbolState, mark_price: float
+        self,
+        symbol_state: SymbolState,
+        mark_price: float,
+        est_exit_commission: float = 0.0,
     ) -> None:
         """
         Update unrealized PnL for open position.
@@ -121,27 +124,30 @@ class PositionManager:
         Args:
             symbol_state: Symbol state with position to update
             mark_price: Current market price for PnL calculation
+            est_exit_commission: Optional estimated exit commission to subtract.
+                                 M6 fix: For more accurate PnL, pass qty * commission_per_share.
 
         Side Effects:
             Updates symbol_state.position.unrealized_pnl in-place
 
         Note:
-            - For LONG: unrealized = (current - avg_entry) * qty
-            - For SHORT: unrealized = (avg_entry - current) * qty
+            - For LONG: unrealized = (current - avg_entry) * qty - est_exit_commission
+            - For SHORT: unrealized = (avg_entry - current) * qty - est_exit_commission
             - Called best-effort; errors silently ignored
+            - M6: By default shows gross unrealized PnL. Pass est_exit_commission
+              for net unrealized that accounts for exit costs.
         """
         pos = symbol_state.position
         if pos is None:
             return
         # H3 fix: Use enum comparison for type safety
         if pos.side == Side.LONG:
-            pos.unrealized_pnl = (float(mark_price) - float(pos.avg_price)) * float(
-                pos.qty
-            )
+            gross_pnl = (float(mark_price) - float(pos.avg_price)) * float(pos.qty)
         else:  # Side.SHORT
-            pos.unrealized_pnl = (float(pos.avg_price) - float(mark_price)) * float(
-                pos.qty
-            )
+            gross_pnl = (float(pos.avg_price) - float(mark_price)) * float(pos.qty)
+
+        # M6 fix: Subtract estimated exit commission for more accurate unrealized PnL
+        pos.unrealized_pnl = gross_pnl - float(est_exit_commission)
 
     def on_fill(
         self,
