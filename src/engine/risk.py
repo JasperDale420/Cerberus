@@ -11,6 +11,8 @@ class RiskManager:
     Enforces risk limits and converts Signals to OrderIntents.
     """
 
+    DEFAULT_TIMEZONE = "US/Eastern"
+
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         self.config = config
         self.logger = logger
@@ -71,8 +73,6 @@ class RiskManager:
         self._session_date: Optional[date] = None
         self.last_rejection_reason: Optional[str] = None
 
-    DEFAULT_TIMEZONE = "US/Eastern"
-
     def _session_date_for(self, as_of: datetime) -> date:
         # Use configured timezone when available; default to US equities session time.
         tz_name = str(
@@ -131,9 +131,7 @@ class RiskManager:
                 return None
         return strat_cfg if isinstance(strat_cfg, dict) else {}
 
-    def _check_basic_gates(
-        self, signal: Signal, strat_cfg: Optional[Dict[str, Any]]
-    ) -> bool:
+    def _check_basic_gates(self, strat_cfg: Optional[Dict[str, Any]]) -> bool:
         if strat_cfg is None:
             self.last_rejection_reason = "STRATEGY_DISABLED"
             return False
@@ -206,18 +204,14 @@ class RiskManager:
             return False
         return True
 
-    def _calculate_qty(
-        self, signal: Signal, account_equity: float, strat_cfg: Dict[str, Any]
-    ) -> int:
-        risk_per_share = abs(signal.entry_price - signal.stop_price)
-        if risk_per_share <= 0:
-            self.last_rejection_reason = "INVALID_STOP"
-            return 0
-
-        effective_max_risk = self.max_risk_per_trade
+    def _apply_risk_mode(self, effective_max_risk: float) -> float:
         if self.risk_mode == "reduced":
-            effective_max_risk *= 0.5
+            return effective_max_risk * 0.5
+        return effective_max_risk
 
+    def _apply_strategy_limits(
+        self, effective_max_risk: float, signal: Signal, strat_cfg: Dict[str, Any]
+    ) -> float:
         if strat_cfg.get("max_risk_per_trade") is not None:
             try:
                 effective_max_risk = min(
@@ -237,14 +231,20 @@ class RiskManager:
                     )
                 except Exception:
                     pass
+        return effective_max_risk
 
-        qty_limit = int(effective_max_risk / risk_per_share)
-
+    def _apply_equity_constraints(
+        self,
+        qty_limit: int,
+        signal: Signal,
+        account_equity: float,
+        risk_per_share: float,
+        effective_max_risk: float,
+    ) -> int:
         if account_equity > 0 and signal.entry_price > 0:
             max_equity_allocation = account_equity * 0.05
             max_qty_equity = int(max_equity_allocation / signal.entry_price)
             if max_qty_equity < qty_limit:
-                qty_limit = max_qty_equity
                 self.logger.info(
                     "Risk sizing constrained by equity",
                     symbol=signal.symbol,
@@ -252,6 +252,27 @@ class RiskManager:
                     max_equity_qty=max_qty_equity,
                     risk_qty=int(effective_max_risk / risk_per_share),
                 )
+                return max_qty_equity
+        return qty_limit
+
+    def _calculate_qty(
+        self, signal: Signal, account_equity: float, strat_cfg: Dict[str, Any]
+    ) -> int:
+        risk_per_share = abs(signal.entry_price - signal.stop_price)
+        if risk_per_share <= 0:
+            self.last_rejection_reason = "INVALID_STOP"
+            return 0
+
+        effective_max_risk = self.max_risk_per_trade
+        effective_max_risk = self._apply_risk_mode(effective_max_risk)
+        effective_max_risk = self._apply_strategy_limits(
+            effective_max_risk, signal, strat_cfg
+        )
+
+        qty_limit = int(effective_max_risk / risk_per_share)
+        qty_limit = self._apply_equity_constraints(
+            qty_limit, signal, account_equity, risk_per_share, effective_max_risk
+        )
 
         qty: int = 0
         if signal.size_hint:
@@ -261,7 +282,6 @@ class RiskManager:
 
         if qty <= 0:
             self.last_rejection_reason = "ZERO_QTY"
-            # Log warning in caller
             return 0
 
         return qty
@@ -333,7 +353,8 @@ class RiskManager:
         self.last_rejection_reason = None
 
         strat_cfg = self._check_strategy_config(signal)
-        if not self._check_basic_gates(signal, strat_cfg):
+        # Removed unused 'signal' parameter
+        if not self._check_basic_gates(strat_cfg):
             self._log_rejection(signal)
             return []
 

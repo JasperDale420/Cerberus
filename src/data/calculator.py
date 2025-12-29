@@ -14,6 +14,7 @@ class FeatureCalculator:
     """
 
     DEFAULT_TIMEZONE = "US/Eastern"
+    UTC_OFFSET_STR = "+00:00"
 
     def compute_technicals(self, bars_data: List[Any]) -> Optional[tuple]:
         """
@@ -88,7 +89,7 @@ class FeatureCalculator:
         else:
             s = str(v)
             try:
-                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(s.replace("Z", self.UTC_OFFSET_STR))
             except Exception:
                 return None
         if dt.tzinfo is None:
@@ -327,6 +328,37 @@ class FeatureCalculator:
                 premarket_vol += float(vol)
         return premarket_vol
 
+    def _process_single_flow_trade(
+        self, trade: Any
+    ) -> Tuple[float, float, int, int, int, float, float]:
+        t = trade if isinstance(trade, dict) else trade.__dict__
+
+        size = float(t.get("size", 0))
+        pc = t.get("put_call", "UNKNOWN")
+
+        call_vol = 0.0
+        put_vol = 0.0
+        call_n = 0
+        put_n = 0
+        sweep_count = 0
+        aggressive_qty = 0.0
+
+        if pc == "CALL":
+            call_vol += size
+            call_n += 1
+        elif pc == "PUT":
+            put_vol += size
+            put_n += 1
+
+        tags = t.get("tags", [])
+        if "sweep" in tags or t.get("sentiment") == "BULLISH":
+            sweep_count += 1
+
+        if t.get("ask_side") or t.get("sentiment") in ["BULLISH", "BEARISH"]:
+            aggressive_qty += size
+
+        return call_vol, put_vol, call_n, put_n, sweep_count, aggressive_qty, size
+
     def compute_flow_metrics(
         self, flow_data: List[Any]
     ) -> Tuple[float, float, int, float, float]:
@@ -334,79 +366,82 @@ class FeatureCalculator:
         Computes options flow metrics.
         Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias)
         """
-        call_vol = 0.0
-        put_vol = 0.0
-        call_n = 0
-        put_n = 0
-        sweep_count = 0
-        aggressive_qty = 0.0
-        total_qty = 0.0
+        call_vol_total = 0.0
+        put_vol_total = 0.0
+        call_n_total = 0
+        put_n_total = 0
+        sweep_count_total = 0
+        aggressive_qty_total = 0.0
+        total_qty_total = 0.0
 
         if flow_data and isinstance(flow_data, list):
             for trade in flow_data:
-                t = trade if isinstance(trade, dict) else trade.__dict__
+                cv, pv, cn, pn, sc, aq, size = self._process_single_flow_trade(trade)
+                call_vol_total += cv
+                put_vol_total += pv
+                call_n_total += cn
+                put_n_total += pn
+                sweep_count_total += sc
+                aggressive_qty_total += aq
+                total_qty_total += size
 
-                size = float(t.get("size", 0))
-                pc = t.get("put_call", "UNKNOWN")
-
-                total_qty += size
-
-                if pc == "CALL":
-                    call_vol += size
-                    call_n += 1
-                elif pc == "PUT":
-                    put_vol += size
-                    put_n += 1
-
-                tags = t.get("tags", [])
-                if "sweep" in tags or t.get("sentiment") == "BULLISH":
-                    sweep_count += 1
-
-                if t.get("ask_side") or t.get("sentiment") in ["BULLISH", "BEARISH"]:
-                    aggressive_qty += size
-
-        if put_vol > 0:
-            call_put_ratio = call_vol / put_vol
-        elif call_vol > 0:
-            call_put_ratio = float(call_vol)
+        if put_vol_total > 0:
+            call_put_ratio = call_vol_total / put_vol_total
+        elif call_vol_total > 0:
+            call_put_ratio = float(call_vol_total)
         else:
             call_put_ratio = 0.0
 
-        aggressive_flow_share = (aggressive_qty / total_qty) if total_qty > 0 else 0.0
-        n = int(call_n + put_n)
-        flow_zscore = ((call_n - put_n) / math.sqrt(n)) if n > 0 else 0.0
-        flow_bias = ((call_vol - put_vol) / total_qty) if total_qty > 0 else 0.0
+        aggressive_flow_share = (
+            (aggressive_qty_total / total_qty_total) if total_qty_total > 0 else 0.0
+        )
+        n_total = int(call_n_total + put_n_total)
+        flow_zscore = (
+            ((call_n_total - put_n_total) / math.sqrt(n_total)) if n_total > 0 else 0.0
+        )
+        flow_bias = (
+            ((call_vol_total - put_vol_total) / total_qty_total)
+            if total_qty_total > 0
+            else 0.0
+        )
 
         return (
             call_put_ratio,
             flow_zscore,
-            sweep_count,
+            sweep_count_total,
             aggressive_flow_share,
             flow_bias,
         )
 
-    def _extract_bar_open(
-        self, bar: Any, et_tz: timezone, day: Any, market_open: time
-    ) -> Optional[float]:
+    def _parse_and_validate_ts(
+        self, bar: Any, et_tz: Any, day: Any, market_open: time
+    ) -> Optional[Tuple[datetime, float]]:
+        bd = bar if isinstance(bar, dict) else getattr(bar, "__dict__", {})
+        ts_raw = bd.get("t") or bd.get("timestamp") or getattr(bar, "t", None)
+
+        ts = None
+        if isinstance(ts_raw, str):
+            try:
+                ts = datetime.fromisoformat(ts_raw.replace("Z", self.UTC_OFFSET_STR))
+            except Exception:
+                return None
+        elif isinstance(ts_raw, datetime):
+            ts = ts_raw
+        else:
+            return None
+
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        ts_et = ts.astimezone(et_tz)
+        if ts_et.date() != day or ts_et.time() < market_open:
+            return None
+
+        o = bd.get("o") if bd.get("o") is not None else bd.get("open")
+        if o is None:
+            return None
         try:
-            bd = bar if isinstance(bar, dict) else getattr(bar, "__dict__", {})
-            ts = bd.get("t") or bd.get("timestamp") or getattr(bar, "t", None)
-
-            if isinstance(ts, str):
-                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-
-            if not isinstance(ts, datetime):
-                return None
-
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-
-            ts_et = ts.astimezone(et_tz)
-            if ts_et.date() != day or ts_et.time() < market_open:
-                return None
-
-            o = bd.get("o") if bd.get("o") is not None else bd.get("open")
-            return float(o) if o is not None else 0.0
+            return ts, float(o)
         except Exception:
             return None
 
@@ -420,36 +455,13 @@ class FeatureCalculator:
         best_ts: Optional[datetime] = None
 
         for b in bars:
-            try:
-                bd = b if isinstance(b, dict) else getattr(b, "__dict__", {})
-                ts_raw = bd.get("t") or bd.get("timestamp") or getattr(b, "t", None)
-
-                # Check timestamp validity first
-                if isinstance(ts_raw, str):
-                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-                elif isinstance(ts_raw, datetime):
-                    ts = ts_raw
-                else:
-                    continue
-
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-
-                ts_et = ts.astimezone(et)
-                if ts_et.date() != day or ts_et.time() < market_open:
-                    continue
-
-                # If matches session criteria, verify we can parse the open price
-                o = bd.get("o") if bd.get("o") is not None else bd.get("open")
-                if o is None:
-                    continue
-                o_f = float(o)
-
-                # Keep earliest valid session bar
-                if best_ts is None or ts < best_ts:
-                    best_ts = ts
-                    open_px = o_f
-            except Exception:
+            res = self._parse_and_validate_ts(b, et, day, market_open)
+            if res is None:
                 continue
+
+            ts, o_f = res
+            if best_ts is None or ts < best_ts:
+                best_ts = ts
+                open_px = o_f
 
         return float(open_px)
