@@ -64,6 +64,24 @@ class PositionManager:
     def update_unrealized_pnl(
         self, symbol_state: SymbolState, mark_price: float
     ) -> None:
+        """
+        Update unrealized PnL for open position.
+
+        Calculates current unrealized profit/loss based on the difference between
+        current market price and average entry price, accounting for position direction.
+
+        Args:
+            symbol_state: Symbol state with position to update
+            mark_price: Current market price for PnL calculation
+
+        Side Effects:
+            Updates symbol_state.position.unrealized_pnl in-place
+
+        Note:
+            - For LONG: unrealized = (current - avg_entry) * qty
+            - For SHORT: unrealized = (avg_entry - current) * qty
+            - Called best-effort; errors silently ignored
+        """
         pos = symbol_state.position
         if pos is None:
             return
@@ -84,6 +102,35 @@ class PositionManager:
         *,
         risk_cfg: Optional[Dict[str, Any]] = None,
     ) -> FillDecision:
+        """
+        Process a fill and update position state.
+
+        Handles both position increases (adding to position) and decreases
+        (partial or full exits). Calculates realized PnL for exits and updates
+        unrealized PnL for the remaining position. Uses FIFO cost basis for
+        partial exit PnL calculation.
+
+        Args:
+            symbol_state: Current symbol state containing position information
+            market_state: Current market regime and state for trade recording
+            fill: Fill event dict with keys: symbol, qty, price, side, timestamp, correlation_id
+            risk_cfg: Optional risk config with commission_per_share, min_commission, slippage_bps
+
+        Returns:
+            FillDecision containing:
+                - event: "increased", "decreased", "closed", "opened", or "ignored"
+                - realized_pnl_delta: $ PnL from this fill (0 for increases)
+                - close_qty: Quantity that reduced position (0 for increases)
+                - closed_trade: ClosedTradeInfo if position fully closed, else None
+
+        Note:
+            - For LONG positions, sells reduce position
+            - For SHORT positions, buys reduce position
+            - Best-effort unrealized PnL update (silent failure OK)
+            - Updates symbol_state.position in-place
+            - Ignores fills with invalid qty/price/side
+        """
+        symbol = str(fill.get("symbol", "") or symbol_state.symbol)
         symbol = str(fill.get("symbol", "") or symbol_state.symbol)
         fill_qty = float(fill.get("qty", 0.0) or 0.0)
         fill_price = float(fill.get("price", 0.0) or 0.0)
@@ -306,6 +353,31 @@ class PositionManager:
         *,
         broker_managed_exits: bool = False,
     ) -> ExitDecision:
+        """
+        Check if position should be closed based on stop loss or take profit.
+
+        Evaluates Maximum Adverse Excursion (MAE) and Maximum Favorable Excursion (MFE)
+        against position stop loss and take profit levels. Only checks exit crossings
+        when exits are NOT delegated to broker (i.e., when bracket orders are not used).
+
+        Args:
+            symbol_state: Current symbol state with position and entry context
+            market_state: Current market state, including time and regime
+            broker_managed_exits: If True, broker handles exits (e.g., bracket orders),
+                                  so this method should not generate exit intents.
+
+        Returns:
+            ExitDecision containing:
+                - intent: OrderIntent to close position if exit triggered, else None
+                - reason: Exit reason ("STOP_HIT", "TARGET_HIT", "MAX_HOLD_EXCEEDED") if triggered, else None
+
+        Note:
+            - PRD 6.7: Only checks when broker exit delegation is disabled
+            - Updates MAE/MFE tracking (best-effort, silent failure OK)
+            - Compares bar highs/lows against entry-relative thresholds
+            - Exit intent includes correlation_id and exit_reason metadata
+            - Returns ExitDecision(intent=None, reason=None) if no exit triggered
+        """
         pos = symbol_state.position
         if pos is None:
             return ExitDecision(intent=None, reason=None)
