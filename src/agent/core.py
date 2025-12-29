@@ -332,8 +332,9 @@ class Agent:
         Apply agent actions to configuration files.
         Backward compatibility wrapper for the refactored API.
         """
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         for action in actions:
             if action.action_type == ActionType.TUNE_PARAM:

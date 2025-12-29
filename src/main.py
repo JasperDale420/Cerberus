@@ -228,7 +228,7 @@ async def main():
                 config = config_loader.load_config(args.config)
                 engine.update_config(config)
             except Exception as e:
-                logger.error("Startup Agent run failed", error=str(e))
+                logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan
     logger.info("Starting Alpaca stream...")
@@ -299,7 +299,7 @@ async def main():
                 try:
                     engine.flatten_all(reason="market_close")
                 except Exception as e:
-                    logger.error("EOD flatten failed", error=str(e))
+                    logger.error("EOD flatten failed", error=str(e), exc_info=True)
                     # With mismatch_mode=halt, do not proceed silently.
                     break
                 # PRD 9.1: run aggregation + Agent Stage 1 at end-of-day (configurable).
@@ -320,7 +320,11 @@ async def main():
                             engine.update_config(config)
                             eod_ran_for_date = target_date
                         except Exception as e:
-                            logger.error("Automatic EOD Agent run failed", error=str(e))
+                            logger.error(
+                                "Automatic EOD Agent run failed",
+                                error=str(e),
+                                exc_info=True,
+                            )
                 logger.info("Market closed. Exiting daily session.")
                 break
 
@@ -339,7 +343,7 @@ async def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
-        logger.error("Main loop error", error=str(e))
+        logger.error("Main loop error", error=str(e), exc_info=True)
         raise
     finally:
         if not stream_task.done():

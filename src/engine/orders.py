@@ -243,6 +243,7 @@ class OrderExecutor:
                     "stop_loss": intent.stop_loss,
                     "take_profit": intent.take_profit,
                 },
+                exc_info=True,
             )
 
             # Persist failed order
@@ -282,7 +283,10 @@ class OrderExecutor:
             self.logger.info("Order cancel requested", broker_order_id=broker_order_id)
         except Exception as e:
             self.logger.error(
-                "Order cancel failed", broker_order_id=broker_order_id, error=str(e)
+                "Order cancel failed",
+                broker_order_id=broker_order_id,
+                error=str(e),
+                exc_info=True,
             )
             raise
 
@@ -300,7 +304,10 @@ class OrderExecutor:
                     self.cancel_by_broker_order_id(str(getattr(o, "id", "")))
         except Exception as e:
             self.logger.error(
-                "Cancel-all for symbol failed", symbol=symbol, error=str(e)
+                "Cancel-all for symbol failed",
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
             )
 
     def handle_trade_update(self, update: object) -> dict:

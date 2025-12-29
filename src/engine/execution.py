@@ -278,13 +278,20 @@ class ExecutionEngine:
         try:
             self.alpaca_client.trading_client.cancel_orders()
         except Exception as e:
-            self.logger.error("Cancel orders failed", reason=reason, error=str(e))
+            self.logger.error(
+                "Cancel orders failed", reason=reason, error=str(e), exc_info=True
+            )
 
         # 2) Close all open positions (best-effort; Alpaca can also cancel orders).
         try:
             self.alpaca_client.trading_client.close_all_positions(cancel_orders=True)
         except Exception as e:
-            self.logger.error("Close all positions failed", reason=reason, error=str(e))
+            self.logger.error(
+                "Close all positions failed",
+                reason=reason,
+                error=str(e),
+                exc_info=True,
+            )
             if mismatch_mode in ("halt", "stop", "raise"):
                 raise
 
@@ -546,6 +553,7 @@ class ExecutionEngine:
                 error=str(e),
                 consecutive_errors=self.consecutive_on_bar_errors,
                 run_id=self.run_id,
+                exc_info=True,
             )
 
             if self.consecutive_on_bar_errors >= self.max_consecutive_errors:
@@ -699,6 +707,7 @@ class ExecutionEngine:
                     self.market_state.regime, "value", str(self.market_state.regime)
                 ),
                 error=str(e),
+                exc_info=True,
             )
 
     def _process_signal(self, signal: Signal):
@@ -906,6 +915,7 @@ class ExecutionEngine:
                         correlation_id=intent.correlation_id,
                         error=str(e),
                         run_id=self.run_id,
+                        exc_info=True,
                     )
         else:
             self.logger.warning(
@@ -981,6 +991,7 @@ class ExecutionEngine:
                 symbol=symbol,
                 correlation_id=corr or None,
                 error=str(e),
+                exc_info=True,
             )
             return
 
