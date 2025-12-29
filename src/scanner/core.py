@@ -50,16 +50,69 @@ class Scanner:
 
         self.validator = DataValidator(logger)
 
-        # Initialize profiles
-        self.profiles: Dict[str, ScannerProfile] = strategy_profiles or {
-            "vwap_reversion": VWAPReversionProfile(),
-            "orb": ORBScannerProfile(),
-            "trend_pullback": TrendPullbackProfile(),
-            "failed_breakout": FailedBreakoutProfile(),
-            "vwap_trend_rider": VWAPTrendRiderProfile(),
-            "index_mean_reversion": IndexMeanReversionProfile(),
-            "flow_momentum": FlowMomentumProfile(),
-            "gap_fill": GapProfile(),
+        # P4: Initialize profiles from config or use defaults
+        self.profiles: Dict[str, ScannerProfile] = (
+            strategy_profiles
+            if strategy_profiles is not None
+            else self._build_profiles_from_config()
+        )
+
+    def _build_profiles_from_config(self) -> Dict[str, ScannerProfile]:
+        """
+        P4 fix: Build scanner profiles with configurable thresholds.
+
+        Config format (under scanner.profiles):
+            vwap_reversion:
+                min_price: 15.0
+                min_volume: 100000
+                min_sigma: 2.5
+            orb:
+                min_gap_pct: 0.02
+                min_price: 20.0
+        """
+        profile_cfg = self.config.get("scanner", {}).get("profiles", {})
+        if not isinstance(profile_cfg, dict):
+            profile_cfg = {}
+
+        def _get(name: str, key: str, default: float) -> float:
+            cfg = profile_cfg.get(name, {})
+            if not isinstance(cfg, dict):
+                return default
+            try:
+                return float(cfg.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        return {
+            "vwap_reversion": VWAPReversionProfile(
+                min_price=_get("vwap_reversion", "min_price", 10.0),
+                min_volume=_get("vwap_reversion", "min_volume", 0.0),
+                min_sigma=_get("vwap_reversion", "min_sigma", 2.0),
+            ),
+            "orb": ORBScannerProfile(
+                min_gap_pct=_get("orb", "min_gap_pct", 0.01),
+                min_price=_get("orb", "min_price", 10.0),
+            ),
+            "trend_pullback": TrendPullbackProfile(
+                min_adx=_get("trend_pullback", "min_adx", 25.0),
+                max_dist_ema20=_get("trend_pullback", "max_dist_ema20", 0.02),
+            ),
+            "failed_breakout": FailedBreakoutProfile(
+                proximity_pct=_get("failed_breakout", "proximity_pct", 0.02),
+            ),
+            "vwap_trend_rider": VWAPTrendRiderProfile(
+                min_adx=_get("vwap_trend_rider", "min_adx", 20.0),
+            ),
+            "index_mean_reversion": IndexMeanReversionProfile(
+                min_sigma=_get("index_mean_reversion", "min_sigma", 2.0),
+            ),
+            "flow_momentum": FlowMomentumProfile(
+                min_flow_zscore=_get("flow_momentum", "min_flow_zscore", 2.5),
+            ),
+            "gap_fill": GapProfile(
+                min_gap=_get("gap_fill", "min_gap", 0.015),
+                max_gap=_get("gap_fill", "max_gap", 0.10),
+            ),
         }
 
     async def scan(
