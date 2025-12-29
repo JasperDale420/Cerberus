@@ -748,8 +748,41 @@ class ExecutionEngine:
 
     def _process_signal(self, signal: Signal):
         """
-        Passes signal to Risk Manager and then Order Executor.
-        Persists signal to DB.
+        Process strategy signal through risk checks and route to order execution.
+
+        Core signal processing pipeline bridging strategy logic and order placement.
+        Validates signals, applies risk management, converts to order intents, submits
+        to broker, and persists for analytics.
+
+        Workflow:
+        1. Apply RiskManager pre-trade checks (position limits, daily loss, sizing)
+        2. Persist Signal to database (accepted or rejected with reason)
+        3. If rejected: log reason and return early
+        4. Store pending entry context for PositionManager (keyed by correlation_id)
+        5. Submit approved OrderIntent(s) via OrderExecutor
+
+        Args:
+            signal: Signal from strategy with symbol, side, entry_price, stop_loss/take_profit,
+                   strategy name, correlation_id, size_hint, and optional features
+
+        Returns:
+            None
+
+        Side Effects:
+            - Calls RiskManager.apply() for pre-trade validation
+            - Writes Signal record to database with accept/reject status
+            - Stores pending_entry in symbol_state.metadata for fill correlation
+            - Submits orders via OrderExecutor.submit()
+            - Increments orders_submitted counter on success
+            - Logs INFO for signal processing, ERROR for failures
+            - Increments error counters (risk, db, orders) on failures
+
+        Note:
+            - PRD 2.1/3.2: Correlation ID generated deterministically in Signal.__post_init__
+            - Risk rejection reasons logged for analytics and debugging
+            - Only first intent is entry; subsequent may be bracket exits (stop/take profit)
+            - Database writes best-effort (errors logged, processing continues)
+            - Latency metrics logged for risk and execution phases
         """
         # PRD tracing: correlation_id is generated deterministically in Signal.__post_init__.
 
@@ -965,11 +998,51 @@ class ExecutionEngine:
 
     def on_fill(self, fill: Dict[str, Any]):
         """
-        Updates position state and persists Trades on close.
-        fill struct: {
-            symbol, side (buy/sell), qty, price,
-            order_id/broker_order_id (optional), timestamp, strategy, correlation_id
-        }
+        Process fill event and update position state.
+
+        Critical fill processing pathway routing broker fill events to PositionManager,
+        updating position state, persisting fills/trades to database, and managing
+        watchlist based on position lifecycle.
+
+        Workflow:
+        1. Normalize correlation_id (fallback to broker_order_id or generate hash)
+        2. Persist Fill record to database for analytics
+        3. Route to PositionManager.on_fill() for position state update
+        4. Process FillDecision (opened/increased/decreased/closed events)
+        5. If position closed: persist Trade, update PnL, remove from watchlist
+
+        Args:
+            fill: Fill event dict with keys:
+                 - symbol: Ticker symbol (required)
+                 - side: "buy" or "sell" (required)
+                 - qty: Filled quantity (required)
+                 - price: Execution price (required)
+                 - timestamp: Fill time UTC (optional, defaults to market_state.time)
+                 - correlation_id: Tracking ID (optional, generated if missing)
+                 - broker_order_id: Alpaca order ID (optional, used for correlation fallback)
+                 - strategy: Strategy name (optional)
+
+        Returns:
+            None
+
+        Side Effects:
+            - Normalizes and updates fill dict with correlation_id
+            - Writes Fill record to database
+            - Updates symbol_state.position via PositionManager
+            - Writes Trade record if position closed
+            - Appends to self.closed_trades list
+            - Updates self.realized_pnl tracking
+            - Removes symbol from watchlist if closed
+            - Records completed trade in RiskManager
+            - Logs position decision (opened/increased/decreased/closed)
+            - Increments error counter on failures
+
+        Note:
+            - PRD 2.1/3.2: Enforces non-empty correlation_id for persistence/tracing
+            - PRD 6.7: PositionManager is source of truth for position state updates
+            - Database writes best-effort (logged on failure, position always updated)
+            - Unknown symbols logged as warning and ignored
+            - Fills for unknown symbols don't crash processing
         """
         symbol = fill["symbol"]
         if symbol not in self.symbol_states:
