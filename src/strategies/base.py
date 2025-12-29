@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
@@ -12,8 +13,6 @@ class BaseStrategy(ABC):
         self.config = config
         self.logger = logger
         self.cooldown_bars = int(config.get("cooldown_bars", 5))
-        from datetime import datetime
-
         self.last_signal_time: Dict[str, datetime] = {}
 
     def _check_cooldown(self, symbol: str, current_time: Any) -> bool:
@@ -26,8 +25,6 @@ class BaseStrategy(ABC):
         if last is None:
             return True
         # Assume 1 minute per bar for now (safe default for scalping)
-        from datetime import timedelta
-
         delta = timedelta(minutes=self.cooldown_bars)
         if current_time - last < delta:
             return False
