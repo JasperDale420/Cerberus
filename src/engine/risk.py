@@ -29,11 +29,17 @@ class RiskManager:
         # Attempt to conform to model.
         try:
             # If strategies are at root, we might want to inject them into risk_data if not present
-            if "strategies" not in risk_data and "strategies" in config:
+            if (
+                isinstance(risk_data, dict)
+                and "strategies" not in risk_data
+                and "strategies" in config
+            ):
                 risk_data = risk_data.copy()
                 risk_data["strategies"] = config["strategies"]
 
-            self.risk_cfg = RiskConfig(**risk_data)
+            self.risk_cfg = (
+                RiskConfig(**risk_data) if isinstance(risk_data, dict) else RiskConfig()
+            )
         except Exception as e:
             self.logger.error("Invalid Risk Configuration", error=str(e))
             # Fallback to defaults if critical failure, or re-raise?

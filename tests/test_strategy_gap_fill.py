@@ -1,9 +1,10 @@
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
-from src.core.domain import Bar, MarketState, OrderSide, Regime, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Regime, RiskMode, SymbolState
 from src.strategies.gap_fill import GapFillStrategy
 
 
@@ -126,7 +127,7 @@ def test_on_bar_ignored_if_gap_too_large(gap_fill, mock_market):
 @pytest.mark.unit
 def test_signal_short_gap_up(gap_fill):
     market = MarketState(
-        time=datetime.now(timezone.utc), regime=Regime.CHOP, risk_mode="normal"
+        time=datetime.now(timezone.utc), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL
     )
 
     # Setup Gap Up
@@ -148,8 +149,10 @@ def test_signal_short_gap_up(gap_fill):
 
     current_bar = Bar("AAPL", current_dt, 102.5, 102.5, 101.0, 102.0, 500)
 
-    state = SymbolState("AAPL", vals, {}, None, {}, [], {"gap_pct": 0.03})
-    state.bars = vals
+    state = SymbolState(
+        "AAPL", deque(vals, maxlen=100), {}, None, {}, [], {"gap_pct": 0.03}
+    )
+    state.bars = deque(vals, maxlen=100)
 
     gap_fill.risk_reward = 1.0
 
@@ -177,7 +180,9 @@ def test_signal_long_gap_down(gap_fill):
 
     current_bar = Bar("AAPL", current_dt, 97.3, 97.5, 97.2, 97.4, 500)
 
-    state = SymbolState("AAPL", [b1], {}, None, {}, [], {"gap_pct": -0.03})
+    state = SymbolState(
+        "AAPL", deque([b1], maxlen=100), {}, None, {}, [], {"gap_pct": -0.03}
+    )
 
     sig = gap_fill.on_bar("AAPL", current_bar, state, market)
 

@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -380,8 +380,7 @@ class ExecutionEngine:
             "max_churn_per_scan", self.max_churn_per_scan
         )
         self.health.update_config(config)
-        # RiskManager reads its config at runtime; keep object but swap config reference.
-        self.risk_manager.config = config
+        # RiskManager already has raw_config; update individual fields instead
         risk_cfg = (
             config.get("risk") if isinstance(config.get("risk"), dict) else None
         ) or {}
@@ -509,142 +508,15 @@ class ExecutionEngine:
                 if callable(_bind)
                 else self.logger
             )
-            # Update Market State (if symbol is index)
-            if symbol == self.config.get("index_symbol", "SPY"):
-                self.market_manager.update(bar, index_symbol=symbol)
 
-            # Update Symbol State
-            if symbol not in self.symbol_states:
-                self.symbol_states[symbol] = SymbolState(
-                    symbol=symbol,
-                    bars=deque(maxlen=100),
-                    position=None,
-                    indicators={},
-                    open_orders={},
-                    allowed_strategies=[],
-                    meta={},
-                )
+            # Helper: Update State
+            state = self._update_symbol_state(symbol, bar, bar_time)
 
-            state = self.symbol_states[symbol]
-            state.bars.append(bar)
+            # Helper: Run Strategies
+            self._run_strategies(symbol, bar, state, log)
 
-            # PRD 7.2 VWAP Reversion: maintain intraday/session VWAP independent of bar deque window.
-            try:
-                bt = bar_time or self.clock()
-                session_day = bt.date() if hasattr(bt, "date") else None
-                prev_day = state.indicators.get("session_day")
-                if session_day is not None and prev_day != session_day:
-                    state.indicators["session_day"] = session_day
-                    state.indicators["cum_pv"] = 0.0
-                    state.indicators["cum_vol"] = 0.0
-
-                vol = float(getattr(bar, "volume", 0.0) or 0.0)
-                tp = (
-                    float(getattr(bar, "high", 0.0) or 0.0)
-                    + float(getattr(bar, "low", 0.0) or 0.0)
-                    + float(getattr(bar, "close", 0.0) or 0.0)
-                ) / 3.0
-                cum_pv = float(state.indicators.get("cum_pv", 0.0) or 0.0) + (tp * vol)
-                cum_vol = float(state.indicators.get("cum_vol", 0.0) or 0.0) + vol
-                state.indicators["cum_pv"] = cum_pv
-                state.indicators["cum_vol"] = cum_vol
-                if cum_vol > 0:
-                    session_vwap = cum_pv / cum_vol
-                    state.indicators["session_vwap"] = session_vwap
-                    try:
-                        bar.vwap = session_vwap
-                    except Exception:
-                        pass
-            except Exception:
-                self._inc_error("execution")
-
-            # PRD 11.2: update indicator cache once per bar per symbol.
-            try:
-                self._update_indicator_cache(state, bar)
-            except Exception:
-                self._inc_error("execution")
-
-            # PRD 6.7: Update unrealized PnL deterministically on each bar.
-            try:
-                mark = float(getattr(bar, "close", 0.0) or 0.0)
-                self.position_manager.update_unrealized_pnl(state, mark)
-            except Exception:
-                self._inc_error("execution")
-
-            # Run Strategies via StrategyEngine (PRD 6.4)
-            if self.strategy_engine is None:
-                self._refresh_strategy_engine()
-
-            if self.strategy_engine is not None:
-                signals = self.strategy_engine.on_bar(
-                    symbol, bar, state, self.market_state
-                )
-
-                for sig in signals:
-                    s_bind = getattr(log, "bind", None)
-                    slog = (
-                        s_bind(
-                            strategy=sig.strategy,
-                            correlation_id=getattr(sig, "correlation_id", "") or None,
-                            regime=getattr(sig.regime, "value", str(sig.regime)),
-                        )
-                        if callable(s_bind)
-                        else log
-                    )
-                    slog.info(
-                        "Signal generated",
-                        symbol=sig.symbol,
-                        strategy=sig.strategy,
-                        regime=getattr(sig.regime, "value", str(sig.regime)),
-                        correlation_id=getattr(sig, "correlation_id", "") or None,
-                        signal=sig,
-                        run_id=self.run_id,
-                    )
-                    self.signals_generated += 1
-                    self._process_signal(sig)
-
-            # PositionManager exit checks (PRD 6.7 best-effort)
-            try:
-                decision = self.position_manager.on_bar(
-                    state,
-                    self.market_state,
-                    broker_managed_exits=bool(
-                        getattr(self.order_executor, "broker_managed_exits", False)
-                    ),
-                )
-                if decision.intent is not None:
-                    e_bind = getattr(log, "bind", None)
-                    elog = (
-                        e_bind(
-                            strategy=decision.intent.strategy,
-                            correlation_id=decision.intent.correlation_id,
-                        )
-                        if callable(e_bind)
-                        else log
-                    )
-                    elog.info(
-                        "Exit generated",
-                        symbol=state.symbol,
-                        strategy=decision.intent.strategy,
-                        correlation_id=decision.intent.correlation_id,
-                        reason=decision.reason,
-                    )
-                    if self.order_executor:
-                        self.order_executor.submit(decision.intent)
-                        self.orders_submitted += 1
-            except Exception as e:
-                self._inc_error("orders")
-                from src.core.errors import ErrorCode
-
-                self.logger.error(
-                    "PositionManager exit failed",
-                    error_code=ErrorCode.POSITION_EXIT_FAILED.value,
-                    symbol=symbol,
-                    regime=getattr(
-                        self.market_state.regime, "value", str(self.market_state.regime)
-                    ),
-                    error=str(e),
-                )
+            # Helper: Manage Positions
+            self._manage_positions(symbol, state, log)
 
             # Emit periodic health metrics based on bar time (deterministic for replay).
             try:
@@ -700,6 +572,148 @@ class ExecutionEngine:
 
         # If we reached here, the bar was processed successfully (or minor errors were suppressed)
         self.consecutive_on_bar_errors = 0
+
+    def _update_symbol_state(self, symbol: str, bar: Any, bar_time: Any) -> SymbolState:
+        # Update Market State (if symbol is index)
+        if symbol == self.config.get("index_symbol", "SPY"):
+            self.market_manager.update(bar, index_symbol=symbol)
+
+        # Update Symbol State
+        if symbol not in self.symbol_states:
+            self.symbol_states[symbol] = SymbolState(
+                symbol=symbol,
+                bars=deque(maxlen=100),
+                position=None,
+                indicators={},
+                open_orders={},
+                allowed_strategies=[],
+                meta={},
+            )
+
+        state = self.symbol_states[symbol]
+        state.bars.append(bar)
+
+        # PRD 7.2 VWAP Reversion: maintain intraday/session VWAP independent of bar deque window.
+        try:
+            bt = bar_time or self.clock()
+            session_day = bt.date() if hasattr(bt, "date") else None
+            prev_day = state.indicators.get("session_day")
+            if session_day is not None and prev_day != session_day:
+                state.indicators["session_day"] = session_day
+                state.indicators["cum_pv"] = 0.0
+                state.indicators["cum_vol"] = 0.0
+
+            vol = float(getattr(bar, "volume", 0.0) or 0.0)
+            tp = (
+                float(getattr(bar, "high", 0.0) or 0.0)
+                + float(getattr(bar, "low", 0.0) or 0.0)
+                + float(getattr(bar, "close", 0.0) or 0.0)
+            ) / 3.0
+            cum_pv = float(state.indicators.get("cum_pv", 0.0) or 0.0) + (tp * vol)
+            cum_vol = float(state.indicators.get("cum_vol", 0.0) or 0.0) + vol
+            state.indicators["cum_pv"] = cum_pv
+            state.indicators["cum_vol"] = cum_vol
+            if cum_vol > 0:
+                session_vwap = cum_pv / cum_vol
+                state.indicators["session_vwap"] = session_vwap
+                try:
+                    bar.vwap = session_vwap
+                except Exception:
+                    pass
+        except Exception:
+            self._inc_error("execution")
+
+        # PRD 11.2: update indicator cache once per bar per symbol.
+        try:
+            self._update_indicator_cache(state, bar)
+        except Exception:
+            self._inc_error("execution")
+
+        # PRD 6.7: Update unrealized PnL deterministically on each bar.
+        try:
+            mark = float(getattr(bar, "close", 0.0) or 0.0)
+            self.position_manager.update_unrealized_pnl(state, mark)
+        except Exception:
+            self._inc_error("execution")
+
+        return state
+
+    def _run_strategies(
+        self, symbol: str, bar: Any, state: SymbolState, log: Any
+    ) -> None:
+        # Run Strategies via StrategyEngine (PRD 6.4)
+        if self.strategy_engine is None:
+            self._refresh_strategy_engine()
+
+        if self.strategy_engine is not None:
+            signals = self.strategy_engine.on_bar(symbol, bar, state, self.market_state)
+
+            for sig in signals:
+                s_bind = getattr(log, "bind", None)
+                slog = (
+                    s_bind(
+                        strategy=sig.strategy,
+                        correlation_id=getattr(sig, "correlation_id", "") or None,
+                        regime=getattr(sig.regime, "value", str(sig.regime)),
+                    )
+                    if callable(s_bind)
+                    else log
+                )
+                slog.info(
+                    "Signal generated",
+                    symbol=sig.symbol,
+                    strategy=sig.strategy,
+                    regime=getattr(sig.regime, "value", str(sig.regime)),
+                    correlation_id=getattr(sig, "correlation_id", "") or None,
+                    signal=sig,
+                    run_id=self.run_id,
+                )
+                self.signals_generated += 1
+                self._process_signal(sig)
+
+    def _manage_positions(self, symbol: str, state: SymbolState, log: Any) -> None:
+        # PositionManager exit checks (PRD 6.7 best-effort)
+        try:
+            decision = self.position_manager.on_bar(
+                state,
+                self.market_state,
+                broker_managed_exits=bool(
+                    getattr(self.order_executor, "broker_managed_exits", False)
+                ),
+            )
+            if decision.intent is not None:
+                e_bind = getattr(log, "bind", None)
+                elog = (
+                    e_bind(
+                        strategy=decision.intent.strategy,
+                        correlation_id=decision.intent.correlation_id,
+                    )
+                    if callable(e_bind)
+                    else log
+                )
+                elog.info(
+                    "Exit generated",
+                    symbol=state.symbol,
+                    strategy=decision.intent.strategy,
+                    correlation_id=decision.intent.correlation_id,
+                    reason=decision.reason,
+                )
+                if self.order_executor:
+                    self.order_executor.submit(decision.intent)
+                    self.orders_submitted += 1
+        except Exception as e:
+            self._inc_error("orders")
+            from src.core.errors import ErrorCode
+
+            self.logger.error(
+                "PositionManager exit failed",
+                error_code=ErrorCode.POSITION_EXIT_FAILED.value,
+                symbol=symbol,
+                regime=getattr(
+                    self.market_state.regime, "value", str(self.market_state.regime)
+                ),
+                error=str(e),
+            )
 
     def _process_signal(self, signal: Signal):
         """
@@ -844,6 +858,11 @@ class ExecutionEngine:
             }
 
         # 3. Order Execution
+        self._execute_signal_intents(signal, intents, log, risk_latency)
+
+    def _execute_signal_intents(
+        self, signal: Signal, intents: List[Any], log: Any, risk_latency: float
+    ) -> None:
         if self.order_executor:
             # PRD 11.4: configurable safe behavior on persistent DB failures.
             if self.db:
@@ -873,6 +892,8 @@ class ExecutionEngine:
                             threshold=threshold,
                         )
                         return
+
+            import time
 
             for intent in intents:
                 try:
@@ -950,73 +971,7 @@ class ExecutionEngine:
 
         # Persist fill row when we can map it to an Order row.
         if self.db:
-            broker_order_id = fill.get("broker_order_id")
-            explicit_order_id = fill.get("order_id")
-
-            def _write_fill(session: Session) -> None:
-                order_id: Optional[int] = None
-                if explicit_order_id is not None:
-                    order_id = int(explicit_order_id)
-                elif broker_order_id is not None:
-                    order_row = (
-                        session.query(DbOrder)
-                        .filter(DbOrder.broker_order_id == str(broker_order_id))
-                        .order_by(DbOrder.id.desc())
-                        .first()
-                    )
-                    if order_row is None:
-                        # Create a minimal order row so fills are never dropped.
-                        session.add(
-                            DbOrder(
-                                correlation_id=corr_id,
-                                symbol=symbol,
-                                side=str(fill.get("side", "") or ""),
-                                qty=float(fill_qty),
-                                type="unknown",
-                                limit_price=None,
-                                status="filled",
-                                time_placed=fill_ts,
-                                time_last_update=fill_ts,
-                                broker_order_id=str(broker_order_id),
-                                meta_json={"recovered_from_fill": True},
-                            )
-                        )
-                        session.flush()
-                        order_row = (
-                            session.query(DbOrder)
-                            .filter(DbOrder.broker_order_id == str(broker_order_id))
-                            .order_by(DbOrder.id.desc())
-                            .first()
-                        )
-                    if order_row is not None and order_row.id is not None:
-                        order_id = int(order_row.id)
-
-                if order_id is None:
-                    # Avoid violating schema FK constraints: only persist when linked.
-                    return
-
-                # Idempotency: don't insert duplicate fill rows for the same order/time/qty/price.
-                existing = (
-                    session.query(DbFill)
-                    .filter(DbFill.order_id == int(order_id))
-                    .filter(DbFill.fill_time == fill_ts)
-                    .filter(DbFill.fill_price == fill_price)
-                    .filter(DbFill.fill_qty == fill_qty)
-                    .first()
-                )
-                if existing is not None:
-                    return
-
-                session.add(
-                    DbFill(
-                        order_id=order_id,
-                        fill_time=fill_ts,
-                        fill_price=fill_price,
-                        fill_qty=fill_qty,
-                    )
-                )
-
-            self.db.write("fill", _write_fill)
+            self._persist_fill(fill, corr_id, fill_ts, fill_price, fill_qty)
 
         # PRD 6.7: PositionManager is the source of truth for position state updates on fills.
         try:
@@ -1043,6 +998,106 @@ class ExecutionEngine:
             )
             return
 
+        self._log_position_decision(decision, state, fill)
+        self._update_realized_pnl(decision, fill_ts)
+
+        if decision.closed_trade is not None:
+            closed = decision.closed_trade
+            try:
+                self.closed_trades.append(closed)
+            except Exception:
+                pass
+
+            if self.db:
+                self._persist_closed_trade(closed)
+
+            try:
+                self.risk_manager.record_completed_trade(
+                    closed.strategy, as_of=closed.exit_time
+                )
+            except Exception:
+                pass
+
+    def _persist_fill(
+        self,
+        fill: Dict[str, Any],
+        corr_id: str,
+        fill_ts: datetime,
+        fill_price: float,
+        fill_qty: float,
+    ) -> None:
+        broker_order_id = fill.get("broker_order_id")
+        explicit_order_id = fill.get("order_id")
+        symbol = fill["symbol"]
+
+        def _write_fill(session: Session) -> None:
+            order_id: Optional[int] = None
+            if explicit_order_id is not None:
+                order_id = int(explicit_order_id)
+            elif broker_order_id is not None:
+                order_row = (
+                    session.query(DbOrder)
+                    .filter(DbOrder.broker_order_id == str(broker_order_id))
+                    .order_by(DbOrder.id.desc())
+                    .first()
+                )
+                if order_row is None:
+                    # Create a minimal order row so fills are never dropped.
+                    session.add(
+                        DbOrder(
+                            correlation_id=corr_id,
+                            symbol=symbol,
+                            side=str(fill.get("side", "") or ""),
+                            qty=float(fill_qty),
+                            type="unknown",
+                            limit_price=None,
+                            status="filled",
+                            time_placed=fill_ts,
+                            time_last_update=fill_ts,
+                            broker_order_id=str(broker_order_id),
+                            meta_json={"recovered_from_fill": True},
+                        )
+                    )
+                    session.flush()
+                    order_row = (
+                        session.query(DbOrder)
+                        .filter(DbOrder.broker_order_id == str(broker_order_id))
+                        .order_by(DbOrder.id.desc())
+                        .first()
+                    )
+                if order_row is not None and order_row.id is not None:
+                    order_id = int(order_row.id)
+
+            if order_id is None:
+                return
+
+            # Idempotency
+            existing = (
+                session.query(DbFill)
+                .filter(DbFill.order_id == int(order_id))
+                .filter(DbFill.fill_time == fill_ts)
+                .filter(DbFill.fill_price == fill_price)
+                .filter(DbFill.fill_qty == fill_qty)
+                .first()
+            )
+            if existing is not None:
+                return
+
+            session.add(
+                DbFill(
+                    order_id=order_id,
+                    fill_time=fill_ts,
+                    fill_price=fill_price,
+                    fill_qty=fill_qty,
+                )
+            )
+
+        if self.db:
+            self.db.write("fill", _write_fill)
+
+    def _log_position_decision(
+        self, decision: Any, state: SymbolState, fill: Dict[str, Any]
+    ) -> None:
         if decision.event == "opened":
             self.logger.info("Position opened", position=state.position)
         elif decision.event == "increased":
@@ -1064,6 +1119,7 @@ class ExecutionEngine:
                 ),
             )
 
+    def _update_realized_pnl(self, decision: Any, fill_ts: Any) -> None:
         if decision.realized_pnl_delta:
             try:
                 self.risk_manager.update_pnl(
@@ -1077,58 +1133,43 @@ class ExecutionEngine:
             except Exception:
                 pass
 
-        if decision.closed_trade is not None:
-            closed = decision.closed_trade
-            try:
-                self.closed_trades.append(closed)
-            except Exception:
-                pass
+    def _persist_closed_trade(self, closed: Any) -> None:
+        def _write_trade(session: Session) -> None:
+            trade = DbTrade(
+                symbol=closed.symbol,
+                strategy=closed.strategy,
+                regime_at_entry=closed.regime_at_entry,
+                regime_at_exit=closed.regime_at_exit,
+                side=closed.side,
+                qty=closed.qty,
+                entry_time=closed.entry_time,
+                exit_time=closed.exit_time,
+                entry_price=closed.entry_price,
+                exit_price=closed.exit_price,
+                pnl_gross=closed.pnl_gross,
+                pnl_net=closed.pnl_net,
+                initial_risk=closed.initial_risk,
+                mae_r=closed.mae_r,
+                mfe_r=closed.mfe_r,
+                commission=closed.commission,
+                slippage_estimate=closed.slippage_estimate,
+                pnl_r=closed.pnl_r,
+                holding_period_seconds=closed.holding_period_seconds,
+                features_json=closed.features_json,
+                correlation_id=closed.correlation_id,
+            )
+            session.add(trade)
+            session.flush()
 
-            if self.db:
-
-                def _write_trade(session: Session) -> None:
-                    trade = DbTrade(
-                        symbol=closed.symbol,
-                        strategy=closed.strategy,
-                        regime_at_entry=closed.regime_at_entry,
-                        regime_at_exit=closed.regime_at_exit,
-                        side=closed.side,
-                        qty=closed.qty,
-                        entry_time=closed.entry_time,
-                        exit_time=closed.exit_time,
-                        entry_price=closed.entry_price,
-                        exit_price=closed.exit_price,
-                        pnl_gross=closed.pnl_gross,
-                        pnl_net=closed.pnl_net,
-                        initial_risk=closed.initial_risk,
-                        mae_r=closed.mae_r,
-                        mfe_r=closed.mfe_r,
-                        commission=closed.commission,
-                        slippage_estimate=closed.slippage_estimate,
-                        pnl_r=closed.pnl_r,
-                        holding_period_seconds=closed.holding_period_seconds,
-                        features_json=closed.features_json,
-                        correlation_id=closed.correlation_id,
-                    )
-                    session.add(trade)
-                    session.flush()
-
-                    # PRD 6.6: link broker orders back to trades.
-                    if trade.id is not None and closed.correlation_id:
-                        (
-                            session.query(DbOrder)
-                            .filter(DbOrder.correlation_id == closed.correlation_id)
-                            .update({"trade_id": int(trade.id)})
-                        )
-
-                self.db.write("trade", _write_trade)
-
-            try:
-                self.risk_manager.record_completed_trade(
-                    closed.strategy, as_of=closed.exit_time
+            if trade.id is not None and closed.correlation_id:
+                (
+                    session.query(DbOrder)
+                    .filter(DbOrder.correlation_id == closed.correlation_id)
+                    .update({"trade_id": int(trade.id)})
                 )
-            except Exception:
-                pass
+
+        if self.db:
+            self.db.write("trade", _write_trade)
 
     async def on_trade_update(self, update: Any) -> None:
         """
@@ -1245,19 +1286,37 @@ class ExecutionEngine:
         PRD 6.3: accepts a ScanResult; for backward compatibility may also accept
         a list of WatchlistSymbol objects.
         """
+        scan_results = self._normalize_scan_results(scan_result)
+
+        # Determinism: respect scanner-provided ordering for adds/retained updates and
+        # use a stable ordering for removals.
+        index_symbol = str(self.config.get("index_symbol", "SPY") or "")
+
+        existing_non_index = set(self.symbol_states.keys())
+        existing_non_index.discard(index_symbol)
+
+        final_adds, final_removes = self._calculate_scan_churn(
+            scan_results, existing_non_index, index_symbol
+        )
+
+        new_target_map = {res.symbol: res for res in scan_results}
+
+        self._apply_scan_diff(
+            final_adds, final_removes, new_target_map, scan_results, existing_non_index
+        )
+
+    def _normalize_scan_results(
+        self, scan_result: ScanResult | List[WatchlistSymbol]
+    ) -> List[Any]:
         scan_results: List[Any]
         if isinstance(scan_result, ScanResult):
             scan_results = list(scan_result.watchlist)
         else:
             scan_results = list(scan_result)
 
-        # Determinism: respect scanner-provided ordering for adds/retained updates and
-        # use a stable ordering for removals.
         index_symbol = str(self.config.get("index_symbol", "SPY") or "")
 
         # PRD 1.1: keep total WS subscriptions within Alpaca's practical ~30 ticker limit.
-        # The app also subscribes to index_symbol for regime detection, so reserve a slot
-        # unless the index is part of the scan result list itself.
         has_index_in_scan = any(
             getattr(res, "symbol", None) == index_symbol for res in scan_results
         )
@@ -1272,14 +1331,16 @@ class ExecutionEngine:
                 index_symbol=index_symbol or None,
             )
             scan_results = list(scan_results)[:hard_cap]
+        return scan_results
 
+    def _calculate_scan_churn(
+        self,
+        scan_results: List[Any],
+        existing_non_index: Set[str],
+        index_symbol: str,
+    ) -> Tuple[List[str], List[str]]:
         desired_symbols = [res.symbol for res in scan_results]
         desired_set = set(desired_symbols)
-        new_target_map = {res.symbol: res for res in scan_results}
-
-        existing_symbols = set(self.symbol_states.keys())
-        existing_non_index = set(existing_symbols)
-        existing_non_index.discard(index_symbol)
 
         # 1. Identify Candidates for Add/Remove (deterministic ordering)
         to_add = [
@@ -1303,15 +1364,28 @@ class ExecutionEngine:
             requested_remove=len(to_remove),
             actual_remove=len(final_removes),
         )
+        return final_adds, final_removes
 
-        # 4. Apply Changes
+    def _apply_scan_diff(
+        self,
+        final_adds: List[str],
+        final_removes: List[str],
+        new_target_map: Dict[str, Any],
+        scan_results: List[Any],
+        existing_non_index: Set[str],
+    ) -> None:
+        self._process_scan_removals(final_removes)
+        self._process_scan_additions(final_adds, new_target_map)
+        self._update_retained_strategies(
+            scan_results, existing_non_index, new_target_map
+        )
 
-        # Removes
+    def _process_scan_removals(self, final_removes: List[str]) -> None:
         for sym in final_removes:
             # If a symbol falls out of the scan list, we drop state unless there's an open position.
             if self.symbol_states[sym].position:
                 self.logger.info(
-                    "Keeping symbol with position despite scan remove", symbol=sym
+                    "Retaining symbol with position outside scan", symbol=sym
                 )
                 continue
 
@@ -1340,99 +1414,158 @@ class ExecutionEngine:
                             str(r.broker_order_id) for r in rows if r.broker_order_id
                         ]
 
-                    self.db.write("order_cancel_collect", _collect)
-                    for oid in sorted(set(broker_ids)):
-                        self.order_executor.cancel_by_broker_order_id(oid)
+                    self.db.write("collect_pending_cancel", _collect)
+
+                    if broker_ids:
+                        self.logger.info(
+                            "Clean-up canceling open orders for removed symbol",
+                            symbol=sym,
+                            count=len(broker_ids),
+                        )
+                        for oid in sorted(set(broker_ids)):
+                            self.order_executor.cancel_by_broker_order_id(oid)
                 except Exception as e:
                     self.logger.warning(
-                        "Order cancellation on remove failed", symbol=sym, error=str(e)
+                        "Clean-up cancel failed", symbol=sym, error=str(e)
                     )
 
+            self.logger.info("Dropping symbol from active set", symbol=sym)
             del self.symbol_states[sym]
             if self.alpaca_client:
                 self.alpaca_client.unsubscribe(sym)
-                pass
 
-        # Adds
+    def _process_scan_additions(
+        self, final_adds: List[str], new_target_map: Dict[str, Any]
+    ) -> None:
         for sym in final_adds:
             scanned_sym = new_target_map[sym]
-            features_snapshot = (
-                asdict(scanned_sym.features) if scanned_sym.features else None
-            )
-            features_snapshot = self._sanitize_features_snapshot(features_snapshot)
-            flow_bias = 0.0
-            if scanned_sym.features and isinstance(scanned_sym.features.extra, dict):
-                flow_bias = float(scanned_sym.features.extra.get("flow_bias") or 0.0)
+            self.logger.info("Adding symbol to active set", symbol=sym)
+
+            # Initialize SymbolState
             self.symbol_states[sym] = SymbolState(
                 symbol=sym,
                 bars=deque(maxlen=100),
                 position=None,
                 indicators={},
                 open_orders={},
-                allowed_strategies=scanned_sym.strategies,
-                meta={
-                    "score": scanned_sym.score,
-                    "gap_pct": (
-                        scanned_sym.features.gap_pct if scanned_sym.features else 0.0
-                    ),
-                    "flow_zscore": (
-                        scanned_sym.features.flow_zscore
-                        if scanned_sym.features
-                        else 0.0
-                    ),
-                    "call_put_ratio": (
-                        scanned_sym.features.call_put_ratio
-                        if scanned_sym.features
-                        else 0.0
-                    ),
+                allowed_strategies=list(scanned_sym.strategies),
+                meta={},
+            )
+
+            # Pre-hydrate features from scan result
+            flow_bias = "neutral"
+            features = scanned_sym.features
+            if features and features.extra:
+                prem = float(features.extra.get("flow_total_premium") or 0.0)
+                if prem > 1000000:
+                    flow_bias = "bullish"
+                elif prem < -1000000:
+                    flow_bias = "bearish"
+
+            features_snapshot = {}
+            if features:
+                features_snapshot = self._sanitize_features_snapshot(asdict(features))
+
+            earnings_date = None
+            sector = "unknown"
+            iv_rank = 0.0
+            short_interest = 0.0
+            call_put_ratio = 0.0
+            premarket_volume = 0.0
+            flow_zscore = 0.0
+            gap_pct = 0.0
+
+            if features:
+                sector = str(features.extra.get("sector") or "unknown")
+                earnings_date = features.extra.get("earnings_date")
+                iv_rank = float(features.extra.get("iv_rank") or 0.0)
+                short_interest = float(features.extra.get("short_interest") or 0.0)
+                call_put_ratio = features.call_put_ratio
+                premarket_volume = features.premarket_volume
+                flow_zscore = features.flow_zscore
+                gap_pct = features.gap_pct
+                if earnings_date:
+                    earnings_date = str(earnings_date)
+
+            self.symbol_states[sym].meta.update(
+                {
+                    "added_at": str(self.market_state.time),
+                    "initial_score": float(scanned_sym.score),
+                    "sector": sector,
+                    "earnings_date": earnings_date,
+                    "iv_rank": iv_rank,
+                    "short_interest": short_interest,
+                    "call_put_ratio": call_put_ratio,
                     "flow_bias": flow_bias,
-                    "premarket_volume": (
-                        scanned_sym.features.premarket_volume
-                        if scanned_sym.features
-                        else 0.0
-                    ),
-                    "features_snapshot": (features_snapshot),
-                },
+                    "flow_zscore": flow_zscore,
+                    "gap_pct": gap_pct,
+                    "premarket_volume": premarket_volume,
+                    "features_snapshot": features_snapshot,
+                }
             )
 
             if self.alpaca_client:
                 self.alpaca_client.subscribe(sym)
-                pass
 
-        # 5. Update strategies for retained symbols
+    def _update_retained_strategies(
+        self,
+        scan_results: List[Any],
+        existing_non_index: Set[str],
+        new_target_map: Dict[str, Any],
+    ) -> None:
+        desired_symbols = [res.symbol for res in scan_results]
         for sym in [s for s in desired_symbols if s in existing_non_index]:
             scanned_sym = new_target_map[sym]
-            self.symbol_states[sym].allowed_strategies = scanned_sym.strategies
-            # Also update meta
-            if scanned_sym.features:
-                self.symbol_states[sym].meta["gap_pct"] = scanned_sym.features.gap_pct
-                self.symbol_states[sym].meta[
-                    "flow_zscore"
-                ] = scanned_sym.features.flow_zscore
-                self.symbol_states[sym].meta[
-                    "call_put_ratio"
-                ] = scanned_sym.features.call_put_ratio
-                if isinstance(scanned_sym.features.extra, dict):
-                    self.symbol_states[sym].meta["flow_bias"] = float(
-                        scanned_sym.features.extra.get("flow_bias") or 0.0
-                    )
-                self.symbol_states[sym].meta[
-                    "premarket_volume"
-                ] = scanned_sym.features.premarket_volume
-                self.symbol_states[sym].meta["features_snapshot"] = (
-                    self._sanitize_features_snapshot(asdict(scanned_sym.features))
+            if sym in self.symbol_states:
+                self.symbol_states[sym].allowed_strategies = list(
+                    scanned_sym.strategies
                 )
+                if scanned_sym.features:
+                    features = scanned_sym.features
+                    if features.extra:
+                        self.symbol_states[sym].meta["flow_bias"] = float(
+                            features.extra.get("flow_bias") or 0.0
+                        )
+                    self.symbol_states[sym].meta[
+                        "premarket_volume"
+                    ] = features.premarket_volume
+                    self.symbol_states[sym].meta["features_snapshot"] = (
+                        self._sanitize_features_snapshot(asdict(features))
+                    )
 
     async def reconcile_broker_state(self) -> None:
         """
         Reloads open positions and open orders from Alpaca and reconciles local state.
         """
-        alpaca_client = self.alpaca_client
-        if alpaca_client is None:
+        result = await self._fetch_broker_data()
+        if not result:
             return
 
-        trading_client = alpaca_client.trading_client
+        _, positions, orders, closed_orders = result
 
+        broker_order_ids: set[str] = set()
+        broker_position_symbols: set[str] = set()
+
+        # Reconcile Positions
+        self._reconcile_positions(positions, broker_position_symbols)
+
+        # Reconcile Orders
+        self._reconcile_orders(orders, closed_orders, broker_order_ids)
+
+        self.logger.info(
+            "Reconciliation complete",
+            positions=len(positions or []),
+            open_orders=len(orders or []),
+            closed_orders=len(closed_orders or []),
+            symbols_tracked=len(self.symbol_states),
+        )
+
+    async def _fetch_broker_data(self) -> Optional[tuple[Any, Any, Any, Any]]:
+        alpaca_client = self.alpaca_client
+        if alpaca_client is None:
+            return None
+
+        trading_client = alpaca_client.trading_client
         import asyncio
 
         from alpaca.trading.enums import QueryOrderStatus
@@ -1446,7 +1579,7 @@ class ExecutionEngine:
             return resp if isinstance(resp, list) else []
 
         try:
-            self.account = await asyncio.to_thread(trading_client.get_account)  # type: ignore
+            account = await asyncio.to_thread(trading_client.get_account)  # type: ignore
             positions = await asyncio.to_thread(trading_client.get_all_positions)
             orders = await asyncio.to_thread(_get_orders_list, QueryOrderStatus.OPEN)
         except Exception as e:
@@ -1458,9 +1591,9 @@ class ExecutionEngine:
                 error_code=ErrorCode.RECONCILE_FETCH_FAILED.value,
                 error=str(e),
             )
-            return
+            return None
 
-        # Best-effort: also fetch recently closed orders to detect missed fills after disconnects.
+        # Best-effort: also fetch recently closed orders
         closed_orders: List[Any] = []
         try:
             closed_orders = await asyncio.to_thread(
@@ -1469,11 +1602,15 @@ class ExecutionEngine:
         except Exception:
             closed_orders = []
 
-        broker_order_ids = set()
-        broker_position_symbols = set()
+        return account, positions, orders, closed_orders
 
-        # Reconcile positions
-        for p in positions or []:
+    def _reconcile_positions(
+        self, positions: Any, broker_position_symbols: set[str]
+    ) -> None:
+        if not positions:
+            positions = []
+
+        for p in positions:
             try:
                 sym = str(getattr(p, "symbol", ""))
                 if not sym:
@@ -1522,7 +1659,7 @@ class ExecutionEngine:
             except Exception as e:
                 self.logger.warning("Position reconcile failed", error=str(e))
 
-        # Detect local positions missing at broker (possible disconnect drift).
+        # Detect local positions missing at broker
         missing = []
         for sym, st in self.symbol_states.items():
             if st.position is None:
@@ -1540,8 +1677,14 @@ class ExecutionEngine:
             if mode in ("halt", "stop"):
                 self._set_risk_mode("off")
 
-        # Reconcile open orders into symbol state meta for visibility
-        for o in orders or []:
+    def _reconcile_orders(
+        self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
+    ) -> None:
+        if not orders:
+            orders = []
+
+        # Reconcile open orders into symbol state meta
+        for o in orders:
             try:
                 sym = str(getattr(o, "symbol", ""))
                 oid = str(getattr(o, "id", ""))
@@ -1574,7 +1717,7 @@ class ExecutionEngine:
         max_age_sec = int(self.config.get("max_open_order_age_sec", 0))
         if max_age_sec > 0 and self.order_executor:
             now = self.clock()
-            for o in orders or []:
+            for o in orders:
                 try:
                     oid = str(getattr(o, "id", "") or "")
                     created_at = getattr(o, "created_at", None)
@@ -1592,209 +1735,227 @@ class ExecutionEngine:
                 except Exception as e:
                     self.logger.warning("Stale-order cancel failed", error=str(e))
 
-        # DB reconciliation: update statuses for broker-open/closed orders and cancel stale locals.
+        # DB reconciliation
         if self.db:
-            now = self.clock()
+            self._reconcile_db_orders(orders, closed_orders, broker_order_ids)
 
-            def _reconcile_db(session: Session) -> None:
-                # Update statuses for orders still open at broker
-                for o in orders or []:
-                    oid = str(getattr(o, "id", ""))
-                    status_val = str(getattr(o, "status", "") or "")
-                    if not oid:
-                        continue
-                    row = (
-                        session.query(DbOrder)
-                        .filter(DbOrder.broker_order_id == oid)
-                        .order_by(DbOrder.id.desc())
-                        .first()
-                    )
-                    if row:
-                        row.status = status_val
-                        row.time_last_update = now
-                        meta = row.meta_json or {}
-                        meta.update(
-                            {
-                                "reconciled": True,
-                                "broker_status": status_val,
-                                "last_reconciled": str(now),
-                            }
-                        )
-                        row.meta_json = meta
+        # Synthesize missed fills
+        if self.db and closed_orders:
+            self._synthesize_missed_fills(closed_orders)
 
-                # Update statuses for recently closed orders (helps correct broker_missing mislabels).
-                for o in closed_orders or []:
-                    oid = str(getattr(o, "id", "") or "")
-                    status_val = str(getattr(o, "status", "") or "")
-                    if not oid or not status_val:
-                        continue
-                    row = (
-                        session.query(DbOrder)
-                        .filter(DbOrder.broker_order_id == oid)
-                        .order_by(DbOrder.id.desc())
-                        .first()
-                    )
-                    if row:
-                        row.status = status_val
-                        row.time_last_update = now
-                        meta = row.meta_json or {}
-                        meta.update(
-                            {
-                                "reconciled": True,
-                                "broker_status": status_val,
-                                "last_reconciled": str(now),
-                            }
-                        )
-                        row.meta_json = meta
+    def _reconcile_db_orders(
+        self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
+    ) -> None:
+        now = self.clock()
 
-                # Mark DB orders as cancelled if broker no longer has them open.
-                stale = (
+        def _reconcile_db(session: Session) -> None:
+            # Update statuses for orders still open at broker
+            for o in orders or []:
+                oid = str(getattr(o, "id", ""))
+                status_val = str(getattr(o, "status", "") or "")
+                if not oid:
+                    continue
+
+                row = (
                     session.query(DbOrder)
-                    .filter(DbOrder.status.notin_(["filled", "canceled", "cancelled"]))
-                    .filter(DbOrder.broker_order_id.isnot(None))
-                    .all()
+                    .filter(DbOrder.broker_order_id == oid)
+                    .order_by(DbOrder.id.desc())
+                    .first()
                 )
-                for row in stale:
-                    if (
-                        row.broker_order_id
-                        and row.broker_order_id not in broker_order_ids
-                    ):
-                        row.status = "cancelled"
-                        row.time_last_update = now
-                        meta = row.meta_json or {}
-                        meta.update(
-                            {
-                                "reconciled": True,
-                                "reason": "broker_missing",
-                                "last_reconciled": str(now),
-                            }
-                        )
-                        row.meta_json = meta
+                if row:
+                    row.status = status_val
+                    row.time_last_update = now
+                    meta = row.meta_json or {}
+                    meta.update(
+                        {
+                            "reconciled": True,
+                            "broker_status": status_val,
+                            "last_reconciled": str(now),
+                        }
+                    )
+                    row.meta_json = meta
 
+            # Update statuses for recently closed orders (helps correct broker_missing mislabels).
+            for o in closed_orders or []:
+                oid = str(getattr(o, "id", "") or "")
+                status_val = str(getattr(o, "status", "") or "")
+                if not oid or not status_val:
+                    continue
+                row = (
+                    session.query(DbOrder)
+                    .filter(DbOrder.broker_order_id == oid)
+                    .order_by(DbOrder.id.desc())
+                    .first()
+                )
+                if row:
+                    row.status = status_val
+                    row.time_last_update = now
+                    meta = row.meta_json or {}
+                    meta.update(
+                        {
+                            "reconciled": True,
+                            "broker_status": status_val,
+                            "last_reconciled": str(now),
+                        }
+                    )
+                    row.meta_json = meta
+
+            # Mark DB orders as cancelled if broker no longer has them open.
+            # Using broker_order_ids to check set membership
+            stale = (
+                session.query(DbOrder)
+                .filter(DbOrder.status.notin_(["filled", "canceled", "cancelled"]))
+                .filter(DbOrder.broker_order_id.isnot(None))
+                .all()
+            )
+            for row in stale:
+                if row.broker_order_id and row.broker_order_id not in broker_order_ids:
+                    row.status = "cancelled"
+                    row.time_last_update = now
+                    meta = row.meta_json or {}
+                    meta.update(
+                        {
+                            "reconciled": True,
+                            "reason": "broker_missing",
+                            "last_reconciled": str(now),
+                        }
+                    )
+                    row.meta_json = meta
+
+        if self.db:
             try:
                 self.db.write("order_reconcile", _reconcile_db)
             except Exception as e:
                 self.logger.warning("DB reconcile failed", error=str(e))
 
-        # Synthesize missed fills from recently closed orders idempotently (DB-backed).
-        if self.db and closed_orders:
-            now = self.clock()
+    def _synthesize_missed_fills(self, closed_orders: Any) -> None:
+        now = self.clock()
 
-            for o in closed_orders:
-                try:
-                    broker_id = str(getattr(o, "id", "") or "")
-                    sym = str(getattr(o, "symbol", "") or "")
-                    if not broker_id or not sym:
-                        continue
-                    filled_qty = float(getattr(o, "filled_qty", 0.0) or 0.0)
-                    filled_avg_price = float(getattr(o, "filled_avg_price", 0.0) or 0.0)
-                    if filled_qty <= 0 or filled_avg_price <= 0:
-                        continue
-                    side_raw = getattr(o, "side", None)
-                    side_val = getattr(side_raw, "value", None) or str(side_raw or "")
-                    if not side_val:
-                        continue
-                    fill_ts = (
-                        getattr(o, "filled_at", None)
-                        or getattr(o, "updated_at", None)
-                        or now
-                    )
+        for o in closed_orders:
+            self._handle_closed_order_reconciliation(o, now)
 
-                    # Correlation fallback via client_order_id if we don't have DB linkage.
-                    corr = str(getattr(o, "client_order_id", "") or "")
-                    # Ensure an order row exists (idempotent) and check if any fills exist.
-                    order_id: Optional[int] = None
+    def _handle_closed_order_reconciliation(self, o: Any, now: datetime) -> None:
+        broker_id = str(getattr(o, "id", "") or "")
+        sym = str(getattr(o, "symbol", "") or "")
+        if not broker_id or not sym:
+            return
 
-                    def _ensure_order_and_check(
-                        session: Session,
-                        *,
-                        broker_id: str = broker_id,
-                        corr: str = corr,
-                        filled_qty: float = filled_qty,
-                        fill_ts: datetime = fill_ts,
-                        o: Any = o,
-                        side_val: str = side_val,
-                        sym: str = sym,
-                    ) -> None:
-                        nonlocal order_id
-                        row = (
-                            session.query(DbOrder)
-                            .filter(DbOrder.broker_order_id == broker_id)
-                            .order_by(DbOrder.id.desc())
-                            .first()
-                        )
-                        if row is None:
-                            session.add(
-                                DbOrder(
-                                    correlation_id=corr,
-                                    symbol=sym,
-                                    side=side_val,
-                                    qty=filled_qty,
-                                    type="unknown",
-                                    limit_price=None,
-                                    status=str(getattr(o, "status", "") or "filled"),
-                                    time_placed=getattr(o, "created_at", None)
-                                    or fill_ts,
-                                    time_last_update=fill_ts,
-                                    broker_order_id=broker_id,
-                                    meta_json={"recovered_from_reconcile": True},
-                                )
-                            )
-                            session.flush()
-                            row = (
-                                session.query(DbOrder)
-                                .filter(DbOrder.broker_order_id == broker_id)
-                                .order_by(DbOrder.id.desc())
-                                .first()
-                            )
-                        if row is None or row.id is None:
-                            return
-                        order_id = int(row.id)
-                        existing = (
-                            session.query(DbFill)
-                            .filter(DbFill.order_id == int(row.id))
-                            .order_by(DbFill.id.desc())
-                            .first()
-                        )
-                        # If any fill exists, don't synthesize another aggregate fill.
-                        if existing is not None:
-                            order_id = None
+        filled_qty = float(getattr(o, "filled_qty", 0.0) or 0.0)
+        filled_avg_price = float(getattr(o, "filled_avg_price", 0.0) or 0.0)
+        if filled_qty <= 0 or filled_avg_price <= 0:
+            return
 
-                    self.db.write("ensure_order_reconcile", _ensure_order_and_check)
-                    if order_id is None:
-                        continue
+        side_raw = getattr(o, "side", None)
+        side_val = getattr(side_raw, "value", None) or str(side_raw or "")
+        if not side_val:
+            return
 
-                    self.logger.warning(
-                        "Synthesizing fill from closed order",
-                        symbol=sym,
-                        broker_order_id=broker_id,
-                        qty=filled_qty,
-                        price=filled_avg_price,
-                    )
-                    self.on_fill(
-                        {
-                            "symbol": sym,
-                            "side": side_val,
-                            "qty": filled_qty,
-                            "price": filled_avg_price,
-                            "broker_order_id": broker_id,
-                            "timestamp": fill_ts,
-                            "correlation_id": corr or None,
-                            "trade_event": "reconcile_synth_fill",
-                        }
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        "Closed-order fill synthesis failed", error=str(e)
-                    )
+        fill_ts = getattr(o, "filled_at", None) or getattr(o, "updated_at", None) or now
 
-        self.logger.info(
-            "Reconciliation complete",
-            positions=len(positions or []),
-            open_orders=len(orders or []),
-            closed_orders=len(closed_orders or []),
-            symbols_tracked=len(self.symbol_states),
+        corr = str(getattr(o, "client_order_id", "") or "")
+
+        order_id: Optional[int] = None
+        if self.db:
+            order_id = self._get_reconciled_order_id(
+                broker_id, corr, sym, side_val, filled_qty, o, fill_ts
+            )
+
+        if order_id is None:
+            return
+
+        self.logger.warning(
+            "Synthesizing fill from closed order",
+            symbol=sym,
+            qty=filled_qty,
+            price=filled_avg_price,
+            order_id=broker_id,
         )
+
+        if self.db:
+            self._persist_synthesized_fill(
+                order_id, fill_ts, filled_avg_price, filled_qty
+            )
+
+    def _get_reconciled_order_id(
+        self,
+        broker_id: str,
+        corr: str,
+        sym: str,
+        side_val: str,
+        filled_qty: float,
+        o: Any,
+        fill_ts: datetime,
+    ) -> Optional[int]:
+        order_id: Optional[int] = None
+
+        def _ensure_order_and_check(session: Session) -> None:
+            nonlocal order_id
+            row = (
+                session.query(DbOrder)
+                .filter(DbOrder.broker_order_id == broker_id)
+                .order_by(DbOrder.id.desc())
+                .first()
+            )
+            if row is None:
+                session.add(
+                    DbOrder(
+                        correlation_id=corr,
+                        symbol=sym,
+                        side=side_val,
+                        qty=filled_qty,
+                        type="unknown",
+                        limit_price=None,
+                        status=str(getattr(o, "status", "") or "filled"),
+                        time_placed=getattr(o, "created_at", None) or fill_ts,
+                        time_last_update=fill_ts,
+                        broker_order_id=broker_id,
+                        meta_json={"recovered_from_reconcile": True},
+                    )
+                )
+                session.flush()
+                row = (
+                    session.query(DbOrder)
+                    .filter(DbOrder.broker_order_id == broker_id)
+                    .order_by(DbOrder.id.desc())
+                    .first()
+                )
+
+            if row is None or row.id is None:
+                return
+
+            # If any fill exists, don't synthesize another aggregate fill.
+            existing = (
+                session.query(DbFill)
+                .filter(DbFill.order_id == int(row.id))
+                .order_by(DbFill.id.desc())
+                .first()
+            )
+            if existing is None:
+                order_id = int(row.id)
+
+        if self.db:
+            self.db.write("ensure_order_reconcile", _ensure_order_and_check)
+        return order_id
+
+    def _persist_synthesized_fill(
+        self,
+        order_id: int,
+        fill_ts: datetime,
+        filled_avg_price: float,
+        filled_qty: float,
+    ) -> None:
+        def _write_fill(session: Session) -> None:
+            session.add(
+                DbFill(
+                    order_id=order_id,
+                    fill_time=fill_ts,
+                    fill_price=filled_avg_price,
+                    fill_qty=filled_qty,
+                )
+            )
+
+        if self.db:
+            self.db.write("synthesize_fill", _write_fill)
 
     async def reconcile_loop(self):
         """
