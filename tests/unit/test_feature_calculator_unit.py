@@ -22,29 +22,11 @@ def test_compute_technicals_basic(calculator):
     result = calculator.compute_technicals(bars)
     assert result is not None
 
-    (
-        price,
-        volume,
-        timestamp,
-        atr_pct,
-        intraday_range_pct,
-        gap_pct,
-        ema20_slope,
-        dist_vwap,
-        adx,
-        dist_ema,
-        pd_h,
-        pd_l,
-        bb_u,
-        bb_l,
-        zscore,
-        pm_vol,
-    ) = result
-
-    assert price == 103.0
-    assert volume == 800.0
-    assert timestamp.isoformat() == "2025-01-01T09:32:00+00:00"
-    assert atr_pct > 0
+    # TechnicalFeatures is a dataclass - access attributes directly
+    assert result.price == 103.0
+    assert result.volume == 800.0
+    assert result.timestamp.isoformat() == "2025-01-01T09:32:00+00:00"
+    assert result.atr_pct > 0
 
 
 def test_compute_flow_metrics_empty(calculator):
