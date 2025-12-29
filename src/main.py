@@ -320,8 +320,11 @@ async def main():
                             engine.update_config(config)
                             eod_ran_for_date = target_date
                         except Exception as e:
+                            from src.core.errors import ErrorCode
+
                             logger.error(
                                 "Automatic EOD Agent run failed",
+                                error_code=ErrorCode.EOD_AGENT_FAILED.value,
                                 error=str(e),
                                 exc_info=True,
                             )
@@ -343,7 +346,14 @@ async def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
-        logger.error("Main loop error", error=str(e), exc_info=True)
+        from src.core.errors import ErrorCode
+
+        logger.error(
+            "Main loop error",
+            error_code=ErrorCode.MAIN_LOOP_ERROR.value,
+            error=str(e),
+            exc_info=True,
+        )
         raise
     finally:
         if not stream_task.done():
