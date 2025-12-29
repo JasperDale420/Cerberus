@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
+  - Added `exc_info=True` to 16 critical ERROR-level logs for full stack traces in production debugging
+  - Added DEBUG-level logging to 5 silent exception handlers for best-effort operation visibility
+  - Expanded ErrorCode enum from 15 to 50+ codes organized by category (Config, Analytics, Alpaca, Engine, Scanner, Risk, Orders, Agent, Database, Backtest)
+  - Improved production debugging capability, observability, and error categorization for operational monitoring
+  - Commits: `5eb2db6`, `b7b7788`, `61fcd7b`
+
+
+### Added
 - **Repository Hygiene (PR #1)**: Added project identity files for open-source readiness
   - LICENSE file (MIT License) for legal clarity
   - SECURITY.md with vulnerability disclosure policy and trading-specific security guidelines
