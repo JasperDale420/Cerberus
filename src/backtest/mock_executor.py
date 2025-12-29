@@ -59,9 +59,23 @@ class BacktestOrderExecutor:
 
         self._risk_cfg: Dict[str, Any] = {}
         self._max_open_order_age_sec: int = 0
+        # P1: Bracket exit mode ("stop_first" or "best_exit")
+        self._bracket_exit_mode: str = "stop_first"
+        # P2: Partial fill simulation
+        self._partial_fill_pct: float = 1.0  # 1.0 = 100% fill
 
     def set_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> None:
         self._risk_cfg = dict(risk_cfg) if isinstance(risk_cfg, dict) else {}
+        # P1: Read bracket exit mode from config
+        self._bracket_exit_mode = str(
+            self._risk_cfg.get("bracket_exit_mode", "stop_first")
+        ).lower()
+        # P2: Read partial fill percentage from config
+        try:
+            self._partial_fill_pct = float(self._risk_cfg.get("partial_fill_pct", 1.0))
+            self._partial_fill_pct = max(0.1, min(1.0, self._partial_fill_pct))
+        except (TypeError, ValueError):
+            self._partial_fill_pct = 1.0
 
     def set_max_open_order_age_sec(self, value: Any) -> None:
         try:
@@ -240,6 +254,10 @@ class BacktestOrderExecutor:
         Fills only occur on bars strictly after the order was submitted.
         """
         now = _ensure_dt(bar.time)
+
+        # P3: Check and cancel expired orders at the start of each bar
+        self._cancel_all_expired_orders(now)
+
         for o in self._orders:
             if not self._can_fill_order(o, symbol, now):
                 continue
@@ -284,6 +302,14 @@ class BacktestOrderExecutor:
             return True
         return False
 
+    def _cancel_all_expired_orders(self, now: datetime) -> None:
+        """P3: Check and cancel all expired orders at start of each bar."""
+        if self._max_open_order_age_sec <= 0:
+            return
+        for o in self._orders:
+            if o.status == "new":
+                self._check_and_cancel_expired(o, now)
+
     def _execute_order_fill(
         self,
         engine: ExecutionEngine,
@@ -297,18 +323,23 @@ class BacktestOrderExecutor:
             self._apply_spread(o.intent.side.value, raw_px),
         )
 
+        # P2: Apply partial fill percentage
+        fill_qty = float(o.intent.qty) * self._partial_fill_pct
+        if fill_qty <= 0:
+            return
+
         # Update portfolio model first (cash), then engine state.
         self._update_cash_and_positions(
             symbol=symbol,
             side=o.intent.side.value,
-            qty=float(o.intent.qty),
+            qty=fill_qty,
             price=fill_px,
         )
         engine.on_fill(
             {
                 "symbol": symbol,
                 "side": o.intent.side.value,
-                "qty": float(o.intent.qty),
+                "qty": fill_qty,
                 "price": float(fill_px),
                 "timestamp": fill_ts,
                 "strategy": o.intent.strategy,
@@ -332,7 +363,7 @@ class BacktestOrderExecutor:
             symbol=symbol,
             side=o.intent.side.value,
             price=float(fill_px),
-            qty=float(o.intent.qty),
+            qty=float(fill_qty),
             correlation_id=o.intent.correlation_id,
         )
 
@@ -472,7 +503,21 @@ class BacktestOrderExecutor:
             return None, ""
 
         open_px = float(bar.open)
-        if hit_stop:
+
+        # P1: Choose exit based on mode when both are hit
+        if hit_stop and hit_target:
+            if self._bracket_exit_mode == "best_exit":
+                # Best exit mode: target wins (more favorable outcome)
+                use_stop = False
+            else:
+                # Default stop_first mode: stop wins (conservative)
+                use_stop = True
+        elif hit_stop:
+            use_stop = True
+        else:
+            use_stop = False
+
+        if use_stop:
             assert stop_price is not None
             exit_price = self._calculate_gap_aware_exit(
                 pos,
