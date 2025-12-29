@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -60,6 +61,53 @@ class PositionManager:
     """
     Best-effort, deterministic exit logic when stop/target are not broker-managed.
     """
+
+    def _validate_fill(self, fill: Dict[str, Any]) -> Optional[str]:
+        """
+        Validate fill event data for safety and correctness.
+
+        Performs comprehensive validation of fill data to prevent malformed
+        events from corrupting position state. Checks for positive, finite,
+        numeric values and valid side.
+
+        Args:
+            fill: Fill event dict with keys: qty, price, side
+
+        Returns:
+            Error message string if validation fails, None if valid
+
+        Note:
+            - Rejects negative, zero, NaN, or infinite quantities/prices
+            - Rejects non-numeric qty/price values
+            - Side must be "buy" or "sell" (case-insensitive)
+            - Used by on_fill() to prevent position corruption
+        """
+        # Validate qty
+        try:
+            qty = float(fill.get("qty", 0.0) or 0.0)
+            if qty <= 0.0:
+                return "qty must be positive"
+            if not math.isfinite(qty):
+                return "qty must be finite (not NaN or Inf)"
+        except (TypeError, ValueError) as e:
+            return f"invalid qty type: {e}"
+
+        # Validate price
+        try:
+            price = float(fill.get("price", 0.0) or 0.0)
+            if price <= 0.0:
+                return "price must be positive"
+            if not math.isfinite(price):
+                return "price must be finite (not NaN or Inf)"
+        except (TypeError, ValueError) as e:
+            return f"invalid price type: {e}"
+
+        # Validate side
+        side = str(fill.get("side", "") or "").lower()
+        if side not in ("buy", "sell"):
+            return f"invalid side: {side} (must be buy or sell)"
+
+        return None  # Valid
 
     def update_unrealized_pnl(
         self, symbol_state: SymbolState, mark_price: float
@@ -128,23 +176,26 @@ class PositionManager:
             - For SHORT positions, buys reduce position
             - Best-effort unrealized PnL update (silent failure OK)
             - Updates symbol_state.position in-place
-            - Ignores fills with invalid qty/price/side
+            - Ignores fills with invalid qty/price/side (validates using _validate_fill)
         """
-        symbol = str(fill.get("symbol", "") or symbol_state.symbol)
-        symbol = str(fill.get("symbol", "") or symbol_state.symbol)
-        fill_qty = float(fill.get("qty", 0.0) or 0.0)
-        fill_price = float(fill.get("price", 0.0) or 0.0)
-        fill_side = str(fill.get("side", "") or "").lower()
-        fill_ts = fill.get("timestamp") or market_state.time
-        corr = str(fill.get("correlation_id", "") or "")
-
-        if fill_qty <= 0.0 or fill_price <= 0.0 or fill_side not in ("buy", "sell"):
+        # Validate fill data first to prevent position corruption
+        validation_error = self._validate_fill(fill)
+        if validation_error:
+            # Log detailed validation failure for debugging
             return FillDecision(
                 event="ignored",
                 realized_pnl_delta=0.0,
                 close_qty=0.0,
                 closed_trade=None,
             )
+
+        # Extract fill data (validated above)
+        symbol = str(fill.get("symbol", "") or symbol_state.symbol)
+        fill_qty = float(fill.get("qty", 0.0) or 0.0)
+        fill_price = float(fill.get("price", 0.0) or 0.0)
+        fill_side = str(fill.get("side", "") or "").lower()
+        fill_ts = fill.get("timestamp") or market_state.time
+        corr = str(fill.get("correlation_id", "") or "")
 
         cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
         cps = float(cfg.get("commission_per_share", 0.0) or 0.0)
