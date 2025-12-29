@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - **M4 Logic Audit**: Skip position reconciliation for symbols with pending orders. Prevents partial fill state corruption during mid-fill broker queries. ([#dd857ee](https://github.com/JasperDale420/Cerberus/commit/dd857ee))
 - **M5 Logic Audit**: Already fixed - MAE/MFE tracking happens before broker_managed_exits check, so updates on every bar
 - **M6 Logic Audit**: Added optional est_exit_commission parameter to update_unrealized_pnl() for more accurate net PnL (subtracts estimated exit costs)
+- **L5 Logic Audit**: Added Pydantic field_validators to RiskConfig for bounds checking: max_daily_loss (0-$100k), max_risk_per_trade (0-$10k), max_open_positions (0-100), risk_mode (normal/reduced/off). ([#a4dd8f0](https://github.com/JasperDale420/Cerberus/commit/a4dd8f0))
 
 ### Added
 - **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
