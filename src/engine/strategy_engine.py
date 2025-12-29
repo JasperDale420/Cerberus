@@ -1,16 +1,83 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Mapping, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Tuple
 
 from src.core.domain import Bar, MarketState, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
+if TYPE_CHECKING:
+    from src.core.domain import (
+        LiquidityRegime,
+        MarketRegimeSnapshot,
+        RiskRegime,
+        SessionRegime,
+        TrendRegime,
+        VolRegime,
+    )
+
+
+@dataclass(frozen=True)
+class StrategyActivationPolicy:
+    """
+    Determines when a strategy is allowed to trade based on multi-axis regimes.
+
+    Each field is a tuple of allowed values. Empty tuple means "no constraint".
+    Strategy is active only if current regime matches ALL non-empty constraints.
+    """
+
+    # Allowed regime axis values (empty = any)
+    session: Tuple[SessionRegime, ...] = ()
+    trend: Tuple[TrendRegime, ...] = ()
+    vol: Tuple[VolRegime, ...] = ()
+    liquidity: Tuple[LiquidityRegime, ...] = ()
+    risk: Tuple[RiskRegime, ...] = ()
+
+    # Minimum confidence threshold (0.0 = no requirement)
+    min_confidence: float = 0.0
+
+    def is_active(self, regime: MarketRegimeSnapshot) -> bool:
+        """
+        Returns True if all axis constraints pass for the given regime snapshot.
+        """
+        # Check each axis constraint
+        if self.session and regime.session not in self.session:
+            return False
+        if self.trend and regime.trend not in self.trend:
+            return False
+        if self.vol and regime.vol not in self.vol:
+            return False
+        if self.liquidity and regime.liquidity not in self.liquidity:
+            return False
+        if self.risk and regime.risk not in self.risk:
+            return False
+
+        # Check minimum confidence across all axes
+        if self.min_confidence > 0.0:
+            for axis_conf in regime.confidence.values():
+                if axis_conf < self.min_confidence:
+                    return False
+
+        return True
+
 
 @dataclass(frozen=True)
 class StrategyRouting:
-    strategies_by_regime: Mapping[Regime, List[str]]
+    """
+    Routes strategies based on regime conditions.
+
+    Supports both legacy strategies_by_regime and new activation_policies.
+    New activation_policies take precedence when defined.
+    """
+
+    # Legacy: simple regime-to-strategy mapping
+    strategies_by_regime: Mapping[Regime, List[str]] = field(default_factory=dict)
+
+    # New: per-strategy activation policies
+    activation_policies: Mapping[str, StrategyActivationPolicy] = field(
+        default_factory=dict
+    )
 
 
 class StrategyEngine:
@@ -45,11 +112,38 @@ class StrategyEngine:
     def _get_active_strategies(
         self, symbol_state: SymbolState, market_state: MarketState
     ) -> List[str]:
+        """
+        Determines which strategies are active for the current symbol and market state.
+
+        Uses activation policies when available, falls back to legacy regime routing.
+        """
         allowed = set(symbol_state.allowed_strategies)
-        regime_allowed = set(
-            self.routing.strategies_by_regime.get(market_state.regime, [])
-        )
-        return sorted(allowed.intersection(regime_allowed))
+        active: List[str] = []
+
+        for name in allowed:
+            # Check if strategy has an activation policy
+            policy = self.routing.activation_policies.get(name)
+
+            if policy is not None:
+                # New: Use activation policy with regime snapshot
+                if market_state.regime_snapshot is not None:
+                    if policy.is_active(market_state.regime_snapshot):
+                        active.append(name)
+                else:
+                    # No snapshot available, fall back to legacy check
+                    if self._legacy_regime_allows(name, market_state.regime):
+                        active.append(name)
+            else:
+                # Legacy: Use strategies_by_regime mapping
+                if self._legacy_regime_allows(name, market_state.regime):
+                    active.append(name)
+
+        return sorted(active)
+
+    def _legacy_regime_allows(self, strategy_name: str, regime: Regime) -> bool:
+        """Check if strategy is allowed under legacy regime routing."""
+        regime_allowed = set(self.routing.strategies_by_regime.get(regime, []))
+        return strategy_name in regime_allowed
 
     def _safe_run_strategy(
         self,
