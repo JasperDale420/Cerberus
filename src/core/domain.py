@@ -34,6 +34,113 @@ class RiskMode(str, Enum):
     OFF = "off"
 
 
+# --- Multi-Axis Regime Enums (PRD Addendum) ---
+
+
+class TrendRegime(str, Enum):
+    """Trend direction axis."""
+
+    UP = "up"
+    DOWN = "down"
+    FLAT = "flat"
+
+
+class VolRegime(str, Enum):
+    """Volatility state axis."""
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    SHOCK = "shock"
+
+
+class LiquidityRegime(str, Enum):
+    """Market liquidity axis."""
+
+    GOOD = "good"
+    THIN = "thin"
+    STRESSED = "stressed"
+
+
+class RiskRegime(str, Enum):
+    """Risk appetite axis (derived from SPY/VXX dynamics)."""
+
+    RISK_ON = "risk_on"
+    NEUTRAL = "neutral"
+    RISK_OFF = "risk_off"
+
+
+class SessionRegime(str, Enum):
+    """Time-of-day session axis."""
+
+    PREMARKET = "premarket"
+    OPENING = "opening"
+    MIDDAY = "midday"
+    POWER_HOUR = "power_hour"
+    CLOSE = "close"
+
+
+@dataclass(frozen=True)
+class MarketRegimeSnapshot:
+    """
+    Multi-axis regime classification per PRD addendum.
+
+    Replaces simple BULL/BEAR/CHOP with orthogonal axes:
+    - trend: direction of market movement
+    - vol: volatility state
+    - liquidity: market depth quality
+    - risk: risk-on/off sentiment
+    - session: time-of-day
+
+    Plus continuous features and per-axis confidence scores.
+    """
+
+    time: datetime
+    index_symbol: str
+    vol_symbol: Optional[str]
+
+    # Discrete regime axes
+    trend: TrendRegime
+    vol: VolRegime
+    liquidity: LiquidityRegime
+    risk: RiskRegime
+    session: SessionRegime
+
+    # Continuous features (for logging/analytics)
+    cum_ret: float = 0.0
+    trend_strength: float = 0.0
+    realized_vol: float = 0.0
+    vol_of_vol: float = 0.0
+    liquidity_score: float = 0.0
+    risk_score: float = 0.0
+
+    # Per-axis confidence (0.0 to 1.0)
+    confidence: Dict[str, float] = field(default_factory=dict)
+
+    # Schema versioning for analytics
+    model_version: str = "1.0"
+
+    @property
+    def regime_tags(self) -> Dict[str, str]:
+        """Returns regime axes as string dict for logging/serialization."""
+        return {
+            "trend": self.trend.value,
+            "vol": self.vol.value,
+            "liquidity": self.liquidity.value,
+            "risk": self.risk.value,
+            "session": self.session.value,
+        }
+
+    @property
+    def legacy_regime(self) -> "Regime":
+        """Backwards-compatible mapping to legacy BULL/BEAR/CHOP."""
+        if self.trend == TrendRegime.UP and self.trend_strength >= 1.5:
+            return Regime.BULL
+        if self.trend == TrendRegime.DOWN and self.trend_strength >= 1.5:
+            return Regime.BEAR
+        return Regime.CHOP
+
+
 # --- Shared Core Types (PRD 3.2) ---
 
 
@@ -60,10 +167,13 @@ class Signal:
     stop_price: float
     target_price: float
     strategy: str
-    regime: Regime
+    regime: Regime  # Legacy: kept for backwards compatibility
     generated_at: datetime
     meta: Dict[str, Any] = field(default_factory=dict)  # indicators, features, etc.
     correlation_id: str = ""  # for cross‑module tracing
+    # PRD Addendum: Multi-axis regime support
+    regime_tags: Dict[str, str] = field(default_factory=dict)
+    regime_confidence: Dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # PRD 3.2 / 2.1: correlation_id is required for cross-module tracing.
@@ -145,7 +255,7 @@ class SymbolState:
 @dataclass
 class MarketState:
     time: datetime
-    regime: Regime
+    regime: Regime  # Legacy: kept for backwards compatibility
     index_symbol: str = "SPY"
     index_price: float = 0.0
     index_return: float = 0.0
@@ -153,6 +263,8 @@ class MarketState:
     daily_pnl: float = 0.0
     risk_mode: RiskMode = RiskMode.NORMAL
     meta: Dict[str, Any] = field(default_factory=dict)
+    # PRD Addendum: Full multi-axis regime snapshot
+    regime_snapshot: Optional[MarketRegimeSnapshot] = None
 
 
 @dataclass
