@@ -17,6 +17,61 @@ class FeatureCalculator:
     DEFAULT_TIMEZONE = "US/Eastern"
     UTC_OFFSET_STR = "+00:00"
 
+    @staticmethod
+    def calculate_ema(values: List[float], period: int) -> Optional[float]:
+        """
+        Calculate Exponential Moving Average for a list of values.
+
+        Uses alpha = 2 / (period + 1) formula.
+        Returns the final EMA value or None if insufficient data.
+        """
+        if not values or period <= 0:
+            return None
+        p = max(1, int(period))
+        alpha = 2.0 / (p + 1.0)
+        ema: Optional[float] = None
+        for x in values:
+            ema = x if ema is None else (alpha * x) + ((1.0 - alpha) * ema)
+        return ema
+
+    @staticmethod
+    def calculate_rsi(closes: List[float], period: int) -> Optional[float]:
+        """
+        Calculate Relative Strength Index using Wilder smoothing.
+
+        Args:
+            closes: List of closing prices
+            period: RSI period (typically 2, 14, etc.)
+
+        Returns:
+            RSI value (0-100) or None if insufficient data
+        """
+        if len(closes) < period + 1 or period <= 0:
+            return None
+
+        p = max(1, int(period))
+
+        # Calculate price changes
+        diffs = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [max(d, 0.0) for d in diffs]
+        losses = [max(-d, 0.0) for d in diffs]
+
+        # Initial average (SMA for first period)
+        avg_gain = sum(gains[:p]) / p
+        avg_loss = sum(losses[:p]) / p
+
+        # Wilder smoothing for remaining values
+        for i in range(p, len(gains)):
+            avg_gain = (avg_gain * (p - 1) + gains[i]) / p
+            avg_loss = (avg_loss * (p - 1) + losses[i]) / p
+
+        # Calculate RSI
+        if avg_loss == 0.0:
+            return 100.0
+
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
+
     def compute_technicals(self, bars_data: List[Any]) -> Optional[TechnicalFeatures]:
         """
         Computes technical indicators from a list of bar data.

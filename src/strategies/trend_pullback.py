@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import TrendPullbackConfig
 
@@ -81,6 +82,7 @@ class TrendPullbackStrategy(BaseStrategy):
     def _get_or_compute_emas(
         self, bars: list[Bar], symbol_state: SymbolState
     ) -> tuple[float | None, float | None]:
+        """Get EMAs from indicators dict or compute using FeatureCalculator."""
         current_fast = symbol_state.indicators.get(
             f"ema_close:{int(self.ema_fast_len)}"
         )
@@ -91,26 +93,18 @@ class TrendPullbackStrategy(BaseStrategy):
         if current_fast is not None and current_slow is not None:
             return current_fast, current_slow
 
-        # Local EMA fallback
-        def _ema_last(values: list[float], period: int) -> float | None:
-            p = max(1, int(period))
-            alpha = 2.0 / (p + 1.0)
-            ema: float | None = None
-            for x in values:
-                ema = x if ema is None else (alpha * x) + ((1.0 - alpha) * ema)
-            return ema
-
+        # Fallback to centralized calculator
         closes = [float(b.close) for b in bars]
         return (
-            _ema_last(closes, int(self.ema_fast_len)),
-            _ema_last(closes, int(self.ema_slow_len)),
+            FeatureCalculator.calculate_ema(closes, int(self.ema_fast_len)),
+            FeatureCalculator.calculate_ema(closes, int(self.ema_slow_len)),
         )
 
     def _get_or_compute_rsi(
         self, bars: list[Bar], symbol_state: SymbolState
-    ) -> tuple[Any, Any]:
+    ) -> tuple[float | None, float | None]:
         """
-        Returns (current_rsi, prev_rsi)
+        Returns (current_rsi, prev_rsi) from indicators dict or computed.
         """
         if self.entry_confirmation != "rsi":
             return None, None
@@ -121,38 +115,11 @@ class TrendPullbackStrategy(BaseStrategy):
         if current_rsi is not None and prev_rsi is not None:
             return current_rsi, prev_rsi
 
-        # Local RSI fallback (Wilder smoothing), return last two values.
+        # Fallback to centralized calculator
         closes = [float(b.close) for b in bars]
-        p = max(1, int(self.rsi_len))
-        if len(closes) < p + 2:
-            return None, None
-
-        avg_gain = None
-        avg_loss = None
-        prev_close = closes[0]
-        series: list[float] = []
-
-        for c in closes[1:]:
-            change = c - prev_close
-            gain = max(0.0, change)
-            loss = max(0.0, -change)
-            if avg_gain is None or avg_loss is None:
-                avg_gain = gain
-                avg_loss = loss
-            else:
-                avg_gain = ((avg_gain * (p - 1)) + gain) / p
-                avg_loss = ((avg_loss * (p - 1)) + loss) / p
-            prev_close = c
-
-            if (avg_loss or 0.0) == 0.0:
-                series.append(100.0)
-            else:
-                rs = float(avg_gain or 0.0) / float(avg_loss)
-                series.append(100.0 - (100.0 / (1.0 + rs)))
-
-        if len(series) < 2:
-            return None, None
-        return series[-1], series[-2]
+        current = FeatureCalculator.calculate_rsi(closes, int(self.rsi_len))
+        previous = FeatureCalculator.calculate_rsi(closes[:-1], int(self.rsi_len))
+        return current, previous
 
     def _check_bullish_signal(
         self,

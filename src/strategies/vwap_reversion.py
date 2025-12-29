@@ -8,6 +8,7 @@ import numpy as np
 from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import VWAPReversionConfig
 
@@ -36,24 +37,10 @@ class VWAPReversionStrategy(BaseStrategy):
             dt, self.time_window_start, self.time_window_end
         )
 
-    def _rsi(self, closes: np.ndarray, length: int) -> Optional[float]:
-        if length <= 0:
-            return None
-        if closes.size < length + 1:
-            return None
-        diffs = np.diff(closes.astype(float))
-        gains = np.maximum(diffs, 0.0)
-        losses = np.maximum(-diffs, 0.0)
-        avg_gain = float(np.mean(gains[-length:])) if gains.size >= length else 0.0
-        avg_loss = float(np.mean(losses[-length:])) if losses.size >= length else 0.0
-        if avg_loss == 0.0:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return float(100.0 - (100.0 / (1.0 + rs)))
-
     def _confirm_reversal(
         self, closes: np.ndarray, side: OrderSide
     ) -> tuple[bool, dict]:
+        """Check if RSI confirms the reversal signal."""
         if self.confirmation == "none":
             return True, {"confirmation": "none"}
 
@@ -66,8 +53,10 @@ class VWAPReversionStrategy(BaseStrategy):
         if closes.size < self.rsi_len + 2:
             return False, {"confirmation": "rsi", "error": "insufficient_history"}
 
-        prev_rsi = self._rsi(closes[:-1], self.rsi_len)
-        curr_rsi = self._rsi(closes, self.rsi_len)
+        # Use centralized calculator
+        closes_list = closes.tolist()
+        prev_rsi = FeatureCalculator.calculate_rsi(closes_list[:-1], self.rsi_len)
+        curr_rsi = FeatureCalculator.calculate_rsi(closes_list, self.rsi_len)
         if prev_rsi is None or curr_rsi is None:
             return False, {"confirmation": "rsi", "error": "rsi_unavailable"}
 

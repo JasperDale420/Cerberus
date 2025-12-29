@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import VWAPTrendRiderConfig
 
@@ -57,18 +58,14 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             f"ema_close:{int(self.ema_slow_len)}"
         )
         if current_fast is None or current_slow is None:
-
-            def _ema_last(values: list[float], period: int) -> float | None:
-                p = max(1, int(period))
-                alpha = 2.0 / (p + 1.0)
-                ema: float | None = None
-                for x in values:
-                    ema = x if ema is None else (alpha * x) + ((1.0 - alpha) * ema)
-                return ema
-
+            # Fallback to centralized calculator
             closes = [float(b.close) for b in bars]
-            current_fast = _ema_last(closes, int(self.ema_fast_len))
-            current_slow = _ema_last(closes, int(self.ema_slow_len))
+            current_fast = FeatureCalculator.calculate_ema(
+                closes, int(self.ema_fast_len)
+            )
+            current_slow = FeatureCalculator.calculate_ema(
+                closes, int(self.ema_slow_len)
+            )
 
         if current_fast is None or current_slow is None:
             return None
