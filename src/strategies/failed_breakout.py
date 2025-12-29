@@ -125,16 +125,13 @@ class FailedBreakoutStrategy(BaseStrategy):
         risk = stop_price - bar.close
         target_price = bar.close - (risk * self.risk_reward)
 
-        return Signal(
+        return self._create_signal(
             symbol=symbol,
             side=OrderSide.SELL,
-            size_hint=0,
-            entry_price=bar.close,
+            bar=bar,
+            market_state=market_state,
             stop_price=stop_price,
             target_price=target_price,
-            strategy=self.name,
-            regime=market_state.regime,
-            generated_at=bar.time,
             meta={"pdh": pdh, "type": "fade_high"},
         )
 
@@ -168,16 +165,13 @@ class FailedBreakoutStrategy(BaseStrategy):
         risk = bar.close - stop_price
         target_price = bar.close + (risk * self.risk_reward)
 
-        return Signal(
+        return self._create_signal(
             symbol=symbol,
             side=OrderSide.BUY,
-            size_hint=0,
-            entry_price=bar.close,
+            bar=bar,
+            market_state=market_state,
             stop_price=stop_price,
             target_price=target_price,
-            strategy=self.name,
-            regime=market_state.regime,
-            generated_at=bar.time,
             meta={"pdl": pdl, "type": "fade_low"},
         )
 

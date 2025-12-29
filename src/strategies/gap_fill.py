@@ -115,21 +115,14 @@ class GapFillStrategy(BaseStrategy):
             risk = stop_price - float(bar.close)
             reward = float(bar.close) - target_price
             if risk > 0 and (reward / risk) >= float(self.risk_reward):
-                return Signal(
+                return self._create_signal(
                     symbol=symbol,
                     side=OrderSide.SELL,
-                    size_hint=0,
-                    entry_price=float(bar.close),
+                    bar=bar,
+                    market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    strategy=self.name,
-                    regime=market_state.regime,
-                    generated_at=bar.time,
-                    meta={
-                        "gap_pct": gap_pct,
-                        "or_low": float(or_low),
-                        "or_high": float(or_high),
-                    },
+                    meta={"gap_pct": gap_pct, "prev_close": prev_close},
                 )
 
         # Fade gap down (long): breakout above OR high.
@@ -144,18 +137,16 @@ class GapFillStrategy(BaseStrategy):
             risk = float(bar.close) - stop_price
             reward = target_price - float(bar.close)
             if risk > 0 and (reward / risk) >= float(self.risk_reward):
-                return Signal(
+                return self._create_signal(
                     symbol=symbol,
                     side=OrderSide.BUY,
-                    size_hint=0,
-                    entry_price=float(bar.close),
+                    bar=bar,
+                    market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    strategy=self.name,
-                    regime=market_state.regime,
-                    generated_at=bar.time,
                     meta={
                         "gap_pct": gap_pct,
+                        "prev_close": prev_close,
                         "or_high": float(or_high),
                         "or_low": float(or_low),
                     },
