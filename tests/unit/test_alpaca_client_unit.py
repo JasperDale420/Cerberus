@@ -40,10 +40,10 @@ def test_get_account_delegates_and_raises_on_error(monkeypatch) -> None:
     monkeypatch.setattr(alpaca_mod, "StockHistoricalDataClient", MagicMock())
 
     c = AlpacaClient(cfg, logger)
-    c.trading_client.get_account.return_value = {"ok": True}
+    c.trading_client.get_account.return_value = {"ok": True}  # type: ignore[attr-defined]
     assert c.get_account() == {"ok": True}
 
-    c.trading_client.get_account.side_effect = RuntimeError("boom")
+    c.trading_client.get_account.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]
     with pytest.raises(RuntimeError):
         c.get_account()
     logger.error.assert_called()
