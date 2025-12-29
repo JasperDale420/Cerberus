@@ -314,8 +314,7 @@ class BacktestRunner:
                     )
 
     async def _load_all_bars(self, timeframe: str) -> Dict[str, List[Bar]]:
-        bars_by_symbol: Dict[str, List[Bar]] = {}
-        for symbol in self.universe:
+        async def _load_one(symbol: str) -> tuple[str, List[Bar]]:
             self.logger.info(
                 "Fetching data",
                 symbol=symbol,
@@ -324,8 +323,10 @@ class BacktestRunner:
             )
             bars = await self._load_bars_for_symbol(symbol, timeframe)
             self.logger.info("Loaded bars", symbol=symbol, count=len(bars))
-            bars_by_symbol[symbol] = bars
-        return bars_by_symbol
+            return symbol, bars
+
+        results = await asyncio.gather(*[_load_one(s) for s in self.universe])
+        return {sym: bars for sym, bars in results}
 
     def _setup_scanner_replay(self, bars_by_symbol: Dict[str, List[Bar]]) -> None:
         pipeline = BacktestFeaturePipeline(
