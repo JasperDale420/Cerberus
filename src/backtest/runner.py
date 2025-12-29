@@ -91,6 +91,7 @@ class BacktestRunner:
             logger=self.logger,
             config=self.config,
             alpaca_client=self.alpaca_client,
+            offline_bars_provider=self.offline_provider,
         )
         self.universe = self.universe_builder.build_universe()
 

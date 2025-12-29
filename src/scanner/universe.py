@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+
+if TYPE_CHECKING:
+    from src.agent.bars_provider import JsonlBarsProvider
 
 
 class UniverseBuilder:
@@ -22,6 +25,7 @@ class UniverseBuilder:
         config_path_or_dir: Optional[str] = None,
         alpaca_client: Optional[AlpacaClient] = None,
         clock: Optional[Callable[[], datetime]] = None,
+        offline_bars_provider: Optional["JsonlBarsProvider"] = None,
     ):
         # Respect caller-provided config (preferred), otherwise load from the same path used by the app.
         self.config = (
@@ -34,6 +38,7 @@ class UniverseBuilder:
         self.clock: Callable[[], datetime] = clock or (
             lambda: datetime.now(timezone.utc)
         )
+        self.offline_bars_provider = offline_bars_provider
 
     def _dedupe_preserve_order(self, symbols: List[str]) -> List[str]:
         seen = set()
@@ -61,6 +66,55 @@ class UniverseBuilder:
             if token:
                 lines.append(token.upper())
         return lines
+
+    def _get_symbol_volume(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> Optional[float]:
+        """Get last bar volume for symbol from Alpaca or offline provider."""
+        # Try Alpaca first
+        if self.alpaca_client is not None:
+            try:
+                bars = self.alpaca_client.get_historical_bars(
+                    symbol, start, end, timeframe="1Day"
+                )
+                if isinstance(bars, dict) and "bars" in bars:
+                    bars = bars["bars"]
+                if isinstance(bars, list) and bars:
+                    b = bars[-1]
+                    if isinstance(b, dict):
+                        v = b.get("v") if b.get("v") is not None else b.get("volume")
+                    else:
+                        v = getattr(b, "v", None) or getattr(b, "volume", None)
+                    if v is not None:
+                        return float(v)
+            except Exception as e:
+                self.logger.warning(
+                    "Dynamic universe volume fetch failed (Alpaca)",
+                    symbol=symbol,
+                    error=str(e),
+                )
+
+        # Fallback to offline bars provider
+        if self.offline_bars_provider is not None:
+            try:
+                bars = list(
+                    self.offline_bars_provider.get_bars(
+                        symbol, start, end, timeframe="1Day"
+                    )
+                )
+                if bars:
+                    b = bars[-1]
+                    v = getattr(b, "volume", None)
+                    if v is not None:
+                        return float(v)
+            except Exception as e:
+                self.logger.warning(
+                    "Dynamic universe volume fetch failed (offline)",
+                    symbol=symbol,
+                    error=str(e),
+                )
+
+        return None
 
     def build_universe(self) -> List[str]:
         """
@@ -102,10 +156,13 @@ class UniverseBuilder:
             if isinstance(dyn_cfg, dict)
             else None
         )
+        has_data_source = (
+            self.alpaca_client is not None or self.offline_bars_provider is not None
+        )
         if (
             isinstance(prev_vol_cfg, dict)
             and bool(prev_vol_cfg.get("enabled", False))
-            and self.alpaca_client is not None
+            and has_data_source
         ):
             top_n = int(prev_vol_cfg.get("top_n", 0))
             if top_n > 0:
@@ -116,7 +173,6 @@ class UniverseBuilder:
                 else:
                     cand_list = list(universe)
 
-                # Fetch daily volume for the last completed day (best-effort with slack days).
                 from datetime import timedelta
 
                 end = self.clock()
@@ -124,34 +180,9 @@ class UniverseBuilder:
 
                 vols: List[tuple[str, float]] = []
                 for sym in sorted(set(cand_list)):
-                    try:
-                        bars = self.alpaca_client.get_historical_bars(
-                            sym, start, end, timeframe="1Day"
-                        )
-                        if isinstance(bars, dict) and "bars" in bars:
-                            bars = bars["bars"]
-                        if not isinstance(bars, list) or not bars:
-                            continue
-                        # Take last bar volume deterministically.
-                        b = bars[-1]
-                        if isinstance(b, dict):
-                            v = (
-                                b.get("v")
-                                if b.get("v") is not None
-                                else b.get("volume")
-                            )
-                        else:
-                            v = getattr(b, "v", None) or getattr(b, "volume", None)
-                        if v is None:
-                            continue
-                        vols.append((sym, float(v)))
-                    except Exception as e:
-                        self.logger.warning(
-                            "Dynamic universe volume fetch failed",
-                            symbol=sym,
-                            error=str(e),
-                        )
-                        continue
+                    vol = self._get_symbol_volume(sym, start, end)
+                    if vol is not None and vol > 0:
+                        vols.append((sym, vol))
 
                 vols_sorted = sorted(vols, key=lambda kv: (-kv[1], kv[0]))
                 dynamic_added = [sym for sym, _v in vols_sorted[:top_n]]
