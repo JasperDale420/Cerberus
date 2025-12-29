@@ -7,6 +7,9 @@ import pytz
 from src.core.domain import TechnicalFeatures
 from src.core.indicators import RollingEMA, RollingStd
 
+# Cache timezone object at module level for performance
+_ET_TZ = pytz.timezone("US/Eastern")
+
 
 class FeatureCalculator:
     """
@@ -84,13 +87,10 @@ class FeatureCalculator:
         if not rows:
             return None
 
-        timestamps = [r[0] for r in rows]
-        opens = [r[1] for r in rows]
-        highs = [r[2] for r in rows]
-        lows = [r[3] for r in rows]
-        closes = [r[4] for r in rows]
-        volumes = [r[5] for r in rows]
-        vwaps = [r[6] for r in rows]
+        # Single-pass extraction using zip instead of 7 list comprehensions
+        timestamps, opens, highs, lows, closes, volumes, vwaps = (
+            list(x) for x in zip(*rows, strict=True)
+        )
 
         price = float(closes[-1])
         volume = float(volumes[-1])
@@ -227,8 +227,7 @@ class FeatureCalculator:
         price: float,
     ) -> Tuple[float, float]:
         vwap_val = float(vwaps[-1]) if vwaps[-1] is not None else 0.0
-        et_tz = pytz.timezone(self.DEFAULT_TIMEZONE)
-        latest_date_et = timestamps[-1].astimezone(et_tz).date()
+        latest_date_et = timestamps[-1].astimezone(_ET_TZ).date()
 
         if vwap_val <= 0.0:
             num = 0.0
@@ -236,7 +235,7 @@ class FeatureCalculator:
             for ts, h, low_val, c, vol in zip(
                 timestamps, highs, lows, closes, volumes, strict=True
             ):
-                if ts.astimezone(et_tz).date() != latest_date_et:
+                if ts.astimezone(_ET_TZ).date() != latest_date_et:
                     continue
                 v = float(vol)
                 if v <= 0:
@@ -329,11 +328,10 @@ class FeatureCalculator:
         prior_day_high = 0.0
         prior_day_low = 0.0
         by_date: Dict[Any, List[float]] = {}
-        et_tz = pytz.timezone(self.DEFAULT_TIMEZONE)
-        latest_date_et = timestamps[-1].astimezone(et_tz).date()
+        latest_date_et = timestamps[-1].astimezone(_ET_TZ).date()
 
         for ts, h, low_val in zip(timestamps, highs, lows, strict=True):
-            d = ts.astimezone(et_tz).date()
+            d = ts.astimezone(_ET_TZ).date()
             if d not in by_date:
                 by_date[d] = [float(h), float(low_val)]
             else:
@@ -369,11 +367,10 @@ class FeatureCalculator:
     ) -> float:
         premarket_vol = 0.0
         market_open = time(9, 30)
-        et_tz = pytz.timezone(self.DEFAULT_TIMEZONE)
-        latest_date_et = timestamps[-1].astimezone(et_tz).date()
+        latest_date_et = timestamps[-1].astimezone(_ET_TZ).date()
 
         for ts, vol in zip(timestamps, volumes, strict=True):
-            ts_et = ts.astimezone(et_tz)
+            ts_et = ts.astimezone(_ET_TZ)
             if ts_et.date() != latest_date_et:
                 continue
             if ts_et.time() < market_open:
@@ -500,14 +497,13 @@ class FeatureCalculator:
     def calculate_session_open_price(self, bars: List[Any], now_utc: datetime) -> float:
         """Helper to find session open price"""
         open_px = 0.0
-        et = pytz.timezone(self.DEFAULT_TIMEZONE)
-        now_et = now_utc.astimezone(et)
+        now_et = now_utc.astimezone(_ET_TZ)
         day = now_et.date()
         market_open = time(9, 30)
         best_ts: Optional[datetime] = None
 
         for b in bars:
-            res = self._parse_and_validate_ts(b, et, day, market_open)
+            res = self._parse_and_validate_ts(b, _ET_TZ, day, market_open)
             if res is None:
                 continue
 

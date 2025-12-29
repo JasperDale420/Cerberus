@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import pytz
-
 from src.core.errors import ErrorCode
 from src.core.logger import StructuredLogger
+from src.core.time_utils import get_eastern_timezone
 from src.data.alpaca import AlpacaClient
 from src.data.unusual_whales import UnusualWhalesClient
 
@@ -222,7 +221,7 @@ class DataFetcher:
             if not isinstance(bars_list, list):
                 return (0.0, 0.0, 0.0)
 
-            et_tz = pytz.timezone("US/Eastern")
+            et_tz = get_eastern_timezone()
             cutoff_date_et = current_time.astimezone(et_tz).date()
 
             valid_bars = []
