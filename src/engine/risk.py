@@ -100,15 +100,9 @@ class RiskManager:
         if session_date == self._session_date:
             return
 
-        # M2 fix: Log positions carried forward for observability
-        # Note: Actual position limit enforcement happens in _check_position_gates
-        # using current_positions which is always accurate
-        self.logger.info(
-            "Session rollover",
-            old_date=str(self._session_date),
-            new_date=str(session_date),
-            positions_carried_forward=self.positions_carried_forward,
-        )
+        # M2 fix: Capture position count BEFORE reset for accurate logging
+        # positions_carried_forward was set by the last apply() call in previous session
+        carried_count = self.positions_carried_forward
 
         self._session_date = session_date
         self.current_daily_pnl = 0.0
@@ -117,9 +111,16 @@ class RiskManager:
         self.daily_completed_trade_count = 0
         self.per_strategy_entry_count.clear()
         self.per_strategy_completed_trade_count.clear()
-        # M2 fix: Track positions carried from previous session
         self.positions_carried_forward = 0
         self.last_rejection_reason = None
+
+        # Log after reset with captured count
+        self.logger.info(
+            "Session rollover",
+            old_date=str(self._session_date),
+            new_date=str(session_date),
+            positions_carried_forward=carried_count,
+        )
 
     def _get_strategy_config(self, strategy_name: str) -> Optional[StrategyConfig]:
         return self.risk_cfg.strategies.get(strategy_name)

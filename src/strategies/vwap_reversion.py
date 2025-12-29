@@ -128,6 +128,7 @@ class VWAPReversionStrategy(BaseStrategy):
         lower = vwap - self.band_sigma * std
 
         current_price = bar.close
+        signal: Optional[Signal] = None
 
         # Deterministic time
         now = market_state.time

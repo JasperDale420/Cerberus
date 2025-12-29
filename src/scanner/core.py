@@ -254,13 +254,18 @@ class Scanner:
         ]
         watchlist.sort(key=lambda w: (-w.score, w.symbol))
 
-        # Clamp size
+        # M3 fix: Configurable watchlist size with documented default
+        # PRD recommends max 30 symbols for manageable tracking; larger values may impact performance
         max_size = int(scanner_cfg.get("max_watchlist_size", 30))
-        if max_size > 30:
+        default_cap = 50  # Hard cap for safety
+        if max_size > default_cap:
             self.logger.warning(
-                "Clamping watchlist size", requested=max_size, clamped=30
+                "Clamping watchlist size to safety cap",
+                requested=max_size,
+                clamped=default_cap,
+                hint="PRD recommends 30 or fewer symbols for manageable tracking",
             )
-            max_size = 30
+            max_size = default_cap
 
         if max_size > 0:
             watchlist = watchlist[:max_size]

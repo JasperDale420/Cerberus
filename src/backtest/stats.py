@@ -2,6 +2,10 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+# L1 fix: Named constant for floating-point quantity comparisons
+# Prevents infinite loops and handles very small position sizes
+QTY_EPSILON = 1e-7
+
 
 class BacktestAnalyzer:
     """
@@ -126,6 +130,16 @@ class BacktestAnalyzer:
     def _calculate_drawdown(
         self, trades: List[Dict[str, Any]], open_pnl: float, closed_pnl: float
     ) -> float:
+        """
+        Calculate maximum drawdown based on closed trades.
+
+        H3 fix: This method calculates drawdown from the closed-trade equity curve.
+        The final check includes open_pnl for current state comparison, but peak
+        tracking is based only on closed trades to maintain consistency.
+
+        Returns:
+            Maximum drawdown as a decimal (e.g., 0.10 = 10% drawdown)
+        """
         equity = self.initial_cash
         peak_equity = equity
         max_drawdown = 0.0
@@ -138,14 +152,16 @@ class BacktestAnalyzer:
             drawdown = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
             max_drawdown = max(max_drawdown, drawdown)
 
-        # Include current open PnL
+        # H3 fix: Calculate current drawdown from closed-trade peak, including open PnL
+        # This shows current drawdown state without updating peak (open positions may reverse)
         current_equity = self.initial_cash + closed_pnl + open_pnl
-        if current_equity > peak_equity:
-            peak_equity = current_equity
         current_drawdown = (
             (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
         )
-        return max(max_drawdown, current_drawdown)
+        # Only count as drawdown if current equity is below peak (not a new high)
+        if current_drawdown > 0:
+            max_drawdown = max(max_drawdown, current_drawdown)
+        return max_drawdown
 
     def _match_trades(self, fills: List[Dict[str, Any]]) -> Any:
         # Returning Tuple[List[Dict], List[Dict]] - defined as Any to avoid extensive typing imports inline
@@ -205,7 +221,7 @@ class BacktestAnalyzer:
         fill_strategy = fill.get("strategy", "unknown")
         remaining_qty = qty
 
-        while remaining_qty > 0.0000001:
+        while remaining_qty > QTY_EPSILON:
             if not stack:
                 self._open_new_stack_position(
                     stack, side, remaining_qty, price, fill["filled_at"], fill_strategy
@@ -295,7 +311,7 @@ class BacktestAnalyzer:
             )
 
             item["qty"] = head_qty - match_qty
-            if item["qty"] <= 0.0000001:
+            if item["qty"] <= QTY_EPSILON:
                 stack.popleft()
 
             return qty - match_qty

@@ -13,6 +13,8 @@ class BaseStrategy(ABC):
         self.config = config
         self.logger = logger
         self.cooldown_bars = int(config.get("cooldown_bars", 5))
+        # M5 fix: Configurable bar duration for accurate cooldown across timeframes
+        self.bar_duration_minutes = float(config.get("bar_duration_minutes", 1.0))
         self.last_signal_time: Dict[str, datetime] = {}
 
     def _check_cooldown(self, symbol: str, current_time: Any) -> bool:
@@ -24,8 +26,8 @@ class BaseStrategy(ABC):
         last = self.last_signal_time.get(symbol)
         if last is None:
             return True
-        # Assume 1 minute per bar for now (safe default for scalping)
-        delta = timedelta(minutes=self.cooldown_bars)
+        # M5 fix: Use configured bar duration instead of hardcoded 1 minute
+        delta = timedelta(minutes=self.cooldown_bars * self.bar_duration_minutes)
         if current_time - last < delta:
             return False
         return True

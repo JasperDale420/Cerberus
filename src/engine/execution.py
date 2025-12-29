@@ -177,139 +177,146 @@ class ExecutionEngine:
         - bb_mean:{period}, bb_std:{period}
         """
         try:
-            from src.core.indicators import (
-                RollingEMA,
-                RollingRSI,
-                RollingSMA,
-                RollingStd,
-            )
-
             if not isinstance(state.indicators, dict):
                 return
 
-            strategies = list(getattr(state, "allowed_strategies", []) or [])
-            # Determine required windows from config and enabled strategies.
-            strat_cfgs = (
-                self.config.get("strategies")
-                if isinstance(self.config.get("strategies"), dict)
-                else {}
-            )
-
-            ema_periods: set[int] = set()
-            rsi_periods: set[int] = set()
-            vol_sma_periods: set[int] = set()
-            bb_periods: set[int] = set()
-
-            for s in strategies:
-                cfg = strat_cfgs.get(s) if isinstance(strat_cfgs, dict) else None
-                if not isinstance(cfg, dict):
-                    cfg = {}
-                if s in ("trend_pullback", "vwap_trend_rider"):
-                    ema_periods.add(int(cfg.get("ema_fast", 20)))
-                    ema_periods.add(int(cfg.get("ema_slow", 50)))
-                if s == "trend_pullback":
-                    rsi_periods.add(int(cfg.get("rsi_len", 2)))
-                if s in ("flow_momentum", "vwap_trend_rider"):
-                    vol_sma_periods.add(20)
-                if s == "index_mean_reversion":
-                    bb_periods.add(int(cfg.get("bb_len", 20)))
-
+            periods = self._collect_indicator_periods(state)
             close = float(getattr(bar, "close", 0.0) or 0.0)
             volume = float(getattr(bar, "volume", 0.0) or 0.0)
 
-            for p in sorted({x for x in ema_periods if x > 0}):
-                key = f"_ema_close_obj:{p}"
-                obj = state.indicators.get(key)
-                if not isinstance(obj, RollingEMA):
-                    obj = RollingEMA.from_period(p)
-                    state.indicators[key] = obj
-                prev = obj.value
-                val = obj.update(close)
-                state.indicators[f"ema_close:{p}:prev"] = prev
-                state.indicators[f"ema_close:{p}"] = val
-
-            for p in sorted({x for x in rsi_periods if x > 0}):
-                key = f"_rsi_obj:{p}"
-                obj = state.indicators.get(key)
-                if not isinstance(obj, RollingRSI):
-                    obj = RollingRSI(period=p)
-                    state.indicators[key] = obj
-                prev = obj.value
-                rsi_val = obj.update(close)
-                state.indicators[f"rsi:{p}:prev"] = prev
-                state.indicators[f"rsi:{p}"] = rsi_val
-
-            for p in sorted({x for x in vol_sma_periods if x > 0}):
-                key = f"_sma_vol_obj:{p}"
-                obj = state.indicators.get(key)
-                if not isinstance(obj, RollingSMA):
-                    obj = RollingSMA.create(p)
-                    state.indicators[key] = obj
-                prev = obj.value
-                val = obj.update(volume)
-                state.indicators[f"sma_vol:{p}:prev"] = prev
-                state.indicators[f"sma_vol:{p}"] = val
-
-            for p in sorted({x for x in bb_periods if x > 0}):
-                key = f"_std_close_obj:{p}"
-                obj = state.indicators.get(key)
-                if not isinstance(obj, RollingStd):
-                    obj = RollingStd.create(p)
-                    state.indicators[key] = obj
-                mean, std = obj.update(close)
-                state.indicators[f"bb_mean:{p}"] = mean
-                state.indicators[f"bb_std:{p}"] = std
+            self._update_ema_indicators(state, close, periods["ema"])
+            self._update_rsi_indicators(state, close, periods["rsi"])
+            self._update_vol_sma_indicators(state, volume, periods["vol_sma"])
+            self._update_bb_indicators(state, close, periods["bb"])
         except Exception:
-            # Best-effort: do not break trading.
             self._inc_error("execution")
 
+    def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set]:
+        """Collect required indicator periods from enabled strategies."""
+        strategies = list(getattr(state, "allowed_strategies", []) or [])
+        strat_cfgs = (
+            self.config.get("strategies")
+            if isinstance(self.config.get("strategies"), dict)
+            else {}
+        )
+
+        periods: Dict[str, set[int]] = {
+            "ema": set(),
+            "rsi": set(),
+            "vol_sma": set(),
+            "bb": set(),
+        }
+
+        for s in strategies:
+            cfg = strat_cfgs.get(s) if isinstance(strat_cfgs, dict) else None
+            if not isinstance(cfg, dict):
+                cfg = {}
+            if s in ("trend_pullback", "vwap_trend_rider"):
+                periods["ema"].add(int(cfg.get("ema_fast", 20)))
+                periods["ema"].add(int(cfg.get("ema_slow", 50)))
+            if s == "trend_pullback":
+                periods["rsi"].add(int(cfg.get("rsi_len", 2)))
+            if s in ("flow_momentum", "vwap_trend_rider"):
+                periods["vol_sma"].add(20)
+            if s == "index_mean_reversion":
+                periods["bb"].add(int(cfg.get("bb_len", 20)))
+
+        return periods
+
+    def _update_ema_indicators(
+        self, state: SymbolState, close: float, periods: set
+    ) -> None:
+        """Update EMA indicators for given periods."""
+        from src.core.indicators import RollingEMA
+
+        for p in sorted(x for x in periods if x > 0):
+            key = f"_ema_close_obj:{p}"
+            obj = state.indicators.get(key)
+            if not isinstance(obj, RollingEMA):
+                obj = RollingEMA.from_period(p)
+                state.indicators[key] = obj
+            prev = obj.value
+            val = obj.update(close)
+            state.indicators[f"ema_close:{p}:prev"] = prev
+            state.indicators[f"ema_close:{p}"] = val
+
+    def _update_rsi_indicators(
+        self, state: SymbolState, close: float, periods: set
+    ) -> None:
+        """Update RSI indicators for given periods."""
+        from src.core.indicators import RollingRSI
+
+        for p in sorted(x for x in periods if x > 0):
+            key = f"_rsi_obj:{p}"
+            obj = state.indicators.get(key)
+            if not isinstance(obj, RollingRSI):
+                obj = RollingRSI(period=p)
+                state.indicators[key] = obj
+            prev = obj.value
+            rsi_val = obj.update(close)
+            state.indicators[f"rsi:{p}:prev"] = prev
+            state.indicators[f"rsi:{p}"] = rsi_val
+
+    def _update_vol_sma_indicators(
+        self, state: SymbolState, volume: float, periods: set
+    ) -> None:
+        """Update volume SMA indicators for given periods."""
+        from src.core.indicators import RollingSMA
+
+        for p in sorted(x for x in periods if x > 0):
+            key = f"_sma_vol_obj:{p}"
+            obj = state.indicators.get(key)
+            if not isinstance(obj, RollingSMA):
+                obj = RollingSMA.create(p)
+                state.indicators[key] = obj
+            prev = obj.value
+            val = obj.update(volume)
+            state.indicators[f"sma_vol:{p}:prev"] = prev
+            state.indicators[f"sma_vol:{p}"] = val
+
+    def _update_bb_indicators(
+        self, state: SymbolState, close: float, periods: set
+    ) -> None:
+        """Update Bollinger Band indicators for given periods."""
+        from src.core.indicators import RollingStd
+
+        for p in sorted(x for x in periods if x > 0):
+            key = f"_std_close_obj:{p}"
+            obj = state.indicators.get(key)
+            if not isinstance(obj, RollingStd):
+                obj = RollingStd.create(p)
+                state.indicators[key] = obj
+            mean, std = obj.update(close)
+            state.indicators[f"bb_mean:{p}"] = mean
+            state.indicators[f"bb_std:{p}"] = std
+
     def flatten_all(self, *, reason: str = "eod") -> None:
-        """
-        Emergency flatten: close all positions and cancel all orders.
-
-        Critical safety function used at end-of-day or when risk limits are breached.
-        Executes with best-effort semantics to aggressively flatten the entire book.
-
-        Workflow:
-        1. Cancel all open orders via Alpaca
-        2. Close all open positions via Alpaca
-        3. Reset local position and watchlist state
-        4. Log confirmation status (success/failure)
-
-        Args:
-            reason: Reason for flattening ("eod", "risk_breach", "manual", etc.)
-
-        Returns:
-            None
-
-        Raises:
-            Exception: If position_mismatch_mode is 'halt' and confirmation fails
-
-        Side Effects:
-            - Sends cancel_all_orders request to Alpaca
-            - Sends close_all_positions request to Alpaca
-            - Clears self.watchlist and all position state
-            - Logs ERROR with FLATTEN_CONFIRMATION_FAILED if positions remain
-            - May halt trading if confirmation fails (based on config)
-
-        Note:
-            - Best-effort operation; individual cancels/closes may fail
-            - PRD 11.2: Includes confirmation check for position_mismatch_mode
-            - Always executed at market close (16:00 ET) if flat_on_close enabled
-            - Does not stop execution engine; use stop() for full shutdown
-        """
+        """Emergency flatten: close all positions and cancel all orders."""
         if not self.alpaca_client:
             self.logger.warning("Flatten requested but no Alpaca client", reason=reason)
             return
 
-        # Stop taking new risk immediately.
         self._set_risk_mode("off")
-
         mismatch_mode = str(self.config.get("position_mismatch_mode", "halt")).lower()
-
         self.logger.info("Flatten starting", reason=reason, mismatch_mode=mismatch_mode)
 
-        # 1) Cancel all open orders (best-effort).
+        # Cancel and close
+        self._flatten_cancel_orders(reason)
+        self._flatten_close_positions(reason, mismatch_mode)
+
+        # Confirm flat state
+        open_positions, open_orders, confirmed = self._flatten_confirm_state()
+
+        # Reset local state
+        self._flatten_reset_local_state()
+
+        # Handle confirmation failures
+        self._flatten_handle_result(
+            mismatch_mode, confirmed, open_positions, open_orders, reason
+        )
+
+    def _flatten_cancel_orders(self, reason: str) -> None:
+        """Cancel all open orders (best-effort)."""
         try:
             self.alpaca_client.trading_client.cancel_orders()
         except Exception as e:
@@ -317,7 +324,8 @@ class ExecutionEngine:
                 "Cancel orders failed", reason=reason, error=str(e), exc_info=True
             )
 
-        # 2) Close all open positions (best-effort; Alpaca can also cancel orders).
+    def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
+        """Close all positions (best-effort)."""
         try:
             self.alpaca_client.trading_client.close_all_positions(cancel_orders=True)
         except Exception as e:
@@ -330,11 +338,13 @@ class ExecutionEngine:
             if mismatch_mode in ("halt", "stop", "raise"):
                 raise
 
-        # 3) Confirm flat state at broker (best-effort).
+    def _flatten_confirm_state(self) -> Tuple[list, list, bool]:
+        """Confirm flat state at broker."""
         open_positions = []
         open_orders = []
         positions_confirmed = False
         orders_confirmed = False
+
         try:
             open_positions = list(self.alpaca_client.trading_client.get_all_positions())
             positions_confirmed = True
@@ -342,6 +352,7 @@ class ExecutionEngine:
             self.logger.warning(
                 "Failed to fetch broker positions after flatten", error=str(e)
             )
+
         try:
             from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
@@ -356,18 +367,28 @@ class ExecutionEngine:
                 "Failed to fetch broker orders after flatten", error=str(e)
             )
 
-        # 4) Best-effort local state reset; reconciliation loop will repair any mismatches.
+        return open_positions, open_orders, (positions_confirmed and orders_confirmed)
+
+    def _flatten_reset_local_state(self) -> None:
+        """Reset local position and order state."""
         for state in self.symbol_states.values():
             state.position = None
             state.open_orders = {}
 
-        if mismatch_mode in ("halt", "stop", "raise") and (
-            not positions_confirmed or not orders_confirmed
-        ):
+    def _flatten_handle_result(
+        self,
+        mismatch_mode: str,
+        confirmed: bool,
+        open_positions: list,
+        open_orders: list,
+        reason: str,
+    ) -> None:
+        """Handle flatten confirmation result."""
+        if mismatch_mode in ("halt", "stop", "raise") and not confirmed:
             self.logger.error(
                 "Flatten confirmation failed",
-                positions_confirmed=positions_confirmed,
-                orders_confirmed=orders_confirmed,
+                positions_confirmed=not bool(open_positions),
+                orders_confirmed=not bool(open_orders),
                 mismatch_mode=mismatch_mode,
             )
             raise RuntimeError("Flatten confirmation failed")
@@ -454,49 +475,24 @@ class ExecutionEngine:
         self._refresh_strategy_engine()
 
     def _refresh_strategy_engine(self) -> None:
+        """Rebuild strategy engine with current config and routing."""
         cfg = self.config or {}
         routing_cfg = cfg.get("strategy_routing") or {}
-
         strategies_cfg = (
             cfg.get("strategies") if isinstance(cfg.get("strategies"), dict) else {}
         )
 
-        def _enabled(name: str, regime_key: str) -> bool:
-            s_cfg = (
-                strategies_cfg.get(name) if isinstance(strategies_cfg, dict) else None
-            )
-            if not isinstance(s_cfg, dict):
-                return True
-            enabled = bool(s_cfg.get("enabled", True))
-            regimes = s_cfg.get("regimes")
-            if isinstance(regimes, dict):
-                r_cfg = regimes.get(regime_key)
-                if isinstance(r_cfg, dict) and "enabled" in r_cfg:
-                    enabled = bool(r_cfg.get("enabled"))
-            return enabled
-
-        def _names(regime_key: str) -> List[str]:
-            raw = routing_cfg.get(regime_key, [])
-            if isinstance(raw, list) and raw:
-                names = [str(x) for x in raw]
-            else:
-                # Default: allow all registered strategies when routing not configured.
-                names = sorted(self.strategies.keys())
-
-            out: List[str] = []
-            for n in names:
-                if n not in self.strategies:
-                    continue
-                if not _enabled(n, regime_key):
-                    continue
-                out.append(n)
-            return out
-
         routing = StrategyRouting(
             strategies_by_regime={
-                Regime.BULL: _names("bull"),
-                Regime.BEAR: _names("bear"),
-                Regime.CHOP: _names("chop"),
+                Regime.BULL: self._get_regime_strategies(
+                    "bull", routing_cfg, strategies_cfg
+                ),
+                Regime.BEAR: self._get_regime_strategies(
+                    "bear", routing_cfg, strategies_cfg
+                ),
+                Regime.CHOP: self._get_regime_strategies(
+                    "chop", routing_cfg, strategies_cfg
+                ),
             }
         )
         self.strategy_engine = StrategyEngine(
@@ -505,6 +501,43 @@ class ExecutionEngine:
             self.logger,
             on_error=lambda: self._inc_error("strategy"),
         )
+
+    def _get_regime_strategies(
+        self,
+        regime_key: str,
+        routing_cfg: Dict[str, Any],
+        strategies_cfg: Dict[str, Any],
+    ) -> List[str]:
+        """Get enabled strategies for a specific regime."""
+        raw = routing_cfg.get(regime_key, [])
+        if isinstance(raw, list) and raw:
+            names = [str(x) for x in raw]
+        else:
+            names = sorted(self.strategies.keys())
+
+        return [
+            n
+            for n in names
+            if n in self.strategies
+            and self._is_strategy_enabled(n, regime_key, strategies_cfg)
+        ]
+
+    def _is_strategy_enabled(
+        self, name: str, regime_key: str, strategies_cfg: Dict[str, Any]
+    ) -> bool:
+        """Check if a strategy is enabled for a given regime."""
+        s_cfg = strategies_cfg.get(name) if isinstance(strategies_cfg, dict) else None
+        if not isinstance(s_cfg, dict):
+            return True
+
+        enabled = bool(s_cfg.get("enabled", True))
+        regimes = s_cfg.get("regimes")
+        if isinstance(regimes, dict):
+            r_cfg = regimes.get(regime_key)
+            if isinstance(r_cfg, dict) and "enabled" in r_cfg:
+                enabled = bool(r_cfg.get("enabled"))
+
+        return enabled
 
     def on_bar(self, symbol_or_bar: Any, bar: Optional[Any] = None) -> None:
         """
@@ -642,49 +675,35 @@ class ExecutionEngine:
         self.consecutive_on_bar_errors = 0
 
     def _update_symbol_state(self, symbol: str, bar: Any, bar_time: Any) -> SymbolState:
-        # Update Market State (if symbol is index)
+        """Update symbol state with new bar data."""
+        # Handle index symbol updates (regime, cache clearing)
         if symbol == self.config.get("index_symbol", "SPY"):
-            # M1 fix: Clear feature cache on regime change or daily boundary
-            current_regime = getattr(bar, "regime", self.market_manager.state.regime)
-            current_date = (
-                (bar_time or self.clock()).date().isoformat()
-                if hasattr((bar_time or self.clock()), "date")
-                else None
-            )
+            self._handle_index_bar_update(bar, bar_time)
 
-            # Clear on regime change
-            if self._last_regime and current_regime != self._last_regime:
-                self.logger.info(
-                    "Market regime changed, clearing feature cache",
-                    old_regime=(
-                        self._last_regime.value
-                        if hasattr(self._last_regime, "value")
-                        else str(self._last_regime)
-                    ),
-                    new_regime=(
-                        current_regime.value
-                        if hasattr(current_regime, "value")
-                        else str(current_regime)
-                    ),
-                )
-                self._clear_all_features()
+        # Initialize or get symbol state
+        state = self._get_or_create_symbol_state(symbol)
+        state.bars.append(bar)
 
-            # Clear daily (safety net)
-            if current_date and self._last_cache_clear_date != current_date:
-                self.logger.debug(
-                    "Daily feature cache clear",
-                    date=current_date,
-                )
-                self._clear_all_features()
-                self._last_cache_clear_date = current_date
+        # Update VWAP tracking
+        self._update_session_vwap(state, bar, bar_time)
 
-            # Update regime tracking
-            self._last_regime = current_regime
+        # Update indicator cache
+        try:
+            self._update_indicator_cache(state, bar)
+        except Exception:
+            self._inc_error("execution")
 
-            # Now update market state
-            self.market_manager.update(bar, index_symbol=symbol)
+        # Update unrealized PnL
+        try:
+            mark = float(getattr(bar, "close", 0.0) or 0.0)
+            self.position_manager.update_unrealized_pnl(state, mark)
+        except Exception:
+            self._inc_error("execution")
 
-        # Update Symbol State
+        return state
+
+    def _get_or_create_symbol_state(self, symbol: str) -> SymbolState:
+        """Get existing or create new symbol state."""
         if symbol not in self.symbol_states:
             self.symbol_states[symbol] = SymbolState(
                 symbol=symbol,
@@ -695,20 +714,79 @@ class ExecutionEngine:
                 allowed_strategies=[],
                 meta={},
             )
+        return self.symbol_states[symbol]
 
-        state = self.symbol_states[symbol]
-        state.bars.append(bar)
+    def _extract_current_date(self, bar_time: Any) -> Optional[str]:
+        """Extract current date with fallback to clock."""
+        try:
+            time_source = bar_time or self.clock()
+            if hasattr(time_source, "date"):
+                return time_source.date().isoformat()
+            self.logger.debug(
+                "bar_time lacks date() method, using clock fallback",
+                bar_time_type=type(bar_time).__name__,
+            )
+            return self.clock().date().isoformat()
+        except Exception:
+            self.logger.warning(
+                "Failed to extract date from bar_time, using clock fallback",
+                bar_time=str(bar_time),
+                exc_info=True,
+            )
+            try:
+                return self.clock().date().isoformat()
+            except Exception:
+                return None
 
-        # PRD 7.2 VWAP Reversion: maintain intraday/session VWAP independent of bar deque window.
+    def _handle_index_bar_update(self, bar: Any, bar_time: Any) -> None:
+        """Handle index symbol updates: regime tracking and cache clearing."""
+        current_regime = getattr(bar, "regime", self.market_manager.state.regime)
+        current_date = self._extract_current_date(bar_time)
+
+        # Clear on regime change
+        if self._last_regime and current_regime != self._last_regime:
+            self.logger.info(
+                "Market regime changed, clearing feature cache",
+                old_regime=(
+                    self._last_regime.value
+                    if hasattr(self._last_regime, "value")
+                    else str(self._last_regime)
+                ),
+                new_regime=(
+                    current_regime.value
+                    if hasattr(current_regime, "value")
+                    else str(current_regime)
+                ),
+            )
+            self._clear_all_features()
+
+        # Clear daily (safety net)
+        if current_date and self._last_cache_clear_date != current_date:
+            self.logger.debug("Daily feature cache clear", date=current_date)
+            self._clear_all_features()
+            self._last_cache_clear_date = current_date
+
+        # Update regime tracking
+        self._last_regime = current_regime
+
+        # Update market state
+        index_symbol = self.config.get("index_symbol", "SPY")
+        self.market_manager.update(bar, index_symbol=index_symbol)
+
+    def _update_session_vwap(self, state: SymbolState, bar: Any, bar_time: Any) -> None:
+        """Update session VWAP tracking for intraday calculations."""
         try:
             bt = bar_time or self.clock()
             session_day = bt.date() if hasattr(bt, "date") else None
             prev_day = state.indicators.get("session_day")
+
+            # Reset on new session
             if session_day is not None and prev_day != session_day:
                 state.indicators["session_day"] = session_day
                 state.indicators["cum_pv"] = 0.0
                 state.indicators["cum_vol"] = 0.0
 
+            # Calculate cumulative values
             vol = float(getattr(bar, "volume", 0.0) or 0.0)
             tp = (
                 float(getattr(bar, "high", 0.0) or 0.0)
@@ -719,6 +797,8 @@ class ExecutionEngine:
             cum_vol = float(state.indicators.get("cum_vol", 0.0) or 0.0) + vol
             state.indicators["cum_pv"] = cum_pv
             state.indicators["cum_vol"] = cum_vol
+
+            # Calculate and store VWAP
             if cum_vol > 0:
                 session_vwap = cum_pv / cum_vol
                 state.indicators["session_vwap"] = session_vwap
@@ -728,21 +808,6 @@ class ExecutionEngine:
                     pass
         except Exception:
             self._inc_error("execution")
-
-        # PRD 11.2: update indicator cache once per bar per symbol.
-        try:
-            self._update_indicator_cache(state, bar)
-        except Exception:
-            self._inc_error("execution")
-
-        # PRD 6.7: Update unrealized PnL deterministically on each bar.
-        try:
-            mark = float(getattr(bar, "close", 0.0) or 0.0)
-            self.position_manager.update_unrealized_pnl(state, mark)
-        except Exception:
-            self._inc_error("execution")
-
-        return state
 
     def _run_strategies(
         self, symbol: str, bar: Any, state: SymbolState, log: Any
@@ -827,53 +892,8 @@ class ExecutionEngine:
         Process strategy signal through risk checks and route to order execution.
 
         Core signal processing pipeline bridging strategy logic and order placement.
-        Validates signals, applies risk management, converts to order intents, submits
-        to broker, and persists for analytics.
-
-        Workflow:
-        1. Apply RiskManager pre-trade checks (position limits, daily loss, sizing)
-        2. Persist Signal to database (accepted or rejected with reason)
-        3. If rejected: log reason and return early
-        4. Store pending entry context for PositionManager (keyed by correlation_id)
-        5. Submit approved OrderIntent(s) via OrderExecutor
-
-        Args:
-            signal: Signal from strategy with symbol, side, entry_price, stop_loss/take_profit,
-                   strategy name, correlation_id, size_hint, and optional features
-
-        Returns:
-            None
-
-        Side Effects:
-            - Calls RiskManager.apply() for pre-trade validation
-            - Writes Signal record to database with accept/reject status
-            - Stores pending_entry in symbol_state.metadata for fill correlation
-            - Submits orders via OrderExecutor.submit()
-            - Increments orders_submitted counter on success
-            - Logs INFO for signal processing, ERROR for failures
-            - Increments error counters (risk, db, orders) on failures
-
-        Note:
-            - PRD 2.1/3.2: Correlation ID generated deterministically in Signal.__post_init__
-            - Risk rejection reasons logged for analytics and debugging
-            - Only first intent is entry; subsequent may be bracket exits (stop/take profit)
-            - Database writes best-effort (errors logged, processing continues)
-            - Latency metrics logged for risk and execution phases
         """
-        # PRD tracing: correlation_id is generated deterministically in Signal.__post_init__.
-
-        _bind = getattr(self.logger, "bind", None)
-        log = (
-            _bind(
-                symbol=signal.symbol,
-                strategy=signal.strategy,
-                correlation_id=signal.correlation_id,
-                run_id=self.run_id,
-                regime=getattr(signal.regime, "value", str(signal.regime)),
-            )
-            if callable(_bind)
-            else self.logger
-        )
+        log = self._bind_signal_logger(signal)
         log.info(
             "Processing signal",
             symbol=signal.symbol,
@@ -884,9 +904,8 @@ class ExecutionEngine:
         )
 
         # 1. Risk Check
-        import time  # Import time here to avoid circular dependency or global import if not needed elsewhere
+        import time
 
-        # Gather active positions from symbol states
         active_positions = [
             s.position for s in self.symbol_states.values() if s.position is not None
         ]
@@ -901,47 +920,12 @@ class ExecutionEngine:
                 account_equity=float(getattr(self.account, "equity", 0.0) or 0.0),
             )
         except Exception as e:
-            self._inc_error("risk")
-            from src.core.errors import ErrorCode
-
-            log.error(
-                "RiskManager.apply failed; dropping signal",
-                error_code=ErrorCode.RISK_APPLY_FAILED.value,
-                symbol=signal.symbol,
-                strategy=signal.strategy,
-                correlation_id=getattr(signal, "correlation_id", "") or None,
-                error=str(e),
-                run_id=self.run_id,
-            )
+            self._log_risk_failure(log, signal, e)
             return
         risk_latency = (time.perf_counter() - start_risk) * 1000
 
         # 2. Persist Signal
-        if self.db:
-            rejection_reason = None
-            if not intents:
-                rejection_reason = (
-                    self.risk_manager.last_rejection_reason or "RISK_REJECTED"
-                )
-            ok = self.db.write(
-                "signal",
-                lambda session: session.add(
-                    DbSignal(
-                        correlation_id=signal.correlation_id,
-                        symbol=signal.symbol,
-                        strategy=signal.strategy,
-                        regime=signal.regime.value,
-                        time=signal.generated_at,
-                        raw_side=signal.side.value,
-                        raw_size=signal.size_hint,
-                        accepted=bool(intents),
-                        rejection_reason=rejection_reason,
-                        meta_json=signal.meta,
-                    )
-                ),
-            )
-            if not ok:
-                self._inc_error("db")
+        self._persist_signal(signal, intents)
 
         if not intents:
             log.info(
@@ -954,115 +938,131 @@ class ExecutionEngine:
             )
             return
 
-        # Stash deterministic entry context keyed by correlation_id for use on fills/trades.
-        # Current behavior: only the first intent is an entry intent.
+        # 3. Store pending entry context
+        self._store_pending_entry(signal, intents)
+
+        # 4. Order Execution
+        self._execute_signal_intents(signal, intents, log, risk_latency)
+
+    def _bind_signal_logger(self, signal: Signal) -> Any:
+        """Bind logger with signal context."""
+        _bind = getattr(self.logger, "bind", None)
+        return (
+            _bind(
+                symbol=signal.symbol,
+                strategy=signal.strategy,
+                correlation_id=signal.correlation_id,
+                run_id=self.run_id,
+                regime=getattr(signal.regime, "value", str(signal.regime)),
+            )
+            if callable(_bind)
+            else self.logger
+        )
+
+    def _log_risk_failure(self, log: Any, signal: Signal, error: Exception) -> None:
+        """Log risk manager failure."""
+        self._inc_error("risk")
+        from src.core.errors import ErrorCode
+
+        log.error(
+            "RiskManager.apply failed; dropping signal",
+            error_code=ErrorCode.RISK_APPLY_FAILED.value,
+            symbol=signal.symbol,
+            strategy=signal.strategy,
+            correlation_id=getattr(signal, "correlation_id", "") or None,
+            error=str(error),
+            run_id=self.run_id,
+        )
+
+    def _persist_signal(self, signal: Signal, intents: List[Any]) -> None:
+        """Persist signal to database."""
+        if not self.db:
+            return
+
+        rejection_reason = None
+        if not intents:
+            rejection_reason = (
+                self.risk_manager.last_rejection_reason or "RISK_REJECTED"
+            )
+
+        ok = self.db.write(
+            "signal",
+            lambda session: session.add(
+                DbSignal(
+                    correlation_id=signal.correlation_id,
+                    symbol=signal.symbol,
+                    strategy=signal.strategy,
+                    regime=signal.regime.value,
+                    time=signal.generated_at,
+                    raw_side=signal.side.value,
+                    raw_size=signal.size_hint,
+                    accepted=bool(intents),
+                    rejection_reason=rejection_reason,
+                    meta_json=signal.meta,
+                )
+            ),
+        )
+        if not ok:
+            self._inc_error("db")
+
+    def _store_pending_entry(self, signal: Signal, intents: List[Any]) -> None:
+        """Store pending entry context for fill correlation."""
+        if not intents:
+            return
+
         intent0 = intents[0]
         state = self.symbol_states[signal.symbol]
         pending = state.meta.setdefault("pending_entries", {})
-        if isinstance(pending, dict) and hasattr(intent0, "qty"):
-            # Carry per-strategy config that affects trade lifecycle (e.g., max hold).
-            strat_cfg = None
-            if isinstance(self.config.get("strategies"), dict):
-                strat_cfg = (self.config.get("strategies") or {}).get(signal.strategy)
-            max_hold_minutes = None
-            if isinstance(strat_cfg, dict):
-                max_hold_minutes = strat_cfg.get("max_hold_minutes")
 
-            features_payload = state.meta.get("features_snapshot")
-            if isinstance(features_payload, dict):
-                features_payload = self._sanitize_features_snapshot(features_payload)
+        if not isinstance(pending, dict) or not hasattr(intent0, "qty"):
+            return
 
-            pending[signal.correlation_id] = {
-                "strategy": signal.strategy,
-                "regime": signal.regime.value,
-                "entry_price": signal.entry_price,
-                "stop_price": signal.stop_price,
-                "target_price": signal.target_price,
-                "qty": intent0.qty,
-                "open_risk": abs(signal.entry_price - signal.stop_price)
-                * float(intent0.qty),
-                "features": (
-                    {
-                        **(features_payload or {}),
-                        "scanner_score": state.meta.get("score"),
-                    }
-                    if isinstance(features_payload, dict)
-                    else features_payload
-                ),
-                "entry_time": signal.generated_at,
-                "max_hold_seconds": (
-                    int(float(max_hold_minutes) * 60)
-                    if max_hold_minutes is not None
-                    else None
-                ),
-            }
+        # Get max hold from strategy config
+        max_hold_seconds = self._get_max_hold_seconds(signal.strategy)
 
-        # 3. Order Execution
-        self._execute_signal_intents(signal, intents, log, risk_latency)
+        # Prepare features payload
+        features_payload = state.meta.get("features_snapshot")
+        if isinstance(features_payload, dict):
+            features_payload = self._sanitize_features_snapshot(features_payload)
+
+        pending[signal.correlation_id] = {
+            "strategy": signal.strategy,
+            "regime": signal.regime.value,
+            "entry_price": signal.entry_price,
+            "stop_price": signal.stop_price,
+            "target_price": signal.target_price,
+            "qty": intent0.qty,
+            "open_risk": abs(signal.entry_price - signal.stop_price)
+            * float(intent0.qty),
+            "features": (
+                {
+                    **(features_payload or {}),
+                    "scanner_score": state.meta.get("score"),
+                }
+                if isinstance(features_payload, dict)
+                else features_payload
+            ),
+            "entry_time": signal.generated_at,
+            "max_hold_seconds": max_hold_seconds,
+        }
+
+    def _get_max_hold_seconds(self, strategy_name: str) -> Optional[int]:
+        """Get max hold seconds from strategy config."""
+        strat_cfg = None
+        if isinstance(self.config.get("strategies"), dict):
+            strat_cfg = (self.config.get("strategies") or {}).get(strategy_name)
+        max_hold_minutes = None
+        if isinstance(strat_cfg, dict):
+            max_hold_minutes = strat_cfg.get("max_hold_minutes")
+        if max_hold_minutes is not None:
+            return int(float(max_hold_minutes) * 60)
+        return None
 
     def _execute_signal_intents(
         self, signal: Signal, intents: List[Any], log: Any, risk_latency: float
     ) -> None:
-        if self.order_executor:
-            # PRD 11.4: configurable safe behavior on persistent DB failures.
-            if self.db:
-                mode = str((self.config.get("db_trading_mode") or "warn")).lower()
-                if mode in ("halt", "stop"):
-                    buf_len = 0
-                    buf_max = 0
-                    try:
-                        buf_len = int(self.db.write_buffer_len())
-                        buf_max = int(self.db.write_buffer_max())
-                    except Exception:
-                        pass
-
-                    threshold = int(
-                        self.config.get(
-                            "db_trading_halt_buffer_len", max(1, buf_max // 2 or 1)
-                        )
-                    )
-                    if self.db.last_db_write_error and buf_len >= threshold:
-                        # Fail-safe: stop new orders.
-                        self._set_risk_mode("off")
-                        log.error(
-                            "Halting trading due to persistent DB failures",
-                            last_db_error=self.db.last_db_write_error,
-                            db_buffer_len=buf_len,
-                            db_buffer_max=buf_max,
-                            threshold=threshold,
-                        )
-                        return
-
-            import time
-
-            for intent in intents:
-                try:
-                    start_exec = time.perf_counter()
-                    self.order_executor.submit(intent)
-                    exec_latency = (time.perf_counter() - start_exec) * 1000
-                    self.orders_submitted += 1
-                    log.info(
-                        "Order submitted",
-                        symbol=intent.symbol,
-                        strategy=intent.strategy,
-                        correlation_id=intent.correlation_id,
-                        intent=intent,
-                        risk_latency_ms=risk_latency,
-                        exec_latency_ms=exec_latency,
-                        run_id=self.run_id,
-                    )
-                except Exception as e:
-                    self._inc_error("orders")
-                    self.logger.error(
-                        "Order execution failed",
-                        symbol=intent.symbol,
-                        strategy=intent.strategy,
-                        correlation_id=intent.correlation_id,
-                        error=str(e),
-                        run_id=self.run_id,
-                        exc_info=True,
-                    )
-        else:
+        """Execute order intents for a signal."""
+        if not self.order_executor:
             self.logger.warning(
                 "No OrderExecutor available (paper/mock mode)",
                 symbol=signal.symbol,
@@ -1071,69 +1071,125 @@ class ExecutionEngine:
                 intents=intents,
                 run_id=self.run_id,
             )
+            return
+
+        # Check DB trading halt conditions
+        if self._should_halt_trading_for_db(log):
+            return
+
+        # Submit each intent
+        import time
+
+        for intent in intents:
+            self._submit_single_intent(intent, log, risk_latency, time.perf_counter)
+
+    def _should_halt_trading_for_db(self, log: Any) -> bool:
+        """Check if trading should halt due to DB failures."""
+        if not self.db:
+            return False
+
+        mode = str((self.config.get("db_trading_mode") or "warn")).lower()
+        if mode not in ("halt", "stop"):
+            return False
+
+        buf_len = 0
+        buf_max = 0
+        try:
+            buf_len = int(self.db.write_buffer_len())
+            buf_max = int(self.db.write_buffer_max())
+        except Exception:
+            pass
+
+        threshold = int(
+            self.config.get("db_trading_halt_buffer_len", max(1, buf_max // 2 or 1))
+        )
+
+        if self.db.last_db_write_error and buf_len >= threshold:
+            self._set_risk_mode("off")
+            log.error(
+                "Halting trading due to persistent DB failures",
+                last_db_error=self.db.last_db_write_error,
+                db_buffer_len=buf_len,
+                db_buffer_max=buf_max,
+                threshold=threshold,
+            )
+            return True
+
+        return False
+
+    def _submit_single_intent(
+        self, intent: Any, log: Any, risk_latency: float, perf_counter: Any
+    ) -> None:
+        """Submit a single order intent."""
+        try:
+            start_exec = perf_counter()
+            self.order_executor.submit(intent)
+            exec_latency = (perf_counter() - start_exec) * 1000
+            self.orders_submitted += 1
+            log.info(
+                "Order submitted",
+                symbol=intent.symbol,
+                strategy=intent.strategy,
+                correlation_id=intent.correlation_id,
+                intent=intent,
+                risk_latency_ms=risk_latency,
+                exec_latency_ms=exec_latency,
+                run_id=self.run_id,
+            )
+        except Exception as e:
+            self._inc_error("orders")
+            self.logger.error(
+                "Order execution failed",
+                symbol=intent.symbol,
+                strategy=intent.strategy,
+                correlation_id=intent.correlation_id,
+                error=str(e),
+                run_id=self.run_id,
+                exc_info=True,
+            )
 
     def on_fill(self, fill: Dict[str, Any]):
-        """
-        Process fill event and update position state.
-
-        Critical fill processing pathway routing broker fill events to PositionManager,
-        updating position state, persisting fills/trades to database, and managing
-        watchlist based on position lifecycle.
-
-        Workflow:
-        1. Normalize correlation_id (fallback to broker_order_id or generate hash)
-        2. Persist Fill record to database for analytics
-        3. Route to PositionManager.on_fill() for position state update
-        4. Process FillDecision (opened/increased/decreased/closed events)
-        5. If position closed: persist Trade, update PnL, remove from watchlist
-
-        Args:
-            fill: Fill event dict with keys:
-                 - symbol: Ticker symbol (required)
-                 - side: "buy" or "sell" (required)
-                 - qty: Filled quantity (required)
-                 - price: Execution price (required)
-                 - timestamp: Fill time UTC (optional, defaults to market_state.time)
-                 - correlation_id: Tracking ID (optional, generated if missing)
-                 - broker_order_id: Alpaca order ID (optional, used for correlation fallback)
-                 - strategy: Strategy name (optional)
-
-        Returns:
-            None
-
-        Side Effects:
-            - Normalizes and updates fill dict with correlation_id
-            - Writes Fill record to database
-            - Updates symbol_state.position via PositionManager
-            - Writes Trade record if position closed
-            - Appends to self.closed_trades list
-            - Updates self.realized_pnl tracking
-            - Removes symbol from watchlist if closed
-            - Records completed trade in RiskManager
-            - Logs position decision (opened/increased/decreased/closed)
-            - Increments error counter on failures
-
-        Note:
-            - PRD 2.1/3.2: Enforces non-empty correlation_id for persistence/tracing
-            - PRD 6.7: PositionManager is source of truth for position state updates
-            - Database writes best-effort (logged on failure, position always updated)
-            - Unknown symbols logged as warning and ignored
-            - Fills for unknown symbols don't crash processing
-        """
+        """Process fill event and update position state."""
         symbol = fill["symbol"]
         if symbol not in self.symbol_states:
             self.logger.warning("Fill received for unknown symbol", symbol=symbol)
             return
 
         state = self.symbol_states[symbol]
-        fill_qty = float(fill["qty"])
-        fill_price = float(fill["price"])
         fill_ts = fill.get("timestamp") or self.market_state.time
-        # Avoid leaking str(None) == "None" into persisted correlation IDs.
-        corr = str(fill.get("correlation_id") or "")
 
-        # PRD 2.1/3.2: enforce non-empty correlation_id for persistence/tracing.
+        # Normalize correlation ID
+        fill = self._normalize_fill_correlation_id(fill, symbol, fill_ts)
+
+        # Persist fill
+        if self.db:
+            self._persist_fill(
+                fill,
+                fill["correlation_id"],
+                fill_ts,
+                float(fill["price"]),
+                float(fill["qty"]),
+            )
+
+        # Process via PositionManager
+        decision = self._process_fill_with_position_manager(state, fill)
+        if decision is None:
+            return
+
+        self._log_position_decision(decision, state, fill)
+        self._update_realized_pnl(decision, fill_ts)
+
+        # Handle closed trade
+        if decision.closed_trade is not None:
+            self._handle_closed_trade(decision.closed_trade)
+
+    def _normalize_fill_correlation_id(
+        self, fill: Dict[str, Any], symbol: str, fill_ts: Any
+    ) -> Dict[str, Any]:
+        """Normalize correlation ID with fallbacks."""
+        corr = str(fill.get("correlation_id") or "")
         corr_id = corr
+
         if not corr_id:
             broker_order_id = fill.get("broker_order_id")
             if broker_order_id is not None and str(broker_order_id):
@@ -1146,17 +1202,16 @@ class ExecutionEngine:
                     "fill-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
                 )
 
-        # Ensure downstream consumers (PositionManager, logs) see the normalized correlation_id.
         fill = dict(fill)
         fill["correlation_id"] = corr_id
+        return fill
 
-        # Persist fill row when we can map it to an Order row.
-        if self.db:
-            self._persist_fill(fill, corr_id, fill_ts, fill_price, fill_qty)
-
-        # PRD 6.7: PositionManager is the source of truth for position state updates on fills.
+    def _process_fill_with_position_manager(
+        self, state: SymbolState, fill: Dict[str, Any]
+    ) -> Optional[Any]:
+        """Process fill through PositionManager."""
         try:
-            decision = self.position_manager.on_fill(
+            return self.position_manager.on_fill(
                 state,
                 self.market_state,
                 fill,
@@ -1173,32 +1228,29 @@ class ExecutionEngine:
             self.logger.error(
                 "PositionManager on_fill failed",
                 error_code=ErrorCode.POSITION_UPDATE_FAILED.value,
-                symbol=symbol,
-                correlation_id=corr or None,
+                symbol=fill["symbol"],
+                correlation_id=fill.get("correlation_id"),
                 error=str(e),
                 exc_info=True,
             )
-            return
+            return None
 
-        self._log_position_decision(decision, state, fill)
-        self._update_realized_pnl(decision, fill_ts)
+    def _handle_closed_trade(self, closed: Any) -> None:
+        """Handle a closed trade: persist, record, and track."""
+        try:
+            self.closed_trades.append(closed)
+        except Exception:
+            pass
 
-        if decision.closed_trade is not None:
-            closed = decision.closed_trade
-            try:
-                self.closed_trades.append(closed)
-            except Exception:
-                pass
+        if self.db:
+            self._persist_closed_trade(closed)
 
-            if self.db:
-                self._persist_closed_trade(closed)
-
-            try:
-                self.risk_manager.record_completed_trade(
-                    closed.strategy, as_of=closed.exit_time
-                )
-            except Exception:
-                pass
+        try:
+            self.risk_manager.record_completed_trade(
+                closed.strategy, as_of=closed.exit_time
+            )
+        except Exception:
+            pass
 
     def _persist_fill(
         self,
@@ -1563,62 +1615,70 @@ class ExecutionEngine:
         )
 
     def _process_scan_removals(self, final_removes: List[str]) -> None:
+        """Remove symbols from active trading set."""
         for sym in final_removes:
-            # If a symbol falls out of the scan list, we drop state unless there's an open position.
             if self.symbol_states[sym].position:
                 self.logger.info(
                     "Retaining symbol with position outside scan", symbol=sym
                 )
                 continue
 
-            # Best-effort: cancel any locally-tracked open orders for this symbol when removed.
-            if self.db and self.order_executor:
-                try:
-                    # Cancel any broker-open orders for this symbol (covers cases where DB misses rows).
-                    try:
-                        self.order_executor.cancel_all_for_symbol(sym)
-                    except Exception:
-                        pass
-
-                    broker_ids: List[str] = []
-
-                    def _collect(session: Session, sym: str = sym) -> None:
-                        nonlocal broker_ids
-                        rows = (
-                            session.query(DbOrder)
-                            .filter(DbOrder.symbol == sym)
-                            .filter(DbOrder.broker_order_id.isnot(None))
-                            .order_by(DbOrder.id.desc())
-                            .limit(25)
-                            .all()
-                        )
-                        broker_ids = [
-                            str(r.broker_order_id) for r in rows if r.broker_order_id
-                        ]
-
-                    self.db.write("collect_pending_cancel", _collect)
-
-                    if broker_ids:
-                        self.logger.info(
-                            "Clean-up canceling open orders for removed symbol",
-                            symbol=sym,
-                            count=len(broker_ids),
-                        )
-                        for oid in sorted(set(broker_ids)):
-                            self.order_executor.cancel_by_broker_order_id(oid)
-                except Exception as e:
-                    self.logger.warning(
-                        "Clean-up cancel failed", symbol=sym, error=str(e)
-                    )
+            # Best-effort: cancel open orders before removing
+            self._cleanup_orders_for_symbol(sym)
 
             self.logger.info("Dropping symbol from active set", symbol=sym)
             del self.symbol_states[sym]
             if self.alpaca_client:
                 self.alpaca_client.unsubscribe(sym)
 
+    def _cleanup_orders_for_symbol(self, sym: str) -> None:
+        """Cancel any open orders for a symbol being removed."""
+        if not (self.db and self.order_executor):
+            return
+
+        try:
+            # Cancel via broker API
+            try:
+                self.order_executor.cancel_all_for_symbol(sym)
+            except Exception:
+                pass
+
+            # Also cancel by looking up order IDs in DB
+            broker_ids = self._get_pending_order_ids(sym)
+            if broker_ids:
+                self.logger.info(
+                    "Clean-up canceling open orders for removed symbol",
+                    symbol=sym,
+                    count=len(broker_ids),
+                )
+                for oid in sorted(set(broker_ids)):
+                    self.order_executor.cancel_by_broker_order_id(oid)
+        except Exception as e:
+            self.logger.warning("Clean-up cancel failed", symbol=sym, error=str(e))
+
+    def _get_pending_order_ids(self, sym: str) -> List[str]:
+        """Get pending order IDs for a symbol from database."""
+        broker_ids: List[str] = []
+
+        def _collect(session: Session, sym: str = sym) -> None:
+            nonlocal broker_ids
+            rows = (
+                session.query(DbOrder)
+                .filter(DbOrder.symbol == sym)
+                .filter(DbOrder.broker_order_id.isnot(None))
+                .order_by(DbOrder.id.desc())
+                .limit(25)
+                .all()
+            )
+            broker_ids = [str(r.broker_order_id) for r in rows if r.broker_order_id]
+
+        self.db.write("collect_pending_cancel", _collect)
+        return broker_ids
+
     def _process_scan_additions(
         self, final_adds: List[str], new_target_map: Dict[str, Any]
     ) -> None:
+        """Add new symbols from scan to active trading set."""
         for sym in final_adds:
             scanned_sym = new_target_map[sym]
             self.logger.info("Adding symbol to active set", symbol=sym)
@@ -1634,60 +1694,65 @@ class ExecutionEngine:
                 meta={},
             )
 
-            # Pre-hydrate features from scan result
-            flow_bias = "neutral"
-            features = scanned_sym.features
-            if features and features.extra:
-                prem = float(features.extra.get("flow_total_premium") or 0.0)
-                if prem > 1000000:
-                    flow_bias = "bullish"
-                elif prem < -1000000:
-                    flow_bias = "bearish"
-
-            features_snapshot = {}
-            if features:
-                features_snapshot = self._sanitize_features_snapshot(asdict(features))
-
-            earnings_date = None
-            sector = "unknown"
-            iv_rank = 0.0
-            short_interest = 0.0
-            call_put_ratio = 0.0
-            premarket_volume = 0.0
-            flow_zscore = 0.0
-            gap_pct = 0.0
-
-            if features:
-                sector = str(features.extra.get("sector") or "unknown")
-                earnings_date = features.extra.get("earnings_date")
-                iv_rank = float(features.extra.get("iv_rank") or 0.0)
-                short_interest = float(features.extra.get("short_interest") or 0.0)
-                call_put_ratio = features.call_put_ratio
-                premarket_volume = features.premarket_volume
-                flow_zscore = features.flow_zscore
-                gap_pct = features.gap_pct
-                if earnings_date:
-                    earnings_date = str(earnings_date)
-
-            self.symbol_states[sym].meta.update(
-                {
-                    "added_at": str(self.market_state.time),
-                    "initial_score": float(scanned_sym.score),
-                    "sector": sector,
-                    "earnings_date": earnings_date,
-                    "iv_rank": iv_rank,
-                    "short_interest": short_interest,
-                    "call_put_ratio": call_put_ratio,
-                    "flow_bias": flow_bias,
-                    "flow_zscore": flow_zscore,
-                    "gap_pct": gap_pct,
-                    "premarket_volume": premarket_volume,
-                    "features_snapshot": features_snapshot,
-                }
-            )
+            # Build and apply meta from scan features
+            meta = self._build_scan_meta(scanned_sym)
+            self.symbol_states[sym].meta.update(meta)
 
             if self.alpaca_client:
                 self.alpaca_client.subscribe(sym)
+
+    def _build_scan_meta(self, scanned_sym: Any) -> Dict[str, Any]:
+        """Build symbol metadata from scan result."""
+        features = scanned_sym.features
+        flow_bias = self._determine_flow_bias(features)
+        features_snapshot = (
+            self._sanitize_features_snapshot(asdict(features)) if features else {}
+        )
+
+        meta: Dict[str, Any] = {
+            "added_at": str(self.market_state.time),
+            "initial_score": float(scanned_sym.score),
+            "sector": "unknown",
+            "earnings_date": None,
+            "iv_rank": 0.0,
+            "short_interest": 0.0,
+            "call_put_ratio": 0.0,
+            "flow_bias": flow_bias,
+            "flow_zscore": 0.0,
+            "gap_pct": 0.0,
+            "premarket_volume": 0.0,
+            "features_snapshot": features_snapshot,
+        }
+
+        if features:
+            self._enrich_meta_from_features(meta, features)
+
+        return meta
+
+    def _determine_flow_bias(self, features: Any) -> str:
+        """Determine flow bias from features."""
+        if not features or not features.extra:
+            return "neutral"
+        prem = float(features.extra.get("flow_total_premium") or 0.0)
+        if prem > 1000000:
+            return "bullish"
+        elif prem < -1000000:
+            return "bearish"
+        return "neutral"
+
+    def _enrich_meta_from_features(self, meta: Dict[str, Any], features: Any) -> None:
+        """Enrich metadata with feature values."""
+        if features.extra:
+            meta["sector"] = str(features.extra.get("sector") or "unknown")
+            earnings = features.extra.get("earnings_date")
+            meta["earnings_date"] = str(earnings) if earnings else None
+            meta["iv_rank"] = float(features.extra.get("iv_rank") or 0.0)
+            meta["short_interest"] = float(features.extra.get("short_interest") or 0.0)
+
+        meta["call_put_ratio"] = features.call_put_ratio
+        meta["premarket_volume"] = features.premarket_volume
+        meta["flow_zscore"] = features.flow_zscore
+        meta["gap_pct"] = features.gap_pct
 
     def _update_retained_strategies(
         self,
@@ -1789,6 +1854,7 @@ class ExecutionEngine:
     def _reconcile_positions(
         self, positions: Any, broker_position_symbols: set[str]
     ) -> None:
+        """Reconcile local positions with broker state."""
         if not positions:
             positions = []
 
@@ -1798,93 +1864,96 @@ class ExecutionEngine:
                 if not sym:
                     continue
                 broker_position_symbols.add(sym)
-                side_raw = getattr(p, "side", "")
-                side = Side.LONG if str(side_raw).lower() == "long" else Side.SHORT
-                qty = float(getattr(p, "qty", getattr(p, "quantity", 0.0)) or 0.0)
-                avg_price = float(
-                    getattr(p, "avg_entry_price", getattr(p, "avg_price", 0.0)) or 0.0
-                )
 
-                state = self.symbol_states.get(sym)
-                if state is None:
-                    state = SymbolState(
-                        symbol=sym,
-                        bars=deque(maxlen=100),
-                        position=None,
-                        indicators={},
-                        open_orders={},
-                        allowed_strategies=[],
-                        meta={},
-                    )
-                    self.symbol_states[sym] = state
+                state = self._get_or_create_symbol_state(sym)
 
-                # H1 fix: Skip reconciliation if position was recently updated by a fill
-                # This prevents race conditions where fills arrive during reconciliation
-                if state.position:
-                    time_since_update = (
-                        datetime.now(timezone.utc) - state.position.last_updated
-                    ).total_seconds()
-
-                    # Skip if updated within last 2 seconds (configurable)
-                    reconcile_skip_window_sec = 2.0
-                    if time_since_update < reconcile_skip_window_sec:
-                        self.logger.debug(
-                            "Skipping position reconciliation, recently updated",
-                            symbol=sym,
-                            seconds_since_update=round(time_since_update, 2),
-                        )
-                        continue
-
-                # M4 fix: Skip reconciliation for symbols with pending orders
-                # Prevents partial fill issues where broker shows mid-fill state
-                if state.open_orders:
-                    self.logger.debug(
-                        "Skipping position reconciliation, pending orders exist",
-                        symbol=sym,
-                        pending_order_count=len(state.open_orders),
-                    )
+                # Skip if recently updated or has pending orders
+                if self._should_skip_reconcile(state, sym):
                     continue
 
-                state.position = Position(
-                    symbol=sym,
-                    side=side,
-                    qty=qty,
-                    avg_price=avg_price,
-                    unrealized_pnl=0.0,
-                    realized_pnl=(
-                        getattr(state.position, "realized_pnl", 0.0)
-                        if state.position
-                        else 0.0
-                    ),
-                    strategy=(state.position.strategy if state.position else "unknown"),
-                    entry_time=getattr(state.position, "entry_time", None),
-                    correlation_id=(
-                        getattr(state.position, "correlation_id", "")
-                        if state.position
-                        else ""
-                    ),
-                    regime_at_entry=getattr(state.position, "regime_at_entry", None),
-                )
+                # Create reconciled position
+                self._reconcile_single_position(state, p)
             except Exception as e:
                 self.logger.warning("Position reconcile failed", error=str(e))
 
-        # Detect local positions missing at broker
-        missing = []
-        for sym, st in self.symbol_states.items():
-            if st.position is None:
-                continue
-            if sym not in broker_position_symbols:
-                missing.append(sym)
+        # Check for local positions missing at broker
+        self._handle_position_mismatch(broker_position_symbols)
 
-        if missing:
-            mode = str(self.config.get("position_mismatch_mode", "halt")).lower()
-            self.logger.error(
-                "Position mismatch detected (local position missing at broker)",
-                symbols=sorted(missing),
-                mode=mode,
+    def _should_skip_reconcile(self, state: SymbolState, sym: str) -> bool:
+        """Check if position reconciliation should be skipped."""
+        # H1 fix: Skip if recently updated by fill
+        if state.position:
+            time_since_update = (
+                datetime.now(timezone.utc) - state.position.last_updated
+            ).total_seconds()
+            if time_since_update < 2.0:
+                self.logger.debug(
+                    "Skipping position reconciliation, recently updated",
+                    symbol=sym,
+                    seconds_since_update=round(time_since_update, 2),
+                )
+                return True
+
+        # M4 fix: Skip if pending orders exist
+        if state.open_orders:
+            self.logger.debug(
+                "Skipping position reconciliation, pending orders exist",
+                symbol=sym,
+                pending_order_count=len(state.open_orders),
             )
-            if mode in ("halt", "stop"):
-                self._set_risk_mode("off")
+            return True
+
+        return False
+
+    def _reconcile_single_position(self, state: SymbolState, broker_pos: Any) -> None:
+        """Reconcile a single position from broker data."""
+        sym = str(getattr(broker_pos, "symbol", ""))
+        side_raw = getattr(broker_pos, "side", "")
+        side = Side.LONG if str(side_raw).lower() == "long" else Side.SHORT
+        qty = float(
+            getattr(broker_pos, "qty", getattr(broker_pos, "quantity", 0.0)) or 0.0
+        )
+        avg_price = float(
+            getattr(
+                broker_pos, "avg_entry_price", getattr(broker_pos, "avg_price", 0.0)
+            )
+            or 0.0
+        )
+
+        # Preserve existing position data where available
+        existing = state.position
+        state.position = Position(
+            symbol=sym,
+            side=side,
+            qty=qty,
+            avg_price=avg_price,
+            unrealized_pnl=0.0,
+            realized_pnl=getattr(existing, "realized_pnl", 0.0) if existing else 0.0,
+            strategy=existing.strategy if existing else "unknown",
+            entry_time=getattr(existing, "entry_time", None),
+            correlation_id=getattr(existing, "correlation_id", "") if existing else "",
+            regime_at_entry=getattr(existing, "regime_at_entry", None),
+        )
+
+    def _handle_position_mismatch(self, broker_position_symbols: set[str]) -> None:
+        """Handle local positions missing at broker."""
+        missing = [
+            sym
+            for sym, st in self.symbol_states.items()
+            if st.position is not None and sym not in broker_position_symbols
+        ]
+
+        if not missing:
+            return
+
+        mode = str(self.config.get("position_mismatch_mode", "halt")).lower()
+        self.logger.error(
+            "Position mismatch detected (local position missing at broker)",
+            symbols=sorted(missing),
+            mode=mode,
+        )
+        if mode in ("halt", "stop"):
+            self._set_risk_mode("off")
 
     def _clear_all_features(self) -> None:
         """
@@ -1905,10 +1974,28 @@ class ExecutionEngine:
     def _reconcile_orders(
         self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
     ) -> None:
+        """Reconcile local order state with broker orders."""
         if not orders:
             orders = []
 
-        # Reconcile open orders into symbol state meta
+        # Sync open orders to local state
+        self._sync_open_orders_to_state(orders, broker_order_ids)
+
+        # Cancel stale orders
+        self._cancel_stale_orders(orders)
+
+        # DB reconciliation
+        if self.db:
+            self._reconcile_db_orders(orders, closed_orders, broker_order_ids)
+
+        # Synthesize missed fills
+        if self.db and closed_orders:
+            self._synthesize_missed_fills(closed_orders)
+
+    def _sync_open_orders_to_state(
+        self, orders: List[Any], broker_order_ids: set[str]
+    ) -> None:
+        """Sync broker open orders into symbol state."""
         for o in orders:
             try:
                 sym = str(getattr(o, "symbol", ""))
@@ -1916,18 +2003,8 @@ class ExecutionEngine:
                 broker_order_ids.add(oid)
                 if not sym or not oid:
                     continue
-                state = self.symbol_states.get(sym)
-                if state is None:
-                    state = SymbolState(
-                        symbol=sym,
-                        bars=deque(maxlen=100),
-                        position=None,
-                        indicators={},
-                        open_orders={},
-                        allowed_strategies=[],
-                        meta={},
-                    )
-                    self.symbol_states[sym] = state
+
+                state = self._get_or_create_symbol_state(sym)
                 state.open_orders[oid] = {
                     "status": str(getattr(o, "status", "")),
                     "qty": float(getattr(o, "qty", getattr(o, "quantity", 0.0)) or 0.0),
@@ -1938,120 +2015,131 @@ class ExecutionEngine:
             except Exception as e:
                 self.logger.warning("Order reconcile failed", error=str(e))
 
-        # Deterministic stale-order cancel (optional).
+    def _cancel_stale_orders(self, orders: List[Any]) -> None:
+        """Cancel orders older than configured max age."""
         max_age_sec = int(self.config.get("max_open_order_age_sec", 0))
-        if max_age_sec > 0 and self.order_executor:
-            now = self.clock()
-            for o in orders:
-                try:
-                    oid = str(getattr(o, "id", "") or "")
-                    created_at = getattr(o, "created_at", None)
-                    if not oid or created_at is None:
-                        continue
-                    age = (now - created_at).total_seconds()
-                    if age >= max_age_sec:
-                        self.logger.warning(
-                            "Cancelling stale open order",
-                            broker_order_id=oid,
-                            age_sec=float(age),
-                            max_age_sec=max_age_sec,
-                        )
-                        self.order_executor.cancel_by_broker_order_id(oid)
-                except Exception as e:
-                    self.logger.warning("Stale-order cancel failed", error=str(e))
+        if max_age_sec <= 0 or not self.order_executor:
+            return
 
-        # DB reconciliation
-        if self.db:
-            self._reconcile_db_orders(orders, closed_orders, broker_order_ids)
+        now = self.clock()
+        for o in orders:
+            try:
+                oid = str(getattr(o, "id", "") or "")
+                created_at = getattr(o, "created_at", None)
+                if not oid or created_at is None:
+                    continue
 
-        # Synthesize missed fills
-        if self.db and closed_orders:
-            self._synthesize_missed_fills(closed_orders)
+                age = (now - created_at).total_seconds()
+                if age >= max_age_sec:
+                    self.logger.warning(
+                        "Cancelling stale open order",
+                        broker_order_id=oid,
+                        age_sec=float(age),
+                        max_age_sec=max_age_sec,
+                    )
+                    self.order_executor.cancel_by_broker_order_id(oid)
+            except Exception as e:
+                self.logger.warning("Stale-order cancel failed", error=str(e))
 
     def _reconcile_db_orders(
         self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
     ) -> None:
+        """Reconcile DB order records with broker state."""
+        if not self.db:
+            return
+
         now = self.clock()
 
         def _reconcile_db(session: Session) -> None:
-            # Update statuses for orders still open at broker
-            for o in orders or []:
-                oid = str(getattr(o, "id", ""))
-                status_val = str(getattr(o, "status", "") or "")
-                if not oid:
-                    continue
+            # Update open orders
+            self._update_open_order_statuses(session, orders or [], now)
+            # Update closed orders
+            self._update_closed_order_statuses(session, closed_orders or [], now)
+            # Mark stale orders as cancelled
+            self._mark_stale_orders_cancelled(session, broker_order_ids, now)
 
-                row = (
-                    session.query(DbOrder)
-                    .filter(DbOrder.broker_order_id == oid)
-                    .order_by(DbOrder.id.desc())
-                    .first()
-                )
-                if row:
-                    row.status = status_val
-                    row.time_last_update = now
-                    meta = row.meta_json or {}
-                    meta.update(
-                        {
-                            "reconciled": True,
-                            "broker_status": status_val,
-                            "last_reconciled": str(now),
-                        }
-                    )
-                    row.meta_json = meta
+        try:
+            self.db.write("order_reconcile", _reconcile_db)
+        except Exception as e:
+            self.logger.warning("DB reconcile failed", error=str(e))
 
-            # Update statuses for recently closed orders (helps correct broker_missing mislabels).
-            for o in closed_orders or []:
-                oid = str(getattr(o, "id", "") or "")
-                status_val = str(getattr(o, "status", "") or "")
-                if not oid or not status_val:
-                    continue
-                row = (
-                    session.query(DbOrder)
-                    .filter(DbOrder.broker_order_id == oid)
-                    .order_by(DbOrder.id.desc())
-                    .first()
-                )
-                if row:
-                    row.status = status_val
-                    row.time_last_update = now
-                    meta = row.meta_json or {}
-                    meta.update(
-                        {
-                            "reconciled": True,
-                            "broker_status": status_val,
-                            "last_reconciled": str(now),
-                        }
-                    )
-                    row.meta_json = meta
+    def _update_open_order_statuses(
+        self, session: Session, orders: List[Any], now: datetime
+    ) -> None:
+        """Update DB statuses for orders still open at broker."""
+        for o in orders:
+            oid = str(getattr(o, "id", ""))
+            status_val = str(getattr(o, "status", "") or "")
+            if not oid:
+                continue
 
-            # Mark DB orders as cancelled if broker no longer has them open.
-            # Using broker_order_ids to check set membership
-            stale = (
+            row = (
                 session.query(DbOrder)
-                .filter(DbOrder.status.notin_(["filled", "canceled", "cancelled"]))
-                .filter(DbOrder.broker_order_id.isnot(None))
-                .all()
+                .filter(DbOrder.broker_order_id == oid)
+                .order_by(DbOrder.id.desc())
+                .first()
             )
-            for row in stale:
-                if row.broker_order_id and row.broker_order_id not in broker_order_ids:
-                    row.status = "cancelled"
-                    row.time_last_update = now
-                    meta = row.meta_json or {}
-                    meta.update(
-                        {
-                            "reconciled": True,
-                            "reason": "broker_missing",
-                            "last_reconciled": str(now),
-                        }
-                    )
-                    row.meta_json = meta
+            if row:
+                self._apply_reconcile_status(row, status_val, now)
 
-        if self.db:
-            try:
-                self.db.write("order_reconcile", _reconcile_db)
-            except Exception as e:
-                self.logger.warning("DB reconcile failed", error=str(e))
+    def _update_closed_order_statuses(
+        self, session: Session, closed_orders: List[Any], now: datetime
+    ) -> None:
+        """Update DB statuses for recently closed orders."""
+        for o in closed_orders:
+            oid = str(getattr(o, "id", "") or "")
+            status_val = str(getattr(o, "status", "") or "")
+            if not oid or not status_val:
+                continue
+
+            row = (
+                session.query(DbOrder)
+                .filter(DbOrder.broker_order_id == oid)
+                .order_by(DbOrder.id.desc())
+                .first()
+            )
+            if row:
+                self._apply_reconcile_status(row, status_val, now)
+
+    def _mark_stale_orders_cancelled(
+        self, session: Session, broker_order_ids: set[str], now: datetime
+    ) -> None:
+        """Mark DB orders as cancelled if broker no longer has them."""
+        stale = (
+            session.query(DbOrder)
+            .filter(DbOrder.status.notin_(["filled", "canceled", "cancelled"]))
+            .filter(DbOrder.broker_order_id.isnot(None))
+            .all()
+        )
+        for row in stale:
+            if row.broker_order_id and row.broker_order_id not in broker_order_ids:
+                row.status = "cancelled"
+                row.time_last_update = now
+                meta = row.meta_json or {}
+                meta.update(
+                    {
+                        "reconciled": True,
+                        "reason": "broker_missing",
+                        "last_reconciled": str(now),
+                    }
+                )
+                row.meta_json = meta
+
+    def _apply_reconcile_status(
+        self, row: DbOrder, status_val: str, now: datetime
+    ) -> None:
+        """Apply reconciliation status update to an order row."""
+        row.status = status_val
+        row.time_last_update = now
+        meta = row.meta_json or {}
+        meta.update(
+            {
+                "reconciled": True,
+                "broker_status": status_val,
+                "last_reconciled": str(now),
+            }
+        )
+        row.meta_json = meta
 
     def _synthesize_missed_fills(self, closed_orders: Any) -> None:
         now = self.clock()

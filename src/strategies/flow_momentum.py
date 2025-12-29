@@ -5,6 +5,11 @@ from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import FlowMomentumConfig
 
+# L3 fix: Named constants for emergency stop buffers when bar extremes are invalid
+# 1% buffer from close when stop would be at or beyond entry
+STOP_BUFFER_LONG = 0.99  # Long: stop 1% below close
+STOP_BUFFER_SHORT = 1.01  # Short: stop 1% above close
+
 
 class FlowMomentumStrategy(BaseStrategy):
     """
@@ -22,6 +27,91 @@ class FlowMomentumStrategy(BaseStrategy):
         self.vol_mult = cfg.vol_mult
         self.risk_reward = cfg.risk_reward
 
+    def _validate_flow_direction(
+        self, symbol_state: SymbolState
+    ) -> tuple[bool, float, float]:
+        """
+        Validate flow zscore and call/put ratio agreement.
+
+        Returns:
+            Tuple of (is_valid, flow_score, call_put_ratio).
+            is_valid is False if flow is insufficient or misaligned.
+        """
+        flow_score = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
+        call_put_ratio = float(symbol_state.meta.get("call_put_ratio", 0.0) or 0.0)
+
+        # Reject weak flow
+        if abs(flow_score) < self.min_flow_zscore:
+            return False, flow_score, call_put_ratio
+
+        # Require valid ratio
+        if call_put_ratio <= 0:
+            return False, flow_score, call_put_ratio
+
+        # Require flow/ratio agreement
+        is_bullish_flow = flow_score > 0
+        if is_bullish_flow and call_put_ratio < 1.0:
+            return False, flow_score, call_put_ratio
+        if not is_bullish_flow and call_put_ratio > 1.0:
+            return False, flow_score, call_put_ratio
+
+        return True, flow_score, call_put_ratio
+
+    def _get_average_volume(self, symbol_state: SymbolState) -> Optional[float]:
+        """Get 20-bar average volume from indicators or calculate directly."""
+        avg_vol = symbol_state.indicators.get("sma_vol:20")
+        if avg_vol is None:
+            bars = list(symbol_state.bars)
+            vols = [float(b.volume) for b in bars[-20:]]
+            if not vols:
+                return None
+            avg_vol = sum(vols) / len(vols)
+        try:
+            return float(avg_vol)
+        except Exception:
+            return None
+
+    def _build_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        market_state: MarketState,
+        side: OrderSide,
+        flow_score: float,
+        call_put_ratio: float,
+        avg_vol_f: float,
+    ) -> Signal:
+        """Build a signal for the given side with proper stop/target."""
+        close = bar.close
+
+        if side == OrderSide.BUY:
+            stop_price = bar.low
+            if stop_price >= close:
+                stop_price = close * STOP_BUFFER_LONG
+            risk = close - stop_price
+            target_price = close + (risk * self.risk_reward)
+        else:
+            stop_price = bar.high
+            if stop_price <= close:
+                stop_price = close * STOP_BUFFER_SHORT
+            risk = stop_price - close
+            target_price = close - (risk * self.risk_reward)
+
+        return self._create_signal(
+            symbol=symbol,
+            side=side,
+            bar=bar,
+            market_state=market_state,
+            stop_price=stop_price,
+            target_price=target_price,
+            meta={
+                "flow_zscore": flow_score,
+                "call_put_ratio": call_put_ratio,
+                "is_bullish_flow": flow_score > 0,
+                "vol_mult": (float(bar.volume) / avg_vol_f) if avg_vol_f else None,
+            },
+        )
+
     def on_bar(
         self,
         symbol: str,
@@ -29,128 +119,56 @@ class FlowMomentumStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # PRD: flow-confirmed momentum is intended for trending regimes.
+        # PRD: flow-confirmed momentum is intended for trending regimes
         if market_state.regime not in (Regime.BULL, Regime.BEAR):
             return None
-        # 1. Check Flow Direction (Meta from Scanner/Pipeline usually passed here?)
-        # Strategy usually doesn't see SymbolFeatures directly.
-        # We need flow_zscore in 'symbol_state.indicators' or 'meta'.
-        # Pipeline puts it in SymbolFeatures. The Engine might need to pass it?
-        # Standard Engine implementation passes 'symbol_state.meta' which we can populate?
-        # Or we cheat and look up features if available globally? (Bad design).
-        # Better: Assume Engine populates `symbol_state.meta['features']` with latest features?
-        # Checking `src/core/domain.py`: SymbolFeatures has `flow_zscore`.
-        # Checking `src/engine/execution.py`: Does it put features in symbol_state?
-        # Usually it updates SymbolState with latest bars. features?
-        # If I can't access flow_zscore, I can't verify flow.
 
-        # Assumption: The SCANNER filtered for this symbol because of flow.
-        # But flow can change or be stale.
-        # Ideally, we have access. Let's assume `symbol_state.meta` has `flow_zscore`.
-        # If not, we might need to rely on the fact that if it's in the list, it has flow.
-        # But we need DIRECTION.
-
-        flow_score = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
-        call_put_ratio = float(symbol_state.meta.get("call_put_ratio", 0.0) or 0.0)
-
-        # Fallback: Maybe mapped in config or separate lookup?
-        # Let's rely on passed meta for now. If missing, we verify later.
-
-        if abs(flow_score) < self.min_flow_zscore:
-            # Maybe strict cutoff? or rely on scanner?
-            # If 0, we have no data.
-            if flow_score == 0:
-                return None
-
-        is_bullish_flow = flow_score > 0
-        if call_put_ratio <= 0:
-            return None
-        # PRD: require flow_zscore + call_put_ratio agreement.
-        if is_bullish_flow and call_put_ratio < 1.0:
-            return None
-        if (not is_bullish_flow) and call_put_ratio > 1.0:
+        # Validate flow direction and agreement
+        is_valid, flow_score, call_put_ratio = self._validate_flow_direction(
+            symbol_state
+        )
+        if not is_valid:
             return None
 
-        # 2. Check Momentum (Price + Volume)
-        # Filter: Check minimum bars for EMA
+        # Check minimum bars
         if not self._require_min_bars(symbol_state, 21):
             return None
 
-        bars = list(symbol_state.bars)
-        avg_vol = symbol_state.indicators.get("sma_vol:20")
-        if avg_vol is None:
-            vols = [float(b.volume) for b in bars[-20:]]
-            if not vols:
-                return None
-            avg_vol = sum(vols) / len(vols)
-        try:
-            avg_vol_f = float(avg_vol)
-        except Exception:
+        # Get average volume
+        avg_vol_f = self._get_average_volume(symbol_state)
+        if avg_vol_f is None:
             return None
 
-        # Candle Strength
-        # Current bar body
-        open_ = bar.open
-        close = bar.close
-        high = bar.high
-        low = bar.low
-
-        is_green = close > open_
-        is_red = close < open_
-
+        # Check volume confirmation
         vol_ok = float(bar.volume) > (avg_vol_f * float(self.vol_mult))
+        if not vol_ok:
+            return None
 
-        signal = None
+        # Determine direction from candle and flow
+        is_bullish_flow = flow_score > 0
+        is_green = bar.close > bar.open
+        is_red = bar.close < bar.open
 
-        # BULLISH MOMENTUM
-        if is_bullish_flow and is_green and vol_ok:
-            # Entry: Buy logic
-            # Stop: Low of this momentum candle (or recent low)
-            stop_price = low
-            if stop_price >= close:
-                stop_price = close * 0.99
-
-            risk = close - stop_price
-            target_price = close + (risk * self.risk_reward)
-
-            signal = self._create_signal(
-                symbol=symbol,
-                side=OrderSide.BUY,
-                bar=bar,
-                market_state=market_state,
-                stop_price=stop_price,
-                target_price=target_price,
-                meta={
-                    "flow_zscore": flow_score,
-                    "call_put_ratio": call_put_ratio,
-                    "is_bullish_flow": bool(is_bullish_flow),
-                    "vol_mult": (float(bar.volume) / avg_vol_f) if avg_vol_f else None,
-                },
+        # Generate signal if conditions align
+        if is_bullish_flow and is_green:
+            return self._build_signal(
+                symbol,
+                bar,
+                market_state,
+                OrderSide.BUY,
+                flow_score,
+                call_put_ratio,
+                avg_vol_f,
+            )
+        if not is_bullish_flow and is_red:
+            return self._build_signal(
+                symbol,
+                bar,
+                market_state,
+                OrderSide.SELL,
+                flow_score,
+                call_put_ratio,
+                avg_vol_f,
             )
 
-        # BEARISH MOMENTUM
-        elif (not is_bullish_flow) and is_red and vol_ok:
-            # Entry: Sell logic
-            stop_price = high
-            if stop_price <= close:
-                stop_price = close * 1.01
-
-            risk = stop_price - close
-            target_price = close - (risk * self.risk_reward)
-
-            signal = self._create_signal(
-                symbol=symbol,
-                side=OrderSide.SELL,
-                bar=bar,
-                market_state=market_state,
-                stop_price=stop_price,
-                target_price=target_price,
-                meta={
-                    "flow_zscore": flow_score,
-                    "call_put_ratio": call_put_ratio,
-                    "is_bullish_flow": bool(is_bullish_flow),
-                    "vol_mult": (float(bar.volume) / avg_vol_f) if avg_vol_f else None,
-                },
-            )
-
-        return signal
+        return None

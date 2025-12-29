@@ -14,7 +14,6 @@ def mock_deps():
         patch("src.backtest.runner.ExecutionEngine") as mock_engine,
         patch("src.backtest.runner.BacktestOrderExecutor") as mock_executor,
     ):
-
         # Setup Config
         mock_conf_instance = mock_conf_loader.return_value
         mock_conf_instance.load_config.return_value = {"timeframe": "1Min"}
