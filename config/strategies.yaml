@@ -12,6 +12,14 @@ strategies:
     time_window_start: "09:45"
     time_window_end: "15:45"
     max_hold_minutes: 60
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [flat]
+      vol: [low, normal]
+      liquidity: [good, thin]
+      risk: [neutral, risk_off]
+      min_confidence: 0.6
 
   orb:
     enabled: true
@@ -21,6 +29,14 @@ strategies:
     # PRD-listed optional filters
     min_gap_pct: 0.0
     min_flow_zscore: 0.0
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening]
+      trend: [up, down]
+      vol: [low, normal]
+      liquidity: [good]
+      risk: [risk_on, neutral]
+      min_confidence: 0.5
 
   index_mean_reversion:
     enabled: true
@@ -28,12 +44,28 @@ strategies:
     bb_len: 20
     bb_std: 2.0
     stop_pct: 0.005 # 0.5%
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [midday, power_hour]
+      trend: [flat]
+      vol: [low, normal]
+      liquidity: [good]
+      risk: [neutral, risk_off]
+      min_confidence: 0.6
 
   flow_momentum:
     enabled: true
     min_flow_zscore: 2.5
     vol_mult: 1.5
     risk_reward: 2.0 # backup stop
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening, midday]
+      trend: [up, down]
+      vol: [normal, high]
+      liquidity: [good]
+      risk: [risk_on, neutral]
+      min_confidence: 0.5
 
   gap_fill:
     enabled: true
@@ -43,6 +75,14 @@ strategies:
     or_time_minutes: 15
     # PRD: allow CHOP / weak trend (optional); used only if market_state.meta.trend_score is available
     weak_trend_max_score: 1.0
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening]
+      trend: [flat]
+      vol: [normal, high]
+      liquidity: [good, thin]
+      risk: [neutral]
+      min_confidence: 0.4
 
   trend_pullback:
     enabled: true
@@ -54,10 +94,26 @@ strategies:
     # PRD-listed parameters
     pullback_depth_pct: 0.0
     entry_confirmation: "rsi"
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, down]
+      vol: [low, normal]
+      liquidity: [good]
+      risk: [risk_on, neutral]
+      min_confidence: 0.5
 
   failed_breakout:
     enabled: true
     risk_reward: 2.0
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening, midday]
+      trend: [flat]
+      vol: [low, normal]
+      liquidity: [good, thin]
+      risk: [neutral, risk_off]
+      min_confidence: 0.5
 
   vwap_trend_rider:
     enabled: true
@@ -66,3 +122,11 @@ strategies:
     vol_mult: 1.2
     risk_reward: 2.0
     min_trend_score: 1.5
+    # PRD Addendum: Multi-axis regime activation
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, down]
+      vol: [low, normal]
+      liquidity: [good]
+      risk: [risk_on]
+      min_confidence: 0.6
