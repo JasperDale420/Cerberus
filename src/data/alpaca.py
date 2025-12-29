@@ -52,9 +52,12 @@ class AlpacaClient:
             except (TypeError, ValueError):
                 return 0.0
 
-        symbol = symbol_override or cast(
-            str, getattr(data, "symbol", None) or "UNKNOWN"
-        )
+        symbol = symbol_override
+        if not symbol:
+            if isinstance(data, dict):
+                symbol = data.get("symbol") or "UNKNOWN"
+            else:
+                symbol = getattr(data, "symbol", None) or "UNKNOWN"
 
         if isinstance(data, dict):
             t = data.get("t") or data.get("timestamp")

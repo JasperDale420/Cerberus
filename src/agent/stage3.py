@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
 import importlib.util
+import json
+import os
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -10,7 +13,10 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Dict, List, Optional, Type, TypedDict, cast
 
-from src.agent.bars_provider import BarsProvider
+from src.agent.bars_provider import BarsProvider, JsonlBarsProvider
+from src.agent.llm import LLMClient
+from src.agent.models import ActionType, AgentAction, StrategyDailyStats
+from src.core.config import ConfigLoader
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
@@ -282,3 +288,379 @@ class DeterministicStage3Evaluator:
         return Stage3Metrics(
             expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n)
         )
+
+
+class Stage3Proposer:
+    """
+    Orchestrates Stage 3 LLM-based strategy evolution.
+    """
+
+    def __init__(
+        self,
+        logger: StructuredLogger,
+        config_loader: ConfigLoader,
+        config_path_or_dir: str,
+        llm_client: Optional[LLMClient] = None,
+        evaluator: Optional[Any] = None,
+    ):
+        self.logger = logger
+        self.config_loader = config_loader
+        self.config_path_or_dir = config_path_or_dir
+        self.llm_client = llm_client
+        self.evaluator = evaluator
+
+    def propose_code_changes(
+        self,
+        stats: StrategyDailyStats,
+        strategy_file_path: str,
+    ) -> List[AgentAction]:
+        cfg = self.config_loader.load_config(self.config_path_or_dir)
+        agent_cfg = (cfg.get("agent") or {}) if isinstance(cfg, dict) else {}
+        stage3 = (agent_cfg.get("stage3") or {}) if isinstance(agent_cfg, dict) else {}
+        enabled = bool(stage3.get("enabled", False))
+        env_key = str(stage3.get("approval_env_var", "CERBERUS_STAGE3_APPROVED"))
+        approved = str(os.getenv(env_key, "")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        write_to_src = bool(stage3.get("write_to_src", False))
+        propose_scanner_profiles = bool(stage3.get("propose_scanner_profiles", False))
+        backtest = (stage3.get("backtest") or {}) if isinstance(stage3, dict) else {}
+        backtest_enabled = bool(backtest.get("enabled", True))
+        min_trades = int(backtest.get("min_trades", 0))
+        max_dd_r = float(backtest.get("max_drawdown_r", float("inf")))
+        min_expectancy_delta = float(backtest.get("min_expectancy_delta", 0.0))
+
+        if not enabled:
+            self.logger.info(
+                "Agent Stage 3 disabled; skipping code proposal",
+                strategy=stats.strategy,
+                regime=stats.regime,
+            )
+            return []
+        if not approved:
+            self.logger.warning(
+                "Agent Stage 3 not approved; skipping code proposal",
+                strategy=stats.strategy,
+                regime=stats.regime,
+                approval_env_var=env_key,
+            )
+            return []
+
+        offline_dir = str(stage3.get("offline_bars_dir", "")).strip()
+        if backtest_enabled and self.evaluator is None and not offline_dir:
+            self.logger.error(
+                "Agent Stage 3 backtest enabled but no offline bars source configured",
+                required_key="agent.stage3.offline_bars_dir",
+            )
+            raise ValueError(
+                "Agent Stage 3 backtest requires agent.stage3.offline_bars_dir for offline determinism"
+            )
+
+        if self.llm_client is None:
+            self.llm_client = LLMClient(self.config_loader, self.logger)
+
+        with open(strategy_file_path, "r") as f:
+            source_code = f.read()
+
+        scanner_profiles_source = ""
+        if propose_scanner_profiles:
+            try:
+                with open("src/scanner/profiles.py", "r") as f:
+                    scanner_profiles_source = f.read()
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to load scanner profiles for Stage 3 proposal",
+                    error=str(e),
+                )
+
+        system_prompt = """You are a Senior Quantitative Architect for the Cerberus Trading System.
+Your goal is to iterate on underperforming trading strategies to improve their "expectancy" (average R per trade) and reduce "drawdown".
+You adhere to the following principles:
+1. Scientific Method: Changes must be motivated by data (the provided stats).
+2. Incremental Refinement (Annealing): Prefer small, targeted adjustments (adding a filter, tightening a stop, adjusting a threshold) over rewriting the entire strategy. Radical changes increase risk.
+3. Risk First: Your primary constraint is safety. Never remove risk controls.
+4. Vertical Slice Architecture: The strategy is a self-contained unit. Do not invent external dependencies.
+5. Determinism: Ensure the new logic remains deterministic (no random numbers).
+
+Output valid Python code only."""
+
+        prompt = f"""
+            The strategy '{stats.strategy}' is underperforming based on recent trading data.
+
+            Current Performance Stats:
+            - Win Rate: {stats.winrate:.2f}
+            - Avg R (Expectancy): {stats.avg_r:.2f}
+            - Max Drawdown R: {stats.max_drawdown_r:.2f}
+            - Number of Trades: {stats.n_trades}
+
+            Source Code:
+            ```python
+            {source_code}
+            ```
+
+            Scanner Profiles (context for symbol selection):
+            ```python
+            {scanner_profiles_source}
+            ```
+
+            **Task:**
+            Propose a **V2** version of this strategy class to improve its Expectancy (Avg R) and/or reduce its Max Drawdown.
+            The system is in an "annealing" phase—we want to converge on a stable, profitable configuration.
+
+            **Guidelines:**
+            1. Analyze the logic: identify potential weak points (e.g., entering too early in chop, stops too loose, taking trades against the trend).
+            2. Propose a **targeted** fix. Examples:
+               - Add a regime filter (e.g., only trade if `market_state.regime == Regime.BULL`).
+               - Add a technical filter (e.g., `adx > 25`).
+               - Tighten exit logic (e.g., reduce `max_hold_minutes`).
+               - Adjust entry triggers.
+            3. If the Scanner Profile is too loose, you may propose an updated `src/scanner/profiles.py` as well.
+            4. **Do not** rewrite the entire class structure. Keep specific logic that works.
+            5. Ensure the new class name is `{stats.strategy}_v2` (or increment version).
+
+            **Output format:**
+            Return a JSON object with strictly these keys:
+            - "analysis": "Brief reasoning for the change"
+            - "strategy_code": "Full Python code for the new strategy class"
+            - "scanner_profiles_code": "Full Python code for src/scanner/profiles.py (or empty string if no change)"
+            """
+
+        response = self.llm_client.complete(prompt, system_prompt=system_prompt)
+        payload = response.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed = json.loads(payload)
+            if not isinstance(parsed, dict):
+                raise ValueError("stage3_response_not_dict")
+            new_code = str(parsed.get("strategy_code", "") or "").strip()
+            new_profiles_code = str(
+                parsed.get("scanner_profiles_code", "") or ""
+            ).strip()
+        except Exception:
+            new_code = response.replace("```python", "").replace("```", "").strip()
+            new_profiles_code = ""
+
+        # Validation Logic (Backtest & Gate)
+        baseline_metrics = None
+        candidate_metrics = None
+        gate_passed = None
+
+        if backtest_enabled:
+            # Baseline params load
+            strategies_cfg = cfg.get("strategies") if isinstance(cfg, dict) else None
+            if isinstance(strategies_cfg, dict) and isinstance(
+                strategies_cfg.get("strategies"), dict
+            ):
+                strategies_cfg = strategies_cfg.get("strategies")
+            baseline_params = (
+                (strategies_cfg or {}).get(stats.strategy, {})
+                if isinstance(strategies_cfg, dict)
+                else {}
+            )
+            if isinstance(baseline_params, dict):
+                baseline_params = {
+                    k: v for k, v in baseline_params.items() if k != "enabled"
+                }
+            else:
+                baseline_params = {}
+
+            from src.core.domain import Regime as RegimeEnum
+
+            r = str(getattr(stats, "regime", "") or "").strip().lower()
+            regime = RegimeEnum.CHOP
+            if r in ("bull", "bear", "chop"):
+                regime = RegimeEnum(r)
+
+            now = datetime.now(timezone.utc)
+
+            if self.evaluator is not None and not hasattr(
+                self.evaluator, "evaluate_code"
+            ):
+                # Custom evaluator injected
+                out = self.evaluator(stats, source_code, new_code, cfg)
+                baseline_metrics = out.get("baseline_metrics")
+                candidate_metrics = out.get("candidate_metrics")
+            else:
+                # Use default deterministic evaluators
+                from src.agent.stage2 import DeterministicStage2Evaluator
+
+                provider = JsonlBarsProvider(Path(offline_dir)) if offline_dir else None
+                evaluator_s2 = DeterministicStage2Evaluator(
+                    cfg, self.config_loader, self.logger, bars_provider=provider
+                )
+                evaluator_s3 = (
+                    self.evaluator
+                    if self.evaluator
+                    else DeterministicStage3Evaluator(
+                        cfg, self.config_loader, self.logger, bars_provider=provider
+                    )
+                )
+
+                baseline_metrics_obj = evaluator_s2.evaluate(
+                    stats.strategy, regime, dict(baseline_params), as_of=now
+                )
+                baseline_metrics = {
+                    "expectancy": baseline_metrics_obj.expectancy,
+                    "max_drawdown_r": baseline_metrics_obj.max_drawdown_r,
+                    "n_trades": baseline_metrics_obj.n_trades,
+                }
+
+                candidate_metrics_obj = evaluator_s3.evaluate_code(
+                    new_code,
+                    strategy_params=dict(baseline_params),
+                    regime=regime,
+                    as_of=now,
+                )
+                candidate_metrics = {
+                    "expectancy": candidate_metrics_obj.expectancy,
+                    "max_drawdown_r": candidate_metrics_obj.max_drawdown_r,
+                    "n_trades": candidate_metrics_obj.n_trades,
+                }
+
+            def _m(m: Any) -> dict:
+                if m is None:
+                    return {}
+                if isinstance(m, dict):
+                    return m
+                return {
+                    "expectancy": float(getattr(m, "expectancy", 0.0) or 0.0),
+                    "max_drawdown_r": float(getattr(m, "max_drawdown_r", 0.0) or 0.0),
+                    "n_trades": int(getattr(m, "n_trades", 0) or 0),
+                }
+
+            baseline_metrics = _m(baseline_metrics)
+            candidate_metrics = _m(candidate_metrics)
+
+            gate_passed = (
+                int(candidate_metrics.get("n_trades", 0)) >= int(min_trades)
+                and float(candidate_metrics.get("max_drawdown_r", 0.0))
+                <= float(max_dd_r)
+                and float(candidate_metrics.get("expectancy", 0.0))
+                >= float(baseline_metrics.get("expectancy", 0.0))
+                + float(min_expectancy_delta)
+            )
+
+            if not gate_passed:
+                self.logger.warning(
+                    "Agent Stage 3 gate failed; not emitting proposal",
+                    strategy=stats.strategy,
+                    regime=stats.regime,
+                    baseline_metrics=baseline_metrics,
+                    candidate_metrics=candidate_metrics,
+                    min_trades=min_trades,
+                    max_drawdown_r=max_dd_r,
+                    min_expectancy_delta=min_expectancy_delta,
+                )
+                return []
+
+        # Artifact generation
+        proposal_dir = (
+            "src/strategies/proposals" if write_to_src else "artifacts/proposals"
+        )
+        os.makedirs(proposal_dir, exist_ok=True)
+        proposal_filename = f"{stats.strategy}_v2.py"
+        proposal_path = os.path.join(proposal_dir, proposal_filename)
+
+        with open(proposal_path, "w") as f:
+            f.write(new_code)
+
+        profiles_proposal_path = ""
+        profiles_diff_path = ""
+        if propose_scanner_profiles and new_profiles_code:
+            profiles_proposal_path = os.path.join(
+                proposal_dir, "scanner_profiles_v2.py"
+            )
+            with open(profiles_proposal_path, "w") as f:
+                f.write(new_profiles_code)
+
+            profiles_diff_path = profiles_proposal_path + ".diff"
+            try:
+                diff_text_profiles = "".join(
+                    difflib.unified_diff(
+                        scanner_profiles_source.splitlines(keepends=True),
+                        new_profiles_code.splitlines(keepends=True),
+                        fromfile="src/scanner/profiles.py",
+                        tofile=profiles_proposal_path,
+                        lineterm="",
+                    )
+                )
+                with open(profiles_diff_path, "w") as f:
+                    f.write(diff_text_profiles)
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to write scanner profiles diff",
+                    error=str(e),
+                )
+
+        diff_path = proposal_path + ".diff"
+        diff_text = "".join(
+            difflib.unified_diff(
+                source_code.splitlines(keepends=True),
+                new_code.splitlines(keepends=True),
+                fromfile=strategy_file_path,
+                tofile=proposal_path,
+                lineterm="",
+            )
+        )
+        with open(diff_path, "w") as f:
+            f.write(diff_text)
+
+        summary_path = proposal_path + ".summary.json"
+        summary = {
+            "strategy": stats.strategy,
+            "regime": stats.regime,
+            "source_file": strategy_file_path,
+            "proposal_file": proposal_path,
+            "diff_file": diff_path,
+            "stats": {
+                "winrate": float(stats.winrate),
+                "avg_r": float(stats.avg_r),
+                "max_drawdown_r": float(stats.max_drawdown_r),
+                "n_trades": int(stats.n_trades),
+            },
+            "stage3_gate": {
+                "enabled": bool(backtest_enabled),
+                "passed": bool(gate_passed) if gate_passed is not None else None,
+                "thresholds": {
+                    "min_trades": int(min_trades),
+                    "max_drawdown_r": float(max_dd_r),
+                    "min_expectancy_delta": float(min_expectancy_delta),
+                },
+                "baseline_metrics": baseline_metrics,
+                "candidate_metrics": candidate_metrics,
+            },
+            "scanner_profile_proposal": {
+                "enabled": bool(propose_scanner_profiles),
+                "proposal_file": profiles_proposal_path or None,
+                "diff_file": profiles_diff_path or None,
+            },
+            "sha256": {
+                "source": hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+                "proposal": hashlib.sha256(new_code.encode("utf-8")).hexdigest(),
+            },
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2, sort_keys=True)
+
+        return [
+            AgentAction(
+                timestamp=datetime.now(timezone.utc),
+                action_type=ActionType.CODE_PROPOSAL,
+                strategy=stats.strategy,
+                regime=stats.regime,
+                details={
+                    "proposal_file": proposal_path,
+                    "diff_file": diff_path,
+                    "summary_file": summary_path,
+                    "scanner_profiles_proposal_file": (
+                        profiles_proposal_path if profiles_proposal_path else None
+                    ),
+                    "scanner_profiles_diff_file": (
+                        profiles_diff_path if profiles_diff_path else None
+                    ),
+                },
+                reason="LLM Stage 3 code proposal",
+            )
+        ]

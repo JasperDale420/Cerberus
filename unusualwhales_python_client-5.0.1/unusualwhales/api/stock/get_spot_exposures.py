@@ -6,7 +6,9 @@ import httpx
 from ... import errors
 from ...client import UnusualWhalesClient
 from ...models.error_message import ErrorMessage
-from ...models.spot_gex_exposures_per_1_min_results import SpotGEXExposuresPer1MinResults
+from ...models.spot_gex_exposures_per_1_min_results import (
+    SpotGEXExposuresPer1MinResults,
+)
 from ...types import UNSET, Response, Unset
 
 

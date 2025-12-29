@@ -44,6 +44,7 @@ def create_bar(t_str: str, o, h, low_px, c):
     )
 
 
+@pytest.mark.unit
 def test_orb_logic(orb_strategy):
     market_state = MarketState(
         time=datetime.now(timezone.utc),
@@ -100,6 +101,7 @@ def test_orb_logic(orb_strategy):
     assert sig.meta.get("premarket_volume") == pytest.approx(12345.0)
 
 
+@pytest.mark.unit
 def test_orb_bearish_breakout(orb_strategy):
     market_state = MarketState(
         time=datetime.now(timezone.utc),

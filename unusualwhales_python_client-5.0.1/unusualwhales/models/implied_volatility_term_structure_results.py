@@ -6,7 +6,9 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.implied_volatility_term_structure import ImpliedVolatilityTermStructure
+    from ..models.implied_volatility_term_structure import (
+        ImpliedVolatilityTermStructure,
+    )
 
 
 T = TypeVar("T", bound="ImpliedVolatilityTermStructureResults")
@@ -40,7 +42,9 @@ class ImpliedVolatilityTermStructureResults:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
-        from ..models.implied_volatility_term_structure import ImpliedVolatilityTermStructure
+        from ..models.implied_volatility_term_structure import (
+            ImpliedVolatilityTermStructure,
+        )
 
         d = src_dict.copy()
         data = []

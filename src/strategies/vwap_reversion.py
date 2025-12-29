@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
-from datetime import time as time_type
+from __future__ import annotations
+
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 import numpy as np
-import pytz  # type: ignore
 
+from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -29,20 +30,10 @@ class VWAPReversionStrategy(BaseStrategy):
         self.rsi_overbought = float(config.get("rsi_overbought", 90))
 
     def _in_time_window(self, dt: datetime) -> bool:
-        try:
-            # PRD time windows assume US equities session time (US/Eastern).
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt_et = dt.astimezone(pytz.timezone("US/Eastern"))
-
-            start_h, start_m = [int(x) for x in self.time_window_start.split(":")]
-            end_h, end_m = [int(x) for x in self.time_window_end.split(":")]
-            start = time_type(start_h, start_m)
-            end = time_type(end_h, end_m)
-            t = dt_et.time()
-            return start <= t <= end
-        except Exception:
-            return True
+        """Check if datetime is within configured trading window."""
+        return time_utils.in_time_window_str(
+            dt, self.time_window_start, self.time_window_end
+        )
 
     def _rsi(self, closes: np.ndarray, length: int) -> Optional[float]:
         if length <= 0:

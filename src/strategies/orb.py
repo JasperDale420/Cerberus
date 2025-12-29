@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from datetime import time as time_type
 from typing import Any, Dict, Optional
 
-import pytz  # type: ignore
-
+from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -35,10 +34,8 @@ class ORBStrategy(BaseStrategy):
         self.min_premarket_volume = float(config.get("min_premarket_volume", 0.0))
 
     def _to_et_time(self, dt: datetime) -> time_type:
-        # Alpaca timestamps are typically UTC; session definitions are US/Eastern.
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(pytz.timezone("US/Eastern")).time()
+        """Convert datetime to US/Eastern time-of-day."""
+        return time_utils.get_eastern_time_of_day(dt)
 
     def on_bar(
         self,

@@ -6,7 +6,9 @@ import httpx
 from ... import errors
 from ...client import UnusualWhalesClient
 from ...models.error_message import ErrorMessage
-from ...models.implied_volatility_term_structure_results import ImpliedVolatilityTermStructureResults
+from ...models.implied_volatility_term_structure_results import (
+    ImpliedVolatilityTermStructureResults,
+)
 from ...types import UNSET, Response, Unset
 
 

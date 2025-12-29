@@ -3,7 +3,10 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated")
+T = TypeVar(
+    "T",
+    bound="ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated",
+)
 
 
 @_attrs_define
@@ -27,9 +30,13 @@ class ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultT
     @classmethod
     def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
-        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated = cls()
+        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated = (
+            cls()
+        )
 
-        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated.additional_properties = d
+        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated.additional_properties = (
+            d
+        )
         return error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated
 
     @property

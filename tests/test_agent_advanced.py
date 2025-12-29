@@ -96,16 +96,18 @@ def test_propose_code_changes(mock_stats, tmp_path):
             },
         }
 
-    agent = Agent(logger, config_loader, stage3_evaluator=stage3_eval)
-
     # Create dummy strategy file
     strat_file = tmp_path / "vwap_reversion.py"
     strat_file.write_text("class VWAPReversionStrategy: pass")
 
     # Mock LLM response
     mock_code = "class VWAPReversionStrategyV2: pass"
-    agent.llm_client = MagicMock()
-    agent.llm_client.complete.return_value = mock_code
+    mock_llm = MagicMock()
+    mock_llm.complete.return_value = mock_code
+
+    agent = Agent(
+        logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm
+    )
 
     # Run
     # We need to patch os.makedirs and open inside the method, OR just let it write to a temp dir if we can control it.
@@ -121,23 +123,23 @@ def test_propose_code_changes(mock_stats, tmp_path):
     assert len(actions) == 1
     action = actions[0]
     assert action.action_type == ActionType.CODE_PROPOSAL
-    assert "proposal_path" in action.details
-    assert "diff_path" in action.details
-    assert "summary_path" in action.details
+    assert "proposal_file" in action.details
+    assert "diff_file" in action.details
+    assert "summary_file" in action.details
 
     # Check file content
-    proposal_path = action.details["proposal_path"]
+    proposal_path = action.details["proposal_file"]
     assert os.path.exists(proposal_path)
     with open(proposal_path, "r") as f:
         content = f.read()
     assert content == mock_code
-    assert os.path.exists(action.details["diff_path"])
-    assert os.path.exists(action.details["summary_path"])
+    assert os.path.exists(action.details["diff_file"])
+    assert os.path.exists(action.details["summary_file"])
 
     # Cleanup
     os.remove(proposal_path)
-    os.remove(action.details["diff_path"])
-    os.remove(action.details["summary_path"])
+    os.remove(action.details["diff_file"])
+    os.remove(action.details["summary_file"])
     os.environ.pop("CERBERUS_STAGE3_APPROVED", None)
 
 
@@ -184,18 +186,21 @@ def test_propose_code_changes_can_emit_scanner_profile_proposal(mock_stats, tmp_
             },
         }
 
-    agent = Agent(logger, config_loader, stage3_evaluator=stage3_eval)
-
-    strat_file = tmp_path / "vwap_reversion.py"
-    strat_file.write_text("class VWAPReversionStrategy: pass")
-
-    agent.llm_client = MagicMock()
-    agent.llm_client.complete.return_value = (
+    # Mock LLM response
+    mock_llm = MagicMock()
+    mock_llm.complete.return_value = (
         "{"
         '"strategy_code":"class VWAPReversionStrategyV2: pass\\n",'
         '"scanner_profiles_code":"# scanner profiles v2\\n"'
         "}"
     )
+
+    agent = Agent(
+        logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm
+    )
+
+    strat_file = tmp_path / "vwap_reversion.py"
+    strat_file.write_text("class VWAPReversionStrategy: pass")
 
     os.environ["CERBERUS_STAGE3_APPROVED"] = "true"
     os.makedirs("src/strategies/proposals", exist_ok=True)
@@ -205,14 +210,14 @@ def test_propose_code_changes_can_emit_scanner_profile_proposal(mock_stats, tmp_
     action = actions[0]
     assert action.action_type == ActionType.CODE_PROPOSAL
 
-    assert action.details["scanner_profiles_proposal_path"] is not None
-    assert action.details["scanner_profiles_diff_path"] is not None
-    assert os.path.exists(action.details["scanner_profiles_proposal_path"])
-    assert os.path.exists(action.details["scanner_profiles_diff_path"])
+    assert action.details["scanner_profiles_proposal_file"] is not None
+    assert action.details["scanner_profiles_diff_file"] is not None
+    assert os.path.exists(action.details["scanner_profiles_proposal_file"])
+    assert os.path.exists(action.details["scanner_profiles_diff_file"])
 
-    os.remove(action.details["proposal_path"])
-    os.remove(action.details["diff_path"])
-    os.remove(action.details["summary_path"])
-    os.remove(action.details["scanner_profiles_proposal_path"])
-    os.remove(action.details["scanner_profiles_diff_path"])
+    os.remove(action.details["proposal_file"])
+    os.remove(action.details["diff_file"])
+    os.remove(action.details["summary_file"])
+    os.remove(action.details["scanner_profiles_proposal_file"])
+    os.remove(action.details["scanner_profiles_diff_file"])
     os.environ.pop("CERBERUS_STAGE3_APPROVED", None)

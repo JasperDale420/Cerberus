@@ -37,6 +37,7 @@ def vtr_strategy():
     return VWAPTrendRiderStrategy(config, MockLogger())
 
 
+@pytest.mark.unit
 def test_bullish_reclaim(vtr_strategy):
     market_state = MarketState(
         time=datetime.now(),
@@ -170,6 +171,7 @@ def test_bullish_reclaim(vtr_strategy):
         pass
 
 
+@pytest.mark.unit
 def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
     logger = MockLogger()
     strategy = VWAPTrendRiderStrategy(

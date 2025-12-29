@@ -68,7 +68,7 @@ def test_risk_manager_rejects_strategy_disabled_and_regime_override() -> None:
         MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP),
     )
     assert out == []
-    assert rm.last_rejection_reason == "STRATEGY_DISABLED"
+    assert rm.last_rejection_reason == "REGIME_DISABLED"
 
 
 @pytest.mark.unit

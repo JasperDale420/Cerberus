@@ -32,6 +32,7 @@ def fm_strategy():
     return FlowMomentumStrategy(config, MockLogger())
 
 
+@pytest.mark.unit
 def test_bullish_flow_momentum(fm_strategy):
     market_state = MarketState(
         time=datetime.now(),
@@ -88,6 +89,7 @@ def test_bullish_flow_momentum(fm_strategy):
         pass
 
 
+@pytest.mark.unit
 def test_bearish_flow_momentum(fm_strategy):
     # Bearish Flow -3.0
     market_state = MarketState(

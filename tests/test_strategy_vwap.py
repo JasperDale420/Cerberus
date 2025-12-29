@@ -1,6 +1,8 @@
 from collections import deque
 from datetime import datetime, timezone
 
+import pytest
+
 from src.analysis.regime import Regime
 from src.core.domain import Bar, OrderSide
 from src.core.logger import StructuredLogger
@@ -24,6 +26,7 @@ def create_bar(close, volume=100, t: datetime = MARKET_TIME):
     )
 
 
+@pytest.mark.unit
 def test_vwap_reversion_signal_long():
     logger = StructuredLogger("test")
     strategy = VWAPReversionStrategy(
@@ -68,6 +71,7 @@ def test_vwap_reversion_signal_long():
     )  # Check meta if reason not on object
 
 
+@pytest.mark.unit
 def test_vwap_reversion_no_signal_wrong_regime():
     logger = StructuredLogger("test")
     strategy = VWAPReversionStrategy({"confirmation": "none"}, logger)
@@ -92,6 +96,7 @@ def test_vwap_reversion_no_signal_wrong_regime():
     assert signal is None
 
 
+@pytest.mark.unit
 def test_vwap_reversion_signal_short():
     logger = StructuredLogger("test")
     strategy = VWAPReversionStrategy(
@@ -124,6 +129,7 @@ def test_vwap_reversion_signal_short():
     assert signal.side == OrderSide.SELL
 
 
+@pytest.mark.unit
 def test_vwap_reversion_respects_time_window_et():
     logger = StructuredLogger("test")
     strategy = VWAPReversionStrategy(

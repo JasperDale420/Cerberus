@@ -7,6 +7,7 @@ from src.analysis.schema import Trade as DbTrade
 from src.engine.execution import ExecutionEngine
 
 
+@pytest.mark.unit
 def test_on_fill_persistence():
     # Setup
     config: dict = {}

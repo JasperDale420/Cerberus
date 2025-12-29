@@ -8,6 +8,7 @@ from src.core.domain import Bar, OrderIntent, OrderSide, OrderType, Regime, Symb
 from src.engine.execution import ExecutionEngine
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_backtest_order_executor_fills_market_order_on_next_bar_open():
     logger = MagicMock()
@@ -61,6 +62,7 @@ async def test_backtest_order_executor_fills_market_order_on_next_bar_open():
     assert engine.symbol_states["AAPL"].position is not None
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_backtest_order_executor_bracket_exit_stop_priority():
     logger = MagicMock()

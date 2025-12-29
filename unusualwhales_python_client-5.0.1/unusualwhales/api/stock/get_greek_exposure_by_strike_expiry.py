@@ -6,7 +6,9 @@ import httpx
 from ... import errors
 from ...client import UnusualWhalesClient
 from ...models.error_message import ErrorMessage
-from ...models.greek_exposure_by_strike_and_expiry_results import GreekExposureByStrikeAndExpiryResults
+from ...models.greek_exposure_by_strike_and_expiry_results import (
+    GreekExposureByStrikeAndExpiryResults,
+)
 from ...types import UNSET, Response, Unset
 
 

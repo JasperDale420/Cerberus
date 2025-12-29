@@ -340,48 +340,43 @@ class BacktestRunner:
             config=self.config if isinstance(self.config, dict) else {},
         )
 
-    def _format_trades(self, raw_trades: List[Any]) -> List[Dict[str, Any]]:
-        raw_trades.sort(key=lambda t: getattr(t, "exit_time", None) or "")
-
+    def _format_single_trade(self, t: Any) -> Dict[str, Any]:
         def _dt(v: Any) -> Optional[str]:
             if isinstance(v, datetime):
                 return v.isoformat()
             return None
 
-        engine_trades: List[Dict[str, Any]] = []
-        for t in raw_trades:
-            engine_trades.append(
-                {
-                    "symbol": getattr(t, "symbol", None),
-                    "strategy": getattr(t, "strategy", None),
-                    "regime_at_entry": getattr(t, "regime_at_entry", None),
-                    "regime_at_exit": getattr(t, "regime_at_exit", None),
-                    "side": getattr(t, "side", None),
-                    "qty": float(getattr(t, "qty", 0.0) or 0.0),
-                    "entry_time": _dt(getattr(t, "entry_time", None)),
-                    "exit_time": _dt(getattr(t, "exit_time", None)),
-                    "entry_price": float(getattr(t, "entry_price", 0.0) or 0.0),
-                    "exit_price": float(getattr(t, "exit_price", 0.0) or 0.0),
-                    "pnl_gross": float(getattr(t, "pnl_gross", 0.0) or 0.0),
-                    "pnl_net": float(getattr(t, "pnl_net", 0.0) or 0.0),
-                    "commission": float(getattr(t, "commission", 0.0) or 0.0),
-                    "slippage_estimate": float(
-                        getattr(t, "slippage_estimate", 0.0) or 0.0
-                    ),
-                    "pnl_r": (
-                        float(getattr(t, "pnl_r", 0.0) or 0.0)
-                        if getattr(t, "pnl_r", None) is not None
-                        else None
-                    ),
-                    "holding_period_seconds": (
-                        float(getattr(t, "holding_period_seconds", 0.0) or 0.0)
-                        if getattr(t, "holding_period_seconds", None) is not None
-                        else None
-                    ),
-                    "correlation_id": getattr(t, "correlation_id", None),
-                }
-            )
-        return engine_trades
+        return {
+            "symbol": getattr(t, "symbol", None),
+            "strategy": getattr(t, "strategy", None),
+            "regime_at_entry": getattr(t, "regime_at_entry", None),
+            "regime_at_exit": getattr(t, "regime_at_exit", None),
+            "side": getattr(t, "side", None),
+            "qty": float(getattr(t, "qty", 0.0) or 0.0),
+            "entry_time": _dt(getattr(t, "entry_time", None)),
+            "exit_time": _dt(getattr(t, "exit_time", None)),
+            "entry_price": float(getattr(t, "entry_price", 0.0) or 0.0),
+            "exit_price": float(getattr(t, "exit_price", 0.0) or 0.0),
+            "pnl_gross": float(getattr(t, "pnl_gross", 0.0) or 0.0),
+            "pnl_net": float(getattr(t, "pnl_net", 0.0) or 0.0),
+            "commission": float(getattr(t, "commission", 0.0) or 0.0),
+            "slippage_estimate": float(getattr(t, "slippage_estimate", 0.0) or 0.0),
+            "pnl_r": (
+                float(getattr(t, "pnl_r", 0.0) or 0.0)
+                if getattr(t, "pnl_r", None) is not None
+                else None
+            ),
+            "holding_period_seconds": (
+                float(getattr(t, "holding_period_seconds", 0.0) or 0.0)
+                if getattr(t, "holding_period_seconds", None) is not None
+                else None
+            ),
+            "correlation_id": getattr(t, "correlation_id", None),
+        }
+
+    def _format_trades(self, raw_trades: List[Any]) -> List[Dict[str, Any]]:
+        raw_trades.sort(key=lambda t: getattr(t, "exit_time", None) or "")
+        return [self._format_single_trade(t) for t in raw_trades]
 
     def _calculate_metrics(
         self, engine_trades: List[Dict[str, Any]], initial_cash: float
@@ -472,6 +467,53 @@ class BacktestRunner:
             "metrics_fills": fills_metrics,
         }
 
+    def _handle_session_boundary(
+        self,
+        bt: datetime,
+        market_tz: ZoneInfo,
+        last_session_ts: Optional[datetime],
+        current_session: Optional[date],
+    ) -> Tuple[Optional[date], Optional[datetime]]:
+        local_date = bt.astimezone(market_tz).date()
+        if current_session is None:
+            return local_date, bt
+
+        if local_date != current_session:
+            self.logger.info(
+                "Session boundary flatten",
+                session_date=str(current_session),
+                timestamp=(last_session_ts.isoformat() if last_session_ts else None),
+            )
+            self._flatten_session_end(
+                ts=(last_session_ts if last_session_ts is not None else bt),
+                reason="SESSION_END",
+            )
+            return local_date, bt
+
+        return current_session, bt
+
+    async def _handle_scanner_replay(
+        self,
+        bt: datetime,
+        market_tz: ZoneInfo,
+        scan_interval: int,
+        last_scan_ts: Optional[datetime],
+        next_scan_ts: Optional[datetime],
+    ) -> Tuple[Optional[datetime], Optional[datetime]]:
+        if next_scan_ts is None:
+            next_scan_ts = self._ceil_time_to_interval(bt, scan_interval, market_tz)
+
+        if bt >= next_scan_ts and (last_scan_ts is None or bt != last_scan_ts):
+            try:
+                await self.engine.run_scan()
+            except Exception as e:
+                self.logger.error("Backtest scan failed", error=str(e))
+            last_scan_ts = bt
+            next_scan_ts = self._ceil_time_to_interval(
+                bt + timedelta(minutes=scan_interval), scan_interval, market_tz
+            )
+        return last_scan_ts, next_scan_ts
+
     async def _process_loop_event(
         self,
         bt: datetime,
@@ -488,21 +530,9 @@ class BacktestRunner:
     ) -> Tuple[
         Optional[datetime], Optional[date], Optional[datetime], Optional[datetime]
     ]:
-        local_date = bt.astimezone(market_tz).date()
-        if current_session is None:
-            current_session = local_date
-        elif local_date != current_session:
-            self.logger.info(
-                "Session boundary flatten",
-                session_date=str(current_session),
-                timestamp=(last_session_ts.isoformat() if last_session_ts else None),
-            )
-            self._flatten_session_end(
-                ts=(last_session_ts if last_session_ts is not None else bt),
-                reason="SESSION_END",
-            )
-            current_session = local_date
-        last_session_ts = bt
+        current_session, last_session_ts = self._handle_session_boundary(
+            bt, market_tz, last_session_ts, current_session
+        )
 
         # Ensure engine time advances deterministically even if index bars are absent.
         try:
@@ -511,17 +541,9 @@ class BacktestRunner:
             pass
 
         if scanner_replay:
-            if next_scan_ts is None:
-                next_scan_ts = self._ceil_time_to_interval(bt, scan_interval, market_tz)
-            if bt >= next_scan_ts and (last_scan_ts is None or bt != last_scan_ts):
-                try:
-                    await self.engine.run_scan()
-                except Exception as e:
-                    self.logger.error("Backtest scan failed", error=str(e))
-                last_scan_ts = bt
-                next_scan_ts = self._ceil_time_to_interval(
-                    bt + timedelta(minutes=scan_interval), scan_interval, market_tz
-                )
+            last_scan_ts, next_scan_ts = await self._handle_scanner_replay(
+                bt, market_tz, scan_interval, last_scan_ts, next_scan_ts
+            )
 
         # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
         if symbol != index_symbol and symbol not in self.engine.symbol_states:

@@ -6,7 +6,9 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.greek_exposure_by_strike_and_expiry import GreekExposureByStrikeAndExpiry
+    from ..models.greek_exposure_by_strike_and_expiry import (
+        GreekExposureByStrikeAndExpiry,
+    )
 
 
 T = TypeVar("T", bound="GreekExposureByStrikeAndExpiryResults")
@@ -40,7 +42,9 @@ class GreekExposureByStrikeAndExpiryResults:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
-        from ..models.greek_exposure_by_strike_and_expiry import GreekExposureByStrikeAndExpiry
+        from ..models.greek_exposure_by_strike_and_expiry import (
+            GreekExposureByStrikeAndExpiry,
+        )
 
         d = src_dict.copy()
         data = []

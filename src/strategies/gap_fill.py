@@ -4,8 +4,7 @@ from datetime import datetime, timedelta, timezone
 from datetime import time as time_type
 from typing import Any, Dict, Optional
 
-import pytz  # type: ignore
-
+from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -77,9 +76,10 @@ class GapFillStrategy(BaseStrategy):
         bt = bar.time
         if isinstance(bt, datetime) and bt.tzinfo is None:
             bt = bt.replace(tzinfo=timezone.utc)
-        et = pytz.timezone("US/Eastern")
-        bt_et = bt.astimezone(et)
-        session_open_et = et.localize(datetime.combine(bt_et.date(), time_type(9, 30)))
+        bt_et = time_utils.to_eastern_time(bt)
+        session_open_et = time_utils.get_eastern_timezone().localize(
+            datetime.combine(bt_et.date(), time_type(9, 30))
+        )
         cutoff_et = session_open_et + timedelta(minutes=self.or_time_minutes)
 
         # Build opening range.
@@ -91,7 +91,7 @@ class GapFillStrategy(BaseStrategy):
             t = b.time
             if isinstance(t, datetime) and t.tzinfo is None:
                 t = t.replace(tzinfo=timezone.utc)
-            t_et = t.astimezone(et)
+            t_et = time_utils.to_eastern_time(t)
             if t_et.date() != bt_et.date():
                 continue
             if t_et <= cutoff_et:

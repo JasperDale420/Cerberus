@@ -3,7 +3,9 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-from ..models.single_trade_external_hour_sold_code import SingleTradeExternalHourSoldCode
+from ..models.single_trade_external_hour_sold_code import (
+    SingleTradeExternalHourSoldCode,
+)
 from ..models.single_trade_sale_cond_code import SingleTradeSaleCondCode
 from ..models.single_trade_settlement import SingleTradeSettlement
 from ..models.single_trade_trade_code import SingleTradeTradeCode

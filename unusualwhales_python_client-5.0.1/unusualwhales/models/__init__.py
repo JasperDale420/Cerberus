@@ -42,7 +42,9 @@ from .flow_per_strike_results import FlowPerStrikeResults
 from .greek_exposure import GreekExposure
 from .greek_exposure_by_strike import GreekExposureByStrike
 from .greek_exposure_by_strike_and_expiry import GreekExposureByStrikeAndExpiry
-from .greek_exposure_by_strike_and_expiry_results import GreekExposureByStrikeAndExpiryResults
+from .greek_exposure_by_strike_and_expiry_results import (
+    GreekExposureByStrikeAndExpiryResults,
+)
 from .greek_exposure_by_strike_results import GreekExposureByStrikeResults
 from .greek_exposure_results import GreekExposureResults
 from .greeks import Greeks
@@ -52,7 +54,9 @@ from .holdings import Holdings
 from .holdings_response import HoldingsResponse
 from .imbalances_volume import ImbalancesVolume
 from .implied_volatility_term_structure import ImpliedVolatilityTermStructure
-from .implied_volatility_term_structure_results import ImpliedVolatilityTermStructureResults
+from .implied_volatility_term_structure_results import (
+    ImpliedVolatilityTermStructureResults,
+)
 from .insider_statistic import InsiderStatistic
 from .insider_statistics import InsiderStatistics
 from .insider_trades_member_type import InsiderTradesMemberType

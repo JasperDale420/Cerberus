@@ -1,4 +1,3 @@
-
 from .congress import CongressEndpoints
 from .contract import ContractEndpoints
 from .darkpool import DarkpoolEndpoints

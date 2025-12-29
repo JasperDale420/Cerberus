@@ -11,6 +11,7 @@ from datetime import datetime, timezone  # noqa: E402
 from src.data.pipeline import FeaturePipeline  # noqa: E402
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_compute_features():
     # Mock clients
@@ -93,6 +94,7 @@ async def test_compute_features():
     mock_uw.get_option_flow.assert_called_once()
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_compute_features_no_data():
     mock_alpaca = MagicMock()
@@ -111,6 +113,7 @@ async def test_compute_features_no_data():
     mock_logger.warning.assert_called()
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_compute_features_flow_failure_degrades_to_neutral():
     mock_alpaca = MagicMock()

@@ -2,12 +2,15 @@ from collections import deque
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.analysis.regime import Regime
 from src.core.domain import OrderSide
 from src.engine.execution import ExecutionEngine
 from src.strategies.base import Signal, SymbolState
 
 
+@pytest.mark.unit
 def test_process_signal_flow():
     # Mocks
     mock_config = {
@@ -67,6 +70,7 @@ def test_process_signal_flow():
     assert call_args.side.value == "buy"
 
 
+@pytest.mark.unit
 def test_process_signal_risk_rejection():
     mock_config = {"max_daily_loss": 1000, "max_risk_per_trade": 50}
     mock_logger = MagicMock()

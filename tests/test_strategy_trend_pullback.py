@@ -67,6 +67,7 @@ def create_bars(n=30):
     return bars
 
 
+@pytest.mark.unit
 def test_bullish_pullback(tp_strategy):
     market_state = MarketState(
         time=datetime.now(),
@@ -134,6 +135,7 @@ def test_bullish_pullback(tp_strategy):
     # RSI 2 on sharp drop will definitely go < 10.
 
 
+@pytest.mark.unit
 def test_trend_pullback_no_signal_in_chop(tp_strategy):
     market_state = MarketState(
         time=datetime.now(),

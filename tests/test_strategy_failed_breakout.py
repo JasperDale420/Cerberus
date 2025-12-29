@@ -32,6 +32,7 @@ def fb_strategy():
     return FailedBreakoutStrategy(config, MockLogger())
 
 
+@pytest.mark.unit
 def test_bearish_fade(fb_strategy):
     market_state = MarketState(
         time=datetime.now(),
@@ -100,6 +101,7 @@ def test_bearish_fade(fb_strategy):
     # Logic says max(bar.high, ...).
 
 
+@pytest.mark.unit
 def test_failed_breakout_no_signal_outside_chop(fb_strategy):
     market_state = MarketState(
         time=datetime.now(),
@@ -137,6 +139,7 @@ def test_failed_breakout_no_signal_outside_chop(fb_strategy):
     assert fb_strategy.on_bar("TEST", b2, symbol_state, market_state) is None
 
 
+@pytest.mark.unit
 def test_failed_breakout_uses_scanner_prior_levels_when_no_history(fb_strategy):
     market_state = MarketState(
         time=datetime.now(),

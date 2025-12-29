@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict, cast
 
-from src.agent.bars_provider import BarsProvider
+from src.agent.bars_provider import BarsProvider, JsonlBarsProvider
+from src.agent.models import ActionType, AgentAction, StrategyDailyStats
+from src.core.config import ConfigLoader
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
@@ -129,7 +133,7 @@ class DeterministicStage2Evaluator:
         # Minimal deterministic mapping for existing strategies.
         from src.strategies.failed_breakout import FailedBreakoutStrategy
         from src.strategies.flow_momentum import FlowMomentumStrategy
-        from src.strategies.gap import GapFillStrategy
+        from src.strategies.gap_fill import GapFillStrategy
         from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
         from src.strategies.orb import ORBStrategy
         from src.strategies.trend_pullback import TrendPullbackStrategy
@@ -180,7 +184,9 @@ class DeterministicStage2Evaluator:
 
             state = SymbolState(
                 symbol=sym,
-                bars=__import__("collections").deque(maxlen=500),
+                bars=__import__("collections").deque(
+                    maxlen=500
+                ),  # Safe dynamic import for deque
                 indicators={},
                 position=None,
                 open_orders={},
@@ -300,3 +306,190 @@ class DeterministicStage2Evaluator:
         return Stage2Metrics(
             expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n)
         )
+
+
+class Stage2Tuner:
+    """
+    Orchestrates deterministic parameter tuning.
+    """
+
+    def __init__(
+        self,
+        logger: StructuredLogger,
+        config_loader: ConfigLoader,
+        config_path_or_dir: str,
+        evaluator: Optional[Any] = None,
+    ):
+        self.logger = logger
+        self.config_loader = config_loader
+        self.config_path_or_dir = config_path_or_dir
+        self.evaluator = evaluator
+
+    def tune_parameters(
+        self,
+        stats: StrategyDailyStats,
+        current_config: Dict[str, Any],
+        min_trades: int,
+        max_dd_r: float,
+        *,
+        as_of: Optional[datetime] = None,
+    ) -> List[AgentAction]:
+        """
+        Stage 2: deterministic parameter tuning via offline evaluation.
+        """
+        cfg = self.config_loader.load_config(self.config_path_or_dir)
+        agent_cfg = (cfg.get("agent") or {}) if isinstance(cfg, dict) else {}
+        stage2 = (agent_cfg.get("stage2") or {}) if isinstance(agent_cfg, dict) else {}
+        enabled = bool(stage2.get("enabled", False))
+        if not enabled:
+            return []
+
+        # PRD 9.2: parameter tuning must be offline/deterministic.
+        offline_dir = str(stage2.get("offline_bars_dir", "")).strip()
+        if self.evaluator is None and not offline_dir:
+            self.logger.error(
+                "Agent Stage 2 enabled but no offline bars source configured",
+                required_key="agent.stage2.offline_bars_dir",
+            )
+            raise ValueError(
+                "Agent Stage 2 requires agent.stage2.offline_bars_dir for offline determinism"
+            )
+
+        now = as_of or datetime.now(timezone.utc)
+
+        raw_search_space = (
+            stage2.get("search_space") if isinstance(stage2, dict) else None
+        )
+        search_space: Dict[str, Any] = (
+            dict(raw_search_space) if isinstance(raw_search_space, dict) else {}
+        )
+        raw_strat_space = search_space.get(stats.strategy)
+        strat_space = raw_strat_space if isinstance(raw_strat_space, dict) else {}
+        if not strat_space:
+            self.logger.info(
+                "Agent Stage 2: no search space configured",
+                strategy=stats.strategy,
+                regime=stats.regime,
+            )
+            return []
+
+        evaluator = self.evaluator
+        if evaluator is None:
+
+            def _clock(now: datetime = now) -> datetime:
+                return now
+
+            evaluator = DeterministicStage2Evaluator(
+                cfg if isinstance(cfg, dict) else {},
+                self.config_loader,
+                self.logger,
+                clock=_clock,
+                bars_provider=JsonlBarsProvider(Path(offline_dir)),
+            )
+
+        def _regime() -> Any:
+            r = str(stats.regime or "").strip().lower()
+            from src.core.domain import Regime as RegimeEnum
+
+            if r == "bull":
+                return RegimeEnum.BULL
+            if r == "bear":
+                return RegimeEnum.BEAR
+            return RegimeEnum.CHOP
+
+        # Evaluate baseline
+        if callable(evaluator) and not hasattr(evaluator, "evaluate"):
+            baseline_metrics = evaluator(stats, dict(current_config))
+        else:
+            m0 = evaluator.evaluate(
+                stats.strategy, _regime(), dict(current_config), as_of=now
+            )
+            baseline_metrics = {
+                "expectancy": float(m0.expectancy),
+                "max_drawdown_r": float(m0.max_drawdown_r),
+                "n_trades": int(m0.n_trades),
+            }
+
+        baseline_expectancy = float(baseline_metrics.get("expectancy", 0.0))
+        baseline_dd = float(baseline_metrics.get("max_drawdown_r", 0.0))
+        baseline_n = int(baseline_metrics.get("n_trades", 0))
+
+        if baseline_n < int(min_trades):
+            self.logger.info(
+                "Agent Stage 2: insufficient baseline sample size",
+                strategy=stats.strategy,
+                regime=stats.regime,
+                n_trades=baseline_n,
+                min_trades=min_trades,
+            )
+            return []
+
+        # Build candidates
+        keys = sorted(strat_space.keys())
+        values_list = []
+        for k in keys:
+            v = strat_space.get(k)
+            if isinstance(v, list):
+                values_list.append([x for x in v])
+            else:
+                values_list.append([v])
+
+        best_params: Dict[str, Any] = {}
+        best_score: Optional[float] = None
+        best_metrics: Dict[str, Any] = {}
+
+        for combo in itertools.product(*values_list):
+            cand = dict(zip(keys, combo, strict=True))
+            merged = {**current_config, **cand}
+            if callable(evaluator) and not hasattr(evaluator, "evaluate"):
+                metrics = evaluator(stats, merged)
+            else:
+                m = evaluator.evaluate(stats.strategy, _regime(), merged, as_of=now)
+                metrics = {
+                    "expectancy": float(m.expectancy),
+                    "max_drawdown_r": float(m.max_drawdown_r),
+                    "n_trades": int(m.n_trades),
+                }
+
+            expectancy = float(metrics.get("expectancy", 0.0))
+            dd = float(metrics.get("max_drawdown_r", 0.0))
+            n = int(metrics.get("n_trades", 0))
+
+            if n < int(min_trades):
+                continue
+            if dd > float(max_dd_r):
+                continue
+            if expectancy <= baseline_expectancy:
+                continue
+            if dd > baseline_dd:
+                continue
+
+            score = expectancy * 1_000_000.0 - dd * 1_000.0 + n
+
+            if best_score is None or score > best_score:
+                best_score = score
+                best_params = cand
+                best_metrics = dict(metrics)
+
+        if not best_params:
+            return []
+
+        return [
+            AgentAction(
+                timestamp=now,
+                action_type=ActionType.TUNE_PARAM,
+                strategy=stats.strategy,
+                regime=stats.regime,
+                details={
+                    "new_params": best_params,
+                    "metrics": best_metrics,
+                    "baseline_metrics": baseline_metrics,
+                    "window_days": int(
+                        ((stage2 or {}).get("window_days", 30))
+                        if isinstance(stage2, dict)
+                        else 30
+                    ),
+                },
+                reason="Deterministic Stage 2 parameter tuning",
+            )
+        ]

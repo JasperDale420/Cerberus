@@ -36,6 +36,7 @@ def create_features(symbol, price=100.0, volume=100000.0):
     )
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_scanner_flow():
     # Mocks
@@ -82,6 +83,7 @@ async def test_scanner_flow():
     assert mock_pipeline.append_flow_features.call_count == 1
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_scanner_requires_scan_time_or_pipeline_clock() -> None:
     mock_universe = MagicMock()
@@ -96,6 +98,7 @@ async def test_scanner_requires_scan_time_or_pipeline_clock() -> None:
         await scanner.scan()
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_scanner_feature_pipeline_failure_fails_open() -> None:
     mock_universe = MagicMock()
@@ -112,6 +115,7 @@ async def test_scanner_feature_pipeline_failure_fails_open() -> None:
     assert mock_logger.error.call_count >= 1
 
 
+@pytest.mark.unit
 def test_vwap_profile():
     profile = VWAPReversionProfile(min_price=10.0, min_volume=1000)
 

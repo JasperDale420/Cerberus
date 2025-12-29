@@ -44,9 +44,7 @@ class UnusualWhalesClient:
     _base_url: str = field(alias="base_url")
     _cookies: dict[str, str] = field(factory=dict, kw_only=True, alias="cookies")
     _headers: dict[str, str] = field(factory=dict, kw_only=True, alias="headers")
-    _timeout: httpx.Timeout | None = field(
-        default=None, kw_only=True, alias="timeout"
-    )
+    _timeout: httpx.Timeout | None = field(default=None, kw_only=True, alias="timeout")
     _verify_ssl: str | bool | ssl.SSLContext = field(
         default=True, kw_only=True, alias="verify_ssl"
     )

@@ -6,7 +6,9 @@ import httpx
 from ... import errors
 from ...client import UnusualWhalesClient
 from ...models.error_message import ErrorMessage
-from ...models.historical_risk_reversal_skew_results import HistoricalRiskReversalSkewResults
+from ...models.historical_risk_reversal_skew_results import (
+    HistoricalRiskReversalSkewResults,
+)
 from ...types import UNSET, Response, Unset
 
 

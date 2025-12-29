@@ -36,6 +36,7 @@ def imr_strategy():
     return IndexMeanReversionStrategy(config, MockLogger())
 
 
+@pytest.mark.unit
 def test_short_mean_reversion(imr_strategy):
     market_state = MarketState(
         time=datetime.now(),

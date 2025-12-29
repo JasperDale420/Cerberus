@@ -26,7 +26,13 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: UnusualWhalesClient, response: httpx.Response
-) -> ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str | None:
+) -> (
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
+    | None
+):
     response_json = response.json()
     if response_json.get("data") is not None:
         response_json = response_json["data"]
@@ -56,7 +62,10 @@ def _parse_response(
 def _build_response(
     *, client: UnusualWhalesClient, response: httpx.Response
 ) -> Response[
-    ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
 ]:
     return Response(
         status_code=HTTPStatus(response.status_code),
@@ -71,7 +80,10 @@ def sync_detailed(
     *,
     client: UnusualWhalesClient,
 ) -> Response[
-    ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
 ]:
     """Ticker Information
 
@@ -103,7 +115,13 @@ def sync(
     ticker: str,
     *,
     client: UnusualWhalesClient,
-) -> ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str | None:
+) -> (
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
+    | None
+):
     """Ticker Information
 
      Returns a information about the given ticker.
@@ -130,7 +148,10 @@ async def asyncio_detailed(
     *,
     client: UnusualWhalesClient,
 ) -> Response[
-    ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
 ]:
     """Ticker Information
 
@@ -160,7 +181,13 @@ async def asyncio(
     ticker: str,
     *,
     client: UnusualWhalesClient,
-) -> ErrorMessage | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated | TickerInfoResults | str | None:
+) -> (
+    ErrorMessage
+    | ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultToBeGenerated
+    | TickerInfoResults
+    | str
+    | None
+):
     """Ticker Information
 
      Returns a information about the given ticker.

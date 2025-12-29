@@ -1,51 +1,67 @@
-# Testing
+# Testing Guide
 
-This repository uses `pytest` with `pytest-asyncio` and `pytest-cov`.
+This repository uses `pytest` for all testing. We aim for high coverage and deterministic reliability.
 
 ## Quickstart
 
+Run the full suite as CI does:
 ```bash
-python -m pip install -r requirements.txt
-make test
+make test-ci
 ```
 
-CI runs `make test-ci`.
-
-## Test Pyramid
-
-- **Unit** (`-m unit`): pure logic with fakes/mocks; no network.
-- **Contract** (`-m contract`): boundary tests that validate request shape/paths against a fake transport (no real HTTP).
-- **Integration** (`-m integration`): real local dependencies (SQLite, filesystem) with temp directories.
-- **E2E/Smoke** (`-m e2e`): small offline workflow across multiple modules (strategy → engine → risk → order → DB).
-
-## Commands
-
+Or run interactively during development:
 ```bash
-make test
-make test-ci
+# Run unit tests only
 make test-unit
-make test-contract
-make test-integration
+
+# Run end-to-end smoke tests
 make test-e2e
 ```
 
-Notes:
-- `make test` / `make test-ci` enforce the coverage threshold (`--cov-fail-under=70`).
-- `pytest` alone runs without the coverage gate so you can run focused subsets locally.
+## Directory Structure
 
-## Determinism / No Live Calls
+```
+tests/
+├── unit/           # Isolated component tests (ExecutionEngine, RiskManager, etc.)
+├── integration/    # Component interaction tests (DB persistence, file I/O)
+├── contract/       # API contract verification with mocked transports
+├── e2e/            # Full system smoke tests (Scheduler -> Engine -> DB)
+├── conftest.py     # Shared fixtures (DB init, Mock Alpaca, Config helpers)
+└── benchmark_...   # Performance benchmarks (excluded from standard CI)
+```
 
-Tests are written to avoid live networks and real broker actions:
-- HTTP calls are mocked at the transport layer (e.g., `httpx.MockTransport`).
-- Alpaca interactions are replaced with `MagicMock` stubs.
+## Test Pyramid & Strategy
 
-`tests/conftest.py` also sets safe default environment variables early, so a local `.env` does not accidentally introduce real credentials into test runs.
+1.  **Unit Tests (70% of volume)**
+    *   **Goal**: Verify logic of classes/functions in isolation.
+    *   **Constraint**: NO I/O (no DB, no Network). Use `MagicMock`.
+    *   **Location**: `tests/unit/`
 
-## Coverage Notes
+2.  **Integration Tests (20% of volume)**
+    *   **Goal**: Verify component wiring (e.g., proper SQL queries, config loading).
+    *   **Constraint**: Use generic/tempfile I/O. Use SQLite in memory/tempfile.
+    *   **Location**: `tests/integration/`
 
-Coverage is enforced at 70% for CI viability. `src/main.py` is omitted from coverage because it is an orchestration entrypoint that performs long-running loops and real external integrations; covering it deterministically would require significant refactoring or heavy fakes.
+3.  **End-to-End (E2E) (10% of volume)**
+    *   **Goal**: Validate critical "Vertical Slices" (Signal -> Order -> Fill -> Analytics).
+    *   **Constraint**: No live broker connection; offline simulation only.
+    *   **Location**: `tests/e2e/`
 
-## Troubleshooting
+## Coverage Policy
 
-- If you see `pytest-asyncio` warnings about loop scope, check `pyproject.toml` (`asyncio_default_fixture_loop_scope = "function"`).
-- If a test unexpectedly attempts network access, ensure the code path is using fakes/mocks and not `CentralApiClient`’s default `httpx.Client`.
+*   **Threshold**: CI enforces **70%** code coverage.
+*   **Exclusions**: `src/main.py` (entrypoint), `src/ui/`.
+*   **Report**: `make test-ci` generates `coverage.xml` and an HTML report.
+
+## CI Integration
+
+CI runs on every push to `main` and all PRs.
+*   **Workflows**: `.github/workflows/ci.yml`
+*   **Artifacts**: JUnit XML results and Coverage XML are uploaded.
+
+## Development Rules
+
+1.  **Determinism**: Tests must not rely on `datetime.now()` directly (inject clocks). Tests must not hit real APIs.
+2.  **Performance**: The entire suite should run in under 30s locally.
+3.  **Isolation**: Use `tmp_path` fixture for files; do not write to the source tree.
+

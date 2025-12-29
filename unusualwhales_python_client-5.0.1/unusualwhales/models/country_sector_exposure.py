@@ -64,14 +64,18 @@ class CountrySectorExposure:
         if not isinstance(self.country, Unset):
             country = []
             for componentsschemas_etf_countries_item_data in self.country:
-                componentsschemas_etf_countries_item = componentsschemas_etf_countries_item_data.to_dict()
+                componentsschemas_etf_countries_item = (
+                    componentsschemas_etf_countries_item_data.to_dict()
+                )
                 country.append(componentsschemas_etf_countries_item)
 
         sector: Unset | list[dict[str, Any]] = UNSET
         if not isinstance(self.sector, Unset):
             sector = []
             for componentsschemas_etf_sectors_item_data in self.sector:
-                componentsschemas_etf_sectors_item = componentsschemas_etf_sectors_item_data.to_dict()
+                componentsschemas_etf_sectors_item = (
+                    componentsschemas_etf_sectors_item_data.to_dict()
+                )
                 sector.append(componentsschemas_etf_sectors_item)
 
         field_dict: dict[str, Any] = {}
@@ -93,14 +97,18 @@ class CountrySectorExposure:
         country = []
         _country = d.pop("country", UNSET)
         for componentsschemas_etf_countries_item_data in _country or []:
-            componentsschemas_etf_countries_item = EtfCountriesItem.from_dict(componentsschemas_etf_countries_item_data)
+            componentsschemas_etf_countries_item = EtfCountriesItem.from_dict(
+                componentsschemas_etf_countries_item_data
+            )
 
             country.append(componentsschemas_etf_countries_item)
 
         sector = []
         _sector = d.pop("sector", UNSET)
         for componentsschemas_etf_sectors_item_data in _sector or []:
-            componentsschemas_etf_sectors_item = EtfSectorsItem.from_dict(componentsschemas_etf_sectors_item_data)
+            componentsschemas_etf_sectors_item = EtfSectorsItem.from_dict(
+                componentsschemas_etf_sectors_item_data
+            )
 
             sector.append(componentsschemas_etf_sectors_item)
 

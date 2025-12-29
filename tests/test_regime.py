@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from src.analysis.regime import Regime, RegimeDetector
 from src.core.domain import Bar
@@ -19,11 +20,13 @@ def _bar(close: float, i: int = 0) -> Bar:
     )
 
 
+@pytest.mark.unit
 def test_regime_initialization():
     detector = RegimeDetector()
     assert detector.get_regime() == Regime.CHOP
 
 
+@pytest.mark.unit
 def test_insufficient_data():
     detector = RegimeDetector(min_bars=10)
     for i in range(5):
@@ -31,6 +34,7 @@ def test_insufficient_data():
     assert detector.get_regime() == Regime.CHOP
 
 
+@pytest.mark.unit
 def test_bull_regime():
     detector = RegimeDetector(window=20, min_bars=10, smooth_k=1)
     # Generate a strong upward trend
@@ -42,6 +46,7 @@ def test_bull_regime():
     assert regime == Regime.BULL
 
 
+@pytest.mark.unit
 def test_bear_regime():
     detector = RegimeDetector(window=20, min_bars=10, smooth_k=1)
     # Generate a strong downward trend
@@ -52,6 +57,7 @@ def test_bear_regime():
     assert regime == Regime.BEAR
 
 
+@pytest.mark.unit
 def test_chop_regime():
     detector = RegimeDetector(window=20, min_bars=10, smooth_k=1)
     # Generate alternating chop
@@ -67,6 +73,7 @@ def test_chop_regime():
     assert regime == Regime.CHOP
 
 
+@pytest.mark.unit
 def test_smoothing():
     detector = RegimeDetector(window=20, min_bars=5, smooth_k=3)
     # Force a sequence of classifications: BULL, BULL, BEAR -> should be BULL
@@ -85,6 +92,7 @@ def test_smoothing():
     assert detector.get_regime() == Regime.BULL
 
 
+@pytest.mark.unit
 def test_regime_determinism_golden_data():
     """
     PRD 10.1: Verify deterministic behavior against known fixed input.

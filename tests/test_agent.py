@@ -1,10 +1,13 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.agent.core import ActionType, Agent
 from src.agent.models import StrategyDailyStats
 
 
+@pytest.mark.unit
 @patch("src.agent.core.LLMClient")
 def test_analyze_performance_z_score(mock_llm_cls):
     # Setup

@@ -63,6 +63,110 @@ class FeaturePipeline:
         start = start_et.astimezone(timezone.utc)
         return start, end
 
+    async def _fetch_bars_wrapper(
+        self, sym: str, as_of: datetime
+    ) -> tuple[List[Any], Dict[str, int]]:
+        start, end = self._calculate_fetch_window(as_of)
+        bars_data, fetch_metrics = await self.fetcher.fetch_bars(
+            sym, start, end, "1Min"
+        )
+        return bars_data, fetch_metrics
+
+    async def _fetch_supplementary_data(
+        self, sym: str, end: datetime
+    ) -> tuple[Optional[float], tuple[float, float, float]]:
+        avg_daily_volume = await asyncio.to_thread(
+            self.fetcher.fetch_avg_daily_volume,
+            sym,
+            end,
+            self.daily_volume_lookback_days,
+        )
+
+        prior_stats = await asyncio.to_thread(
+            self.fetcher.fetch_prior_day_stats,
+            sym,
+            end,
+        )
+        return avg_daily_volume, prior_stats
+
+    def _build_symbol_features(
+        self,
+        sym: str,
+        tech_result: Any,
+        avg_daily_volume: Optional[float],
+        prior_stats: tuple[float, float, float],
+        bars_data: List[Any],
+        end: datetime,
+    ) -> SymbolFeatures:
+        p_high, p_low, p_close = prior_stats
+
+        # Fix floating point equality check logic
+        if (
+            abs(tech_result.prior_day_high) < 1e-9
+            or abs(tech_result.prior_day_low) < 1e-9
+        ):
+            if p_high > 0:
+                prior_day_high = p_high
+                prior_day_low = p_low
+            else:
+                prior_day_high = tech_result.prior_day_high
+                prior_day_low = tech_result.prior_day_low
+        else:
+            prior_day_high = tech_result.prior_day_high
+            prior_day_low = tech_result.prior_day_low
+
+        session_open = self.calculator.calculate_session_open_price(
+            bars_data if isinstance(bars_data, list) else [], end
+        )
+
+        gap_pct = tech_result.gap_pct
+        if p_close > 0 and session_open > 0:
+            gap_pct = (session_open - p_close) / p_close
+
+        # Create features with NEUTRAL flow data
+        return SymbolFeatures(
+            symbol=sym,
+            last_updated=(
+                tech_result.timestamp
+                if isinstance(tech_result.timestamp, datetime)
+                else datetime.fromisoformat(
+                    str(tech_result.timestamp).replace("Z", UTC_ZERO_STR)
+                )
+            ),
+            price=tech_result.price,
+            avg_volume=(
+                float(avg_daily_volume)
+                if avg_daily_volume is not None
+                else float(tech_result.volume)
+            ),
+            atr_pct=tech_result.atr_pct,
+            intraday_range_pct=tech_result.intraday_range_pct,
+            gap_pct=gap_pct,
+            ema20_slope=tech_result.ema20_slope,
+            ema_trend_strength=abs(tech_result.ema20_slope),
+            distance_from_vwap=tech_result.distance_from_vwap,
+            premarket_volume=tech_result.premarket_volume,
+            adx=tech_result.adx,
+            distance_from_ema20=tech_result.distance_from_ema20,
+            prior_day_high=prior_day_high,
+            prior_day_low=prior_day_low,
+            bb_upper=tech_result.bb_upper,
+            bb_lower=tech_result.bb_lower,
+            price_zscore=tech_result.price_zscore,
+            # Neutral flow details
+            flow_zscore=0.0,
+            call_put_ratio=0.0,
+            large_sweeps_count=0,
+            aggressive_flow_share=0.0,
+            extra={
+                "flow_raw_count": 0,
+                "flow_bias": 0.0,
+                "volatility": tech_result.atr_pct,
+                "last_bar_volume": float(tech_result.volume),
+                "avg_daily_volume_days": int(self.daily_volume_lookback_days),
+            },
+        )
+
     async def _process_single_symbol(
         self, symbol: str, as_of: datetime, sem: asyncio.Semaphore
     ) -> tuple[str, Optional[SymbolFeatures], Dict[str, int]]:
@@ -75,130 +179,35 @@ class FeaturePipeline:
         sym = str(symbol).strip().upper()
 
         async with sem:
-            try:
-                start, end = self._calculate_fetch_window(as_of)
+            # 1. Fetch Bars
+            bars_data, fetch_metrics = await self._fetch_bars_wrapper(sym, as_of)
+            for k, v in fetch_metrics.items():
+                local[k] = int(local.get(k, 0)) + int(v)
 
-                # Use Fetcher
-                bars_data, fetch_metrics = await self.fetcher.fetch_bars(
-                    sym, start, end, "1Min"
-                )
-
-                # Merge fetch metrics
-                for k, v in fetch_metrics.items():
-                    local[k] = int(local.get(k, 0)) + int(v)
-
-                if not bars_data:
-                    self.logger.warning("No bars found for technicals", symbol=sym)
-                    return sym, None, local
-
-                try:
-                    tech_result = self.calculator.compute_technicals(bars_data)
-                    if not tech_result:
-                        local["technicals_fail"] += 1
-                        return sym, None, local
-
-                    (
-                        price,
-                        volume,
-                        timestamp,
-                        atr_pct,
-                        intraday_range_pct,
-                        gap_pct,
-                        ema20_slope,
-                        distance_from_vwap,
-                        adx,
-                        distance_from_ema20,
-                        prior_day_high,
-                        prior_day_low,
-                        bb_upper,
-                        bb_lower,
-                        price_zscore,
-                        premarket_vol,
-                    ) = tech_result
-
-                    avg_daily_volume = await asyncio.to_thread(
-                        self.fetcher.fetch_avg_daily_volume,
-                        sym,
-                        end,
-                        self.daily_volume_lookback_days,
-                    )
-
-                    p_high, p_low, p_close = await asyncio.to_thread(
-                        self.fetcher.fetch_prior_day_stats,
-                        sym,
-                        end,
-                    )
-                    # Fix floating point equality check
-                    if abs(prior_day_high) < 1e-9 or abs(prior_day_low) < 1e-9:
-                        if p_high > 0:
-                            prior_day_high = p_high
-                            prior_day_low = p_low
-
-                    session_open = self.calculator.calculate_session_open_price(
-                        bars_data if isinstance(bars_data, list) else [], end
-                    )
-                    if p_close > 0 and session_open > 0:
-                        gap_pct = (session_open - p_close) / p_close
-
-                except Exception as e:
-                    local["technicals_fail"] += 1
-                    self.logger.error(
-                        "Failed to compute technicals", symbol=sym, error=str(e)
-                    )
-                    return sym, None, local
-
-                # Create features with NEUTRAL flow data
-                feat = SymbolFeatures(
-                    symbol=sym,
-                    last_updated=(
-                        timestamp
-                        if isinstance(timestamp, datetime)
-                        else datetime.fromisoformat(
-                            str(timestamp).replace("Z", UTC_ZERO_STR)
-                        )
-                    ),
-                    price=price,
-                    avg_volume=(
-                        float(avg_daily_volume)
-                        if avg_daily_volume is not None
-                        else float(volume)
-                    ),
-                    atr_pct=atr_pct,
-                    intraday_range_pct=intraday_range_pct,
-                    gap_pct=gap_pct,
-                    ema20_slope=ema20_slope,
-                    ema_trend_strength=abs(ema20_slope),
-                    distance_from_vwap=distance_from_vwap,
-                    premarket_volume=premarket_vol,
-                    adx=adx,
-                    distance_from_ema20=distance_from_ema20,
-                    prior_day_high=prior_day_high,
-                    prior_day_low=prior_day_low,
-                    bb_upper=bb_upper,
-                    bb_lower=bb_lower,
-                    price_zscore=price_zscore,
-                    # Neutral flow details
-                    flow_zscore=0.0,
-                    call_put_ratio=0.0,
-                    large_sweeps_count=0,
-                    aggressive_flow_share=0.0,
-                    extra={
-                        "flow_raw_count": 0,
-                        "flow_bias": 0.0,
-                        "volatility": atr_pct,
-                        "last_bar_volume": float(volume),
-                        "avg_daily_volume_days": int(self.daily_volume_lookback_days),
-                    },
-                )
-
-                local["features_ok"] += 1
-                return sym, feat, local
-
-            except Exception as e:
-                self.logger.error(
-                    "Failed to compute technicals (outer)", symbol=sym, error=str(e)
-                )
+            if not bars_data:
+                self.logger.warning("No bars found for technicals", symbol=sym)
+                local["alpaca_no_bars"] += 1
                 return sym, None, local
+
+            # 2. Compute Technicals
+            tech_result = self.calculator.compute_technicals(bars_data)
+            if not tech_result:
+                local["technicals_fail"] += 1
+                return sym, None, local
+
+            # 3. Fetch Supplementary Data
+            _, end = self._calculate_fetch_window(as_of)
+            avg_daily_volume, prior_stats = await self._fetch_supplementary_data(
+                sym, end
+            )
+
+            # 4. Build Features
+            feat = self._build_symbol_features(
+                sym, tech_result, avg_daily_volume, prior_stats, bars_data, end
+            )
+
+            local["features_ok"] += 1
+            return sym, feat, local
 
     async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
