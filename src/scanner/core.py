@@ -1,5 +1,6 @@
 from collections import defaultdict
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.domain import (
@@ -29,6 +30,14 @@ class ScanningError(Exception):
     pass
 
 
+@dataclass
+class _CachedFeature:
+    """P5: Cache entry for symbol features with timestamp."""
+
+    features: SymbolFeatures
+    cached_at: datetime
+
+
 class Scanner:
     """
     Orchestrates the scanning process.
@@ -56,6 +65,18 @@ class Scanner:
             if strategy_profiles is not None
             else self._build_profiles_from_config()
         )
+
+        # P5: Feature cache with TTL
+        self._feature_cache: Dict[str, _CachedFeature] = {}
+        scanner_cfg = self.config.get("scanner", {})
+        if not isinstance(scanner_cfg, dict):
+            scanner_cfg = {}
+        try:
+            self._cache_ttl_seconds = int(
+                scanner_cfg.get("feature_cache_ttl_seconds", 60)
+            )
+        except (TypeError, ValueError):
+            self._cache_ttl_seconds = 60
 
     def _build_profiles_from_config(self) -> Dict[str, ScannerProfile]:
         """
@@ -192,18 +213,54 @@ class Scanner:
         regime: Regime,
         universe_size: int,
     ) -> Dict[str, SymbolFeatures]:
-        try:
-            return await self.feature_pipeline.compute_technicals_only(
-                symbols, as_of=scan_time
-            )
-        except Exception as e:
-            self.logger.error(
-                "FeaturePipeline failed",
-                regime=regime.value,
-                universe_size=universe_size,
-                error=str(e),
-            )
-            return {}
+        """
+        P5: Fetch technicals with TTL caching to reduce API calls.
+        """
+        now = datetime.now(timezone.utc)
+        ttl = timedelta(seconds=self._cache_ttl_seconds)
+
+        # Check cache for valid entries
+        cached_results: Dict[str, SymbolFeatures] = {}
+        symbols_to_fetch: List[str] = []
+
+        for sym in symbols:
+            entry = self._feature_cache.get(sym)
+            if entry is not None and (now - entry.cached_at) < ttl:
+                cached_results[sym] = entry.features
+            else:
+                symbols_to_fetch.append(sym)
+
+        # Fetch uncached/expired symbols
+        if symbols_to_fetch:
+            try:
+                fresh = await self.feature_pipeline.compute_technicals_only(
+                    symbols_to_fetch, as_of=scan_time
+                )
+                # Update cache
+                for sym, features in fresh.items():
+                    self._feature_cache[sym] = _CachedFeature(
+                        features=features, cached_at=now
+                    )
+                    cached_results[sym] = features
+
+                if cached_results:
+                    self.logger.debug(
+                        "Feature cache stats",
+                        cache_hits=len(symbols) - len(symbols_to_fetch),
+                        cache_misses=len(symbols_to_fetch),
+                        fetched=len(fresh),
+                    )
+            except Exception as e:
+                self.logger.error(
+                    "FeaturePipeline failed",
+                    regime=regime.value,
+                    universe_size=universe_size,
+                    error=str(e),
+                )
+                # Return whatever we have cached
+                return cached_results
+
+        return cached_results
 
     def _apply_data_validation(
         self, features_map: Dict[str, SymbolFeatures]
