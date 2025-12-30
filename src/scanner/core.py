@@ -66,8 +66,11 @@ class Scanner:
             else self._build_profiles_from_config()
         )
 
-        # P5: Feature cache with TTL
-        self._feature_cache: Dict[str, _CachedFeature] = {}
+        # P5: Feature cache with TTL + LRU eviction (H1 memory audit fix)
+        # Uses OrderedDict for LRU ordering; evicts oldest when maxsize exceeded
+        from collections import OrderedDict
+
+        self._feature_cache: OrderedDict[str, _CachedFeature] = OrderedDict()
         scanner_cfg = self.config.get("scanner", {})
         if not isinstance(scanner_cfg, dict):
             scanner_cfg = {}
@@ -77,6 +80,10 @@ class Scanner:
             )
         except (TypeError, ValueError):
             self._cache_ttl_seconds = 60
+        try:
+            self._cache_maxsize = int(scanner_cfg.get("feature_cache_maxsize", 1000))
+        except (TypeError, ValueError):
+            self._cache_maxsize = 1000
 
     def _build_profiles_from_config(self) -> Dict[str, ScannerProfile]:
         """
@@ -227,6 +234,8 @@ class Scanner:
             entry = self._feature_cache.get(sym)
             if entry is not None and (now - entry.cached_at) < ttl:
                 cached_results[sym] = entry.features
+                # LRU: move accessed item to end
+                self._feature_cache.move_to_end(sym)
             else:
                 symbols_to_fetch.append(sym)
 
@@ -236,12 +245,18 @@ class Scanner:
                 fresh = await self.feature_pipeline.compute_technicals_only(
                     symbols_to_fetch, as_of=scan_time
                 )
-                # Update cache
+                # Update cache with LRU eviction
                 for sym, features in fresh.items():
                     self._feature_cache[sym] = _CachedFeature(
                         features=features, cached_at=now
                     )
+                    self._feature_cache.move_to_end(sym)
                     cached_results[sym] = features
+
+                # Evict oldest entries if over maxsize
+                while len(self._feature_cache) > self._cache_maxsize:
+                    evicted_sym, _ = self._feature_cache.popitem(last=False)
+                    self.logger.debug("Evicted stale cache entry", symbol=evicted_sym)
 
                 if cached_results:
                     self.logger.debug(
@@ -249,6 +264,7 @@ class Scanner:
                         cache_hits=len(symbols) - len(symbols_to_fetch),
                         cache_misses=len(symbols_to_fetch),
                         fetched=len(fresh),
+                        cache_size=len(self._feature_cache),
                     )
             except Exception as e:
                 self.logger.error(

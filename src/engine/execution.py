@@ -60,8 +60,9 @@ class ExecutionEngine:
         self.strategy_engine: Optional[StrategyEngine] = None
         self.position_manager = PositionManager()
         self.symbol_states: Dict[str, SymbolState] = {}
-        # In-memory trade capture for backtests and offline analysis (best-effort).
-        self.closed_trades: List[Any] = []
+        # M1 Memory Audit Fix: bounded trade capture for backtests/analysis
+        # Keeps last 5000 trades to prevent unbounded growth in multi-day runs
+        self.closed_trades: deque = deque(maxlen=5000)
 
         # Extracted Collaborators
         self.health = HealthMonitor(config, logger, run_id, self.clock)
