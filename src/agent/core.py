@@ -103,6 +103,8 @@ class Agent:
             if stats.std_r > 0:
                 se = stats.std_r / (stats.n_trades**0.5)
                 z = stats.expectancy / se
+                # P2.2 fix: Cap extreme z-scores for numerical stability
+                z = max(-100.0, min(100.0, z))
             else:
                 z = 0.0
 

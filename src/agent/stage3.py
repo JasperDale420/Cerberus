@@ -141,7 +141,13 @@ class DeterministicStage3Evaluator:
             try:
                 if issubclass(obj, BaseStrategy) and obj is not BaseStrategy:
                     candidates.append(obj)
-            except Exception:
+            except Exception as e:
+                # P2.1 fix: Log instead of silent continue
+                self.logger.debug(
+                    "issubclass check failed in stage3 extraction",
+                    obj_name=getattr(obj, "__name__", str(obj)),
+                    error=str(e),
+                )
                 continue
         if not candidates:
             raise ValueError("No BaseStrategy subclass found in candidate code")
