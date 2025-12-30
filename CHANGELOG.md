@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - **M5 Logic Audit (New)**: Add `bar_duration_minutes` config parameter to `BaseStrategy` for accurate cooldown calculation across different timeframes. Defaults to 1.0 for backward compatibility.
 - **L1 Logic Audit (New)**: Add named constant `QTY_EPSILON = 1e-7` in `BacktestAnalyzer` to replace magic number for floating-point quantity comparisons. Documents purpose and prevents potential infinite loops.
 - **L3 Logic Audit (New)**: Add named constants `STOP_BUFFER_LONG` (0.99) and `STOP_BUFFER_SHORT` (1.01) in `FlowMomentumStrategy` for emergency stop buffer calculations. Documents the 1% buffer purpose.
+- **CI Fix**: Add `asyncio_mode = "auto"` to pytest configuration in `pyproject.toml`. Enables pytest-asyncio to detect and run async test functions.
+- **CI Fix**: Add missing `pytest-asyncio` dependency to `requirements.txt`. CI environment was missing this package, causing async tests to fail with "async def functions are not natively supported".
 
 ### Changed
 - **SonarQube Refactoring**: Refactored `FlowMomentumStrategy.on_bar()` by extracting `_validate_flow_direction()`, `_get_average_volume()`, and `_build_signal()` helper methods. Reduced cognitive complexity from 26 to ~12.
