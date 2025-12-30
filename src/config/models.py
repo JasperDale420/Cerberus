@@ -23,6 +23,8 @@ class RiskConfig(BaseModel):
     max_open_risk: float = Field(default=0.0)
     max_trades_per_day: int = Field(default=0)
     max_trades_per_strategy: int = Field(default=0)
+    # P2.1 fix: Add max_orders_per_day to Pydantic model
+    max_orders_per_day: int = Field(default=100)
     max_open_positions: int = Field(default=5)
     max_positions_per_strategy: int = Field(default=3)
     max_notional_per_order: float = Field(default=0.0)  # Fixed $ limit (0 = disabled)

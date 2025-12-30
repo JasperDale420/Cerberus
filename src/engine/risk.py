@@ -54,11 +54,8 @@ class RiskManager:
         self.max_trades_per_strategy = self.risk_cfg.max_trades_per_strategy
         self.risk_mode = self.risk_cfg.risk_mode.lower()
 
-        # Non-PRD limits retained via pydantic defaults
-        self.max_orders_per_day = int(
-            config.get("max_orders_per_day", 100)
-        )  # Keep this one legacy/root check if not in model?
-        # Actually max_orders_per_day was not in the new model I defined. Let's keep reading it from root or default.
+        # P2.1 fix: Now using Pydantic model field instead of raw config
+        self.max_orders_per_day = self.risk_cfg.max_orders_per_day
 
         self.max_open_positions = self.risk_cfg.max_open_positions
         self.max_notional_per_order = self.risk_cfg.max_notional_per_order
@@ -103,6 +100,8 @@ class RiskManager:
         # M2 fix: Capture position count BEFORE reset for accurate logging
         # positions_carried_forward was set by the last apply() call in previous session
         carried_count = self.positions_carried_forward
+        # P2.2 fix: Capture old session date BEFORE updating
+        old_session_date = self._session_date
 
         self._session_date = session_date
         self.current_daily_pnl = 0.0
@@ -114,10 +113,10 @@ class RiskManager:
         self.positions_carried_forward = 0
         self.last_rejection_reason = None
 
-        # Log after reset with captured count
+        # Log after reset with captured values
         self.logger.info(
             "Session rollover",
-            old_date=str(self._session_date),
+            old_date=str(old_session_date),
             new_date=str(session_date),
             positions_carried_forward=carried_count,
         )
@@ -317,10 +316,21 @@ class RiskManager:
                 return 0
             if regime_mult < 1.0:
                 orig_qty = qty
-                qty = max(1, int(qty * regime_mult))
-                if qty < 1:
+                # P0 fix: Calculate adjusted qty without forcing minimum 1
+                # This prevents trades in high-risk regimes where sizing should be zero
+                adjusted_qty = int(qty * regime_mult)
+                if adjusted_qty < 1:
                     self.last_rejection_reason = "REGIME_RISK_BELOW_MIN"
+                    self.logger.info(
+                        "Signal rejected: Regime-adjusted qty below minimum",
+                        symbol=signal.symbol,
+                        strategy=signal.strategy,
+                        orig_qty=orig_qty,
+                        adjusted_qty=adjusted_qty,
+                        regime_mult=round(regime_mult, 3),
+                    )
                     return 0
+                qty = adjusted_qty
                 if qty != orig_qty:
                     self.logger.debug(
                         "Qty adjusted by regime multiplier",
