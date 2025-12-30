@@ -159,16 +159,14 @@ class VWAPReversionStrategy(BaseStrategy):
             risk = current_price - stop_loss
             take_profit = current_price + (risk * self.risk_reward)
 
-            signal = Signal(
+            # P2.6 fix: Use _create_signal for consistent correlation_id
+            signal = self._create_signal(
                 symbol=symbol,
                 side=OrderSide.BUY,
-                size_hint=0,
-                entry_price=current_price,
+                bar=bar,
+                market_state=market_state,
                 stop_price=stop_loss,
                 target_price=take_profit,
-                strategy=self.name,
-                regime=market_state.regime,
-                generated_at=now,
                 meta={
                     "reason": "price_below_lower_vwap_band",
                     "vwap": float(vwap),
@@ -190,16 +188,14 @@ class VWAPReversionStrategy(BaseStrategy):
             risk = stop_loss - current_price
             take_profit = current_price - (risk * self.risk_reward)
 
-            signal = Signal(
+            # P2.6 fix: Use _create_signal for consistent correlation_id
+            signal = self._create_signal(
                 symbol=symbol,
                 side=OrderSide.SELL,
-                size_hint=0,
-                entry_price=current_price,
+                bar=bar,
+                market_state=market_state,
                 stop_price=stop_loss,
                 target_price=take_profit,
-                strategy=self.name,
-                regime=market_state.regime,
-                generated_at=now,
                 meta={
                     "reason": "price_above_upper_vwap_band",
                     "vwap": float(vwap),
