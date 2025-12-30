@@ -65,6 +65,15 @@ class ORBStrategy(BaseStrategy):
         return self._check_breakout(symbol, bar, symbol_state, market_state)
 
     def _update_opening_range(self, symbol_state: SymbolState, bar: Bar):
+        # P1.1 fix: Reset ORB range at session start to prevent stale data
+        bar_date = bar.time.date()
+        stored_date = symbol_state.indicators.get("orb_date")
+        if stored_date != bar_date:
+            symbol_state.indicators["orb_high"] = float("-inf")
+            symbol_state.indicators["orb_low"] = float("inf")
+            symbol_state.indicators["orb_date"] = bar_date
+            symbol_state.indicators["orb_complete"] = False
+
         current_high = symbol_state.indicators.get("orb_high", float("-inf"))
         current_low = symbol_state.indicators.get("orb_low", float("inf"))
 

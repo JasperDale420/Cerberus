@@ -152,8 +152,10 @@ class VWAPReversionStrategy(BaseStrategy):
                 return None
             # Entry Long (Reversion to mean)
             # Stop: A bit below the recent low or a fixed ATR multiple
-            # For this slice, using Std Dev based stop
-            stop_loss = current_price - (std * 0.5)
+            # P0.2 fix: Cap stop distance at 2% to prevent excessive risk
+            max_stop_pct = 0.02
+            stop_distance = min(std * 0.5, current_price * max_stop_pct)
+            stop_loss = current_price - stop_distance
             risk = current_price - stop_loss
             take_profit = current_price + (risk * self.risk_reward)
 
@@ -181,7 +183,10 @@ class VWAPReversionStrategy(BaseStrategy):
             if not ok:
                 return None
             # Entry Short (Reversion to mean)
-            stop_loss = current_price + (std * 0.5)
+            # P0.2 fix: Cap stop distance at 2% to prevent excessive risk
+            max_stop_pct = 0.02
+            stop_distance = min(std * 0.5, current_price * max_stop_pct)
+            stop_loss = current_price + stop_distance
             risk = stop_loss - current_price
             take_profit = current_price - (risk * self.risk_reward)
 
