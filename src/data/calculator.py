@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytz
 
 from src.core.domain import TechnicalFeatures
-from src.core.indicators import RollingEMA, RollingStd
+from src.core.indicators import RollingADX, RollingATR, RollingEMA, RollingStd
 
 # Cache timezone object at module level for performance
 _ET_TZ = pytz.timezone("US/Eastern")
@@ -182,25 +182,15 @@ class FeatureCalculator:
     def _compute_atr(
         self, closes: List[float], highs: List[float], lows: List[float], price: float
     ) -> Tuple[float, float]:
-        atr_value = 0.0
-        if len(closes) >= 2:
-            trs: List[float] = []
-            prev_close = float(closes[0])
-            for i in range(1, len(closes)):
-                tr = max(
-                    float(highs[i] - lows[i]),
-                    abs(float(highs[i] - prev_close)),
-                    abs(float(lows[i] - prev_close)),
-                )
-                trs.append(float(tr))
-                prev_close = float(closes[i])
-            if trs:
-                period = 14
-                p = min(period, len(trs))
-                atr = float(sum(trs[:p]) / max(1, p))
-                for tr in trs[p:]:
-                    atr = ((atr * (period - 1)) + float(tr)) / float(period)
-                atr_value = float(atr)
+        """Compute ATR using RollingATR incremental indicator."""
+        if len(closes) < 2:
+            return 0.0, 0.0
+
+        atr = RollingATR(period=14)
+        for i in range(len(closes)):
+            atr.update(float(highs[i]), float(lows[i]), float(closes[i]))
+
+        atr_value = float(atr.value) if atr.value is not None else 0.0
         atr_pct = (atr_value / price) if price > 0 else 0.0
         return atr_value, atr_pct
 
@@ -248,79 +238,18 @@ class FeatureCalculator:
         distance_from_vwap = ((price - vwap_val) / vwap_val) if vwap_val > 0 else 0.0
         return vwap_val, distance_from_vwap
 
-    def _wilder_smooth(self, values: List[float], p: int) -> List[float]:
-        if p <= 0 or len(values) < p:
-            return []
-        sm = float(sum(values[:p]))
-        out = [sm]
-        for x in values[p:]:
-            sm = sm - (sm / float(p)) + float(x)
-            out.append(float(sm))
-        return out
-
-    def _compute_directional_movements(
-        self, highs: List[float], lows: List[float], closes: List[float]
-    ) -> Tuple[List[float], List[float], List[float]]:
-        tr_list: List[float] = []
-        plus_dm_list: List[float] = []
-        minus_dm_list: List[float] = []
-
-        for i in range(1, len(closes)):
-            up_move = float(highs[i] - highs[i - 1])
-            down_move = float(lows[i - 1] - lows[i])
-            plus_dm = up_move if up_move > down_move and up_move > 0 else 0.0
-            minus_dm = down_move if down_move > up_move and down_move > 0 else 0.0
-
-            prev_close = float(closes[i - 1])
-            tr = max(
-                float(highs[i] - lows[i]),
-                abs(float(highs[i] - prev_close)),
-                abs(float(lows[i] - prev_close)),
-            )
-
-            tr_list.append(float(tr))
-            plus_dm_list.append(float(plus_dm))
-            minus_dm_list.append(float(minus_dm))
-
-        return tr_list, plus_dm_list, minus_dm_list
-
     def _compute_adx(
         self, highs: List[float], lows: List[float], closes: List[float]
     ) -> float:
+        """Compute ADX using RollingADX incremental indicator."""
         if len(closes) < 3:
             return 0.0
 
-        period = 14
-        tr_list, plus_dm_list, minus_dm_list = self._compute_directional_movements(
-            highs, lows, closes
-        )
+        adx = RollingADX(period=14)
+        for i in range(len(closes)):
+            adx.update(float(highs[i]), float(lows[i]), float(closes[i]))
 
-        sm_tr = self._wilder_smooth(tr_list, period)
-        sm_pdm = self._wilder_smooth(plus_dm_list, period)
-        sm_mdm = self._wilder_smooth(minus_dm_list, period)
-
-        if not sm_tr or len(sm_tr) != len(sm_pdm) or len(sm_pdm) != len(sm_mdm):
-            return 0.0
-
-        dx_list = []
-        for tr, pdm, mdm in zip(sm_tr, sm_pdm, sm_mdm, strict=True):
-            if tr <= 0:
-                dx_list.append(0.0)
-                continue
-            di_plus = 100.0 * (float(pdm) / float(tr))
-            di_minus = 100.0 * (float(mdm) / float(tr))
-            denom = di_plus + di_minus
-            dx = 100.0 * abs(di_plus - di_minus) / denom if denom > 0 else 0.0
-            dx_list.append(float(dx))
-
-        if len(dx_list) < period:
-            return 0.0
-
-        adx = float(sum(dx_list[:period]) / float(period))
-        for dx in dx_list[period:]:
-            adx = ((adx * (period - 1)) + float(dx)) / float(period)
-
-        return float(adx)
+        return float(adx.value) if adx.value is not None else 0.0
 
     def _compute_prior_day_high_low(
         self, timestamps: List[datetime], highs: List[float], lows: List[float]
