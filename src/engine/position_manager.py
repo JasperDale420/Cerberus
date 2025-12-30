@@ -346,7 +346,8 @@ class PositionManager:
         try:
             self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
         except Exception:
-            pass
+            # P2.2 fix: Log instead of silent pass
+            _logger.debug("Unrealized PnL update failed on open", exc_info=True)
 
         # H1 fix: Mark position as updated to prevent reconciliation races
         symbol_state.position.last_updated = datetime.now(timezone.utc)
@@ -372,7 +373,8 @@ class PositionManager:
         try:
             self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
         except Exception:
-            pass
+            # P2.2 fix: Log instead of silent pass
+            _logger.debug("Unrealized PnL update failed on increase", exc_info=True)
         return FillDecision(
             event="increased",
             realized_pnl_delta=0.0,
@@ -466,6 +468,18 @@ class PositionManager:
         pos = symbol_state.position
         assert pos is not None, "Position must exist for reduce/close"
         close_qty = min(float(pos.qty), fill_data["qty"])
+
+        # P2.1 fix: Log when fill qty exceeds position qty (may indicate order mgmt issue)
+        if fill_data["qty"] > pos.qty:
+            _logger.debug(
+                "Fill qty exceeds position qty; excess ignored: "
+                "symbol=%s fill_qty=%s position_qty=%s excess=%s",
+                pos.symbol,
+                fill_data["qty"],
+                pos.qty,
+                fill_data["qty"] - pos.qty,
+            )
+
         pnl = self._calculate_pnl(pos, fill_data["price"], close_qty)
 
         pos.realized_pnl = float(pos.realized_pnl) + float(pnl)
@@ -479,7 +493,8 @@ class PositionManager:
             try:
                 self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
             except Exception:
-                pass
+                # P2.2 fix: Log instead of silent pass
+                _logger.debug("Unrealized PnL update failed", exc_info=True)
             return FillDecision(
                 event="reduced",
                 realized_pnl_delta=float(pnl),
