@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Callable, Optional, Set, cast
+from typing import Any, Callable, Optional, Set
 
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.live import StockDataStream
@@ -61,6 +61,9 @@ class AlpacaClient:
 
         if isinstance(data, dict):
             t = data.get("t") or data.get("timestamp")
+            # P2.2 fix: Validate timestamp before using
+            if not isinstance(t, datetime):
+                raise ValueError(f"Invalid timestamp in bar data: {t}")
             o = data.get("o") or data.get("open")
             h = data.get("h") or data.get("high")
             low = data.get("l") or data.get("low")
@@ -68,7 +71,7 @@ class AlpacaClient:
             v = data.get("v") or data.get("volume")
             return Bar(
                 symbol=symbol,
-                time=cast(datetime, t),
+                time=t,
                 open=_f(o),
                 high=_f(h),
                 low=_f(low),
@@ -78,10 +81,16 @@ class AlpacaClient:
                 trade_count=data.get("trade_count"),
             )
 
-        ts = getattr(data, "time", None) or getattr(data, "timestamp", None)
+        # Try 'time' first, then 'timestamp' - validate result is datetime
+        ts = getattr(data, "time", None)
+        if not isinstance(ts, datetime):
+            ts = getattr(data, "timestamp", None)
+        # P2.2 fix: Validate timestamp before using
+        if not isinstance(ts, datetime):
+            raise ValueError(f"Invalid timestamp in bar data: {ts}")
         return Bar(
             symbol=symbol,
-            time=cast(datetime, ts),
+            time=ts,
             open=float(data.open),
             high=float(data.high),
             low=float(data.low),
@@ -247,8 +256,9 @@ class AlpacaClient:
     def _stop_stream_safely(self, stream: Any) -> None:
         try:
             stream.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            # P2.1 fix: Log instead of silent pass
+            self.logger.debug("Stream stop failed", error=str(e))
 
     def _flush_subscriptions(self, stream: Any) -> None:
         handler = getattr(self, "_bar_handler", None)
