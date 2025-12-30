@@ -130,3 +130,38 @@ strategies:
       liquidity: [good]
       risk: [risk_on]
       min_confidence: 0.6
+
+  # NEW: Fills shock volatility gap - fades VIX spikes
+  vix_spike_fade:
+    enabled: true
+    symbols: ["SPY", "QQQ"]
+    vix_spike_pct: 0.20  # 20% intraday VIX spike
+    vix_absolute: 30.0   # Or absolute VIX > 30
+    index_drop_pct: 0.015  # 1.5% down from open
+    reversion_target: 0.50  # Target 50% of decline
+    stop_buffer: 0.005  # 0.5% below day low
+    activation:
+      session: [midday, power_hour]
+      trend: [down]
+      vol: [high, shock]  # KEY: Only strategy for shock
+      liquidity: [good]
+      risk: [risk_off]
+      min_confidence: 0.4
+
+  # NEW: Fast breakouts without pullback wait
+  momentum_continuation:
+    enabled: true
+    breakout_lookback: 5  # Days for high/low levels
+    vol_mult: 2.0  # Volume > 2x average
+    close_position: 0.75  # Close in top 25% of range
+    risk_reward: 1.5
+    ema_fast: 20
+    ema_slow: 50
+    max_trades_per_session: 2
+    activation:
+      session: [opening]
+      trend: [up, down]
+      vol: [normal, high]
+      liquidity: [good]
+      risk: [risk_on]
+      min_confidence: 0.6
