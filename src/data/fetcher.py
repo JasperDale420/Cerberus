@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -28,8 +29,13 @@ class DataFetcher:
         self.config = config or {}
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
-        # Cache structure: {symbol: {"start": datetime, "bars": List[dict]}}
-        self._bars_cache: Dict[str, Dict[str, Any]] = {}
+        # H2 Memory Audit Fix: LRU cache with maxsize for bars
+        # Uses OrderedDict for LRU ordering; evicts oldest when maxsize exceeded
+        self._bars_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        try:
+            self._cache_maxsize = int(self.config.get("bars_cache_maxsize", 500))
+        except (TypeError, ValueError):
+            self._cache_maxsize = 500
 
     def _resolve_fetch_start(
         self, symbol: str, start: datetime
@@ -116,6 +122,12 @@ class DataFetcher:
 
         final_bars = existing_bars + new_bars
         self._bars_cache[sym] = {"start": start, "bars": final_bars}
+        self._bars_cache.move_to_end(sym)
+
+        # Evict oldest entries if over maxsize
+        while len(self._bars_cache) > self._cache_maxsize:
+            evicted_sym, _ = self._bars_cache.popitem(last=False)
+            self.logger.debug("Evicted bars cache entry", symbol=evicted_sym)
 
         if not final_bars:
             metrics["alpaca_no_bars"] += 1
