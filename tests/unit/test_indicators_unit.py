@@ -3,6 +3,8 @@
 import pytest
 
 from src.core.indicators import (
+    RollingADX,
+    RollingATR,
     RollingEMA,
     RollingRSI,
     RollingSMA,
@@ -88,3 +90,40 @@ class TestRollingRSI:
             result = rsi.update(100.0 - i)
         assert result is not None
         assert result < 10.0  # Should be near 0
+
+
+class TestRollingATR:
+    """Tests for RollingATR incremental indicator."""
+
+    def test_rolling_atr_first_value_is_none(self):
+        """Test that first value returns None (no prev_close)."""
+        atr = RollingATR(period=14)
+        result = atr.update(high=105.0, low=95.0, close=100.0)
+        assert result is None
+
+    def test_rolling_atr_basic(self):
+        """Test ATR computation for simple case."""
+        atr = RollingATR(period=14)
+        atr.update(high=105.0, low=95.0, close=100.0)
+        result = atr.update(high=105.0, low=95.0, close=100.0)
+        assert result is not None
+        assert result == pytest.approx(10.0, rel=1e-6)
+
+
+class TestRollingADX:
+    """Tests for RollingADX incremental indicator."""
+
+    def test_rolling_adx_first_value_is_none(self):
+        """Test that first value returns None."""
+        adx = RollingADX(period=14)
+        result = adx.update(high=105.0, low=95.0, close=100.0)
+        assert result is None
+
+    def test_rolling_adx_trending_market(self):
+        """Test ADX produces a value in a trending market."""
+        adx = RollingADX(period=3)
+        prices = [100, 102, 105, 108, 112, 117, 123, 130]
+        for p in prices:
+            result = adx.update(high=p + 2, low=p - 2, close=p)
+        assert result is not None
+        assert result > 20.0
