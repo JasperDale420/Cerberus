@@ -248,6 +248,8 @@ class OrderExecutor:
 
             # Persist failed order
             if self.db:
+                # P3.2 fix: Capture clock once to ensure consistent timestamps
+                fail_time = self.clock()
                 self.db.write(
                     "order_failed",
                     lambda session: session.add(
@@ -259,8 +261,8 @@ class OrderExecutor:
                             type=intent.order_type.value,
                             limit_price=intent.limit_price,
                             status="order_failed",
-                            time_placed=self.clock(),
-                            time_last_update=self.clock(),
+                            time_placed=fail_time,
+                            time_last_update=fail_time,
                             broker_order_id=None,
                             meta_json={
                                 "error": error,
@@ -290,7 +292,9 @@ class OrderExecutor:
             )
             raise
 
-    def cancel_all_for_symbol(self, symbol: str) -> None:
+    def cancel_all_for_symbol(self, symbol: str) -> int:
+        """Cancel all open orders for a symbol. Returns count of cancels attempted."""
+        cancelled = 0
         try:
             from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
@@ -302,13 +306,17 @@ class OrderExecutor:
             for o in orders:
                 if getattr(o, "symbol", "") == symbol:
                     self.cancel_by_broker_order_id(str(getattr(o, "id", "")))
+                    cancelled += 1
         except Exception as e:
+            # P2.1 fix: Log but also return count so caller knows what happened
             self.logger.error(
                 "Cancel-all for symbol failed",
                 symbol=symbol,
+                cancelled_before_error=cancelled,
                 error=str(e),
                 exc_info=True,
             )
+        return cancelled
 
     def handle_trade_update(self, update: object) -> dict:
         """
