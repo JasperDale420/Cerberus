@@ -277,3 +277,46 @@ class VWAPTrendRiderConfig(BaseStrategyConfig):
     min_trend_score: float = Field(
         default=1.5, description="Minimum trend score threshold"
     )
+
+
+class VixSpikeFadeConfig(BaseStrategyConfig):
+    """Configuration for VIX Spike Fade strategy."""
+
+    symbols: List[str] = Field(
+        default=["SPY", "QQQ"], description="Allowed index symbols"
+    )
+    vix_spike_pct: float = Field(
+        default=0.20, gt=0, description="VIX intraday spike threshold (20%)"
+    )
+    vix_absolute: float = Field(
+        default=30.0, gt=0, description="Absolute VIX level trigger"
+    )
+    index_drop_pct: float = Field(
+        default=0.015, gt=0, description="Minimum index decline from open (1.5%)"
+    )
+    reversion_target: float = Field(
+        default=0.50, gt=0, le=1.0, description="Target % of decline to recover"
+    )
+    stop_buffer: float = Field(
+        default=0.005, gt=0, description="Stop buffer below day low"
+    )
+
+
+class MomentumContinuationConfig(BaseStrategyConfig):
+    """Configuration for Momentum Continuation strategy."""
+
+    breakout_lookback: int = Field(
+        default=5, ge=1, description="Days for high/low breakout levels"
+    )
+    vol_mult: float = Field(
+        default=2.0, gt=0, description="Volume multiplier for confirmation"
+    )
+    close_position: float = Field(
+        default=0.75, gt=0, le=1.0, description="Required close position in bar range"
+    )
+    risk_reward: float = Field(default=1.5, gt=0, description="Risk:reward ratio")
+    ema_fast: int = Field(default=20, ge=2, description="Fast EMA for trend")
+    ema_slow: int = Field(default=50, ge=2, description="Slow EMA for trend")
+    max_trades_per_session: int = Field(
+        default=2, ge=1, description="Max trades per session"
+    )

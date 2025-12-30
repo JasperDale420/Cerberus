@@ -20,8 +20,10 @@ from src.strategies.failed_breakout import FailedBreakoutStrategy
 from src.strategies.flow_momentum import FlowMomentumStrategy
 from src.strategies.gap_fill import GapFillStrategy
 from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
+from src.strategies.momentum_continuation import MomentumContinuationStrategy
 from src.strategies.orb import ORBStrategy
 from src.strategies.trend_pullback import TrendPullbackStrategy
+from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
 from src.strategies.vwap_reversion import VWAPReversionStrategy
 from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
 
@@ -136,6 +138,8 @@ class BacktestRunner:
             "index_mean_reversion": IndexMeanReversionStrategy,
             "flow_momentum": FlowMomentumStrategy,
             "gap_fill": GapFillStrategy,
+            "vix_spike_fade": VixSpikeFadeStrategy,
+            "momentum_continuation": MomentumContinuationStrategy,
         }
 
         strategies_cfg = self.config.get("strategies", {})
