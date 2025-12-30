@@ -40,9 +40,9 @@ class VixSpikeFadeStrategy(BaseStrategy):
         super().__init__(config, logger)
 
         # Allowed symbols (index ETFs only)
-        self.allowed_symbols = set(
+        self.allowed_symbols = {
             s.upper() for s in config.get("symbols", ["SPY", "QQQ"])
-        )
+        }
 
         # VIX thresholds
         self.vix_spike_pct = float(

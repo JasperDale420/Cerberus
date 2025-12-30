@@ -14,6 +14,10 @@ from pydantic import BaseModel, Field, field_validator
 if TYPE_CHECKING:
     from src.engine.strategy_engine import StrategyActivationPolicy
 
+# P3 fix: Constants for repeated field descriptions
+_DESC_RISK_REWARD = "Risk:reward ratio"
+_DESC_VOL_MULT = "Volume multiplier for confirmation"
+
 
 class ActivationConfig(BaseModel):
     """
@@ -121,7 +125,7 @@ class FailedBreakoutConfig(BaseStrategyConfig):
     lookback_days: int = Field(
         default=1, ge=1, description="Days to look back for high/low"
     )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
 
 
 class FlowMomentumConfig(BaseStrategyConfig):
@@ -130,10 +134,8 @@ class FlowMomentumConfig(BaseStrategyConfig):
     min_flow_zscore: float = Field(
         default=3.0, description="Minimum flow z-score threshold"
     )
-    vol_mult: float = Field(
-        default=1.5, gt=0, description="Volume multiplier for confirmation"
-    )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    vol_mult: float = Field(default=1.5, gt=0, description=_DESC_VOL_MULT)
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
 
 
 class GapFillConfig(BaseStrategyConfig):
@@ -145,7 +147,7 @@ class GapFillConfig(BaseStrategyConfig):
     max_gap: float = Field(
         default=0.10, ge=0, description="Maximum gap percentage (10%)"
     )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     or_time_minutes: int = Field(
         default=15, ge=1, description="Opening range time window in minutes"
     )
@@ -161,7 +163,7 @@ class IndexMeanReversionConfig(BaseStrategyConfig):
     bb_std: float = Field(
         default=2.0, gt=0, description="Bollinger Bands standard deviations"
     )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     stop_std: float = Field(
         default=3.0, gt=0, description="Stop loss in standard deviations"
     )
@@ -187,7 +189,7 @@ class ORBConfig(BaseStrategyConfig):
     orb_minutes: int = Field(
         default=15, ge=1, description="Opening range duration in minutes"
     )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     stop_loss_pct: float = Field(
         default=0.005, gt=0, description="Stop loss percentage (0.5%)"
     )
@@ -212,7 +214,7 @@ class TrendPullbackConfig(BaseStrategyConfig):
     ema_fast: int = Field(default=20, ge=2, description="Fast EMA period")
     ema_slow: int = Field(default=50, ge=2, description="Slow EMA period")
     rsi_len: int = Field(default=2, ge=1, description="RSI period")
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     pullback_depth_pct: float = Field(
         default=0.0, ge=0, description="Maximum pullback depth percentage"
     )
@@ -238,7 +240,7 @@ class VWAPReversionConfig(BaseStrategyConfig):
         default=None, description="Sigma band (PRD naming, overrides band_sigma)"
     )
     band_sigma: float = Field(default=2.0, gt=0, description="VWAP band sigma")
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     time_window_start: str = Field(
         default="09:45", description="Trading window start time (HH:MM)"
     )
@@ -270,10 +272,8 @@ class VWAPTrendRiderConfig(BaseStrategyConfig):
 
     ema_fast: int = Field(default=20, ge=2, description="Fast EMA period")
     ema_slow: int = Field(default=50, ge=2, description="Slow EMA period")
-    vol_mult: float = Field(
-        default=1.2, gt=0, description="Volume multiplier for confirmation"
-    )
-    risk_reward: float = Field(default=2.0, gt=0, description="Risk:reward ratio")
+    vol_mult: float = Field(default=1.2, gt=0, description=_DESC_VOL_MULT)
+    risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     min_trend_score: float = Field(
         default=1.5, description="Minimum trend score threshold"
     )
@@ -308,13 +308,11 @@ class MomentumContinuationConfig(BaseStrategyConfig):
     breakout_lookback: int = Field(
         default=5, ge=1, description="Days for high/low breakout levels"
     )
-    vol_mult: float = Field(
-        default=2.0, gt=0, description="Volume multiplier for confirmation"
-    )
+    vol_mult: float = Field(default=2.0, gt=0, description=_DESC_VOL_MULT)
     close_position: float = Field(
         default=0.75, gt=0, le=1.0, description="Required close position in bar range"
     )
-    risk_reward: float = Field(default=1.5, gt=0, description="Risk:reward ratio")
+    risk_reward: float = Field(default=1.5, gt=0, description=_DESC_RISK_REWARD)
     ema_fast: int = Field(default=20, ge=2, description="Fast EMA for trend")
     ema_slow: int = Field(default=50, ge=2, description="Slow EMA for trend")
     max_trades_per_session: int = Field(
