@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - **Memory Audit H1**: Add LRU eviction to Scanner `_feature_cache` using OrderedDict with configurable `feature_cache_maxsize` (default 1000). Prevents unbounded memory growth in long-running sessions.
 - **Memory Audit H2**: Add LRU eviction to DataFetcher `_bars_cache` using OrderedDict with configurable `bars_cache_maxsize` (default 500). Evicts oldest entries when limit exceeded.
 - **Memory Audit M1**: Convert ExecutionEngine `closed_trades` from unbounded list to bounded deque with maxlen=5000. Keeps last 5000 trades in multi-day runs.
+- **Dead Code Removal**: Remove unused code: `ScanningError`, `run_scan_symbols()`, `run_scan_async()`, `_safe_float()`, `RollingATR`, `RollingADX` classes and their tests. ~350 lines removed.
 
 ### Changed
 - **SonarQube Refactoring**: Refactored `FlowMomentumStrategy.on_bar()` by extracting `_validate_flow_direction()`, `_get_average_volume()`, and `_build_signal()` helper methods. Reduced cognitive complexity from 26 to ~12.

@@ -26,10 +26,6 @@ from src.scanner.profiles import (
 from src.scanner.universe import UniverseBuilder
 
 
-class ScanningError(Exception):
-    pass
-
-
 @dataclass
 class _CachedFeature:
     """P5: Cache entry for symbol features with timestamp."""
@@ -417,15 +413,6 @@ class Scanner:
         """
         return self.run_scan_sync(regime=regime, scan_time=scan_time)
 
-    def run_scan_symbols(
-        self, regime: Regime, scan_time: Optional[datetime] = None
-    ) -> List[str]:
-        """
-        Backwards-compatible helper: returns only the list of symbols.
-        """
-        result = self.run_scan_sync(regime=regime, scan_time=scan_time)
-        return [w.symbol for w in result.watchlist]
-
     def run_scan_sync(
         self, regime: Regime, scan_time: Optional[datetime] = None
     ) -> ScanResult:
@@ -442,13 +429,5 @@ class Scanner:
         except RuntimeError:
             return asyncio.run(self.scan(regime=regime, scan_time=scan_time))
         raise RuntimeError(
-            "run_scan_sync cannot be called from an active event loop; use await run_scan_async/scan"
+            "run_scan_sync cannot be called from an active event loop; use await scan()"
         )
-
-    async def run_scan_async(
-        self, regime: Regime, scan_time: Optional[datetime] = None
-    ) -> ScanResult:
-        """
-        Async alias over `scan(...)` for callers that prefer PRD naming but run in asyncio.
-        """
-        return await self.scan(regime=regime, scan_time=scan_time)
