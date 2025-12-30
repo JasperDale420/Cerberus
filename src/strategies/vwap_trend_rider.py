@@ -1,5 +1,7 @@
+from datetime import time as time_type
 from typing import Any, Dict, Optional
 
+from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
@@ -23,6 +25,9 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         self.vol_mult = cfg.vol_mult
         self.risk_reward = cfg.risk_reward
         self.min_trend_score = cfg.min_trend_score
+        # P2.2 fix: Add time window to avoid early/late session false signals
+        self.entry_start = time_type(9, 45)  # After dust settles
+        self.entry_end = time_type(15, 30)  # Before EOD volatility
 
     def on_bar(
         self,
@@ -31,6 +36,11 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # P2.2 fix: Add time window check
+        current_time = time_utils.get_eastern_time_of_day(bar.time)
+        if not (self.entry_start <= current_time <= self.entry_end):
+            return None
+
         # Need enough data for slow EMA
         if not self._require_min_bars(symbol_state, self.ema_slow_len + 5):
             return None
