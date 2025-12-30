@@ -16,6 +16,7 @@ pre-commit
 black
 bandit
 pytest-cov
+pytest-asyncio
 detect-secrets
 types-PyYAML
 types-requests
