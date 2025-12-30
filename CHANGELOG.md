@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - **Memory Audit H2**: Add LRU eviction to DataFetcher `_bars_cache` using OrderedDict with configurable `bars_cache_maxsize` (default 500). Evicts oldest entries when limit exceeded.
 - **Memory Audit M1**: Convert ExecutionEngine `closed_trades` from unbounded list to bounded deque with maxlen=5000. Keeps last 5000 trades in multi-day runs.
 - **Dead Code Removal**: Remove unused code: `ScanningError`, `run_scan_symbols()`, `run_scan_async()`, `_safe_float()`. ~150 lines removed.
+- **Dead Code Removal**: Remove unused `data/models.py` (Trade/Quote classes) and test file. ~30 lines removed.
 - **Indicator Consolidation**: Refactor `_compute_atr()` and `_compute_adx()` in `calculator.py` to use `RollingATR` and `RollingADX` incremental indicators. Removes ~50 lines of duplicate Wilder smoothing code.
 
 ### Changed
