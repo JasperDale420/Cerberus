@@ -119,6 +119,10 @@ class FlowMomentumStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # P1 fix: Add cooldown check to prevent rapid-fire signals
+        if not self._check_cooldown(symbol, bar.time):
+            return None
+
         # PRD: flow-confirmed momentum is intended for trending regimes
         if market_state.regime not in (Regime.BULL, Regime.BEAR):
             return None

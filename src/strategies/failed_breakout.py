@@ -34,6 +34,10 @@ class FailedBreakoutStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # P1 fix: Add cooldown check to prevent rapid-fire signals
+        if not self._check_cooldown(symbol, bar.time):
+            return None
+
         # 1. Identify Key Levels (Prior Day High/Low)
         # We need daily bars. If 'bars' are minute bars, we need to aggregate.
         # For efficiency, we ideally cache this.

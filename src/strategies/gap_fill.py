@@ -37,6 +37,10 @@ class GapFillStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # P1 fix: Add cooldown check to prevent rapid-fire signals
+        if not self._check_cooldown(symbol, bar.time):
+            return None
+
         if not symbol_state.bars:
             return None
 
@@ -106,6 +110,9 @@ class GapFillStrategy(BaseStrategy):
         # Fade gap up (short): breakdown below OR low.
         if gap_up and bar.close < or_low:
             open_price = float(or_bars[0].open)
+            # P0 fix: Guard against division by zero (100% gap down = gap_pct = -1.0)
+            if abs(1.0 + gap_pct) < 1e-9:
+                return None
             prev_close = open_price / (1.0 + gap_pct)
             if bar.close <= prev_close:
                 return None
@@ -128,6 +135,9 @@ class GapFillStrategy(BaseStrategy):
         # Fade gap down (long): breakout above OR high.
         if gap_down and bar.close > or_high:
             open_price = float(or_bars[0].open)
+            # P0 fix: Guard against division by zero
+            if abs(1.0 + gap_pct) < 1e-9:
+                return None
             prev_close = open_price / (1.0 + gap_pct)
             if bar.close >= prev_close:
                 return None
