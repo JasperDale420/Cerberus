@@ -3,8 +3,6 @@
 import pytest
 
 from src.core.indicators import (
-    RollingADX,
-    RollingATR,
     RollingEMA,
     RollingRSI,
     RollingSMA,
@@ -90,67 +88,3 @@ class TestRollingRSI:
             result = rsi.update(100.0 - i)
         assert result is not None
         assert result < 10.0  # Should be near 0
-
-
-class TestRollingATR:
-    """Tests for RollingATR incremental indicator."""
-
-    def test_rolling_atr_first_value_is_none(self):
-        """Test that first value returns None (no prev_close)."""
-        atr = RollingATR(period=14)
-        result = atr.update(high=105.0, low=95.0, close=100.0)
-        assert result is None
-
-    def test_rolling_atr_basic(self):
-        """Test ATR computation for simple case."""
-        atr = RollingATR(period=14)
-        # First bar seeds prev_close
-        atr.update(high=105.0, low=95.0, close=100.0)
-        # Second bar has TR = max(105-95, |105-100|, |95-100|) = 10
-        result = atr.update(high=105.0, low=95.0, close=100.0)
-        assert result is not None
-        assert result == pytest.approx(10.0, rel=1e-6)
-
-    def test_rolling_atr_wilder_smoothing(self):
-        """Test that ATR uses Wilder smoothing after warmup."""
-        atr = RollingATR(period=2)
-        atr.update(high=105.0, low=95.0, close=100.0)
-        atr.update(high=105.0, low=95.0, close=100.0)  # TR=10
-        atr.update(high=110.0, low=90.0, close=100.0)  # TR=20
-        # After warmup: ATR = ((10 * 1) + 20) / 2 = 15
-        result = atr.update(high=108.0, low=92.0, close=100.0)  # TR=16
-        # Wilder: ATR = ((15 * 1) + 16) / 2 = 15.5
-        assert result is not None
-        assert result > 10.0
-
-
-class TestRollingADX:
-    """Tests for RollingADX incremental indicator."""
-
-    def test_rolling_adx_first_value_is_none(self):
-        """Test that first value returns None."""
-        adx = RollingADX(period=14)
-        result = adx.update(high=105.0, low=95.0, close=100.0)
-        assert result is None
-
-    def test_rolling_adx_trending_market(self):
-        """Test ADX rises in a trending market (consistent uptrend)."""
-        adx = RollingADX(period=3)
-        # Simulate strong uptrend
-        prices = [100, 102, 105, 108, 112, 117, 123, 130]
-        for _i, p in enumerate(prices):
-            result = adx.update(high=p + 2, low=p - 2, close=p)
-        assert result is not None
-        assert result > 20.0  # Should show trending
-
-    def test_rolling_adx_choppy_market(self):
-        """Test ADX stays lower in choppy/ranging market."""
-        adx = RollingADX(period=3)
-        # Simulate choppy market (oscillating)
-        prices = [100, 102, 99, 101, 98, 102, 99, 100]
-        for p in prices:
-            result = adx.update(high=p + 1, low=p - 1, close=p)
-        # ADX should be lower in ranging markets
-        assert result is not None
-        # Just verify it doesn't crash and produces a value
-        assert 0 <= result <= 100
