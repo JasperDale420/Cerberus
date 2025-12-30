@@ -185,8 +185,15 @@ def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
         logger,
     )
 
+    # Use fixed Eastern Time within trading window (9:45-15:30 ET)
+    # to ensure deterministic behavior across CI environments
+    from zoneinfo import ZoneInfo
+
+    eastern = ZoneInfo("America/New_York")
+    # Pick a known good trading day at 11:00 ET (within entry window)
+    base_time = datetime(2025, 1, 10, 11, 0, 0, tzinfo=eastern)
     market_state = MarketState(
-        time=datetime.now(),
+        time=base_time,
         regime=Regime.BULL,
         index_symbol="SPY",
         index_price=100,
@@ -197,7 +204,9 @@ def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
         meta={"trend_score": 2.0},
     )
 
-    start_dt = datetime.now() - timedelta(minutes=200)
+    # Start bars 25 minutes before base_time so the last bar is AT base_time (11:00 AM)
+    # This ensures all bar times fall within the 9:45-15:30 entry window
+    start_dt = base_time - timedelta(minutes=25)
     bars = []
     for i in range(25):
         price = 100.0 + i * 0.1
