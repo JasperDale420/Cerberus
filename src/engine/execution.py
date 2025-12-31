@@ -767,6 +767,9 @@ class ExecutionEngine:
 
         # Clear on regime change
         if self._last_regime and current_regime != self._last_regime:
+            # Get current regime snapshot for 5-axis info
+            snapshot = self.market_manager.state.regime_snapshot
+            regime_tags = snapshot.regime_tags if snapshot else {}
             self.logger.info(
                 "Market regime changed, clearing feature cache",
                 old_regime=(
@@ -779,6 +782,7 @@ class ExecutionEngine:
                     if hasattr(current_regime, "value")
                     else str(current_regime)
                 ),
+                regime_tags=regime_tags,
             )
             self._clear_all_features()
 
