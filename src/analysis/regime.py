@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 import numpy as np
 
@@ -19,135 +19,7 @@ if TYPE_CHECKING:
     )
 
 
-class RegimeDetector:
-    """
-    Detects market regime (BULL, BEAR, CHOP) based on price history.
-    """
-
-    def __init__(
-        self,
-        window: int = 60,
-        min_bars: int = 20,
-        smooth_k: int = 10,
-        logger: Optional[StructuredLogger] = None,
-        on_error: Optional[Callable[[], None]] = None,
-    ):
-        self.window = window
-        self.min_bars = min_bars
-        self.smooth_k = smooth_k
-        self.logger = logger
-        self.on_error = on_error
-
-        self.prices: deque[float] = deque(maxlen=window)
-        self.last_classifications: deque[Regime] = deque(maxlen=smooth_k)
-        self.current_regime = Regime.CHOP
-
-        # Expose latest computed metrics for regime_history persistence.
-        self.last_cum_ret: Optional[float] = None
-        self.last_trend_score: Optional[float] = None
-        self.last_vol: Optional[float] = None
-
-    def update(self, bar: Bar) -> Regime:
-        """
-        Updates the detector with a new bar and returns the current regime.
-        """
-        self.prices.append(float(bar.close))
-
-        if len(self.prices) < self.min_bars:
-            return self.current_regime
-
-        try:
-            cum_ret, trend_score, vol = self._compute_metrics()
-            self.last_cum_ret = cum_ret
-            self.last_trend_score = trend_score
-            self.last_vol = vol
-            new_regime = self._classify(cum_ret, trend_score)
-        except Exception as e:
-            if self.on_error:
-                try:
-                    self.on_error()
-                except Exception:
-                    pass
-            if self.logger:
-                from src.core.errors import ErrorCode
-
-                self.logger.error(
-                    "Regime calculation failed",
-                    error_code=ErrorCode.REGIME_CALC_FAILED.value,
-                    symbol=getattr(bar, "symbol", None),
-                    error=str(e),
-                )
-            return self.current_regime
-
-        self.last_classifications.append(new_regime)
-        prev = self.current_regime
-        self.current_regime = self._smooth_regime()
-
-        if self.logger:
-            if self.current_regime != prev:
-                self.logger.info(
-                    "Regime changed",
-                    from_regime=prev.value,
-                    to_regime=self.current_regime.value,
-                    cum_ret=cum_ret,
-                    trend_score=trend_score,
-                    vol=vol,
-                )
-            else:
-                self.logger.debug(
-                    "Regime updated",
-                    regime=self.current_regime.value,
-                    cum_ret=cum_ret,
-                    trend_score=trend_score,
-                    vol=vol,
-                )
-
-        return self.current_regime
-
-    def _compute_metrics(self) -> Tuple[float, float, float]:
-        """
-        Computes cumulative return and trend score.
-        """
-        prices = np.array(self.prices)
-        returns = np.diff(np.log(prices))
-
-        cum_ret = np.sum(returns)
-        vol = float(np.std(returns)) + 1e-9  # Avoid division by zero
-
-        trend_score = abs(cum_ret) / vol
-        return float(cum_ret), float(trend_score), vol
-
-    def _classify(
-        self,
-        cum_ret: float,
-        trend_score: float,
-        up_thresh: float = 1.5,
-        down_thresh: float = 1.5,
-    ) -> Regime:
-        """
-        Classifies regime based on metrics.
-        """
-        if trend_score < 1.0:
-            return Regime.CHOP
-        if cum_ret > 0 and trend_score >= up_thresh:
-            return Regime.BULL
-        if cum_ret < 0 and trend_score >= down_thresh:
-            return Regime.BEAR
-        return Regime.CHOP
-
-    def _smooth_regime(self) -> Regime:
-        """
-        Returns the majority vote regime from the last K classifications.
-        """
-        if not self.last_classifications:
-            return Regime.CHOP
-
-        counts = Counter(self.last_classifications)
-        top_regime, _ = counts.most_common(1)[0]
-        return top_regime
-
-    def get_regime(self) -> Regime:
-        return self.current_regime
+# Backwards compatibility: legacy single-label regime detector (archived).
 
 
 # --- PRD Addendum: Multi-Axis Regime Classification ---
@@ -209,6 +81,10 @@ class MarketContextService:
         self.prices: deque[float] = deque(maxlen=window)
         self.vol_history: deque[float] = deque(maxlen=vol_baseline_window)
 
+        # VXX price history for risk axis
+        self.vol_prices: deque[float] = deque(maxlen=window)
+        self.last_vol_ret: Optional[float] = None  # VXX cumulative return
+
         # Per-axis hysteresis buffers
         self.trend_history: deque[TrendRegime] = deque(maxlen=smooth_k)
         self.vol_regime_history: deque[VolRegime] = deque(maxlen=smooth_k)
@@ -228,6 +104,24 @@ class MarketContextService:
         self._RiskRegime = RiskRegime
         self._SessionRegime = SessionRegime
         self._MarketRegimeSnapshot = MarketRegimeSnapshot
+
+    def update_vol(self, bar: Bar) -> None:
+        """
+        Update VXX price history for risk axis calculation.
+        Call this with VXX bars when available.
+        """
+        self.vol_prices.append(float(bar.close))
+
+        # Compute VXX cumulative return if we have enough data
+        if len(self.vol_prices) >= self.min_bars:
+            first_price = self.vol_prices[0]
+            last_price = self.vol_prices[-1]
+            if first_price > 0:
+                self.last_vol_ret = (last_price - first_price) / first_price
+            else:
+                self.last_vol_ret = 0.0
+        else:
+            self.last_vol_ret = None
 
     def update(self, bar: Bar) -> "MarketRegimeSnapshot":
         """
@@ -402,8 +296,21 @@ class MarketContextService:
         return dollar_vol / (range_pct + 1e-6)
 
     def _classify_risk(self) -> "RiskRegime":
-        """RISK_ON/NEUTRAL/RISK_OFF. Requires VXX data for full impl."""
-        # Simplified: use trend direction as proxy
+        """
+        RISK_ON/NEUTRAL/RISK_OFF based on VXX momentum.
+        Rising VXX = fear increasing = RISK_OFF
+        Falling VXX = fear decreasing = RISK_ON
+        Falls back to SPY cumulative return if VXX data unavailable.
+        """
+        # Use VXX momentum if available (preferred)
+        if self.last_vol_ret is not None:
+            if self.last_vol_ret > 0.005:  # VXX rising >0.5% = fear up
+                return self._RiskRegime.RISK_OFF
+            if self.last_vol_ret < -0.005:  # VXX falling <-0.5% = fear down
+                return self._RiskRegime.RISK_ON
+            return self._RiskRegime.NEUTRAL
+
+        # Fallback: use SPY trend direction as proxy
         if self.last_cum_ret is not None:
             if self.last_cum_ret > 0.005:
                 return self._RiskRegime.RISK_ON

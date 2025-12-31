@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import IndexMeanReversionConfig
@@ -31,11 +31,9 @@ class IndexMeanReversionStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # 1. Regime Check (Strictly CHOP)
+        # 1. Regime gating removed - handled by strategy routing at engine level
         # PRD: only for index ETFs (default SPY/QQQ).
         if str(symbol).upper() not in self.allowed_symbols:
-            return None
-        if market_state.regime != Regime.CHOP:
             return None
 
         # Require enough history for BB calculation

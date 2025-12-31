@@ -1,0 +1,523 @@
+{
+  "config": {
+    "database_url": "sqlite:///cerberus.db",
+    "timezone": "US/Eastern",
+    "index_symbol": "SPY",
+    "schedule_time": "09:25",
+    "log_level": "INFO",
+    "start_time_utc": "",
+    "auto_eod_agent": true,
+    "position_mismatch_mode": "halt",
+    "max_bar_latency_ms": 1000,
+    "logging": {
+      "file_path": "logs/cerberus.log",
+      "file_level": "DEBUG",
+      "console_level": "INFO",
+      "format": "json"
+    },
+    "db_fail_mode": "warn",
+    "db_write_buffer_max": 200,
+    "db_write_flush_max": 50,
+    "db_trading_mode": "warn",
+    "db_trading_halt_buffer_len": 100,
+    "agent": {
+      "stage1": {
+        "window_days": 30,
+        "min_trades": 20,
+        "z_high": 1.645,
+        "max_drawdown_r": 10.0
+      },
+      "stage2": {
+        "enabled": false,
+        "window_days": 30,
+        "search_space": {},
+        "offline_bars_dir": ""
+      },
+      "stage3": {
+        "enabled": false,
+        "approval_env_var": "CERBERUS_STAGE3_APPROVED",
+        "write_to_src": false,
+        "propose_scanner_profiles": false,
+        "offline_bars_dir": ""
+      }
+    },
+    "unusual_whales": {
+      "enabled": false,
+      "flow_url_template": ""
+    },
+    "strategy_routing": {
+      "bull": [
+        "orb",
+        "trend_pullback",
+        "vwap_trend_rider",
+        "flow_momentum"
+      ],
+      "bear": [
+        "orb",
+        "trend_pullback",
+        "vwap_trend_rider",
+        "flow_momentum"
+      ],
+      "chop": [
+        "vwap_reversion",
+        "failed_breakout",
+        "index_mean_reversion",
+        "gap_fill"
+      ]
+    },
+    "strategies": {
+      "vwap_reversion": {
+        "enabled": true,
+        "band_sigma": 2.0,
+        "sigma_band": 2.0,
+        "confirmation": "rsi",
+        "rsi_len": 2,
+        "rsi_oversold": 10,
+        "rsi_overbought": 90,
+        "risk_reward": 2.0,
+        "time_window_start": "09:45",
+        "time_window_end": "15:45",
+        "max_hold_minutes": 60,
+        "activation": {
+          "session": [
+            "opening",
+            "midday",
+            "power_hour"
+          ],
+          "trend": [
+            "flat"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good",
+            "thin"
+          ],
+          "risk": [
+            "neutral",
+            "risk_off"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "orb": {
+        "enabled": true,
+        "orb_minutes": 15,
+        "risk_reward": 2.0,
+        "stop_loss_pct": 0.005,
+        "min_gap_pct": 0.0,
+        "min_flow_zscore": 0.0,
+        "activation": {
+          "session": [
+            "opening"
+          ],
+          "trend": [
+            "up",
+            "down"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_on",
+            "neutral"
+          ],
+          "min_confidence": 0.5
+        }
+      },
+      "index_mean_reversion": {
+        "enabled": true,
+        "symbols": [
+          "SPY",
+          "QQQ"
+        ],
+        "bb_len": 20,
+        "bb_std": 2.0,
+        "stop_pct": 0.005,
+        "activation": {
+          "session": [
+            "midday",
+            "power_hour"
+          ],
+          "trend": [
+            "flat"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "neutral",
+            "risk_off"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "flow_momentum": {
+        "enabled": true,
+        "min_flow_zscore": 2.5,
+        "vol_mult": 1.5,
+        "risk_reward": 2.0,
+        "activation": {
+          "session": [
+            "opening",
+            "midday"
+          ],
+          "trend": [
+            "up",
+            "down"
+          ],
+          "vol": [
+            "normal",
+            "high"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_on",
+            "neutral"
+          ],
+          "min_confidence": 0.5
+        }
+      },
+      "gap_fill": {
+        "enabled": true,
+        "min_gap": 0.015,
+        "max_gap": 0.1,
+        "risk_reward": 2.0,
+        "or_time_minutes": 15,
+        "weak_trend_max_score": 1.0,
+        "activation": {
+          "session": [
+            "opening"
+          ],
+          "trend": [
+            "flat"
+          ],
+          "vol": [
+            "normal",
+            "high"
+          ],
+          "liquidity": [
+            "good",
+            "thin"
+          ],
+          "risk": [
+            "neutral"
+          ],
+          "min_confidence": 0.4
+        }
+      },
+      "trend_pullback": {
+        "enabled": true,
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "rsi_len": 2,
+        "rsi_oversold": 10,
+        "rsi_overbought": 90,
+        "pullback_depth_pct": 0.0,
+        "entry_confirmation": "rsi",
+        "activation": {
+          "session": [
+            "opening",
+            "midday",
+            "power_hour"
+          ],
+          "trend": [
+            "up",
+            "down"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_on",
+            "neutral"
+          ],
+          "min_confidence": 0.5
+        }
+      },
+      "failed_breakout": {
+        "enabled": true,
+        "risk_reward": 2.0,
+        "activation": {
+          "session": [
+            "opening",
+            "midday"
+          ],
+          "trend": [
+            "flat"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good",
+            "thin"
+          ],
+          "risk": [
+            "neutral",
+            "risk_off"
+          ],
+          "min_confidence": 0.5
+        }
+      },
+      "vwap_trend_rider": {
+        "enabled": true,
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "vol_mult": 1.2,
+        "risk_reward": 2.0,
+        "min_trend_score": 1.5,
+        "activation": {
+          "session": [
+            "opening",
+            "midday",
+            "power_hour"
+          ],
+          "trend": [
+            "up",
+            "down"
+          ],
+          "vol": [
+            "low",
+            "normal"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_on"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "vix_spike_fade": {
+        "enabled": true,
+        "symbols": [
+          "SPY",
+          "QQQ"
+        ],
+        "vix_spike_pct": 0.2,
+        "vix_absolute": 30.0,
+        "index_drop_pct": 0.015,
+        "reversion_target": 0.5,
+        "stop_buffer": 0.005,
+        "activation": {
+          "session": [
+            "midday",
+            "power_hour"
+          ],
+          "trend": [
+            "down"
+          ],
+          "vol": [
+            "high",
+            "shock"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_off"
+          ],
+          "min_confidence": 0.4
+        }
+      },
+      "momentum_continuation": {
+        "enabled": true,
+        "breakout_lookback": 5,
+        "vol_mult": 2.0,
+        "close_position": 0.75,
+        "risk_reward": 1.5,
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "max_trades_per_session": 2,
+        "activation": {
+          "session": [
+            "opening"
+          ],
+          "trend": [
+            "up",
+            "down"
+          ],
+          "vol": [
+            "normal",
+            "high"
+          ],
+          "liquidity": [
+            "good"
+          ],
+          "risk": [
+            "risk_on"
+          ],
+          "min_confidence": 0.6
+        }
+      }
+    },
+    "risk": {
+      "max_daily_loss": 500.0,
+      "max_risk_per_trade": 50.0,
+      "max_open_risk": 200.0,
+      "max_trades_per_day": 200,
+      "max_open_positions": 5,
+      "max_positions_per_strategy": 3,
+      "max_notional_per_order": 5000.0,
+      "max_notional_per_symbol": 5000.0,
+      "time_in_force": "day",
+      "risk_mode": "normal",
+      "commission_per_share": 0.005,
+      "min_commission": 1.0,
+      "slippage_bps": 1.0
+    },
+    "backtest": {
+      "disable_flow_strategies": true,
+      "partial_fill_mode": "none",
+      "partial_fill_pct": 1.0,
+      "partial_fill_rate": 0.1,
+      "slippage_mode": "fixed",
+      "slippage_impact_mult": 5.0,
+      "spread_mode": "fixed"
+    },
+    "scanner": {
+      "enabled": true,
+      "interval_minutes": 5,
+      "max_watchlist_size": 10,
+      "top_k_per_strategy": 10,
+      "min_price": 10.0,
+      "max_price": 200.0,
+      "min_volume": 500000
+    },
+    "universe": {
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "NVDA",
+        "TSLA",
+        "AMD"
+      ],
+      "static_files": [
+        "config/offline_symbols.txt"
+      ],
+      "dynamic": {
+        "previous_day_top_volume": {
+          "enabled": true,
+          "top_n": 20,
+          "lookback_days": 7,
+          "candidates": [
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "META",
+            "AVGO",
+            "MU",
+            "INTC",
+            "MRVL",
+            "ARM",
+            "QCOM",
+            "RIVN",
+            "LCID",
+            "F",
+            "GM",
+            "NIO",
+            "JPM",
+            "BAC",
+            "GS",
+            "MS",
+            "C",
+            "XOM",
+            "CVX",
+            "OXY",
+            "SLB",
+            "HAL",
+            "WMT",
+            "COST",
+            "TGT",
+            "HD",
+            "NKE",
+            "UNH",
+            "JNJ",
+            "PFE",
+            "ABBV",
+            "MRK",
+            "DAL",
+            "UAL",
+            "AAL",
+            "CCL",
+            "RCL",
+            "CRM",
+            "ORCL",
+            "SNOW",
+            "PLTR",
+            "NET",
+            "DDOG",
+            "SMR",
+            "IONQ",
+            "RGTI",
+            "SOUN",
+            "AI",
+            "GME",
+            "AMC",
+            "SOFI",
+            "HOOD",
+            "COIN",
+            "MARA",
+            "RIOT"
+          ]
+        },
+        "screener": {
+          "enabled": true,
+          "most_actives_top_n": 20,
+          "movers_top_n": 10
+        }
+      }
+    }
+  },
+  "start": "2024-11-25T00:00:00+00:00",
+  "end": "2024-11-26T00:00:00+00:00",
+  "initial_cash": 100000.0,
+  "final_cash_balance": 100000.0,
+  "final_equity": 100000.0,
+  "engine_realized_pnl": 0.0,
+  "metrics": {
+    "total_trades": 0,
+    "total_closed_pnl_gross": 0.0,
+    "total_closed_pnl_net": 0.0,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "average_pnl_net": 0.0,
+    "max_drawdown_pct": 0.0,
+    "final_equity": 100000.0
+  },
+  "engine_trades": [],
+  "metrics_fills": {
+    "total_trades": 0,
+    "total_closed_pnl": 0.0,
+    "open_pnl": 0.0,
+    "total_pnl": 0.0,
+    "total_equity": 100000.0,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "average_pnl": 0.0,
+    "max_drawdown_pct": 0.0,
+    "return_pct": 0.0,
+    "trades": [],
+    "open_positions": []
+  }
+}

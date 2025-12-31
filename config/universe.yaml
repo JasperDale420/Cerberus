@@ -8,12 +8,92 @@ universe:
     - AMD
 
   # Optional static symbol files (one symbol per line; CSV allowed, first column used)
-  static_files: []
+  # For offline backtesting, use this list which matches downloaded data
+  static_files:
+    - config/offline_symbols.txt
 
   # Optional dynamic universe sources
   dynamic:
     previous_day_top_volume:
-      enabled: false
-      top_n: 0
+      enabled: true
+      top_n: 20
       lookback_days: 7
-      candidates: []
+      candidates:
+        # Mega-cap tech
+        - AAPL
+        - MSFT
+        - GOOGL
+        - AMZN
+        - META
+        # Semiconductors
+        - AVGO
+        - MU
+        - INTC
+        - MRVL
+        - ARM
+        - QCOM
+        # EV / Auto
+        - RIVN
+        - LCID
+        - F
+        - GM
+        - NIO
+        # Financials
+        - JPM
+        - BAC
+        - GS
+        - MS
+        - C
+        # Energy
+        - XOM
+        - CVX
+        - OXY
+        - SLB
+        - HAL
+        # Retail / Consumer
+        - WMT
+        - COST
+        - TGT
+        - HD
+        - NKE
+        # Healthcare / Biotech
+        - UNH
+        - JNJ
+        - PFE
+        - ABBV
+        - MRK
+        # Airlines / Travel
+        - DAL
+        - UAL
+        - AAL
+        - CCL
+        - RCL
+        # Tech / Software
+        - CRM
+        - ORCL
+        - SNOW
+        - PLTR
+        - NET
+        - DDOG
+        # AI / Hype
+        - SMR
+        - IONQ
+        - RGTI
+        - SOUN
+        - AI
+        # Meme / Retail favorites
+        - GME
+        - AMC
+        - SOFI
+        - HOOD
+        - COIN
+        - MARA
+        - RIOT
+
+    # Alpaca Screener API - fetches current most-actives and movers in real-time
+    screener:
+      enabled: true
+      # Top N most active stocks by volume
+      most_actives_top_n: 20
+      # Top N gainers + losers (e.g., 10 = 10 gainers + 10 losers)
+      movers_top_n: 10

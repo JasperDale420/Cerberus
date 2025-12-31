@@ -94,6 +94,11 @@ class BaseStrategy(ABC):
         Returns:
             Signal object ready to be processed by execution engine
         """
+        # Extract multi-axis regime data from snapshot
+        snapshot = market_state.regime_snapshot
+        regime_tags = snapshot.regime_tags if snapshot else {}
+        regime_confidence = snapshot.confidence if snapshot else {}
+
         return Signal(
             symbol=symbol,
             side=side,
@@ -102,9 +107,10 @@ class BaseStrategy(ABC):
             stop_price=stop_price,
             target_price=target_price,
             strategy=self.name,
-            regime=market_state.regime,
             generated_at=bar.time,
             meta=meta or {},
+            regime_tags=regime_tags,
+            regime_confidence=regime_confidence,
         )
 
     @abstractmethod

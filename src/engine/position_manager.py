@@ -12,7 +12,6 @@ from src.core.domain import (
     OrderSide,
     OrderType,
     Position,
-    Regime,
     Side,
     SymbolState,
 )
@@ -32,8 +31,9 @@ class ExitDecision:
 class ClosedTradeInfo:
     symbol: str
     strategy: str
-    regime_at_entry: str
-    regime_at_exit: str
+    # Multi-axis regime tags (dict with keys: trend, vol, liquidity, risk, session)
+    regime_tags_at_entry: Dict[str, str]
+    regime_tags_at_exit: Dict[str, str]
     side: str
     qty: float
     entry_time: datetime
@@ -309,7 +309,11 @@ class PositionManager:
             strategy=str(strategy),
             entry_time=entry_time,
             correlation_id=fill_data["correlation_id"],
-            regime_at_entry=market_state.regime,
+            regime_tags_at_entry=(
+                market_state.regime_snapshot.regime_tags
+                if market_state.regime_snapshot
+                else {}
+            ),
             open_risk=(
                 safe_float(entry_ctx.get("open_risk"))
                 if isinstance(entry_ctx, dict)
@@ -409,17 +413,12 @@ class PositionManager:
         except Exception:
             pass
 
-        regime_at_entry = (
-            pos.regime_at_entry.value
-            if isinstance(pos.regime_at_entry, Regime)
-            else str(
-                getattr(pos.regime_at_entry, "value", pos.regime_at_entry or "unknown")
-            )
-        )
-        regime_at_exit = (
-            market_state.regime.value
-            if isinstance(market_state.regime, Regime)
-            else str(getattr(market_state.regime, "value", market_state.regime))
+        # Multi-axis regime tags
+        regime_tags_at_entry = pos.regime_tags_at_entry or {}
+        regime_tags_at_exit = (
+            market_state.regime_snapshot.regime_tags
+            if market_state.regime_snapshot
+            else {}
         )
 
         pnl_net = (
@@ -436,8 +435,8 @@ class PositionManager:
         return ClosedTradeInfo(
             symbol=pos.symbol,
             strategy=pos.strategy,
-            regime_at_entry=regime_at_entry or "unknown",
-            regime_at_exit=regime_at_exit or "unknown",
+            regime_tags_at_entry=regime_tags_at_entry,
+            regime_tags_at_exit=regime_tags_at_exit,
             side=pos.side.value,
             qty=float(close_qty),
             entry_time=entry_time_final,

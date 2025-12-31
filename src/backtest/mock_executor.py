@@ -58,24 +58,73 @@ class BacktestOrderExecutor:
         self.fills: list[Dict[str, Any]] = []
 
         self._risk_cfg: Dict[str, Any] = {}
+        self._backtest_cfg: Dict[str, Any] = {}
         self._max_open_order_age_sec: int = 0
         # P1: Bracket exit mode ("stop_first" or "best_exit")
         self._bracket_exit_mode: str = "stop_first"
-        # P2: Partial fill simulation
-        self._partial_fill_pct: float = 1.0  # 1.0 = 100% fill
+        # Partial fill configuration
+        self._partial_fill_mode: str = "none"  # none|fixed|volume_aware
+        self._partial_fill_pct: float = 1.0  # for fixed mode
+        self._partial_fill_rate: float = (
+            0.1  # for volume_aware: capture 10% of bar volume
+        )
+        # Slippage configuration
+        self._slippage_mode: str = "fixed"  # fixed|volume_impact
+        self._slippage_impact_mult: float = 5.0  # multiplier for volume impact
+        # Spread configuration
+        self._spread_mode: str = "fixed"  # fixed|atr_based
 
     def set_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> None:
         self._risk_cfg = dict(risk_cfg) if isinstance(risk_cfg, dict) else {}
-        # P1: Read bracket exit mode from config
+        # Bracket exit mode from risk config
         self._bracket_exit_mode = str(
             self._risk_cfg.get("bracket_exit_mode", "stop_first")
         ).lower()
-        # P2: Read partial fill percentage from config
+
+    def set_backtest_config(self, backtest_cfg: Optional[Dict[str, Any]]) -> None:
+        """Configure backtest-specific realism settings."""
+        self._backtest_cfg = (
+            dict(backtest_cfg) if isinstance(backtest_cfg, dict) else {}
+        )
+
+        # Partial fill mode: none|fixed|volume_aware
+        self._partial_fill_mode = str(
+            self._backtest_cfg.get("partial_fill_mode", "none")
+        ).lower()
+
+        # Fixed partial fill percentage (for mode=fixed)
         try:
-            self._partial_fill_pct = float(self._risk_cfg.get("partial_fill_pct", 1.0))
+            self._partial_fill_pct = float(
+                self._backtest_cfg.get("partial_fill_pct", 1.0)
+            )
             self._partial_fill_pct = max(0.1, min(1.0, self._partial_fill_pct))
         except (TypeError, ValueError):
             self._partial_fill_pct = 1.0
+
+        # Volume-aware fill rate (for mode=volume_aware)
+        try:
+            self._partial_fill_rate = float(
+                self._backtest_cfg.get("partial_fill_rate", 0.1)
+            )
+            self._partial_fill_rate = max(0.01, min(1.0, self._partial_fill_rate))
+        except (TypeError, ValueError):
+            self._partial_fill_rate = 0.1
+
+        # Slippage mode: fixed|volume_impact
+        self._slippage_mode = str(
+            self._backtest_cfg.get("slippage_mode", "fixed")
+        ).lower()
+
+        # Volume impact multiplier (for slippage_mode=volume_impact)
+        try:
+            self._slippage_impact_mult = float(
+                self._backtest_cfg.get("slippage_impact_mult", 5.0)
+            )
+        except (TypeError, ValueError):
+            self._slippage_impact_mult = 5.0
+
+        # Spread mode: fixed|atr_based
+        self._spread_mode = str(self._backtest_cfg.get("spread_mode", "fixed")).lower()
 
     def set_max_open_order_age_sec(self, value: Any) -> None:
         try:
@@ -128,30 +177,91 @@ class BacktestOrderExecutor:
             return 0.0
         return float(max(min_c, cps * float(qty)))
 
-    def _apply_spread(self, side: str, price: float) -> float:
+    def _apply_spread(self, side: str, price: float, *, atr_pct: float = 0.0) -> float:
+        """Apply bid-ask spread to a fill price.
+
+        Supports two modes:
+        - fixed: standard BPS spread
+        - atr_based: spread scales with ATR volatility
+        """
         bps = self._spread_bps()
         if bps <= 0.0:
             return float(price)
-        half = (bps / 10000.0) / 2.0
+
+        # Calculate effective spread based on mode
+        if self._spread_mode == "atr_based" and atr_pct > 0:
+            # ATR-based: higher volatility = wider spreads
+            # Assuming avg ATR is ~1%, scale spread proportionally
+            avg_atr_pct = 0.01  # 1% baseline
+            volatility_mult = atr_pct / avg_atr_pct
+            effective_bps = bps * max(0.5, min(3.0, volatility_mult))
+        else:
+            effective_bps = bps
+
+        half = (effective_bps / 10000.0) / 2.0
         if str(side).lower() == "buy":
             return float(price) * (1.0 + half)
         return float(price) * (1.0 - half)
 
-    def _apply_slippage(self, side: str, price: float) -> float:
+    def _apply_slippage(
+        self,
+        side: str,
+        price: float,
+        *,
+        order_qty: float = 0.0,
+        bar_volume: float = 0.0,
+    ) -> float:
+        """Apply slippage to a fill price.
+
+        Supports two modes:
+        - fixed: standard BPS slippage
+        - volume_impact: slippage increases with order size relative to bar volume
+        """
         bps = self._slippage_bps()
         if bps <= 0.0:
             return float(price)
-        mult = 1.0 + (bps / 10000.0)
+
+        # Calculate effective slippage based on mode
+        if self._slippage_mode == "volume_impact" and bar_volume > 0 and order_qty > 0:
+            # Volume impact: larger orders relative to volume get more slippage
+            volume_ratio = float(order_qty) / float(bar_volume)
+            effective_bps = bps * (1.0 + volume_ratio * self._slippage_impact_mult)
+        else:
+            effective_bps = bps
+
+        mult = 1.0 + (effective_bps / 10000.0)
         # Buys pay more; sells receive less.
         if str(side).lower() == "buy":
             return float(price) * mult
         return float(price) / mult
+
+    def _calculate_fill_qty(self, order_qty: float, bar_volume: float) -> float:
+        """Calculate actual fill quantity based on partial fill mode.
+
+        Supports three modes:
+        - none: full fills (100%)
+        - fixed: fill at configured percentage
+        - volume_aware: fill based on order size vs bar volume
+        """
+        if self._partial_fill_mode == "none":
+            return float(order_qty)
+
+        if self._partial_fill_mode == "fixed":
+            return float(order_qty) * self._partial_fill_pct
+
+        if self._partial_fill_mode == "volume_aware" and bar_volume > 0:
+            # Can only capture a fraction of bar volume
+            max_capturable = float(bar_volume) * self._partial_fill_rate
+            return min(float(order_qty), max_capturable)
+
+        return float(order_qty)
 
     def _record_fill(
         self,
         *,
         order_id: str,
         intent: OrderIntent,
+        fill_qty: float,
         fill_price: float,
         filled_at: datetime,
         kind: str,
@@ -161,7 +271,7 @@ class BacktestOrderExecutor:
                 "id": order_id,
                 "symbol": intent.symbol,
                 "side": intent.side.value,
-                "qty": float(intent.qty),
+                "qty": float(fill_qty),
                 "type": intent.order_type.value,
                 "strategy": intent.strategy,
                 "correlation_id": intent.correlation_id,
@@ -269,7 +379,7 @@ class BacktestOrderExecutor:
             if raw_px is None or raw_px <= 0.0:
                 continue
 
-            self._execute_order_fill(engine, o, raw_px, now, symbol)
+            self._execute_order_fill(engine, o, raw_px, now, symbol, bar)
 
     def _can_fill_order(self, o: _PendingOrder, symbol: str, now: datetime) -> bool:
         if o.status != "new":
@@ -317,16 +427,24 @@ class BacktestOrderExecutor:
         raw_px: float,
         fill_ts: datetime,
         symbol: str,
+        bar: Bar,
     ) -> None:
-        fill_px = self._apply_slippage(
-            o.intent.side.value,
-            self._apply_spread(o.intent.side.value, raw_px),
-        )
+        order_qty = float(o.intent.qty)
+        bar_volume = float(bar.volume) if bar.volume > 0 else 0.0
 
-        # P2: Apply partial fill percentage
-        fill_qty = float(o.intent.qty) * self._partial_fill_pct
+        # Calculate fill quantity using volume-aware logic
+        fill_qty = self._calculate_fill_qty(order_qty, bar_volume)
         if fill_qty <= 0:
             return
+
+        # Apply spread first, then volume-aware slippage
+        spread_px = self._apply_spread(o.intent.side.value, raw_px)
+        fill_px = self._apply_slippage(
+            o.intent.side.value,
+            spread_px,
+            order_qty=fill_qty,
+            bar_volume=bar_volume,
+        )
 
         # Update portfolio model first (cash), then engine state.
         self._update_cash_and_positions(
@@ -353,6 +471,7 @@ class BacktestOrderExecutor:
         self._record_fill(
             order_id=o.id,
             intent=o.intent,
+            fill_qty=fill_qty,
             fill_price=fill_px,
             filled_at=fill_ts,
             kind="order",
@@ -430,6 +549,7 @@ class BacktestOrderExecutor:
         self._record_fill(
             order_id=f"bt-bracket-{len(self.fills) + 1}",
             intent=intent,
+            fill_qty=qty,
             fill_price=exit_px,
             filled_at=now,
             kind="bracket",
@@ -592,6 +712,7 @@ class BacktestOrderExecutor:
             self._record_fill(
                 order_id=f"bt-eod-{len(self.fills) + 1}",
                 intent=intent,
+                fill_qty=qty,
                 fill_price=px,
                 filled_at=ts,
                 kind="eod",

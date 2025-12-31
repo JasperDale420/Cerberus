@@ -3,7 +3,7 @@ from datetime import time as time_type
 from typing import Any, Dict, Optional
 
 from src.core import time_utils
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import ORBConfig
@@ -135,8 +135,8 @@ class ORBStrategy(BaseStrategy):
         if not orb_high or not orb_low:
             return None
 
-        # Long Breakout (PRD: BULL)
-        if bar.close > orb_high and market_state.regime == Regime.BULL:
+        # Long Breakout - regime gating removed, handled by engine
+        if bar.close > orb_high:
             # P2 fix: Apply ATR buffer to stop
             stop = orb_low
             if self.stop_buffer_atr_mult > 0:
@@ -157,8 +157,8 @@ class ORBStrategy(BaseStrategy):
                 },
             )
 
-        # Short Breakout (PRD: BEAR)
-        if bar.close < orb_low and market_state.regime == Regime.BEAR:
+        # Short Breakout - regime gating removed, handled by engine
+        if bar.close < orb_low:
             # P2 fix: Apply ATR buffer to stop
             stop = orb_high
             if self.stop_buffer_atr_mult > 0:

@@ -2,7 +2,7 @@ from datetime import time as time_type
 from typing import Any, Dict, Optional
 
 from src.core import time_utils
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
@@ -45,9 +45,7 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.ema_slow_len + 5):
             return None
 
-        # PRD 7.2: VWAP Trend Rider is BULL/BEAR only and requires strong trend_score.
-        if market_state.regime not in (Regime.BULL, Regime.BEAR):
-            return None
+        # Regime gating removed - handled by engine. Keep trend_score check for signal quality.
         trend_score = None
         if isinstance(getattr(market_state, "meta", None), dict):
             trend_score = market_state.meta.get("trend_score")
@@ -113,8 +111,8 @@ class VWAPTrendRiderStrategy(BaseStrategy):
 
         # 3. Check for Reclaim + Volume
 
-        # BULLISH RIDER
-        if is_uptrend and market_state.regime == Regime.BULL:
+        # BULLISH RIDER - regime gating removed
+        if is_uptrend:
             # Trigger: Cross OVER VWAP
             # Condition: Previous Close < Prev VWAP (or Low < VWAP)
             #           Current Close > Current VWAP
@@ -161,8 +159,8 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                         },
                     )
 
-        # BEARISH RIDER
-        if is_downtrend and market_state.regime == Regime.BEAR:
+        # BEARISH RIDER - regime gating removed
+        if is_downtrend:
             prev_close = float(bars[-2].close) if len(bars) >= 2 else float(bar.close)
 
             # Did we cross DOWN?

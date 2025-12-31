@@ -97,6 +97,7 @@ class UniverseBuilder:
         # Fallback to offline bars provider
         if self.offline_bars_provider is not None:
             try:
+                # Try daily bars first
                 bars = list(
                     self.offline_bars_provider.get_bars(
                         symbol, start, end, timeframe="1Day"
@@ -107,6 +108,17 @@ class UniverseBuilder:
                     v = getattr(b, "volume", None)
                     if v is not None:
                         return float(v)
+
+                # Fallback: aggregate volume from 1Min bars
+                bars_1min = list(
+                    self.offline_bars_provider.get_bars(
+                        symbol, start, end, timeframe="1Min"
+                    )
+                )
+                if bars_1min:
+                    total_vol = sum(getattr(b, "volume", 0) or 0 for b in bars_1min)
+                    if total_vol > 0:
+                        return float(total_vol)
             except Exception as e:
                 self.logger.warning(
                     "Dynamic universe volume fetch failed (offline)",
@@ -212,6 +224,50 @@ class UniverseBuilder:
                 dynamic_added = []
         else:
             dynamic_added = []
+
+        # Dynamic: Alpaca Screener API (most actives + movers)
+        # Only runs in LIVE mode - skipped for backtest since API returns current-day data
+        is_backtest = self.offline_bars_provider is not None
+        screener_cfg = dyn_cfg.get("screener") if isinstance(dyn_cfg, dict) else None
+        if (
+            isinstance(screener_cfg, dict)
+            and bool(screener_cfg.get("enabled", False))
+            and self.alpaca_client is not None
+            and not is_backtest  # Skip in backtest - use volume ranking instead
+        ):
+            screener_added: List[str] = []
+
+            # Get most active stocks by volume
+            actives_n = int(screener_cfg.get("most_actives_top_n", 0))
+            if actives_n > 0:
+                try:
+                    actives = self.alpaca_client.get_most_actives(top=actives_n)
+                    screener_added.extend(actives)
+                except Exception as e:
+                    self.logger.warning(
+                        "Screener most_actives failed",
+                        error=str(e),
+                    )
+
+            # Get top movers (gainers + losers)
+            movers_n = int(screener_cfg.get("movers_top_n", 0))
+            if movers_n > 0:
+                try:
+                    movers = self.alpaca_client.get_movers(top=movers_n)
+                    screener_added.extend(movers.get("gainers", []))
+                    screener_added.extend(movers.get("losers", []))
+                except Exception as e:
+                    self.logger.warning(
+                        "Screener movers failed",
+                        error=str(e),
+                    )
+
+            # Dedupe and add to dynamic_added
+            for sym in screener_added:
+                if sym and sym not in dynamic_added:
+                    dynamic_added.append(sym)
+
+            universe.extend(screener_added)
 
         universe = self._dedupe_preserve_order(universe)
 
