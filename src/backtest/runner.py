@@ -79,6 +79,12 @@ class BacktestRunner:
         self.mock_executor.set_max_open_order_age_sec(
             self.config.get("max_open_order_age_sec", 0)
         )
+        # Configure backtest-specific realism settings
+        self.mock_executor.set_backtest_config(
+            self.config.get("backtest")
+            if isinstance(self.config.get("backtest"), dict)
+            else None
+        )
 
         # Engine with Mock Executor
         self.engine = ExecutionEngine(self.config, self.logger, alpaca_client=None)
@@ -88,12 +94,21 @@ class BacktestRunner:
         self.last_prices: Dict[str, float] = {}
 
         # Use UniverseBuilder to determine universe from config
+        # Pass clock lambda that returns simulation time (or start_date as fallback for init)
+        def _backtest_clock() -> datetime:
+            if self.engine.market_state.time:
+                return self.engine.market_state.time
+            return datetime.combine(self.start_date, datetime.min.time()).replace(
+                tzinfo=timezone.utc
+            )
+
         self.universe_builder = UniverseBuilder(
             config_loader=self.config_loader,
             logger=self.logger,
             config=self.config,
             alpaca_client=self.alpaca_client,
             offline_bars_provider=self.offline_provider,
+            clock=_backtest_clock,
         )
         self.universe = self.universe_builder.build_universe()
 
@@ -128,7 +143,13 @@ class BacktestRunner:
     def _register_strategies(self) -> None:
         """
         Register enabled strategies from config.
+
+        Respects backtest.disable_flow_strategies to skip flow-dependent strategies
+        that would produce unrealistic signals with zeroed flow data.
         """
+        # Flow-dependent strategies that require live options flow data
+        flow_strategies = {"flow_momentum"}
+
         strategy_registry = {
             "vwap_reversion": VWAPReversionStrategy,
             "orb": ORBStrategy,
@@ -142,6 +163,12 @@ class BacktestRunner:
             "momentum_continuation": MomentumContinuationStrategy,
         }
 
+        # Check if flow strategies should be disabled
+        backtest_cfg = self.config.get("backtest", {})
+        if not isinstance(backtest_cfg, dict):
+            backtest_cfg = {}
+        disable_flow = bool(backtest_cfg.get("disable_flow_strategies", True))
+
         strategies_cfg = self.config.get("strategies", {})
         if not isinstance(strategies_cfg, dict):
             strategies_cfg = {}
@@ -152,6 +179,15 @@ class BacktestRunner:
                 continue
             if not bool(strat_cfg.get("enabled", True)):
                 continue
+
+            # Skip flow strategies if disabled for backtest
+            if disable_flow and name in flow_strategies:
+                self.logger.info(
+                    "Skipping flow strategy in backtest (backtest.disable_flow_strategies=true)",
+                    strategy=str(name),
+                )
+                continue
+
             cls = strategy_registry.get(str(name))
             if cls is None:
                 self.logger.warning(
@@ -303,6 +339,8 @@ class BacktestRunner:
             )
 
         if not scanner_enabled:
+            # When scanner disabled, all symbols get all enabled strategies
+            all_strategies = getattr(self, "enabled_strategies", [])
             for symbol in self.universe:
                 # Pre-initialize symbol state to ensure allowed_strategies are set
                 # (no scanner gating in this mode).
@@ -313,9 +351,15 @@ class BacktestRunner:
                         position=None,
                         indicators={},
                         open_orders={},
-                        allowed_strategies=getattr(self, "enabled_strategies", []),
-                        meta={},
+                        allowed_strategies=list(all_strategies),
+                        meta={"scanner_bypass": True},
                     )
+                else:
+                    # Update existing state with allowed strategies
+                    self.engine.symbol_states[symbol].allowed_strategies = list(
+                        all_strategies
+                    )
+                    self.engine.symbol_states[symbol].meta["scanner_bypass"] = True
 
     async def _load_all_bars(self, timeframe: str) -> Dict[str, List[Bar]]:
         async def _load_one(symbol: str) -> tuple[str, List[Bar]]:
@@ -355,8 +399,8 @@ class BacktestRunner:
         return {
             "symbol": getattr(t, "symbol", None),
             "strategy": getattr(t, "strategy", None),
-            "regime_at_entry": getattr(t, "regime_at_entry", None),
-            "regime_at_exit": getattr(t, "regime_at_exit", None),
+            "regime_tags_at_entry": getattr(t, "regime_tags_at_entry", {}),
+            "regime_tags_at_exit": getattr(t, "regime_tags_at_exit", {}),
             "side": getattr(t, "side", None),
             "qty": float(getattr(t, "qty", 0.0) or 0.0),
             "entry_time": _dt(getattr(t, "entry_time", None)),
@@ -573,12 +617,35 @@ class BacktestRunner:
         self.logger.info("Starting Backtest", start=self.start_date, end=self.end_date)
 
         index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
+        regime_cfg = self.config.get("regime", {}) or {}
+        vol_symbol = str(regime_cfg.get("vol_symbol") or "").upper() or None
         scanner_enabled = self._scanner_enabled()
 
         self._initialize_symbol_states(index_symbol, scanner_enabled)
 
         timeframe = str(self.config.get("timeframe", "1Min") or "1Min")
         bars_by_symbol = await self._load_all_bars(timeframe)
+
+        # After loading bars, ensure all symbols with bars have allowed_strategies set
+        if not scanner_enabled:
+            all_strategies = getattr(self, "enabled_strategies", [])
+            for symbol in bars_by_symbol.keys():
+                if symbol not in self.engine.symbol_states:
+                    self.engine.symbol_states[symbol] = SymbolState(
+                        symbol=symbol,
+                        bars=deque(maxlen=100),
+                        position=None,
+                        indicators={},
+                        open_orders={},
+                        allowed_strategies=list(all_strategies),
+                        meta={"scanner_bypass": True},
+                    )
+                elif not self.engine.symbol_states[symbol].allowed_strategies:
+                    # Update existing empty state with strategies
+                    self.engine.symbol_states[symbol].allowed_strategies = list(
+                        all_strategies
+                    )
+                    self.engine.symbol_states[symbol].meta["scanner_bypass"] = True
 
         events = self._build_event_stream(bars_by_symbol)
         self.logger.info("Built event stream", events=len(events))
@@ -603,6 +670,13 @@ class BacktestRunner:
 
         # Replay loop (chronological across all symbols)
         for bt, symbol, bar in events:
+            # Update VXX price history for risk axis calculation
+            if vol_symbol and symbol == vol_symbol:
+                try:
+                    self.engine.market_manager.update_vol(bar)
+                except Exception:
+                    pass
+
             (
                 last_session_ts,
                 current_session,

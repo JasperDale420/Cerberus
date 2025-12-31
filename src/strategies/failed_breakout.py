@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import FailedBreakoutConfig
@@ -100,7 +100,8 @@ class FailedBreakoutStrategy(BaseStrategy):
     def _check_bearish_fade(
         self, symbol, bar, symbol_state, market_state, pdh, has_breached_high
     ) -> Optional[Signal]:
-        if not (has_breached_high and market_state.regime == Regime.CHOP):
+        # Regime gating removed - handled by engine
+        if not has_breached_high:
             return None
 
         # Trigger: Price closes back inside range ( < PDH )
@@ -142,7 +143,8 @@ class FailedBreakoutStrategy(BaseStrategy):
     def _check_bullish_fade(
         self, symbol, bar, symbol_state, market_state, pdl, has_breached_low
     ) -> Optional[Signal]:
-        if not (has_breached_low and market_state.regime == Regime.CHOP):
+        # Regime gating removed - handled by engine
+        if not has_breached_low:
             return None
 
         # Trigger: Price closes back inside range ( > PDL )

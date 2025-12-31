@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
@@ -135,8 +135,7 @@ class TrendPullbackStrategy(BaseStrategy):
         prev_rsi: Any,
         bars: list[Bar],
     ) -> Optional[Signal]:
-        if market_state.regime != Regime.BULL:
-            return None
+        # Regime gating removed - handled by engine
 
         if self.pullback_depth_pct > 0 and current_fast:
             dist = abs((current_price - current_fast) / current_fast)
@@ -193,8 +192,7 @@ class TrendPullbackStrategy(BaseStrategy):
         prev_rsi: Any,
         bars: list[Bar],
     ) -> Optional[Signal]:
-        if market_state.regime != Regime.BEAR:
-            return None
+        # Regime gating removed - handled by engine
 
         if self.pullback_depth_pct > 0 and current_fast:
             dist = abs((current_price - current_fast) / current_fast)

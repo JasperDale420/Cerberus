@@ -11,7 +11,7 @@ from datetime import time as time_type
 from typing import Any, Dict, List, Optional
 
 from src.core import time_utils
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
@@ -69,9 +69,7 @@ class MomentumContinuationStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # 1. Regime check (trending only)
-        if market_state.regime not in (Regime.BULL, Regime.BEAR):
-            return None
+        # 1. Regime gating removed - handled by engine
 
         # 2. Check cooldown
         if not self._check_cooldown(symbol, bar.time):
@@ -129,15 +127,15 @@ class MomentumContinuationStrategy(BaseStrategy):
         # 11. Check for breakout with strong close
         signal = None
 
-        # BULLISH BREAKOUT
-        if is_uptrend and market_state.regime == Regime.BULL:
+        # BULLISH BREAKOUT - regime gating removed
+        if is_uptrend:
             if bar.close > high_level and self._is_strong_close(bar, OrderSide.BUY):
                 signal = self._create_long_signal(
                     symbol, bar, market_state, high_level, ema_fast, ema_slow, avg_vol
                 )
 
-        # BEARISH BREAKOUT
-        if is_downtrend and market_state.regime == Regime.BEAR:
+        # BEARISH BREAKOUT - regime gating removed
+        if is_downtrend:
             if bar.close < low_level and self._is_strong_close(bar, OrderSide.SELL):
                 signal = self._create_short_signal(
                     symbol, bar, market_state, low_level, ema_fast, ema_slow, avg_vol
@@ -252,9 +250,9 @@ class MomentumContinuationStrategy(BaseStrategy):
         if stop_price >= entry_price:
             stop_price = entry_price * 0.99  # Fallback 1%
 
-        # Target based on bar range
-        bar_range = bar.high - bar.low
-        target_price = entry_price + (bar_range * self.risk_reward)
+        # Target based on risk distance (entry-to-stop) for consistent R:R
+        risk = abs(entry_price - stop_price)
+        target_price = entry_price + (risk * self.risk_reward)
 
         return self._create_signal(
             symbol=symbol,
@@ -290,9 +288,9 @@ class MomentumContinuationStrategy(BaseStrategy):
         if stop_price <= entry_price:
             stop_price = entry_price * 1.01  # Fallback 1%
 
-        # Target based on bar range
-        bar_range = bar.high - bar.low
-        target_price = entry_price - (bar_range * self.risk_reward)
+        # Target based on risk distance (entry-to-stop) for consistent R:R
+        risk = abs(entry_price - stop_price)
+        target_price = entry_price - (risk * self.risk_reward)
 
         return self._create_signal(
             symbol=symbol,

@@ -4,6 +4,8 @@
 database_url: "sqlite:///cerberus.db"
 timezone: "US/Eastern"
 index_symbol: "SPY"
+regime:
+  vol_symbol: "VXX"
 schedule_time: "09:25"   # Daily start time for scheduler (ET)
 log_level: "INFO"
 start_time_utc: ""
@@ -150,6 +152,23 @@ risk:
   commission_per_share: 0.0
   min_commission: 0.0
   slippage_bps: 0.0
+
+# Backtest-specific realism settings
+backtest:
+  # Skip flow-dependent strategies (flow_momentum) since they receive zeroed flow data
+  disable_flow_strategies: true
+  # Partial fill mode: none|fixed|volume_aware
+  partial_fill_mode: "none"
+  # Fixed partial fill percentage (for mode=fixed)
+  partial_fill_pct: 1.0
+  # Volume capture rate (for mode=volume_aware): fraction of bar volume we can capture
+  partial_fill_rate: 0.1
+  # Slippage mode: fixed|volume_impact
+  slippage_mode: "fixed"
+  # Volume impact multiplier (for slippage_mode=volume_impact)
+  slippage_impact_mult: 5.0
+  # Spread mode: fixed|atr_based
+  spread_mode: "fixed"
 
 scanner:
   enabled: false

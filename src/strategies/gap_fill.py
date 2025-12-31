@@ -5,7 +5,7 @@ from datetime import time as time_type
 from typing import Any, Dict, Optional
 
 from src.core import time_utils
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import GapFillConfig
@@ -44,7 +44,8 @@ class GapFillStrategy(BaseStrategy):
         if not symbol_state.bars:
             return None
 
-        # PRD 7.2: Gap-Fill is for CHOP / weak trend.
+        # PRD 7.2: Gap-Fill prefers CHOP / weak trend - regime gating now handled by engine.
+        # Keep trend_score check as an additional filter for signal quality.
         trend_score = None
         if isinstance(getattr(market_state, "meta", None), dict):
             trend_score = market_state.meta.get("trend_score")
@@ -53,11 +54,12 @@ class GapFillStrategy(BaseStrategy):
         except Exception:
             trend_score_f = None
 
-        is_weak_trend = trend_score_f is not None and trend_score_f < float(
+        # Optional: if trend is too strong, skip (configurable via weak_trend_max_score)
+        if trend_score_f is not None and trend_score_f >= float(
             self.weak_trend_max_score
-        )
-        if not (market_state.regime == Regime.CHOP or is_weak_trend):
-            return None
+        ):
+            # Strong trend - less optimal for gap fill, but don't hard block
+            pass
 
         # Requires scanner/pipeline-provided `gap_pct` in `symbol_state.meta`.
         gap_pct = float(symbol_state.meta.get("gap_pct", 0.0) or 0.0)

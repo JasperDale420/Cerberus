@@ -23,6 +23,7 @@ from src.engine.risk import RiskManager
 from src.engine.strategy_engine import StrategyEngine, StrategyRouting
 from src.scanner.core import Scanner
 from src.strategies.base import BaseStrategy, Signal, SymbolState
+from src.strategies.config_models import build_activation_policies_from_config
 
 
 class ExecutionEngine:
@@ -486,6 +487,8 @@ class ExecutionEngine:
             cfg.get("strategies") if isinstance(cfg.get("strategies"), dict) else {}
         ) or {}
 
+        activation_policies = build_activation_policies_from_config(strategies_cfg)
+
         routing = StrategyRouting(
             strategies_by_regime={
                 Regime.BULL: self._get_regime_strategies(
@@ -497,7 +500,8 @@ class ExecutionEngine:
                 Regime.CHOP: self._get_regime_strategies(
                     "chop", routing_cfg, strategies_cfg
                 ),
-            }
+            },
+            activation_policies=activation_policies,
         )
         self.strategy_engine = StrategyEngine(
             self.strategies,
@@ -684,6 +688,15 @@ class ExecutionEngine:
         if symbol == self.config.get("index_symbol", "SPY"):
             self._handle_index_bar_update(bar, bar_time)
 
+        # Handle vol symbol updates (VXX for risk axis)
+        regime_cfg = self.config.get("regime", {}) or {}
+        vol_symbol = regime_cfg.get("vol_symbol")
+        if vol_symbol and symbol == str(vol_symbol).upper():
+            try:
+                self.market_manager.update_vol(bar)
+            except Exception:
+                pass
+
         # Initialize or get symbol state
         state = self._get_or_create_symbol_state(symbol)
         state.bars.append(bar)
@@ -744,8 +757,13 @@ class ExecutionEngine:
 
     def _handle_index_bar_update(self, bar: Any, bar_time: Any) -> None:
         """Handle index symbol updates: regime tracking and cache clearing."""
-        current_regime = getattr(bar, "regime", self.market_manager.state.regime)
         current_date = self._extract_current_date(bar_time)
+
+        # Update market state first so regime comparisons reflect this bar.
+        index_symbol = self.config.get("index_symbol", "SPY")
+        self.market_manager.update(bar, index_symbol=index_symbol)
+
+        current_regime = self.market_manager.state.regime
 
         # Clear on regime change
         if self._last_regime and current_regime != self._last_regime:
@@ -772,10 +790,6 @@ class ExecutionEngine:
 
         # Update regime tracking
         self._last_regime = current_regime
-
-        # Update market state
-        index_symbol = self.config.get("index_symbol", "SPY")
-        self.market_manager.update(bar, index_symbol=index_symbol)
 
     def _update_session_vwap(self, state: SymbolState, bar: Any, bar_time: Any) -> None:
         """Update session VWAP tracking for intraday calculations."""
@@ -829,7 +843,7 @@ class ExecutionEngine:
                     s_bind(
                         strategy=sig.strategy,
                         correlation_id=getattr(sig, "correlation_id", "") or None,
-                        regime=getattr(sig.regime, "value", str(sig.regime)),
+                        regime_tags=sig.regime_tags,
                     )
                     if callable(s_bind)
                     else log
@@ -838,7 +852,7 @@ class ExecutionEngine:
                     "Signal generated",
                     symbol=sig.symbol,
                     strategy=sig.strategy,
-                    regime=getattr(sig.regime, "value", str(sig.regime)),
+                    regime_tags=sig.regime_tags,
                     correlation_id=getattr(sig, "correlation_id", "") or None,
                     signal=sig,
                     run_id=self.run_id,
@@ -903,7 +917,7 @@ class ExecutionEngine:
             symbol=signal.symbol,
             strategy=signal.strategy,
             correlation_id=signal.correlation_id,
-            regime=getattr(signal.regime, "value", str(signal.regime)),
+            regime=signal.regime_tags,
             run_id=self.run_id,
         )
 
@@ -957,7 +971,7 @@ class ExecutionEngine:
                 strategy=signal.strategy,
                 correlation_id=signal.correlation_id,
                 run_id=self.run_id,
-                regime=getattr(signal.regime, "value", str(signal.regime)),
+                regime=signal.regime_tags,
             )
             if callable(_bind)
             else self.logger
@@ -996,7 +1010,7 @@ class ExecutionEngine:
                     correlation_id=signal.correlation_id,
                     symbol=signal.symbol,
                     strategy=signal.strategy,
-                    regime=signal.regime.value,
+                    regime=str(signal.regime_tags),
                     time=signal.generated_at,
                     raw_side=signal.side.value,
                     raw_size=signal.size_hint,
@@ -1031,7 +1045,7 @@ class ExecutionEngine:
 
         pending[signal.correlation_id] = {
             "strategy": signal.strategy,
-            "regime": signal.regime.value,
+            "regime_tags": signal.regime_tags,
             "entry_price": signal.entry_price,
             "stop_price": signal.stop_price,
             "target_price": signal.target_price,
@@ -1377,8 +1391,8 @@ class ExecutionEngine:
             trade = DbTrade(
                 symbol=closed.symbol,
                 strategy=closed.strategy,
-                regime_at_entry=closed.regime_at_entry,
-                regime_at_exit=closed.regime_at_exit,
+                regime_at_entry=str(closed.regime_tags_at_entry),
+                regime_at_exit=str(closed.regime_tags_at_exit),
                 side=closed.side,
                 qty=closed.qty,
                 entry_time=closed.entry_time,
@@ -1938,7 +1952,7 @@ class ExecutionEngine:
             strategy=existing.strategy if existing else "unknown",
             entry_time=getattr(existing, "entry_time", None),
             correlation_id=getattr(existing, "correlation_id", "") if existing else "",
-            regime_at_entry=getattr(existing, "regime_at_entry", None),
+            regime_tags_at_entry=getattr(existing, "regime_tags_at_entry", {}),
         )
 
     def _handle_position_mismatch(self, broker_position_symbols: set[str]) -> None:
