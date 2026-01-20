@@ -59,6 +59,8 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
+        if not bars or bars[-1].time != bar.time:
+            bars.append(bar)
 
         # Prefer cached EMAs and volume SMA from engine; fall back to deterministic local computation.
         current_fast = symbol_state.indicators.get(
