@@ -38,14 +38,12 @@ class PaperLiveHarness:
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         # Logging setup
-        # We need to hack/configure StructuredLogger to use our file handler primarily
-        # But StructuredLogger writes to stdout by default.
-        # We will redirect stdout to a file or add a file handler?
-        # Let's add a FileHandler to the root logger or specific logger.
         self.log_file = self.run_dir / "execution.jsonl"
-        self._setup_logging()
+        fh = self._setup_logging()
 
         self.logger = StructuredLogger("PaperLiveTest", level="INFO")
+        # Ensure our logger also writes to the file
+        self.logger.logger.addHandler(fh)
         # Inject run_id into logger via adapter or just Context handling if we had it.
         # Since I modified logger to look for run_id in record, I can use an adapter or filter
         # Or I can just pass run_id in every log.
@@ -81,6 +79,7 @@ class PaperLiveHarness:
         fh = logging.FileHandler(self.log_file)
         fh.setFormatter(formatter)
         root.addHandler(fh)
+        return fh
 
     def _check_kill_switch(self):
         if KILL_SWITCH_FILE.exists():
