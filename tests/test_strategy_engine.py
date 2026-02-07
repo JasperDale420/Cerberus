@@ -2,8 +2,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.core.domain import MarketState, Regime
-from src.engine.strategy_engine import StrategyEngine, StrategyRouting
+from src.core.domain import (
+    LiquidityRegime,
+    MarketRegimeSnapshot,
+    MarketState,
+    Regime,
+    RiskRegime,
+    SessionRegime,
+    TrendRegime,
+    VolRegime,
+)
+from src.engine.strategy_engine import (
+    StrategyActivationPolicy,
+    StrategyEngine,
+    StrategyRouting,
+)
 
 
 @pytest.fixture
@@ -122,3 +135,69 @@ def test_on_bar_multiple_signals(engine, mock_strategy):
     signals = engine.on_bar("AAPL", MagicMock(), symbol_state, market_state)
     assert len(signals) == 2
     assert signals == ["SIG", "SIG"]
+
+
+@pytest.mark.unit
+def test_activation_policy_allows_strategy_when_snapshot_matches(
+    mock_logger, mock_strategy
+):
+    policy = StrategyActivationPolicy(
+        session=(SessionRegime.OPENING,),
+        trend=(TrendRegime.UP,),
+        vol=(VolRegime.NORMAL,),
+        liquidity=(LiquidityRegime.GOOD,),
+        risk=(RiskRegime.NEUTRAL,),
+        min_confidence=0.0,
+    )
+    routing = StrategyRouting(
+        strategies_by_regime={Regime.CHOP: []},
+        activation_policies={"strat1": policy},
+    )
+    engine = StrategyEngine({"strat1": mock_strategy}, routing, mock_logger)
+
+    symbol_state = MagicMock()
+    symbol_state.allowed_strategies = ["strat1"]
+
+    snap = MarketRegimeSnapshot(
+        time=MagicMock(),
+        index_symbol="SPY",
+        vol_symbol=None,
+        trend=TrendRegime.UP,
+        vol=VolRegime.NORMAL,
+        liquidity=LiquidityRegime.GOOD,
+        risk=RiskRegime.NEUTRAL,
+        session=SessionRegime.OPENING,
+        trend_strength=2.0,
+        confidence={
+            "trend": 1.0,
+            "vol": 1.0,
+            "liquidity": 1.0,
+            "risk": 1.0,
+            "session": 1.0,
+        },
+    )
+    market_state = MarketState(
+        time=MagicMock(), regime=Regime.CHOP, regime_snapshot=snap
+    )
+
+    assert engine._get_active_strategies(symbol_state, market_state) == ["strat1"]
+
+
+@pytest.mark.unit
+def test_activation_policy_falls_back_to_legacy_when_no_snapshot(
+    mock_logger, mock_strategy
+):
+    policy = StrategyActivationPolicy(trend=(TrendRegime.UP,))
+    routing = StrategyRouting(
+        strategies_by_regime={Regime.BULL: ["strat1"]},
+        activation_policies={"strat1": policy},
+    )
+    engine = StrategyEngine({"strat1": mock_strategy}, routing, mock_logger)
+
+    symbol_state = MagicMock()
+    symbol_state.allowed_strategies = ["strat1"]
+    market_state = MarketState(
+        time=MagicMock(), regime=Regime.BULL, regime_snapshot=None
+    )
+
+    assert engine._get_active_strategies(symbol_state, market_state) == ["strat1"]

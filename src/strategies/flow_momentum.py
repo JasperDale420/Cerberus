@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import FlowMomentumConfig
@@ -123,9 +123,7 @@ class FlowMomentumStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
 
-        # PRD: flow-confirmed momentum is intended for trending regimes
-        if market_state.regime not in (Regime.BULL, Regime.BEAR):
-            return None
+        # Regime gating removed - handled by strategy routing at engine level
 
         # Validate flow direction and agreement
         is_valid, flow_score, call_put_ratio = self._validate_flow_direction(

@@ -208,7 +208,12 @@ class RiskManager:
         # Get multiplier for each axis (default to 1.0 if not configured)
         vol_mult = multipliers.get("vol", {}).get(snapshot.vol.value, 1.0)
         liq_mult = multipliers.get("liquidity", {}).get(snapshot.liquidity.value, 1.0)
-        risk_mult = multipliers.get("risk", {}).get(snapshot.risk.value, 1.0)
+        # Risk axis is only meaningful if backed by a volatility proxy (e.g., VXX).
+        # If we don't have a configured vol symbol, keep risk multiplier neutral.
+        if getattr(snapshot, "vol_symbol", None):
+            risk_mult = multipliers.get("risk", {}).get(snapshot.risk.value, 1.0)
+        else:
+            risk_mult = 1.0
 
         combined = vol_mult * liq_mult * risk_mult
         return max(combined, 0.0)
@@ -225,19 +230,8 @@ class RiskManager:
         if strat_cfg.max_risk_per_trade is not None:
             effective_max_risk = min(effective_max_risk, strat_cfg.max_risk_per_trade)
 
-        # Regime override
-        if strat_cfg.regimes:
-            r_key = getattr(signal.regime, "value", str(signal.regime))
-            r_cfg = strat_cfg.regimes.get(r_key)
-            if r_cfg:
-                if not r_cfg.enabled:
-                    # Strategy logic should have filtered this, but safety check
-                    # We can't block easily here returning float, but risk=0 blocks it
-                    return 0.0
-                if r_cfg.max_risk_per_trade is not None:
-                    effective_max_risk = min(
-                        effective_max_risk, r_cfg.max_risk_per_trade
-                    )
+        # Legacy regime overrides removed - multi-axis regime gating handles this at engine level
+        # If specific regime-based risk limits are needed, configure via regime_risk_multipliers
 
         return effective_max_risk
 
@@ -429,14 +423,8 @@ class RiskManager:
             self._log_rejection(signal)
             return []
 
-        # Check regime-specific enable
-        if strat_cfg and strat_cfg.regimes:
-            r_key = getattr(signal.regime, "value", str(signal.regime))
-            r_cfg = strat_cfg.regimes.get(r_key)
-            if r_cfg and not r_cfg.enabled:
-                self.last_rejection_reason = "REGIME_DISABLED"
-                self._log_rejection(signal)
-                return []
+        # Legacy regime-specific enable check removed
+        # Multi-axis regime gating is handled at strategy engine level
 
         if not self._check_volume_gates(signal):
             self._log_rejection(signal)
@@ -478,7 +466,7 @@ class RiskManager:
             symbol=intent.symbol,
             strategy=intent.strategy,
             correlation_id=intent.correlation_id,
-            regime=getattr(signal.regime, "value", str(signal.regime)),
+            regime_tags=signal.regime_tags,
             intent=intent,
             daily_order_count=self.daily_order_count,
             daily_entry_count=self.daily_entry_count,
@@ -491,7 +479,7 @@ class RiskManager:
             symbol=signal.symbol,
             strategy=signal.strategy,
             correlation_id=getattr(signal, "correlation_id", "") or None,
-            regime=getattr(signal.regime, "value", str(signal.regime)),
+            regime_tags=signal.regime_tags,
             reason_code=self.last_rejection_reason,
         )
 
