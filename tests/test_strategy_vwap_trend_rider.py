@@ -123,37 +123,7 @@ def test_bullish_reclaim(vtr_strategy):
         meta={},
     )
 
-    # Run strategy on b_reclaim ?
-    # Wait, strategy needs history ON_BAR to calc prev close.
-    # on_bar logic:
-    # > Calc indicators on ALL bars (including 'bar' argument?)
-    # usually 'symbol_state.bars' *excludes* current bar in some engines, or includes?
-    # Our engine usually appends bar AFTER on_bar for some reason? Or before?
-    # Standard: symbol_state.bars is history. 'bar' is current.
-    # The strategy combines them: "bars = list(symbol_state.bars)" -> then dataframe.
-    # If we want 'bar' in dataframe, we must append it or pass it.
-
-    # In trend_pullback and others: "bars = list(symbol_state.bars)" ... implies history.
-    # BUT, if 'bar' is current, we need it in DF to get current indicators?
-    # Actually most strats rely on `symbol_state.bars` having sufficient data.
-    # If `bar` is not in `symbol_state.bars`, we must append it or `df` will be missing latest.
-
-    # Let's assume standard behavior: `symbol_state.bars` is history.
-    # Current `bar` needs to be considered.
-    # The strategies I wrote earlier use `df = pd.DataFrame([vars(b) for b in bars])`.
-    # This ONLY uses history. That might be a BUG if I don't append `bar`.
-    # Let's check `vwap_trend_rider.py` implementation...
-    # It calculates `current_fast = ema_fast.iloc[-1]`.
-    # If `bar` isn't in `bars`, then `[-1]` is the *previous* bar.
-    # THIS IS A BUG IN MY STRATEGIES if the Engine doesn't append before calling.
-    # Let's assume for test I need to append `bar` to `symbol_state.bars` OR strategy logic handles it.
-
-    # Adjusting test to append b_reclaim to bars used in state
-
-    symbol_state.bars.append(b_reclaim)
-
-    # Force VWAP calc on this DF to ensure we know where it is?
-    # Strategy calcs it.
+    # Note: Strategy should automatically handle appending b_reclaim if missing
 
     sig = vtr_strategy.on_bar("TEST", b_reclaim, symbol_state, market_state)
 
@@ -258,3 +228,103 @@ def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
     sig = strategy.on_bar("TEST", bars[-1], symbol_state, market_state)
     assert sig is not None
     assert sig.meta.get("vwap") == pytest.approx(101.5)
+
+@pytest.mark.unit
+def test_bug_missing_current_bar(vtr_strategy):
+    # Use fixed Eastern Time within trading window (9:45-15:30 ET)
+    # to ensure deterministic behavior
+    from zoneinfo import ZoneInfo
+    eastern = ZoneInfo("America/New_York")
+    base_time = datetime(2025, 1, 10, 11, 0, 0, tzinfo=eastern)
+
+    market_state = MarketState(
+        time=base_time,
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={"trend_score": 2.0},
+    )
+
+    # 1. Setup Bars
+    bars = []
+    start_dt = base_time - timedelta(minutes=100)
+
+    # Generate bars in Uptrend
+    # Price 100 -> 114
+    for i in range(15):
+        price = 100 + i
+        bars.append(
+            Bar(
+                "TEST",
+                start_dt + timedelta(minutes=i * 5),
+                price,
+                price + 0.5,
+                price - 0.5,
+                price,
+                1000,
+                vwap=price - 0.1 # VWAP slightly below price in uptrend
+            )
+        )
+
+    # Bar 15 (Index 14) is last one. Price = 114.
+
+    # Bar 15 (b_prev) - still uptrend, above VWAP.
+    # Let's make it explicit.
+    b_prev = bars[-1]
+    # Price 114, VWAP 113.9. Above.
+
+    # Bar 16 (b_below) - The DIP.
+    drop_price = 110
+    b_below = Bar(
+        "TEST",
+        start_dt + timedelta(minutes=15 * 5),
+        drop_price,
+        drop_price + 1,
+        drop_price - 1,
+        drop_price,
+        1000,
+        vwap=113.0 # VWAP didn't drop as fast. Price < VWAP.
+    )
+
+    # Bar 17 (b_reclaim) - The Reclaim.
+    reclaim_price = 115
+    high_vol = 1500
+    b_reclaim = Bar(
+        "TEST",
+        start_dt + timedelta(minutes=16 * 5),
+        reclaim_price,
+        reclaim_price + 1,
+        reclaim_price - 1,
+        reclaim_price,
+        high_vol,
+        vwap=113.5 # Price > VWAP.
+    )
+
+    # Construct state WITHOUT b_reclaim
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(bars + [b_below]),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={},
+    )
+
+    # Without the fix, this should FAIL to produce a signal
+    # Because it will compare b_prev (Above) with b_reclaim (Above)
+    # And miss the dip in b_below.
+
+    sig = vtr_strategy.on_bar("TEST", b_reclaim, symbol_state, market_state)
+
+    # We EXPECT a signal if the bug is fixed.
+    # We expect NO signal if the bug is present.
+
+    # Assert that we DO get a signal (asserting the fix)
+    assert sig is not None, "Signal should be generated if strategy handles missing current bar correctly"
+    assert sig.side.value == "buy"
+    assert sig.strategy == "vwap_trend_rider"
