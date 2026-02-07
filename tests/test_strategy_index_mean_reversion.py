@@ -25,12 +25,20 @@ class MockLogger(StructuredLogger):
         """Mock implementation."""
         pass
 
+    def debug(self, msg, **kwargs):
+        """Mock implementation."""
+        pass
+
+    def critical(self, msg, **kwargs):
+        """Mock implementation."""
+        pass
+
 
 @pytest.fixture
 def imr_strategy():
     config = {
         "bb_len": 5,  # Low len for test
-        "bb_std": 2.0,
+        "bb_std": 1.5,
         "stop_pct": 0.005,
     }
     return IndexMeanReversionStrategy(config, MockLogger())
@@ -87,12 +95,9 @@ def test_short_mean_reversion(imr_strategy):
         allowed_strategies=[],
         meta={},
     )
-    # Hack: Strategy logic builds dataframe from `bars`.
-    # It must access b_spike.
-    # We should append b_spike to bars for the history check to include it?
-    # Or rely on it being the "current" bar?
-    # Let's append to be safe for dataframe construction if required.
 
+    # Engine contract requires the current bar to be in symbol_state.bars
+    # before calling on_bar. The strategy calculates indicators from this history.
     symbol_state.bars.append(b_spike)
 
     sig = imr_strategy.on_bar("SPY", b_spike, symbol_state, market_state)
@@ -100,16 +105,7 @@ def test_short_mean_reversion(imr_strategy):
     # Expect: SELL
     # Price (105) should be > Upper Band.
 
-    if sig:
-        assert sig.side.value == "sell"
-        assert sig.strategy == "index_mean_reversion"
-        assert sig.target_price < sig.entry_price
-    else:
-        # If no signal, calculate bands manually to see why.
-        # Prices: 100, 100, 100, 100, 100, 105
-        # Mean: ~100.8
-        # Std: ~1.8
-        # Upper: 100.8 + 2(1.8) = 104.4
-        # 105 > 104.4? Yes.
-        # Should trigger.
-        pass
+    assert sig is not None, "Signal should be generated"
+    assert sig.side.value == "sell"
+    assert sig.strategy == "index_mean_reversion"
+    assert sig.target_price < sig.entry_price
