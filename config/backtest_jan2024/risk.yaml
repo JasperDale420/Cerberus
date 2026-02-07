@@ -1,0 +1,16 @@
+risk:
+  max_daily_loss: 500.0       # USD
+  max_risk_per_trade: 50.0    # USD (Entry - Stop)
+  max_open_risk: 200.0        # Total open risk
+  max_trades_per_day: 50000
+  max_orders_per_day: 50000   # Also need this for order limit
+  max_open_positions: 5       # Total concurrent positions
+  max_positions_per_strategy: 3   # Max concurrent positions per strategy
+  max_notional_per_order: 5000.0  # USD cap per order
+  max_notional_per_symbol: 5000.0 # USD cap per symbol exposure
+  time_in_force: "day"        # day, gtc, ioc, fok
+  risk_mode: "normal"         # normal, reduced, off
+  # Deterministic cost model (optional). Defaults to zero impact.
+  commission_per_share: 0.005   # USD per share
+  min_commission: 1.0         # USD minimum per fill leg
+  slippage_bps: 1.0           # bps (1 bp = 0.01%) applied to notional per fill leg

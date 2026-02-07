@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from src.core import time_utils
-from src.core.domain import Bar, MarketState, OrderSide, Regime, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 from src.strategies.base import BaseStrategy
@@ -87,9 +87,7 @@ class VWAPReversionStrategy(BaseStrategy):
         # P4 fix: Check cooldown before processing
         if not self._check_cooldown(symbol, bar.time):
             return None
-        # Only trade in CHOP regime
-        if market_state.regime != Regime.CHOP:
-            return None
+        # Regime gating removed - handled by strategy routing at engine level
         # 3) Require time window (to avoid gap-up extremes, etc.)
         if not self._in_time_window(bar.time):
             return None

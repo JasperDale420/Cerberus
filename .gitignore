@@ -18,3 +18,8 @@ coverage.xml
 artifacts/
 *.log
 *_output.txt
+
+# Offline bar data (too large for git)
+data/
+results/
+artifacts/

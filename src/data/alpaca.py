@@ -2,8 +2,13 @@ from datetime import datetime
 from typing import Any, Callable, Optional, Set
 
 from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.historical.screener import ScreenerClient
 from alpaca.data.live import StockDataStream
-from alpaca.data.requests import StockBarsRequest
+from alpaca.data.requests import (
+    MarketMoversRequest,
+    MostActivesRequest,
+    StockBarsRequest,
+)
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
 from alpaca.trading.stream import TradingStream
@@ -36,6 +41,7 @@ class AlpacaClient:
             self.historical_client = StockHistoricalDataClient(
                 self.api_key, self.secret_key
             )
+            self.screener_client = ScreenerClient(self.api_key, self.secret_key)
             self.trading_stream_client: Optional[TradingStream] = None
             # Stream is initialized on demand or separately as it blocks/runs in a loop
             self.stream_client: Optional[StockDataStream] = None
@@ -165,6 +171,63 @@ class AlpacaClient:
                 error=str(e),
             )
             raise
+
+    def get_most_actives(self, top: int = 20) -> list[str]:
+        """
+        Fetches most active stocks by volume using Alpaca Screener API.
+        Returns list of symbols sorted by volume.
+        """
+        try:
+            req = MostActivesRequest(top=top, by="volume")
+            resp = self.screener_client.get_most_actives(req)
+            symbols = []
+            for item in getattr(resp, "most_actives", []) or []:
+                sym = getattr(item, "symbol", None)
+                if sym:
+                    symbols.append(str(sym).upper())
+            self.logger.info(
+                "Fetched most active stocks",
+                count=len(symbols),
+                top=top,
+            )
+            return symbols
+        except Exception as e:
+            self.logger.error(
+                "Failed to fetch most actives",
+                error=str(e),
+            )
+            return []
+
+    def get_movers(self, top: int = 10) -> dict[str, list[str]]:
+        """
+        Fetches top gainers and losers using Alpaca Screener API.
+        Returns {"gainers": [...], "losers": [...]}.
+        """
+        try:
+            req = MarketMoversRequest(top=top)
+            resp = self.screener_client.get_market_movers(req)
+            gainers = []
+            losers = []
+            for item in getattr(resp, "gainers", []) or []:
+                sym = getattr(item, "symbol", None)
+                if sym:
+                    gainers.append(str(sym).upper())
+            for item in getattr(resp, "losers", []) or []:
+                sym = getattr(item, "symbol", None)
+                if sym:
+                    losers.append(str(sym).upper())
+            self.logger.info(
+                "Fetched market movers",
+                gainers_count=len(gainers),
+                losers_count=len(losers),
+            )
+            return {"gainers": gainers, "losers": losers}
+        except Exception as e:
+            self.logger.error(
+                "Failed to fetch movers",
+                error=str(e),
+            )
+            return {"gainers": [], "losers": []}
 
     def get_stream_client(self) -> StockDataStream:
         """

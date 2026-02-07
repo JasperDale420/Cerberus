@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
+  - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
+  - `Position.regime_at_entry` replaced with `Position.regime_tags_at_entry: Dict[str, str]`
+  - `ClosedTradeInfo` now stores `regime_tags_at_entry/exit` dicts with 5 axes
+  - Trades record full regime context: `{trend, vol, liquidity, risk, session}` at entry and exit
+  - Removed legacy regime config checks from `RiskManager`
+  - Updated `base.py._create_signal()` to populate regime_tags from `MarketState.regime_snapshot`
+- **VXX-Based Risk Axis**: Risk axis now properly uses VXX momentum (rising VXX = RISK_OFF, falling = RISK_ON)
+  - Added `update_vol(bar)` to `MarketContextService` and `MarketStateManager`
+  - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
+  - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
+
+### Added
+- **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
+  - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
+  - Volume-impact slippage: `slippage_mode` (fixed|volume_impact) with `slippage_impact_mult` for market impact simulation
+  - ATR-based spread: `spread_mode` (fixed|atr_based) for volatility-sensitive spread modeling
+  - Flow strategy gating: `disable_flow_strategies` config to skip flow-dependent strategies in backtest
+  - New `backtest:` config section in `config.yaml` with all realism settings
+  - Unit tests in `tests/unit/test_backtest_parity_unit.py` (13 new tests)
+- **Dynamic Ticker Discovery**: True live-parity stock discovery using Alpaca Screener API
+  - `AlpacaClient.get_most_actives()` - Fetch top volume stocks
+  - `AlpacaClient.get_movers()` - Fetch top gainers/losers
+  - `UniverseBuilder` screener dynamic source with configurable `most_actives_top_n` and `movers_top_n`
+  - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
+  - Setup guide: `docs/screener_snapshot_setup.md`
+
 ### Fixed
 - **H1 Logic Audit (New)**: Fix `VWAPReversionStrategy.on_bar()` unbound variable crash when price is within VWAP bands. Initialize `signal = None` before conditional blocks.
 - **H2 Logic Audit (New)**: Fix `FlowMomentumStrategy` threshold logic that allowed weak flow signals. Now properly rejects all signals below `min_flow_zscore`.
@@ -13,6 +41,7 @@ All notable changes to this project will be documented in this file.
 - **E2E Test Risk Values**: Update `test_prd_vertical_slice_success_metric.py` to use valid risk values within the new RiskConfig validation limits ($10k daily loss, not $1M).
 - **M1 Logic Audit (New)**: Add DEBUG-level logging to silent exception handlers in `PositionManager` for MAE/MFE tracking and max-hold check failures. Improves observability without breaking trading.
 - **M2 Logic Audit (New)**: Fix `RiskManager` positions_carried_forward tracking to capture count BEFORE session rollover reset for accurate logging.
+- **Momentum Strategy Target Fix**: Changed target calculation in `MomentumContinuationStrategy` from bar-range-based to risk-based (`abs(entry-stop) * risk_reward`) for consistent R:R ratio.
 - **M3 Logic Audit (New)**: Raise `Scanner` watchlist cap from 30 to 50 with documented PRD recommendation. Configurable limit with clearer warning message.
 - **M4 Logic Audit (New)**: Add robust date extraction in `ExecutionEngine._update_symbol_state()` with clock fallback when bar_time is unusable. Prevents stale feature cache on date parsing failures.
 - **M5 Logic Audit (New)**: Add `bar_duration_minutes` config parameter to `BaseStrategy` for accurate cooldown calculation across different timeframes. Defaults to 1.0 for backward compatibility.

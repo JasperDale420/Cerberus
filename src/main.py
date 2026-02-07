@@ -1,8 +1,10 @@
 import argparse
 import asyncio
+import json
 from collections.abc import Callable
 from datetime import date as date_type
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import cast
 
 from src.analysis.analytics import AnalyticsEngine
@@ -15,6 +17,45 @@ from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
+
+
+def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
+    """Capture daily screener snapshot for historical backtest replay."""
+    snapshot = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "most_actives": [],
+        "gainers": [],
+        "losers": [],
+    }
+
+    try:
+        snapshot["most_actives"] = client.get_most_actives(top=50)
+    except Exception as e:
+        logger.warning("Failed to fetch most actives", error=str(e))
+
+    try:
+        movers = client.get_movers(top=20)
+        snapshot["gainers"] = movers.get("gainers", [])
+        snapshot["losers"] = movers.get("losers", [])
+    except Exception as e:
+        logger.warning("Failed to fetch movers", error=str(e))
+
+    # Save to data/screener_snapshots/<date>.jsonl
+    output_dir = Path("data/screener_snapshots")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    output_path = output_dir / f"{date_str}.jsonl"
+
+    with open(output_path, "a") as f:
+        f.write(json.dumps(snapshot) + "\n")
+
+    logger.info(
+        "Screener snapshot captured",
+        most_actives=len(snapshot["most_actives"]),
+        gainers=len(snapshot["gainers"]),
+        losers=len(snapshot["losers"]),
+        path=str(output_path),
+    )
 
 
 async def async_main():
@@ -377,6 +418,11 @@ async def async_main():
                                 error=str(e),
                                 exc_info=True,
                             )
+                # Capture daily screener snapshot for historical backtest data
+                try:
+                    _capture_screener_snapshot(alpaca_client, logger)
+                except Exception as e:
+                    logger.warning("Screener snapshot capture failed", error=str(e))
                 logger.info("Market closed. Exiting daily session.")
                 break
 

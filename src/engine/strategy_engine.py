@@ -116,8 +116,14 @@ class StrategyEngine:
         Determines which strategies are active for the current symbol and market state.
 
         Uses activation policies when available, falls back to legacy regime routing.
+        When scanner_bypass is set, skips routing and returns all allowed strategies.
         """
         allowed = set(symbol_state.allowed_strategies)
+
+        # If scanner_bypass is set, skip routing and use all allowed strategies
+        if symbol_state.meta.get("scanner_bypass", False):
+            return sorted(list(allowed))
+
         active: List[str] = []
 
         for name in allowed:
