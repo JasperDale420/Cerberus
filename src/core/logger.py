@@ -1,88 +1,69 @@
-import json
+"""Structured logging using structlog with JSON output.
+
+Provides the StructuredLogger class used throughout Cerberus for dependency-injected,
+context-aware structured logging. All output is JSON-formatted for machine parsing.
+"""
+
 import logging
-import os
 import sys
-from datetime import datetime, timezone
 from typing import Any, Optional
 
-
-class JSONFormatter(logging.Formatter):
-    """
-    Formatter to output logs in JSON format.
-    """
-
-    def format(self, record: logging.LogRecord) -> str:
-        log_record = {
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=timezone.utc
-            ).isoformat(),
-            "level": ("WARN" if record.levelname == "WARNING" else record.levelname),
-            "module": record.module,
-            "message": record.getMessage(),
-            "file": record.filename,
-            "line": record.lineno,
-        }
-
-        # Flatten extra fields
-        if hasattr(record, "extra"):
-            if isinstance(record.extra, dict):
-                log_record.update(record.extra)
-            else:
-                # Fallback if extra is not a dict (though StructuredLogger ensures it is)
-                log_record["extra"] = record.extra
-
-        # Also check for 'run_id' directly in record if passed via LoggerAdapter or extra
-        if hasattr(record, "run_id"):
-            log_record["run_id"] = record.run_id
-
-        if record.exc_info:
-            log_record["exception"] = self.formatException(record.exc_info)
-
-        return json.dumps(log_record, default=str)
+import structlog
 
 
-def setup_logger(
-    name: str, level: str = "INFO", logging_config: Optional[dict[str, Any]] = None
-) -> logging.Logger:
-    """
-    Sets up a logger with JSON formatting.
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.propagate = False
+def _upcase_level(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Uppercase the log level to match standard conventions (INFO, ERROR, etc.)."""
+    if "level" in event_dict:
+        event_dict["level"] = event_dict["level"].upper()
+    return event_dict
 
-    # Prevent adding multiple handlers if logger is already configured
-    if not logger.handlers:
-        fmt = JSONFormatter()
 
-        console_level = (
-            str((logging_config or {}).get("console_level", level)).upper()
-            if logging_config
-            else level
-        )
-        console = logging.StreamHandler(sys.stdout)
-        console.setLevel(console_level)
-        console.setFormatter(fmt)
-        logger.addHandler(console)
+def _rename_event_to_message(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Rename structlog's 'event' key to 'message' for consistency with existing format."""
+    if "event" in event_dict:
+        event_dict["message"] = event_dict.pop("event")
+    return event_dict
 
-        if logging_config:
-            file_path = (logging_config or {}).get("file_path")
-            if file_path:
-                file_level = str(
-                    (logging_config or {}).get("file_level", level)
-                ).upper()
-                os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
-                fh = logging.FileHandler(file_path)
-                fh.setLevel(file_level)
-                fh.setFormatter(fmt)
-                logger.addHandler(fh)
 
-    return logger
+def _configure_structlog(level: str = "INFO") -> None:
+    """Configure structlog and stdlib logging for JSON output."""
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            _upcase_level,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            _rename_event_to_message,
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, level.upper(), logging.INFO)
+        ),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )
+    # Configure stdlib logging for third-party library output
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=getattr(logging, level.upper(), logging.INFO),
+    )
+
+
+_configured = False
 
 
 class StructuredLogger:
-    """
-    Wrapper around logging.Logger to enforce structured logging.
+    """Wrapper around structlog providing structured JSON logging.
+
+    Maintains the same interface used by all Cerberus modules — accepts keyword
+    arguments that are emitted as JSON fields alongside the log message.
     """
 
     def __init__(
@@ -91,43 +72,29 @@ class StructuredLogger:
         level: str = "INFO",
         logging_config: Optional[dict[str, Any]] = None,
     ):
-        self.logger = setup_logger(name, level, logging_config=logging_config)
+        global _configured
+        if not _configured:
+            _configure_structlog(level)
+            _configured = True
+        self._logger = structlog.get_logger(name)
 
-    def debug(self, msg: str, **kwargs):
-        self.logger.debug(msg, extra={"extra": kwargs} if kwargs else None)
+    def debug(self, msg: str, **kwargs: Any) -> None:
+        self._logger.debug(msg, **kwargs)
 
-    def info(self, msg: str, **kwargs):
-        self.logger.info(msg, extra={"extra": kwargs} if kwargs else None)
+    def info(self, msg: str, **kwargs: Any) -> None:
+        self._logger.info(msg, **kwargs)
 
-    def warning(self, msg: str, **kwargs):
-        self.logger.warning(msg, extra={"extra": kwargs} if kwargs else None)
+    def warning(self, msg: str, **kwargs: Any) -> None:
+        self._logger.warning(msg, **kwargs)
 
-    def error(self, msg: str, **kwargs):
-        self.logger.error(msg, extra={"extra": kwargs} if kwargs else None)
+    def error(self, msg: str, **kwargs: Any) -> None:
+        self._logger.error(msg, **kwargs)
 
-    def critical(self, msg: str, **kwargs):
-        self.logger.critical(msg, extra={"extra": kwargs} if kwargs else None)
+    def critical(self, msg: str, **kwargs: Any) -> None:
+        self._logger.critical(msg, **kwargs)
 
-    def bind(self, **fields: Any):
-        """
-        Returns a lightweight logger-like object that injects `fields` into every call.
-        """
-        parent = self
-
-        class _Bound:
-            def debug(self, msg: str, **kwargs: Any):
-                parent.debug(msg, **{**fields, **kwargs})
-
-            def info(self, msg: str, **kwargs: Any):
-                parent.info(msg, **{**fields, **kwargs})
-
-            def warning(self, msg: str, **kwargs: Any):
-                parent.warning(msg, **{**fields, **kwargs})
-
-            def error(self, msg: str, **kwargs: Any):
-                parent.error(msg, **{**fields, **kwargs})
-
-            def critical(self, msg: str, **kwargs: Any):
-                parent.critical(msg, **{**fields, **kwargs})
-
-        return _Bound()
+    def bind(self, **fields: Any) -> "StructuredLogger":
+        """Return a new StructuredLogger with bound context fields."""
+        bound = StructuredLogger.__new__(StructuredLogger)
+        bound._logger = self._logger.bind(**fields)
+        return bound

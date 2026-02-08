@@ -1,21 +1,54 @@
 services:
+  # Live Paper Trading - Runs during market hours
+  cerberus-trader:
+    build: .
+    image: empire/cerberus:latest
+    container_name: cerberus_trader
+    command: python -m src.main --mode paper
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./cerberus.db:/app/cerberus.db
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=America/New_York
+    healthcheck:
+      test: [ "CMD", "python", "-m", "src.main", "--healthcheck" ]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Scheduler for EOD jobs and weekly analysis (optional - runs 24/7)
   cerberus-scheduler:
     build: .
     image: empire/cerberus:latest
     container_name: cerberus_scheduler
     command: python -m src.main --scheduler
     restart: unless-stopped
-    # Load environment variables (API Keys, etc.)
+    profiles:
+      - scheduler # Only start with: docker compose --profile scheduler up
     env_file:
       - .env
     volumes:
-      # Persist logs
       - ./logs:/app/logs
-      # Mount config so changes apply to next daily run without rebuilding
       - ./config:/app/config:ro
-      # Persist the database
       - ./cerberus.db:/app/cerberus.db
+      - ./data:/app/data
     environment:
-      # key=value overrides if needed
       - PYTHONUNBUFFERED=1
       - TZ=America/New_York
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
