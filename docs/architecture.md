@@ -305,8 +305,15 @@ Every signal → order → fill → trade tracked via `correlation_id` for end-t
 ### 3. Best-Effort Observability
 Database writes and logging are best-effort. Trading decisions never blocked by DB failures (PRD 11.2, 11.4).
 
-### 4. Regime-Based Routing
-Strategies can be configured for specific market regimes (bull/bear/neutral/volatile). PRD 6.4.
+### 4. Multi-Axis Regime System
+Strategy activation determined by 5 orthogonal axes (not a single BULL/BEAR/CHOP label):
+- **Trend**: UP/DOWN/FLAT (SPY cumulative return)
+- **Volatility**: LOW/NORMAL/HIGH/SHOCK (realized vol z-score)
+- **Liquidity**: GOOD/THIN/STRESSED (dollar volume / range)
+- **Risk**: RISK_ON/NEUTRAL/RISK_OFF (VXX momentum)
+- **Session**: OPENING/MIDDAY/POWER_HOUR/CLOSE (time-of-day)
+
+Each strategy defines an `ActivationPolicy` specifying which axis states permit trading.
 
 ### 5. Source of Truth
 PositionManager is the single source of truth for all position state. Broker state reconciled periodically but local state takes precedence for decisions (PRD 6.7).

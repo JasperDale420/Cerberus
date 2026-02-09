@@ -20,6 +20,10 @@ class VWAPReversionStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Override to parse strategy-specific parameters."""
+        super()._set_params(config)
         cfg = VWAPReversionConfig(**config)
         self.band_sigma = cfg.effective_band_sigma
         self.risk_reward = cfg.risk_reward
@@ -144,6 +148,47 @@ class VWAPReversionStrategy(BaseStrategy):
         if not self._in_time_window(now):
             return None
 
+        # === QLIB-INSPIRED CONFIRMATIONS ===
+
+        # 1. RVOL check - low volume extremes often don't revert well
+        rvol = symbol_state.meta.get("rvol", 0.0) or 0.0
+        bar_volume = bar.volume if hasattr(bar, "volume") else 0
+        avg_volume = symbol_state.meta.get("avg_volume_20", 0) or 0
+        if avg_volume > 0 and bar_volume > 0:
+            current_rvol = bar_volume / avg_volume
+        else:
+            current_rvol = rvol
+
+        # Skip very low volume conditions (< 0.5x avg) - thin liquidity
+        if current_rvol > 0 and current_rvol < 0.5:
+            return None
+
+        # 2. Trend alignment - mean reversion works best in flat/choppy markets
+        regime_trend = None
+        if market_state.regime_snapshot:
+            regime_trend = (
+                market_state.regime_snapshot.trend.value
+                if market_state.regime_snapshot.trend
+                else None
+            )
+
+        # Skip strong trends - mean reversion is risky
+        # (Soft filter - still allow but log for analysis)
+        in_strong_trend = regime_trend in ("up", "down")
+
+        # Debug: Log periodically when price is within bands (no signal condition)
+        if lower <= current_price <= upper:
+            if len(symbol_state.bars) % 200 == 0:
+                self.logger.debug(
+                    "VWAPReversion: Price within bands",
+                    symbol=symbol,
+                    price=round(current_price, 2),
+                    vwap=round(float(vwap), 2),
+                    lower=round(float(lower), 2),
+                    upper=round(float(upper), 2),
+                    band_sigma=self.band_sigma,
+                )
+
         if current_price < lower:
             ok, confirm_meta = self._confirm_reversal(closes, OrderSide.BUY)
             if not ok:
@@ -170,6 +215,9 @@ class VWAPReversionStrategy(BaseStrategy):
                     "vwap": float(vwap),
                     "lower_band": float(lower),
                     "upper_band": float(upper),
+                    "rvol": current_rvol,
+                    "regime_trend": regime_trend,
+                    "in_trend": in_strong_trend,
                     **confirm_meta,
                 },
             )
@@ -199,6 +247,9 @@ class VWAPReversionStrategy(BaseStrategy):
                     "vwap": float(vwap),
                     "lower_band": float(lower),
                     "upper_band": float(upper),
+                    "rvol": current_rvol,
+                    "regime_trend": regime_trend,
+                    "in_trend": in_strong_trend,
                     **confirm_meta,
                 },
             )

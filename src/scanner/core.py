@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.config.models import PairTradingConfig
 from src.core.domain import (
     Regime,
     ScanResult,
@@ -12,6 +13,7 @@ from src.core.domain import (
 )
 from src.core.logger import StructuredLogger
 from src.data.pipeline import FeaturePipeline
+from src.scanner.pair_scanner import PairScanner
 from src.scanner.profiles import (
     FailedBreakoutProfile,
     FlowMomentumProfile,
@@ -23,6 +25,7 @@ from src.scanner.profiles import (
     VWAPReversionProfile,
     VWAPTrendRiderProfile,
 )
+from src.scanner.ranking import RankingEngine
 from src.scanner.universe import UniverseBuilder
 
 
@@ -60,6 +63,24 @@ class Scanner:
             strategy_profiles
             if strategy_profiles is not None
             else self._build_profiles_from_config()
+        )
+        self.ranking_engine = RankingEngine(logger)
+
+        # Initialize Pair trading config and engine
+        risk_cfg_dict = self.config.get("risk", {})
+        pair_cfg_dict = risk_cfg_dict.get("pair_trading", {})
+        self.pair_config = PairTradingConfig(**pair_cfg_dict)
+        self.pair_scanner = PairScanner(self.pair_config, logger)
+
+        # Phase 3 Optimization: Pair discovery cache
+        self._discovered_pairs: List[Dict] = []
+        self._last_pair_discovery_time: Optional[datetime] = None
+        self._discovery_interval = timedelta(
+            minutes=int(
+                self.config.get("scanner", {}).get(
+                    "pair_discovery_interval_minutes", 60
+                )
+            )
         )
 
         # P5: Feature cache with TTL + LRU eviction (H1 memory audit fix)
@@ -175,13 +196,26 @@ class Scanner:
         if survivors:
             await self._fetch_flow_for_survivors(survivors)
 
-        # Stage 4: Score Strategies
+        # Stage 4: Ranking Engine (Cross-Sectional Alpha)
+        if survivors:
+            self.ranking_engine.rank_symbols(list(survivors.values()))
+
+        # Stage 5: Score Strategies
         candidates = self._score_strategies(survivors, regime)
 
-        # Stage 5: Build Watchlist
+        # Stage 6: Build Watchlist
         watchlist = self._build_watchlist(
-            candidates, universe_size, features_returned, baseline_filtered
+            candidates,
+            universe_size,
+            features_returned,
+            baseline_filtered,
+            survivors,
+            regime,
         )
+
+        # Stage 7: Pair Trading (Dynamic Pair Selection)
+        if self.pair_config.enabled and survivors:
+            await self._scan_pairs(survivors, scan_time, watchlist)
 
         return ScanResult(generated_at=scan_time, regime=regime, watchlist=watchlist)
 
@@ -209,6 +243,16 @@ class Scanner:
         )
         raise ValueError("Scanner.scan requires scan_time")
 
+    def _calculate_fetch_window(self, as_of: datetime) -> Tuple[datetime, datetime]:
+        end = as_of
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+
+        # Expand lookback to 24 hours to ensure we have prior day data for indicators
+        # like prior_day_high, EMA20, and ATR.
+        start = end - timedelta(hours=24)
+        return start, end
+
     async def _fetch_technicals(
         self,
         symbols: List[str],
@@ -219,7 +263,8 @@ class Scanner:
         """
         P5: Fetch technicals with TTL caching to reduce API calls.
         """
-        now = datetime.now(timezone.utc)
+        # Backtest Fix: use scan_time for TTL check, not real-time now()
+        now = scan_time if scan_time.tzinfo else scan_time.replace(tzinfo=timezone.utc)
         ttl = timedelta(seconds=self._cache_ttl_seconds)
 
         # Check cache for valid entries
@@ -338,6 +383,8 @@ class Scanner:
         universe_size: int,
         features_returned: int,
         baseline_filtered: int,
+        survivors: Dict[str, SymbolFeatures],
+        regime: Regime,
     ) -> List[WatchlistSymbol]:
         scanner_cfg = (
             (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
@@ -356,16 +403,39 @@ class Scanner:
 
         # Group by symbol
         by_symbol: Dict[str, Tuple[float, List[str], Any]] = {}
+
+        # Add global strategies from routing for the current regime
+        routing_cfg = self.config.get("strategy_routing", {})
+        regime_key = regime.value if hasattr(regime, "value") else str(regime)
+        global_strategies = list(routing_cfg.get(regime_key, []))
+
         for c in pruned:
             if c.symbol not in by_symbol:
-                by_symbol[c.symbol] = (c.score, [c.strategy], c.features)
+                # Merge profile-selected strategies with global strategies
+                strats = list(set(global_strategies + [c.strategy]))
+                by_symbol[c.symbol] = (c.score, strats, c.features)
             else:
                 best, strategies, feats = by_symbol[c.symbol]
                 if c.strategy not in strategies:
                     strategies.append(c.strategy)
                 by_symbol[c.symbol] = (max(best, c.score), strategies, feats)
 
-        watchlist = [
+        # Handle case where some symbols passed baseline but had no profile matches
+        # We still want to add them if global strategies (like fusion_v1) are enabled
+        potential_symbols = set()
+        for c in candidates:
+            potential_symbols.add(c.symbol)
+
+        # If we have global strategies, ensure baseline-passing symbols are considered
+        # even if they didn't match a specific 'profile' (Stage 4)
+        if global_strategies:
+            for sym, feats in survivors.items():
+                if sym not in by_symbol:
+                    # Give them a baseline score (relative_strength or 0)
+                    score = float(getattr(feats, "relative_strength", 0.0))
+                    by_symbol[sym] = (score, list(global_strategies), feats)
+
+        watchlist_all = [
             WatchlistSymbol(
                 symbol=sym,
                 score=float(score),
@@ -374,7 +444,30 @@ class Scanner:
             )
             for sym, (score, strats, feats) in by_symbol.items()
         ]
-        watchlist.sort(key=lambda w: (-w.score, w.symbol))
+
+        # Apply Top-N Alpha Rank gating if enabled
+        alpha_rank_limit = int(scanner_cfg.get("alpha_rank_limit", 0))
+        if alpha_rank_limit > 0:
+            watchlist_all = [
+                w
+                for w in watchlist_all
+                if getattr(w.features, "alpha_rank", 999) <= alpha_rank_limit
+            ]
+            self.logger.info(
+                "Applied Alpha Rank gating",
+                limit=alpha_rank_limit,
+                remaining=len(watchlist_all),
+            )
+
+        # Sort by AlphaScore descending (falling back to strategy score)
+        watchlist = sorted(
+            watchlist_all,
+            key=lambda w: (
+                -getattr(w.features, "alpha_score", 0.0),
+                -w.score,
+                w.symbol,
+            ),
+        )
 
         # M3 fix: Configurable watchlist size with documented default
         # PRD recommends max 30 symbols for manageable tracking; larger values may impact performance
@@ -431,3 +524,132 @@ class Scanner:
         raise RuntimeError(
             "run_scan_sync cannot be called from an active event loop; use await scan()"
         )
+
+    async def _scan_pairs(
+        self,
+        survivors: Dict[str, SymbolFeatures],
+        scan_time: datetime,
+        watchlist: List[WatchlistSymbol],
+    ) -> None:
+        """
+        Dynamic Pair Selection and Spread Signal Generation.
+        Optimization: Finding pairs (cointegration) is slow, so we cache them
+        and only re-discover periodically. Z-scores are updated every scan.
+        """
+        import asyncio
+
+        import pandas as pd
+
+        from src.core.domain import OrderSide, WatchlistSymbol
+
+        # 1. Decide if we need a new discovery run
+        should_discover = (
+            self._last_pair_discovery_time is None
+            or (scan_time - self._last_pair_discovery_time) >= self._discovery_interval
+        )
+
+        if should_discover:
+            # 1a. Select top survivors to avoid O(N^2)
+            all_survivors = list(survivors.values())
+            # Sort by volume to ensure we pick liquid pairs
+            top_n_feat = sorted(
+                all_survivors, key=lambda x: x.avg_volume, reverse=True
+            )[:50]
+            symbols = [s.symbol for s in top_n_feat]
+
+            if len(symbols) >= 2:
+                self.logger.info(
+                    "Discovering cointegrated pairs", candidate_count=len(symbols)
+                )
+                lookback = self.pair_config.lookback_days
+                window_start = scan_time - timedelta(days=int(lookback * 1.5) + 10)
+
+                tasks = [
+                    self.feature_pipeline.fetcher.fetch_bars(
+                        sym, window_start, scan_time, timeframe="1Day"
+                    )
+                    for sym in symbols
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                price_data = {}
+                for sym, res in zip(symbols, results):
+                    if isinstance(res, Exception) or not res:
+                        continue
+                    bars, _ = res
+                    if not bars:
+                        continue
+
+                    s = pd.Series(
+                        [float(b.close) for b in bars], index=[b.time for b in bars]
+                    )
+                    if len(s) >= lookback:
+                        price_data[sym] = s
+
+                if len(price_data) >= 2:
+                    matrix = pd.DataFrame(price_data).ffill().dropna()
+                    if not matrix.empty and len(matrix.columns) >= 2:
+                        self._discovered_pairs = self.pair_scanner.find_pairs(matrix)
+                        self._last_pair_discovery_time = scan_time
+                        self.logger.info(
+                            "Pair discovery complete", found=len(self._discovered_pairs)
+                        )
+
+        # 2. Update Z-scores for all discovered pairs using current survivor prices
+        for pair in self._discovered_pairs:
+            s1, s2 = pair["symbol_a"], pair["symbol_b"]
+
+            # Both symbols must be in current survivors to generate a signal
+            if s1 not in survivors or s2 not in survivors:
+                continue
+
+            p1 = survivors[s1].price
+            p2 = survivors[s2].price
+
+            # spread = y - hedge * x - alpha
+            # pair_scanner ensures y is s1, x is s2
+            spread = p1 - (pair["hedge_ratio"] * p2) - pair.get("alpha", 0.0)
+            z_score = (spread - pair["spread_mean"]) / pair["spread_std"]
+
+            if abs(z_score) >= self.pair_config.entry_zscore:
+                side_1 = OrderSide.SELL if z_score > 0 else OrderSide.BUY
+                side_2 = OrderSide.BUY if z_score > 0 else OrderSide.SELL
+
+                pair_id = f"pair_{s1}_{s2}_{scan_time.strftime('%H%M%S')}"
+
+                metadata = [
+                    (s1, side_1, s2, pair["hedge_ratio"], z_score, p2),
+                    (s2, side_2, s1, 1.0, -z_score, p1),
+                ]
+
+                for sym, side, other, h_ratio, zs, other_price in metadata:
+                    feat = survivors[sym]
+                    feat.extra["pair_id"] = pair_id
+                    feat.extra["pair_side"] = side.value
+                    feat.extra["pair_partner"] = other
+                    feat.extra["pair_partner_price"] = other_price
+                    feat.extra["hedge_ratio"] = h_ratio
+                    feat.extra["spread_zscore"] = zs
+
+                    # Ensure in watchlist
+                    existing = next((w for w in watchlist if w.symbol == sym), None)
+                    if existing:
+                        if "pair_trading" not in existing.strategies:
+                            existing.strategies.append("pair_trading")
+                    else:
+                        watchlist.append(
+                            WatchlistSymbol(
+                                symbol=sym,
+                                score=abs(zs),
+                                strategies=["pair_trading"],
+                                features=feat,
+                            )
+                        )
+
+                self.logger.info(
+                    "Pair signal generated",
+                    pair_id=pair_id,
+                    z_score=z_score,
+                    sym_a=s1,
+                    sym_b=s2,
+                )

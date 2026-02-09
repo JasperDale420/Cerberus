@@ -20,6 +20,10 @@ class ORBStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Override to parse strategy-specific parameters."""
+        super()._set_params(config)
         cfg = ORBConfig(**config)
         self.orb_start = time_type(9, 30)
         self.orb_minutes = cfg.orb_minutes
@@ -135,8 +139,35 @@ class ORBStrategy(BaseStrategy):
         if not orb_high or not orb_low:
             return None
 
-        # Long Breakout - regime gating removed, handled by engine
+        # === QLIB-INSPIRED CONFIRMATIONS ===
+
+        # 1. VWAP Confirmation - price should be on correct side of VWAP
+        vwap = getattr(bar, "vwap", None) or symbol_state.meta.get("vwap")
+
+        # 2. Relative Volume (RVOL) - breakout bar should have elevated volume
+        rvol = symbol_state.meta.get("rvol", 0.0) or 0.0
+        bar_volume = bar.volume if hasattr(bar, "volume") else 0
+        avg_volume = symbol_state.meta.get("avg_volume_20", 0) or 0
+        if avg_volume > 0 and bar_volume > 0:
+            breakout_rvol = bar_volume / avg_volume
+        else:
+            breakout_rvol = rvol  # fallback to pre-computed RVOL
+
+        # Long Breakout
         if bar.close > orb_high:
+            # Confirmation 1: VWAP - price should be above VWAP for longs
+            if vwap and bar.close < vwap:
+                return None  # Weak long - price below VWAP
+
+            # Confirmation 2: RVOL - require elevated volume (> 1.0)
+            if breakout_rvol > 0 and breakout_rvol < 1.0:
+                return None  # Low volume breakout - likely false
+
+            # Confirmation 3: Gap alignment - for longs, prefer positive gaps
+            # (soft filter - still allow if gap < 0 but > -1%)
+            if gap_pct < -0.01:  # More than 1% down gap
+                return None  # Counter-trend long after large down gap
+
             # P2 fix: Apply ATR buffer to stop
             stop = orb_low
             if self.stop_buffer_atr_mult > 0:
@@ -154,11 +185,26 @@ class ORBStrategy(BaseStrategy):
                     "gap_pct": gap_pct,
                     "flow_zscore": flow_zscore,
                     "premarket_volume": premarket_volume,
+                    "vwap": vwap,
+                    "breakout_rvol": breakout_rvol,
                 },
             )
 
-        # Short Breakout - regime gating removed, handled by engine
+        # Short Breakout
         if bar.close < orb_low:
+            # Confirmation 1: VWAP - price should be below VWAP for shorts
+            if vwap and bar.close > vwap:
+                return None  # Weak short - price above VWAP
+
+            # Confirmation 2: RVOL - require elevated volume (> 1.0)
+            if breakout_rvol > 0 and breakout_rvol < 1.0:
+                return None  # Low volume breakout - likely false
+
+            # Confirmation 3: Gap alignment - for shorts, prefer negative gaps
+            # (soft filter - still allow if gap > 0 but < 1%)
+            if gap_pct > 0.01:  # More than 1% up gap
+                return None  # Counter-trend short after large up gap
+
             # P2 fix: Apply ATR buffer to stop
             stop = orb_high
             if self.stop_buffer_atr_mult > 0:
@@ -176,6 +222,8 @@ class ORBStrategy(BaseStrategy):
                     "gap_pct": gap_pct,
                     "flow_zscore": flow_zscore,
                     "premarket_volume": premarket_volume,
+                    "vwap": vwap,
+                    "breakout_rvol": breakout_rvol,
                 },
             )
 

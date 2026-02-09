@@ -53,14 +53,17 @@ class ConfigLoader:
         ]
 
         # Honor caller-provided config path/dir (e.g., CLI `--config`).
-        # - If a file path is provided, load the suite from its parent directory.
+        # - If a file path is provided, load the suite from its parent directory,
+        #   then load the specific file to override suite settings.
         # - If a directory path is provided, load the suite from that directory.
         # - Otherwise, fall back to `self.config_dir`.
         base_dir = self.config_dir
+        specific_file: Optional[Path] = None  # Track specific file for override loading
         if config_path_or_dir:
             base = Path(config_path_or_dir)
             if base.exists() and base.is_file():
                 base_dir = base.parent
+                specific_file = base  # Remember the specific file to load later
             elif base.exists() and base.is_dir():
                 base_dir = base
 
@@ -91,6 +94,22 @@ class ConfigLoader:
                         "Failed to load config file",
                         error_code=ErrorCode.CONFIG_LOAD_FAILED.value,
                         file=str(chosen),
+                        error=str(e),
+                    )
+                raise
+
+        # 1b. Load Specific Config File if one was explicitly provided
+        # This allows e.g. config_vwap_trend_rider.yaml to override config.yaml settings
+        if specific_file is not None and specific_file.exists():
+            try:
+                c = _load_file(specific_file)
+                self._deep_merge(config, c)
+            except Exception as e:
+                if self.logger is not None and hasattr(self.logger, "error"):
+                    self.logger.error(
+                        "Failed to load specific config file",
+                        error_code=ErrorCode.CONFIG_LOAD_FAILED.value,
+                        file=str(specific_file),
                         error=str(e),
                     )
                 raise

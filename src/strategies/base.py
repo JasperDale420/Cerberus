@@ -12,10 +12,23 @@ class BaseStrategy(ABC):
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         self.config = config
         self.logger = logger
+        self._set_params(config)
+        self.last_signal_time: Dict[str, datetime] = {}
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Internal helper to set parameters from config."""
         self.cooldown_bars = int(config.get("cooldown_bars", 5))
         # M5 fix: Configurable bar duration for accurate cooldown across timeframes
         self.bar_duration_minutes = float(config.get("bar_duration_minutes", 1.0))
-        self.last_signal_time: Dict[str, datetime] = {}
+
+    def update_params(self, config: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+        Preserves transient state (cooldowns, etc.) while applying new configuration.
+        """
+        self.config.update(config)
+        self._set_params(self.config)
+        self.logger.info("Strategy parameters updated", strategy=self.name)
 
     def _check_cooldown(self, symbol: str, current_time: Any) -> bool:
         """
@@ -31,6 +44,26 @@ class BaseStrategy(ABC):
         if current_time - last < delta:
             return False
         return True
+
+    def is_past_hard_stop(self, current_time: datetime) -> bool:
+        """
+        Returns True if the current time is at or past the configured hard stop.
+        """
+        hard_stop = self.config.get("hard_stop_time")
+        if not hard_stop:
+            return False
+
+        try:
+            stop_h, stop_m = map(int, hard_stop.split(":"))
+            # Compare only hour and minute
+            if current_time.hour > stop_h:
+                return True
+            if current_time.hour == stop_h and current_time.minute >= stop_m:
+                return True
+        except (ValueError, AttributeError):
+            pass
+
+        return False
 
     def _require_min_bars(
         self, symbol_state: SymbolState, min_count: int, log: bool = True

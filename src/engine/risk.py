@@ -221,7 +221,7 @@ class RiskManager:
     def _apply_strategy_limits(
         self,
         effective_max_risk: float,
-        signal: Signal,
+        _signal: Signal,
         strat_cfg: Optional[StrategyConfig],
     ) -> float:
         if strat_cfg is None:
@@ -263,7 +263,17 @@ class RiskManager:
         account_equity: float,
         strat_cfg: Optional[StrategyConfig],
         market_state: Optional[MarketState] = None,
+        symbol_state: Optional[SymbolState] = None,
     ) -> int:
+        # Check if this is a pair trade leg
+        if signal.meta.get("pair_trade"):
+            effective_max_risk = self.max_risk_per_trade
+            effective_max_risk = self._apply_risk_mode(effective_max_risk)
+            effective_max_risk = self._apply_strategy_limits(
+                effective_max_risk, signal, strat_cfg
+            )
+            return self._calculate_pair_qty(signal, account_equity)
+
         risk_per_share = abs(signal.entry_price - signal.stop_price)
         if risk_per_share <= 0:
             self.last_rejection_reason = "INVALID_STOP"
@@ -274,6 +284,17 @@ class RiskManager:
         effective_max_risk = self._apply_strategy_limits(
             effective_max_risk, signal, strat_cfg
         )
+
+        # Apply Tournament-style Rank-based scaling
+        rank_mult = self._get_alpha_rank_multiplier(signal, symbol_state)
+        if abs(rank_mult - 1.0) > 1e-6:
+            effective_max_risk *= rank_mult
+            self.logger.debug(
+                "Risk scaled by alpha rank",
+                symbol=signal.symbol,
+                rank_mult=rank_mult,
+                scaled_risk=effective_max_risk,
+            )
 
         if effective_max_risk <= 0:
             self.last_rejection_reason = "ZERO_RISK_LIMIT"
@@ -335,6 +356,83 @@ class RiskManager:
                     )
 
         return qty
+
+    def _calculate_pair_qty(self, signal: Signal, account_equity: float) -> int:
+        """
+        Calculates quantity for a pair trade leg.
+        Ensures legs are balanced based on the hedge ratio.
+        """
+        pair_info = signal.meta.get("pair_trade")
+        if not pair_info:
+            return 0
+
+        hedge_ratio = pair_info.get("hedge_ratio", 1.0)
+
+        # Target Notional for reference leg = 1% of equity.
+        # StatArb usually targets notional neutrality.
+        target_notional_ref = account_equity * 0.01
+
+        if abs(hedge_ratio - 1.0) < 1e-6:
+            # Reference leg
+            qty = int(target_notional_ref / signal.entry_price)
+        else:
+            # Dependent leg (s1 = h * s2)
+            partner_price = pair_info.get("partner_price", signal.entry_price)
+            qty_ref = int(target_notional_ref / partner_price)
+            qty = int(abs(hedge_ratio) * qty_ref)
+
+        self.logger.info(
+            "Pair position sized",
+            symbol=signal.symbol,
+            qty=qty,
+            hedge_ratio=hedge_ratio,
+            pair_id=pair_info.get("pair_id"),
+        )
+        return max(1, qty)
+
+    def _get_alpha_rank_multiplier(
+        self, signal: Signal, symbol_state: Optional[SymbolState] = None
+    ) -> float:
+        """
+        Fetch alpha_rank from signal or symbol metadata and return corresponding multiplier.
+        """
+        rank = signal.meta.get("alpha_rank")
+        if rank is None and symbol_state is not None:
+            rank = symbol_state.meta.get("alpha_rank")
+
+        if rank is None:
+            return 1.0
+
+        try:
+            rank_int = int(rank)
+        except (ValueError, TypeError):
+            return 1.0
+
+        if rank_int <= 0:
+            return 1.0
+
+        multipliers = self.risk_cfg.alpha_rank_multipliers
+        if not multipliers:
+            return 1.0
+
+        # Find the best matching rank (e.g. if rank is 4, and we have {3: 1.1, 5: 1.0}, use 5)
+        # We search for the smallest rank in config that is >= our rank
+        sorted_ranks = sorted(multipliers.keys())
+        target_mult = 1.0
+
+        # Exact match or find the next tier
+        if rank_int in multipliers:
+            return float(multipliers[rank_int])
+
+        for r in sorted_ranks:
+            if r >= rank_int:
+                target_mult = float(multipliers[r])
+                break
+        else:
+            # If rank is higher than all tiers (e.g. rank 20, max tier 10), use the last tier
+            target_mult = float(multipliers[sorted_ranks[-1]])
+
+        return target_mult
 
     def _check_notional_limits(
         self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0
@@ -439,7 +537,9 @@ class RiskManager:
             return []
 
         # Calculate Qty
-        qty = self._calculate_qty(signal, account_equity, strat_cfg, market_state)
+        qty = self._calculate_qty(
+            signal, account_equity, strat_cfg, market_state, symbol_state
+        )
         if qty <= 0:
             self._log_rejection(signal)
             return []

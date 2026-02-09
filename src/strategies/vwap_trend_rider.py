@@ -19,6 +19,10 @@ class VWAPTrendRiderStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Override to parse strategy-specific parameters."""
+        super()._set_params(config)
         cfg = VWAPTrendRiderConfig(**config)
         self.ema_fast_len = cfg.ema_fast
         self.ema_slow_len = cfg.ema_slow
@@ -54,6 +58,14 @@ class VWAPTrendRiderStrategy(BaseStrategy):
         except Exception:
             trend_score_f = 0.0
         if trend_score_f < self.min_trend_score:
+            # Debug: Log when trend score is too low
+            if len(symbol_state.bars) % 200 == 0:
+                self.logger.debug(
+                    "VWAPTrendRider: Trend score too low",
+                    symbol=symbol,
+                    trend_score=trend_score_f,
+                    min_required=self.min_trend_score,
+                )
             return None
 
         bars = list(symbol_state.bars)
@@ -92,6 +104,14 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             current_vwap_f = None
             prev_vwap_f = None
         if current_vwap_f is None or prev_vwap_f is None:
+            # Debug: Log when VWAP is missing (likely cause of no signals)
+            if len(symbol_state.bars) % 200 == 0:
+                self.logger.debug(
+                    "VWAPTrendRider: VWAP missing from bar",
+                    symbol=symbol,
+                    has_current_vwap=current_vwap is not None,
+                    has_prev_vwap=prev_vwap is not None,
+                )
             return None
 
         current_vol = float(getattr(bar, "volume", 0.0) or 0.0)

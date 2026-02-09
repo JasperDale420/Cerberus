@@ -105,6 +105,23 @@ class OrderExecutor:
             lambda: datetime.now(timezone.utc)
         )
 
+    def configure_advanced_exits(self, risk_cfg: dict) -> None:
+        """
+        Configure advanced exits mode from risk config.
+
+        When advanced_exits.enabled is True, disables broker_managed_exits
+        so PositionManager handles trailing stops and partial exits.
+        """
+        adv_exits = risk_cfg.get("advanced_exits", {})
+        if isinstance(adv_exits, dict) and adv_exits.get("enabled", False):
+            self.broker_managed_exits = False
+            self.logger.info(
+                "Advanced exits enabled, broker_managed_exits disabled",
+                trailing_stop=adv_exits.get("trailing_stop", {}).get("enabled", False),
+                partial_exits=adv_exits.get("partial_exits", {}).get("enabled", False),
+                regime_aware_stops=adv_exits.get("regime_aware_stops", True),
+            )
+
     def submit(self, intent: OrderIntent):
         """
         Submits an order to Alpaca based on OrderIntent.
@@ -136,16 +153,15 @@ class OrderExecutor:
             side = OrderSide.BUY if intent.side.value == "buy" else OrderSide.SELL
             time_in_force = _map_time_in_force(getattr(intent, "time_in_force", "day"))
 
-            # Construct Bracket Order if SL/TP are present
-            # Alpaca API supports bracket orders via take_profit and stop_loss params
-
+            # Construct Bracket Order if SL/TP are present AND broker manages exits
+            # When advanced_exits is enabled, we skip bracket orders and let PositionManager handle exits
             tp_req = None
-            if intent.take_profit:
-                tp_req = TakeProfitRequest(limit_price=intent.take_profit)
-
             sl_req = None
-            if intent.stop_loss:
-                sl_req = StopLossRequest(stop_price=intent.stop_loss)
+            if self.broker_managed_exits:
+                if intent.take_profit:
+                    tp_req = TakeProfitRequest(limit_price=intent.take_profit)
+                if intent.stop_loss:
+                    sl_req = StopLossRequest(stop_price=intent.stop_loss)
 
             req: MarketOrderRequest | LimitOrderRequest
             if intent.order_type.value == "market":

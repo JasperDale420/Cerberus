@@ -46,6 +46,15 @@ class MarketContextService:
         "close": (16, 0, 20, 0),  # 16:00-20:00
     }
 
+    # Liquidity multipliers per session (relative to RTH midday)
+    SESSION_LIQUIDITY_MULTIPLIERS = {
+        "premarket": 0.1,  # 10% of RTH volume
+        "opening": 1.0,
+        "midday": 1.0,
+        "power_hour": 1.2,
+        "close": 0.1,
+    }
+
     def __init__(
         self,
         window: int = 60,
@@ -280,12 +289,28 @@ class MarketContextService:
         return self._VolRegime.NORMAL
 
     def _classify_liquidity(self, bar: Bar) -> "LiquidityRegime":
-        """GOOD/THIN/STRESSED based on dollar volume / range."""
+        """GOOD/THIN/STRESSED based on dollar volume / range, adjusted for session."""
         score = self._compute_liquidity_score(bar)
-        # Simple thresholds (can be tuned)
-        if score < 1e6:
+
+        # Compute time in ET for session lookup
+        from datetime import timezone as tz_module
+
+        bar_time = bar.time
+        if bar_time.tzinfo is None:
+            bar_time = bar_time.replace(tzinfo=tz_module.utc)
+        local_time = bar_time.astimezone(self.tz)
+        session = self._classify_session(local_time)
+
+        # Get session multiplier
+        multiplier = self.SESSION_LIQUIDITY_MULTIPLIERS.get(session.value, 1.0)
+
+        # Adjusted thresholds
+        stressed_thresh = 1e6 * multiplier
+        thin_thresh = 1e7 * multiplier
+
+        if score < stressed_thresh:
             return self._LiquidityRegime.STRESSED
-        if score < 1e7:
+        if score < thin_thresh:
             return self._LiquidityRegime.THIN
         return self._LiquidityRegime.GOOD
 

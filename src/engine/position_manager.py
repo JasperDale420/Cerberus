@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+
+import structlog
 
 from src.core.domain import (
     MarketState,
@@ -17,8 +18,7 @@ from src.core.domain import (
 )
 from src.core.type_utils import safe_float, safe_int
 
-# M1 fix: Module-level logger for debug visibility without breaking trading
-_logger = logging.getLogger(__name__)
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -299,6 +299,28 @@ class PositionManager:
             symbol_state, fill_data["correlation_id"], fill
         )
 
+        # Extract advanced exit config from entry context
+        trailing_enabled = (
+            bool(entry_ctx.get("trailing_stop_enabled"))
+            if isinstance(entry_ctx, dict)
+            else False
+        )
+        trailing_pct = (
+            safe_float(entry_ctx.get("trailing_stop_pct"))
+            if isinstance(entry_ctx, dict)
+            else None
+        )
+        initial_stop = (
+            safe_float(entry_ctx.get("stop_price"))
+            if isinstance(entry_ctx, dict)
+            else None
+        )
+        regime_multiplier = (
+            safe_float(entry_ctx.get("regime_stop_multiplier"))
+            if isinstance(entry_ctx, dict)
+            else 1.0
+        ) or 1.0
+
         symbol_state.position = Position(
             symbol=fill_data["symbol"],
             side=side,
@@ -319,11 +341,7 @@ class PositionManager:
                 if isinstance(entry_ctx, dict)
                 else None
             ),
-            stop_price=(
-                safe_float(entry_ctx.get("stop_price"))
-                if isinstance(entry_ctx, dict)
-                else None
-            ),
+            stop_price=initial_stop,
             target_price=(
                 safe_float(entry_ctx.get("target_price"))
                 if isinstance(entry_ctx, dict)
@@ -341,6 +359,14 @@ class PositionManager:
                 if isinstance(entry_ctx, dict)
                 else None
             ),
+            # Advanced exit fields
+            trailing_stop_enabled=trailing_enabled,
+            trailing_stop_pct=trailing_pct,
+            trailing_high_water=None,
+            initial_stop_price=initial_stop,
+            initial_qty=fill_data["qty"],
+            partial_exits_taken=0,
+            regime_stop_multiplier=regime_multiplier,
         )
 
         self._apply_costs_to_position(
@@ -374,6 +400,16 @@ class PositionManager:
         if total_qty > 0:
             pos.avg_price = total_cost / total_qty
             pos.qty = total_qty
+
+            # Fix: Update initial_qty and open_risk for partial exit calculations
+            # When position increases, track the new total as initial_qty
+            # and scale open_risk proportionally
+            if pos.initial_qty > 0 and pos.open_risk is not None:
+                # Scale open_risk proportionally to new position size
+                scale_factor = total_qty / pos.initial_qty
+                pos.open_risk = pos.open_risk * scale_factor
+            pos.initial_qty = total_qty
+
         try:
             self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
         except Exception:
@@ -471,12 +507,9 @@ class PositionManager:
         # P2.1 fix: Log when fill qty exceeds position qty (may indicate order mgmt issue)
         if fill_data["qty"] > pos.qty:
             _logger.debug(
-                "Fill qty exceeds position qty; excess ignored: "
-                "symbol=%s fill_qty=%s position_qty=%s excess=%s",
-                pos.symbol,
-                fill_data["qty"],
-                pos.qty,
-                fill_data["qty"] - pos.qty,
+                f"Fill qty exceeds position qty; excess ignored: "
+                f"symbol={pos.symbol} fill_qty={fill_data['qty']} "
+                f"position_qty={pos.qty} excess={fill_data['qty'] - pos.qty}",
             )
 
         pnl = self._calculate_pnl(pos, fill_data["price"], close_qty)
@@ -489,6 +522,8 @@ class PositionManager:
         pos.last_updated = datetime.now(timezone.utc)
 
         if pos.qty > 0:
+            # Track that we took a partial exit
+            pos.partial_exits_taken += 1
             try:
                 self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
             except Exception:
@@ -558,6 +593,14 @@ class PositionManager:
         if broker_managed_exits:
             return ExitDecision(intent=None, reason=None)
 
+        # Update trailing stop (must happen before exit checks)
+        self._update_trailing_stop(pos, last_bar)
+
+        # Check partial exit first (takes priority over full exits)
+        partial_decision = self._check_partial_exit(pos, last_bar)
+        if partial_decision and partial_decision.intent is not None:
+            return partial_decision
+
         # Check stop/target exit
         return self._check_stop_target_exit(pos, last_bar)
 
@@ -585,6 +628,129 @@ class PositionManager:
             pos.mfe_r = max(pos.mfe_r, favorable_r)
         except Exception:
             _logger.debug("MAE/MFE update failed", exc_info=True)
+
+    def _update_trailing_stop(self, pos: Position, last_bar: Any) -> None:
+        """
+        Update trailing stop based on high water mark.
+
+        Only ratchets stop in favorable direction (up for longs, down for shorts).
+        Requires trailing_stop_enabled and trailing_stop_pct to be set on position.
+        """
+        if not pos.trailing_stop_enabled or pos.trailing_stop_pct is None:
+            return
+
+        try:
+            if pos.side == Side.LONG:
+                # Track highest price seen
+                current_high = float(last_bar.high)
+                if pos.trailing_high_water is None:
+                    pos.trailing_high_water = max(pos.avg_price, current_high)
+                elif current_high > pos.trailing_high_water:
+                    pos.trailing_high_water = current_high
+
+                # Calculate new stop: trail by X% below high water
+                new_stop = pos.trailing_high_water * (1.0 - pos.trailing_stop_pct)
+
+                # Only ratchet stop UP (never down)
+                if pos.stop_price is None or new_stop > pos.stop_price:
+                    _logger.debug(
+                        "Trailing stop updated (LONG)",
+                        symbol=pos.symbol,
+                        old_stop=pos.stop_price,
+                        new_stop=new_stop,
+                        high_water=pos.trailing_high_water,
+                    )
+                    pos.stop_price = new_stop
+
+            else:  # SHORT
+                # Track lowest price seen
+                current_low = float(last_bar.low)
+                if pos.trailing_high_water is None:
+                    pos.trailing_high_water = min(pos.avg_price, current_low)
+                elif current_low < pos.trailing_high_water:
+                    pos.trailing_high_water = current_low
+
+                # Calculate new stop: trail by X% above low water
+                new_stop = pos.trailing_high_water * (1.0 + pos.trailing_stop_pct)
+
+                # Only ratchet stop DOWN (never up)
+                if pos.stop_price is None or new_stop < pos.stop_price:
+                    _logger.debug(
+                        "Trailing stop updated (SHORT)",
+                        symbol=pos.symbol,
+                        old_stop=pos.stop_price,
+                        new_stop=new_stop,
+                        low_water=pos.trailing_high_water,
+                    )
+                    pos.stop_price = new_stop
+
+        except Exception:
+            _logger.debug("Trailing stop update failed", exc_info=True)
+
+    def _check_partial_exit(
+        self, pos: Position, last_bar: Any
+    ) -> Optional[ExitDecision]:
+        """
+        Check if partial profit target was hit.
+
+        Exits a portion of the position (e.g., 50%) when reaching 1R profit.
+        Tracks partial_exits_taken to avoid multiple partial exits.
+        """
+        # Skip if already took partial exit
+        if pos.partial_exits_taken >= 1:
+            return None
+
+        # Need initial_qty and open_risk to calculate R multiple
+        if pos.initial_qty <= 0 or pos.open_risk is None or pos.open_risk <= 0:
+            return None
+
+        try:
+            risk_per_share = float(pos.open_risk) / float(pos.initial_qty)
+            if risk_per_share <= 0:
+                return None
+
+            # Calculate current profit in R multiples
+            if pos.side == Side.LONG:
+                # Use bar high for most favorable check
+                best_price = float(last_bar.high)
+                profit_r = (best_price - pos.avg_price) / risk_per_share
+            else:
+                # Use bar low for most favorable check
+                best_price = float(last_bar.low)
+                profit_r = (pos.avg_price - best_price) / risk_per_share
+
+            # Check if 1R target reached (configurable in future)
+            if profit_r >= 1.0:
+                partial_qty = math.floor(pos.qty * 0.5)  # Exit 50%
+                if partial_qty > 0:
+                    return self._create_partial_exit_intent(
+                        pos, partial_qty, "PARTIAL_1R"
+                    )
+
+        except Exception:
+            _logger.debug("Partial exit check failed", exc_info=True)
+
+        return None
+
+    def _create_partial_exit_intent(
+        self, pos: Position, exit_qty: float, reason: str
+    ) -> ExitDecision:
+        """Create an exit intent for partial position exit."""
+        exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
+        intent = OrderIntent(
+            symbol=pos.symbol,
+            side=exit_side,
+            qty=exit_qty,
+            order_type=OrderType.MARKET,
+            limit_price=None,
+            time_in_force="day",
+            correlation_id=pos.correlation_id,
+            strategy=pos.strategy,
+            stop_loss=None,
+            take_profit=None,
+            meta={"exit_reason": reason, "partial_exit": True},
+        )
+        return ExitDecision(intent=intent, reason=reason)
 
     def _check_max_hold_exit(
         self, pos: Position, market_state: MarketState

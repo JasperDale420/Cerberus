@@ -22,6 +22,10 @@ class FlowMomentumStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Override to parse strategy-specific parameters."""
+        super()._set_params(config)
         cfg = FlowMomentumConfig(**config)
         self.min_flow_zscore = cfg.min_flow_zscore
         self.vol_mult = cfg.vol_mult

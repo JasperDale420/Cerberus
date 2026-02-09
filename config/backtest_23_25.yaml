@@ -1,0 +1,170 @@
+# 2023-2025 Comprehensive Backtest Config
+# Includes Pair Trading, Alpha Ranking Tournament, and Advanced Exits
+
+database_url: "sqlite:///backtest_23_25.db"
+timezone: "US/Eastern"
+index_symbol: "SPY"
+log_level: "INFO"
+auto_eod_agent: false
+initial_cash: 100000.0
+
+# Multi-Axis Regime detection
+regime:
+  vol_symbol: "VXX"
+  window: 60
+  min_bars: 20
+  vol_baseline_window: 120
+  smooth_k: 5
+
+# Strategy Routing
+strategy_routing:
+  bull: [orb, trend_pullback, vwap_trend_rider, flow_momentum, pair_trading]
+  bear: [orb, trend_pullback, vwap_trend_rider, flow_momentum, pair_trading]
+  chop: [vwap_reversion, failed_breakout, index_mean_reversion, gap_fill, pair_trading]
+
+# Strategy Configurations
+strategies:
+  vwap_reversion:
+    enabled: true
+    band_sigma: 2.0
+  orb:
+    enabled: true
+    orb_minutes: 15
+    risk_reward: 2.0
+  index_mean_reversion:
+    enabled: true
+    bb_len: 20
+    bb_std: 2.0
+  flow_momentum:
+    enabled: true
+    min_flow_zscore: 2.5
+  gap_fill:
+    enabled: true
+    min_gap: 0.015
+  trend_pullback:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+  failed_breakout:
+    enabled: true
+  vwap_trend_rider:
+    enabled: true
+    min_trend_score: 1.5
+  pair_trading:
+    enabled: true
+    entry_zscore: 2.0
+    exit_zscore: 0.0
+
+# Risk & Tournament Settings
+risk:
+  max_daily_loss: 10000.0
+  max_risk_per_trade: 1000.0
+  max_open_risk: 10000.0
+  max_trades_per_day: 20
+  max_open_positions: 50
+  max_positions_per_strategy: 25
+  max_notional_per_order: 50000.0
+  max_notional_per_symbol: 50000.0
+  time_in_force: "day"
+  risk_mode: "normal"
+  slippage_bps: 2.0
+  
+  advanced_exits:
+    enabled: true
+    trailing_stop:
+      enabled: true
+      trail_pct: 0.02
+      min_profit_to_activate: 0.005
+    partial_exits:
+      enabled: false
+    regime_aware_stops: true
+  
+  # Alpha Ranking Tournament Gating
+  alpha_rank_multipliers:
+    1: 1.5
+    2: 1.25
+    3: 1.1
+    5: 1.0
+    10: 0.75
+
+  # Pair Trading specific risk
+  pair_trading:
+    enabled: true
+    min_correlation: 0.8
+    max_eg_pvalue: 0.05
+    lookback_days: 120
+    max_active_pairs: 10
+
+# Backtest Realism
+backtest:
+  disable_flow_strategies: false
+  partial_fill_mode: "none"
+  slippage_mode: "fixed"
+  spread_mode: "fixed"
+  daily_equity_reset: false
+  rth_only: true
+  force_flat_at_1600: true
+
+# Scanner Replay (Tournament Gating)
+scanner:
+  enabled: true
+  interval_minutes: 5
+  max_watchlist_size: 50
+  top_k_per_strategy: 10
+  min_price: 5.0
+  max_price: 500.0
+  min_volume: 100000
+
+# Universe - Top 50 symbols for speed
+universe:
+  symbols:
+    - SPY
+    - QQQ
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - NVDA
+    - META
+    - TSLA
+    - AMD
+    - AVGO
+    - NFLX
+    - JPM
+    - UNH
+    - V
+    - MA
+    - COST
+    - HD
+    - PG
+    - JNJ
+    - ABBV
+    - BAC
+    - CRM
+    - ADBE
+    - XOM
+    - CVX
+    - PEP
+    - KO
+    - TMO
+    - AVGO
+    - WMT
+    - MCD
+    - CSCO
+    - ACCD
+    - AMD
+    - MU
+    - INTC
+    - QCOM
+    - TXN
+    - AMAT
+    - LRCX
+    - ADI
+    - NXPI
+    - MCHP
+    - ON
+    - MPWR
+    - GFS
+    - STM
+    - IFNNY
+    - VXX

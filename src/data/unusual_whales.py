@@ -123,3 +123,33 @@ class UnusualWhalesClient:
                 error=str(e),
             )
             return []
+
+    async def get_greek_exposure(self, symbol: str) -> list[dict]:
+        """
+        Fetches Greek exposure data by strike for a symbol.
+        Used for Net GEX calculation.
+        """
+        sym = str(symbol).strip().upper()
+        if not self.api_token:
+            return []
+
+        try:
+            url = f"{self.base_url.rstrip('/')}/api/stock/{sym}/greek-exposure/strike"
+            headers = {"Authorization": f"Bearer {self.api_token}"}
+            resp = await self._client.get(url, headers=headers)
+            resp.raise_for_status()
+            payload = resp.json()
+
+            # The API usually returns {"data": [...]} or a list
+            if isinstance(payload, list):
+                return payload
+            if isinstance(payload, dict):
+                return payload.get("data") or []
+            return []
+        except Exception as e:
+            self.logger.warning(
+                "Unusual Whales greek exposure fetch failed",
+                symbol=sym,
+                error=str(e),
+            )
+            return []

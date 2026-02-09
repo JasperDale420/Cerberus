@@ -320,14 +320,294 @@ class Agent:
     ) -> List[AgentAction]:
         """
         Run full agent cycle: load stats, analyze, persist actions, apply config changes.
+
+        Stage 1: Health & Risk Adjustments (always runs)
+        Stage 2: Parameter Tuning (if enabled and strategy has sufficient data)
         """
         now = as_of or datetime.now(timezone.utc)
         stats_list = self._load_recent_stats(db, as_of=now)
+
+        # Stage 1: Health & Risk Adjustments
         actions = self.analyze_performance(stats_list, as_of=now)
+
+        # Stage 2: Parameter Tuning (PRD 9.2)
+        # Only tune strategies that weren't disabled by Stage 1
+        disabled_strategies = {
+            a.strategy for a in actions if a.action_type == ActionType.DISABLE_STRATEGY
+        }
+
+        cfg = self.config_loader.load_config(self.config_path_or_dir)
+        strategies_cfg = cfg.get("strategies", {})
+        if isinstance(strategies_cfg.get("strategies"), dict):
+            strategies_cfg = strategies_cfg.get("strategies", {})
+
+        for stats in stats_list:
+            if stats.strategy in disabled_strategies:
+                continue
+
+            # Get current strategy config for tuning
+            current_config = strategies_cfg.get(stats.strategy, {})
+            if isinstance(current_config, dict):
+                current_config = {
+                    k: v
+                    for k, v in current_config.items()
+                    if k not in ("enabled", "activation")
+                }
+            else:
+                current_config = {}
+
+            tune_actions = self.tune_parameters(stats, current_config, as_of=now)
+            actions.extend(tune_actions)
+
         if actions:
             self._persist_actions(db, actions)
             self.apply_actions(actions)
         return actions
+
+    def run_weekly_analysis(
+        self, db: Any, as_of: Optional[datetime] = None
+    ) -> List[AgentAction]:
+        """
+        Run weekly analysis cycle (Stage 3).
+
+        Generates a weekly report with:
+        - Performance summary by strategy/regime
+        - Feature importance analysis
+        - Model/feature recommendations
+
+        Should be scheduled for Friday EOD.
+        """
+        now = as_of or datetime.now(timezone.utc)
+
+        # Load week's stats (use 7-day window instead of default)
+        week_start = now - timedelta(days=7)
+
+        # Get all trades from the past week for analysis
+        from src.analysis.schema import Trade as DbTrade
+
+        weekly_trades: List[Dict[str, Any]] = []
+        with db.get_session() as session:
+            trades = (
+                session.query(DbTrade)
+                .filter(DbTrade.entry_time >= week_start)
+                .filter(DbTrade.exit_time.isnot(None))
+                .all()
+            )
+            for t in trades:
+                weekly_trades.append(
+                    {
+                        "symbol": str(getattr(t, "symbol", "")),
+                        "strategy": str(getattr(t, "strategy", "")),
+                        "regime_at_entry": str(getattr(t, "regime_at_entry", "")),
+                        "pnl_r": float(getattr(t, "pnl_r", 0.0) or 0.0),
+                        "pnl_net": float(getattr(t, "pnl_net", 0.0) or 0.0),
+                        "entry_time": getattr(t, "entry_time", None),
+                        "exit_time": getattr(t, "exit_time", None),
+                        "features_json": getattr(t, "features_json", {}),
+                        "regime_tags_entry_json": getattr(
+                            t, "regime_tags_entry_json", {}
+                        ),
+                    }
+                )
+
+        if not weekly_trades:
+            self.logger.info(
+                "No trades found for weekly analysis",
+                week_start=week_start.isoformat(),
+            )
+            return []
+
+        # Generate weekly report
+        actions = self._generate_weekly_report(weekly_trades, now)
+
+        if actions:
+            self._persist_actions(db, actions)
+
+        return actions
+
+    def _generate_weekly_report(
+        self, trades: List[Dict[str, Any]], as_of: datetime
+    ) -> List[AgentAction]:
+        """
+        Generate weekly analysis report using LLM.
+        """
+        import json
+        import os
+        from pathlib import Path
+
+        cfg = self.config_loader.load_config(self.config_path_or_dir)
+        agent_cfg = cfg.get("agent", {}) if isinstance(cfg, dict) else {}
+        stage3 = agent_cfg.get("stage3", {}) if isinstance(agent_cfg, dict) else {}
+
+        enabled = bool(stage3.get("enabled", False))
+        env_key = str(stage3.get("approval_env_var", "CERBERUS_STAGE3_APPROVED"))
+        approved = str(os.getenv(env_key, "")).strip().lower() in ("1", "true", "yes")
+
+        if not enabled:
+            self.logger.info("Agent Stage 3 (weekly analysis) disabled")
+            return []
+
+        if not approved:
+            self.logger.warning(
+                "Agent Stage 3 not approved; skipping weekly report",
+                approval_env_var=env_key,
+            )
+            return []
+
+        # Compute summary statistics
+        stats_by_strategy: Dict[str, Dict[str, Any]] = {}
+        for t in trades:
+            strat = t["strategy"]
+            if strat not in stats_by_strategy:
+                stats_by_strategy[strat] = {
+                    "n_trades": 0,
+                    "wins": 0,
+                    "total_r": 0.0,
+                    "total_pnl": 0.0,
+                }
+            stats_by_strategy[strat]["n_trades"] += 1
+            stats_by_strategy[strat]["total_r"] += t["pnl_r"]
+            stats_by_strategy[strat]["total_pnl"] += t["pnl_net"]
+            if t["pnl_r"] > 0:
+                stats_by_strategy[strat]["wins"] += 1
+
+        for strat, s in stats_by_strategy.items():
+            s["winrate"] = s["wins"] / s["n_trades"] if s["n_trades"] > 0 else 0.0
+            s["avg_r"] = s["total_r"] / s["n_trades"] if s["n_trades"] > 0 else 0.0
+
+        # Initialize LLM client if needed
+        if self.llm_client is None:
+            self.llm_client = LLMClient(self.config_loader, self.logger)
+
+        # Generate report via LLM
+        system_prompt = """You are a Senior Quantitative Researcher analyzing weekly trading performance.
+Your goal is to provide actionable insights for improving strategy performance.
+
+Output a JSON object with:
+1. "executive_summary": 2-3 sentence overview of the week's performance
+2. "strategy_analysis": List of per-strategy insights with recommendations
+3. "feature_recommendations": Suggested new features to add for ML/signal improvement
+4. "model_recommendations": Suggested model architecture or threshold changes
+5. "risk_recommendations": Any risk management adjustments needed
+
+Be specific and data-driven. Reference actual numbers from the data provided."""
+
+        prompt = f"""Analyze the following weekly trading data:
+
+**Performance Summary by Strategy:**
+{json.dumps(stats_by_strategy, indent=2)}
+
+**Total Trades:** {len(trades)}
+**Date Range:** Week ending {as_of.strftime("%Y-%m-%d")}
+
+**Sample Trade Features (first 5):**
+{json.dumps([t.get("features_json", {}) for t in trades[:5]], indent=2)}
+
+Provide your analysis as a JSON object."""
+
+        try:
+            response = self.llm_client.complete(prompt, system_prompt=system_prompt)
+            # Parse LLM response
+            payload = response.replace("```json", "").replace("```", "").strip()
+            report_data = json.loads(payload)
+        except Exception as e:
+            self.logger.error(
+                "Failed to generate weekly report via LLM",
+                error=str(e),
+                exc_info=True,
+            )
+            # Fall back to basic report
+            report_data = {
+                "executive_summary": f"Analyzed {len(trades)} trades this week.",
+                "strategy_analysis": [
+                    {"strategy": k, **v} for k, v in stats_by_strategy.items()
+                ],
+                "feature_recommendations": [],
+                "model_recommendations": [],
+                "risk_recommendations": [],
+                "error": str(e),
+            }
+
+        # Write report to artifacts
+        week_num = as_of.isocalendar()[1]
+        year = as_of.year
+        report_dir = Path("artifacts/weekly_reports")
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        report_path = report_dir / f"week_{year}_{week_num:02d}.json"
+        with open(report_path, "w") as f:
+            json.dump(
+                {
+                    "generated_at": as_of.isoformat(),
+                    "week": week_num,
+                    "year": year,
+                    "n_trades": len(trades),
+                    "stats_by_strategy": stats_by_strategy,
+                    "analysis": report_data,
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+
+        # Also write markdown summary
+        md_path = report_dir / f"week_{year}_{week_num:02d}.md"
+        md_content = f"""# Weekly Trading Report - Week {week_num}, {year}
+
+**Generated:** {as_of.strftime("%Y-%m-%d %H:%M UTC")}
+**Total Trades:** {len(trades)}
+
+## Executive Summary
+
+{report_data.get("executive_summary", "No summary available.")}
+
+## Strategy Performance
+
+| Strategy | Trades | Win Rate | Avg R | Total PnL |
+|----------|--------|----------|-------|-----------|
+"""
+        for strat, s in stats_by_strategy.items():
+            md_content += f"| {strat} | {s['n_trades']} | {s['winrate']:.1%} | {s['avg_r']:.2f}R | ${s['total_pnl']:.2f} |\n"
+
+        md_content += f"""
+## Feature Recommendations
+
+{chr(10).join(["- " + str(r) for r in report_data.get("feature_recommendations", ["None"])])}
+
+## Model Recommendations
+
+{chr(10).join(["- " + str(r) for r in report_data.get("model_recommendations", ["None"])])}
+
+## Risk Recommendations
+
+{chr(10).join(["- " + str(r) for r in report_data.get("risk_recommendations", ["None"])])}
+"""
+        with open(md_path, "w") as f:
+            f.write(md_content)
+
+        self.logger.info(
+            "Generated weekly analysis report",
+            report_path=str(report_path),
+            md_path=str(md_path),
+            n_trades=len(trades),
+        )
+
+        return [
+            AgentAction(
+                timestamp=as_of,
+                action_type=ActionType.CODE_PROPOSAL,  # Reuse for reports
+                strategy="weekly_analysis",
+                regime=None,
+                details={
+                    "report_file": str(report_path),
+                    "markdown_file": str(md_path),
+                    "n_trades": len(trades),
+                    "week": week_num,
+                    "year": year,
+                },
+                reason="Weekly Stage 3 analysis report",
+            )
+        ]
 
     def apply_actions(self, actions: List[AgentAction]) -> None:
         """
