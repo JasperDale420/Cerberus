@@ -22,5 +22,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the project code
 COPY . .
 
-# Default command (can be overridden by docker run)
-CMD ["python", "-m", "src.main", "--mode", "paper", "--run-once"]
+# Create data directory for snapshots
+RUN mkdir -p /app/data/screener_snapshots
+
+# Default command: Live paper trading
+CMD ["python", "-m", "src.main", "--mode", "paper"]

@@ -16,13 +16,13 @@ from src.data.alpaca import AlpacaClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
-from src.strategies.failed_breakout import FailedBreakoutStrategy
 from src.strategies.flow_momentum import FlowMomentumStrategy
+from src.strategies.fusion_v1 import FusionStrategyV1
 from src.strategies.gap_fill import GapFillStrategy
 from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
 from src.strategies.momentum_continuation import MomentumContinuationStrategy
 from src.strategies.orb import ORBStrategy
-from src.strategies.trend_pullback import TrendPullbackStrategy
+from src.strategies.pair_trading import PairTradingStrategy
 from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
 from src.strategies.vwap_reversion import VWAPReversionStrategy
 from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
@@ -42,6 +42,7 @@ class BacktestRunner:
         end_date: str,
         *,
         offline_bars_dir: Optional[str] = None,
+        warmup_days: int = 365,
     ):
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(config_path)
@@ -51,6 +52,8 @@ class BacktestRunner:
 
         self.start_date = self._parse_dt(start_date)
         self.end_date = self._parse_dt(end_date)
+        if "T" not in end_date:
+            self.end_date = self.end_date.replace(hour=23, minute=59, second=59)
         self.offline_bars_dir = (
             str(offline_bars_dir).strip() if offline_bars_dir else ""
         )
@@ -59,6 +62,7 @@ class BacktestRunner:
             if self.offline_bars_dir
             else None
         )
+        self.warmup_days = int(warmup_days)
 
         self.alpaca_client = (
             None
@@ -86,12 +90,23 @@ class BacktestRunner:
             else None
         )
 
+        backtest_cfg = self.config.get("backtest", {}) or {}
+        self.force_flat_at_1600 = bool(backtest_cfg.get("force_flat_at_1600", False))
+        self._session_flattened: Dict[date, bool] = {}
+
         # Engine with Mock Executor
         self.engine = ExecutionEngine(self.config, self.logger, alpaca_client=None)
         self.engine.order_executor = self.mock_executor  # type: ignore[assignment] # Inject mock
 
         # Track last known prices for Mark-to-Market metrics / equity
         self.last_prices: Dict[str, float] = {}
+
+        # Track previous day closes for gap_pct calculation (gap_fill strategy)
+        self._prev_day_closes: Dict[str, float] = {}
+
+        # Track session VWAP components for VWAP injection into bars
+        # Each entry: {symbol: {'cum_tpv': float, 'cum_vol': float, 'session_date': date}}
+        self._vwap_state: Dict[str, Dict[str, Any]] = {}
 
         # Use UniverseBuilder to determine universe from config
         # Pass clock lambda that returns simulation time (or start_date as fallback for init)
@@ -148,19 +163,19 @@ class BacktestRunner:
         that would produce unrealistic signals with zeroed flow data.
         """
         # Flow-dependent strategies that require live options flow data
-        flow_strategies = {"flow_momentum"}
+        flow_strategies = {"flow_momentum", "fusion_v1"}
 
         strategy_registry = {
             "vwap_reversion": VWAPReversionStrategy,
             "orb": ORBStrategy,
-            "trend_pullback": TrendPullbackStrategy,
-            "failed_breakout": FailedBreakoutStrategy,
             "vwap_trend_rider": VWAPTrendRiderStrategy,
             "index_mean_reversion": IndexMeanReversionStrategy,
             "flow_momentum": FlowMomentumStrategy,
             "gap_fill": GapFillStrategy,
             "vix_spike_fade": VixSpikeFadeStrategy,
             "momentum_continuation": MomentumContinuationStrategy,
+            "fusion_v1": FusionStrategyV1,
+            "pair_trading": PairTradingStrategy,
         }
 
         # Check if flow strategies should be disabled
@@ -245,10 +260,11 @@ class BacktestRunner:
         return bars
 
     async def _load_bars_for_symbol(self, symbol: str, timeframe: str) -> List[Bar]:
+        fetch_start = self.start_date - timedelta(days=self.warmup_days)
         if self.offline_provider is not None:
             return list(
                 self.offline_provider.get_bars(
-                    symbol, self.start_date, self.end_date, timeframe=timeframe
+                    symbol, fetch_start, self.end_date, timeframe=timeframe
                 )
             )
         if self.alpaca_client is None:
@@ -257,7 +273,7 @@ class BacktestRunner:
         bars_data = await asyncio.to_thread(
             self.alpaca_client.get_historical_bars,
             symbol,
-            self.start_date,
+            fetch_start,
             self.end_date,
             timeframe,
         )
@@ -268,19 +284,57 @@ class BacktestRunner:
     def _build_event_stream(
         self, bars_by_symbol: Dict[str, List[Bar]]
     ) -> List[Tuple[datetime, str, Bar]]:
-        out: List[Tuple[datetime, str, Bar]] = []
-        for sym, bars in bars_by_symbol.items():
+        """
+        Build chronologically ordered event stream from per-symbol bars.
+
+        Performance: Uses heapq.merge for O(n) lazy merge of pre-sorted streams
+        instead of O(n log n) full sort.
+        """
+        from heapq import merge
+
+        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
+
+        # Use start_date and end_date directly (already parsed and tz-aware in __init__)
+        start_dt = self.start_date
+        end_dt = self.end_date
+
+        rth_only = bool(self.config.get("backtest", {}).get("rth_only", False))
+        tz_name = self.config.get("timezone", self.DEFAULT_TIMEZONE)
+        market_tz = ZoneInfo(str(tz_name))
+
+        def _make_sortable_stream(sym: str, bars: List[Bar]):
+            """Generate (sort_key, symbol, bar) tuples for merge."""
+            priority = 0 if sym == index_symbol else 1
             for b in bars:
                 bt = b.time
                 if bt.tzinfo is None:
                     bt = bt.replace(tzinfo=timezone.utc)
                     b.time = bt
-                out.append((bt, sym, b))
 
-        # Deterministic ordering: time, then index first, then symbol.
-        index_symbol = str(self.config.get("index_symbol", "SPY") or "SPY").upper()
-        out.sort(key=lambda x: (x[0], 0 if x[1] == index_symbol else 1, x[1]))
-        return out
+                if bt < start_dt or bt > end_dt:
+                    continue
+
+                if rth_only:
+                    bt_et = bt.astimezone(market_tz)
+                    # Round to minutes for comparison to avoid small precision issues
+                    # Market Hours: 09:30:00 - 16:00:00 (Inclusive)
+                    time_val = bt_et.hour * 100 + bt_et.minute
+                    if time_val < 930 or time_val > 1600:
+                        continue
+
+                # Sort key: (timestamp, priority, symbol)
+                yield ((bt, priority, sym), sym, b)
+
+        # Create sorted streams per symbol (bars already sorted from loading)
+        streams = [
+            _make_sortable_stream(sym, bars) for sym, bars in bars_by_symbol.items()
+        ]
+
+        # Lazy merge all streams - O(n) instead of O(n log n)
+        merged = merge(*streams, key=lambda x: x[0])
+
+        # Materialize into expected format (without sort key)
+        return [(x[0][0], x[1], x[2]) for x in merged]
 
     def _scanner_enabled(self) -> bool:
         scanner_cfg = (
@@ -534,10 +588,15 @@ class BacktestRunner:
                 session_date=str(current_session),
                 timestamp=(last_session_ts.isoformat() if last_session_ts else None),
             )
+            # Store previous day closes for gap_pct calculation before flattening
+            self._prev_day_closes = dict(self.last_prices)
+
             self._flatten_session_end(
                 ts=(last_session_ts if last_session_ts is not None else bt),
                 reason="SESSION_END",
             )
+            # Reset equity for regime analysis backtests (if enabled)
+            self.mock_executor.reset_daily_equity()
             return local_date, bt
 
         return current_session, bt
@@ -564,6 +623,113 @@ class BacktestRunner:
             )
         return last_scan_ts, next_scan_ts
 
+    def _process_loop_event_core(
+        self,
+        bt: datetime,
+        symbol: str,
+        bar: Bar,
+        market_tz: ZoneInfo,
+        last_session_ts: Optional[datetime],
+        current_session: Optional[date],
+        index_symbol: str,
+    ) -> Tuple[Optional[datetime], Optional[date]]:
+        """
+        Synchronous core of bar processing (performance optimization).
+
+        Handles session boundaries, gap/VWAP injection, order fills, and strategy execution.
+        Returns updated (last_session_ts, current_session).
+        """
+        current_session, last_session_ts = self._handle_session_boundary(
+            bt, market_tz, last_session_ts, current_session
+        )
+
+        # Strict Session Close (Vertical Slice Implementation)
+        if (
+            hasattr(self, "force_flat_at_1600")
+            and self.force_flat_at_1600
+            and current_session
+        ):
+            # Check if we have already flattened this session
+            if not self._session_flattened.get(current_session, False):
+                bt_et = bt.astimezone(market_tz)
+                if bt_et.hour >= 16:
+                    self.logger.info(
+                        "Strict 16:00 ET flatten",
+                        session_date=str(current_session),
+                        timestamp=bt.isoformat(),
+                    )
+                    self._flatten_session_end(ts=bt, reason="STRICT_SESSION_CLOSE")
+                    self._session_flattened[current_session] = True
+
+            # If flattened, skip further processing for this session
+            if self._session_flattened.get(current_session, False):
+                return last_session_ts, current_session
+
+        # Ensure engine time advances deterministically even if index bars are absent.
+        try:
+            self.engine.market_state.time = bt
+        except Exception:
+            pass
+
+        # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
+        if symbol != index_symbol and symbol not in self.engine.symbol_states:
+            return last_session_ts, current_session
+
+        # Mark-to-market reference price.
+        self.last_prices[symbol] = float(bar.close)
+
+        # Calculate and inject gap_pct for gap_fill strategy
+        # Gap = (today's open - yesterday's close) / yesterday's close
+        if symbol in self.engine.symbol_states:
+            sym_state = self.engine.symbol_states[symbol]
+            prev_close = self._prev_day_closes.get(symbol)
+            if prev_close is not None and prev_close > 0:
+                # Only set gap_pct if not already set for this session
+                if (
+                    "gap_pct" not in sym_state.meta
+                    or sym_state.meta.get("gap_date") != bar.time.date()
+                ):
+                    gap_pct = (bar.open - prev_close) / prev_close
+                    sym_state.meta["gap_pct"] = gap_pct
+                    sym_state.meta["gap_date"] = bar.time.date()
+
+        # Calculate and inject session VWAP for VWAP-based strategies
+        # VWAP = Cumulative(Typical_Price * Volume) / Cumulative(Volume)
+        bar_date = bar.time.date()
+        typical_price = (bar.high + bar.low + bar.close) / 3.0
+        bar_tpv = typical_price * bar.volume  # typical price * volume
+
+        vwap_entry = self._vwap_state.get(symbol)
+        if vwap_entry is None or vwap_entry.get("session_date") != bar_date:
+            # New session for this symbol - reset cumulative values
+            vwap_entry = {
+                "cum_tpv": bar_tpv,
+                "cum_vol": bar.volume,
+                "session_date": bar_date,
+            }
+        else:
+            # Same session - accumulate
+            vwap_entry["cum_tpv"] += bar_tpv
+            vwap_entry["cum_vol"] += bar.volume
+        self._vwap_state[symbol] = vwap_entry
+
+        # Calculate and inject VWAP into bar object
+        if vwap_entry["cum_vol"] > 0:
+            session_vwap = vwap_entry["cum_tpv"] / vwap_entry["cum_vol"]
+            # Inject VWAP as attribute on bar (frozen dataclass workaround)
+            object.__setattr__(bar, "vwap", session_vwap)
+
+        # 1) Fill pending orders for this symbol (market/limit, deterministic).
+        self.mock_executor.fill_pending_for_bar(self.engine, symbol, bar)
+
+        # 2) Broker-managed bracket exits (stop/target) using intrabar extremes.
+        self.mock_executor.maybe_trigger_bracket_exit(self.engine, symbol, bar)
+
+        # 3) Strategy + risk + order generation.
+        self.engine.on_bar(symbol, bar)
+
+        return last_session_ts, current_session
+
     async def _process_loop_event(
         self,
         bt: datetime,
@@ -580,36 +746,21 @@ class BacktestRunner:
     ) -> Tuple[
         Optional[datetime], Optional[date], Optional[datetime], Optional[datetime]
     ]:
-        current_session, last_session_ts = self._handle_session_boundary(
-            bt, market_tz, last_session_ts, current_session
+        """
+        Async wrapper for _process_loop_event_core.
+
+        Only uses async for scanner replay; core processing is synchronous.
+        """
+        # Process the bar synchronously (performance: avoid async overhead)
+        last_session_ts, current_session = self._process_loop_event_core(
+            bt, symbol, bar, market_tz, last_session_ts, current_session, index_symbol
         )
 
-        # Ensure engine time advances deterministically even if index bars are absent.
-        try:
-            self.engine.market_state.time = bt
-        except Exception:
-            pass
-
+        # Only await for scanner replay when actually needed
         if scanner_replay:
             last_scan_ts, next_scan_ts = await self._handle_scanner_replay(
                 bt, market_tz, scan_interval, last_scan_ts, next_scan_ts
             )
-
-        # Mimic WS subscriptions: only process non-index bars when symbol is tracked.
-        if symbol != index_symbol and symbol not in self.engine.symbol_states:
-            return last_session_ts, current_session, last_scan_ts, next_scan_ts
-
-        # Mark-to-market reference price.
-        self.last_prices[symbol] = float(bar.close)
-
-        # 1) Fill pending orders for this symbol (market/limit, deterministic).
-        self.mock_executor.fill_pending_for_bar(self.engine, symbol, bar)
-
-        # 2) Broker-managed bracket exits (stop/target) using intrabar extremes.
-        self.mock_executor.maybe_trigger_bracket_exit(self.engine, symbol, bar)
-
-        # 3) Strategy + risk + order generation.
-        self.engine.on_bar(symbol, bar)
 
         return last_session_ts, current_session, last_scan_ts, next_scan_ts
 
@@ -626,6 +777,19 @@ class BacktestRunner:
         timeframe = str(self.config.get("timeframe", "1Min") or "1Min")
         bars_by_symbol = await self._load_all_bars(timeframe)
 
+        # Initialize and inject BacktestFeaturePipeline if scanner is enabled
+        if scanner_enabled:
+            from datetime import datetime, timezone
+
+            from src.backtest.feature_pipeline import BacktestFeaturePipeline
+
+            self.scanner = BacktestFeaturePipeline(
+                bars_by_symbol=bars_by_symbol,
+                logger=self.logger,
+                config=self.config,
+                clock=lambda: datetime.now(timezone.utc),
+            )
+            self.engine.scanner = self.scanner
         # After loading bars, ensure all symbols with bars have allowed_strategies set
         if not scanner_enabled:
             all_strategies = getattr(self, "enabled_strategies", [])

@@ -8,17 +8,36 @@ Cerberus is an automated, modular algorithmic trading system designed for both l
 ## Current Capabilities
 
 - **Live & Paper Trading**: Seamless switching between paper simulation and live execution via `--mode`.
-- **Modular Strategy Engine**: Plug-and-play strategy support including:
+- **Jan 2026 Audit Certified**: Verified reproducibility, robust risk management, and absence of look-ahead bias.
+- **Strict Session Discipline**: Optional RTH-only flattening at exactly 16:00 ET for backtest realism (`force_flat_at_1600`).
+- **Modular Strategy Engine**: 10 plug-and-play strategies including:
   - VWAP Reversion & Trend Rider
   - Opening Range Breakout (ORB)
   - Trend Pullback
   - Failed Breakout
   - Gap Fill
   - Flow Momentum & Index Mean Reversion
+  - Momentum Continuation *(NEW)*
+  - VIX Spike Fade *(NEW)*
+- **5-Axis Regime System**: Multi-dimensional market context classification:
+  - Trend (UP/DOWN/FLAT)
+  - Volatility (LOW/NORMAL/HIGH/SHOCK)
+  - Liquidity (GOOD/THIN/STRESSED)
+  - Risk Sentiment (RISK_ON/NEUTRAL/RISK_OFF)
+  - Session (OPENING/MIDDAY/POWER_HOUR/CLOSE)
+- **Advanced Exit System**:
+  - Trailing stops with high-water mark tracking
+  - Partial profit taking (1R scale-out)
+  - Regime-aware stop width multipliers
 - **Advanced Data Pipeline**:
   - Real-time bar aggregation and technical indicator calculation (Pandas-TA).
   - Unusual Whales options flow integration.
   - Multi-stage scanner with data quality gates.
+- **Backtesting Engine**: Full parity with live trading:
+  - Volume-aware partial fills
+  - Volume-impact slippage modeling
+  - ATR-based spread simulation
+  - Daily equity reset for research trials
 - **Resilient Execution**:
   - Automated market open/close handling.
   - End-of-Day (EOD) position flattening (`flat-on-close`).

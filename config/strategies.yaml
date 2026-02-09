@@ -27,7 +27,7 @@ strategies:
     risk_reward: 2.0
     stop_loss_pct: 0.005 # 0.5% backup stop
     # PRD-listed optional filters
-    min_gap_pct: 0.0
+    min_gap_pct: 0.01
     min_flow_zscore: 0.0
     # PRD Addendum: Multi-axis regime activation
     activation:
@@ -83,37 +83,6 @@ strategies:
       liquidity: [good, thin]
       risk: [neutral]
       min_confidence: 0.4
-
-  trend_pullback:
-    enabled: true
-    ema_fast: 20
-    ema_slow: 50
-    rsi_len: 2
-    rsi_oversold: 10
-    rsi_overbought: 90
-    # PRD-listed parameters
-    pullback_depth_pct: 0.0
-    entry_confirmation: "rsi"
-    # PRD Addendum: Multi-axis regime activation
-    activation:
-      session: [opening, midday, power_hour]
-      trend: [up, down]
-      vol: [low, normal]
-      liquidity: [good]
-      risk: [risk_on, neutral]
-      min_confidence: 0.5
-
-  failed_breakout:
-    enabled: true
-    risk_reward: 2.0
-    # PRD Addendum: Multi-axis regime activation
-    activation:
-      session: [opening, midday]
-      trend: [flat]
-      vol: [low, normal]
-      liquidity: [good, thin]
-      risk: [neutral, risk_off]
-      min_confidence: 0.5
 
   vwap_trend_rider:
     enabled: true

@@ -17,6 +17,9 @@ class Trade(Base):
     strategy: Mapped[str] = mapped_column(String)
     regime_at_entry: Mapped[str] = mapped_column(String)
     regime_at_exit: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # PRD Regime Upgrade Patch §7.2: Multi-axis regime tags
+    regime_tags_entry_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    regime_tags_exit_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     side: Mapped[str] = mapped_column(String)  # long/short
     qty: Mapped[float] = mapped_column(Float)
     entry_time: Mapped[datetime] = mapped_column(DateTime)
@@ -52,6 +55,7 @@ class Signal(Base):
     accepted: Mapped[bool] = mapped_column(Boolean)
     rejection_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     meta_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    feature_snapshot_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class Order(Base):
@@ -93,12 +97,31 @@ class RegimeHistory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime)
-    regime: Mapped[str] = mapped_column(String)
+    regime: Mapped[str] = mapped_column(String)  # Legacy compact label
     index_symbol: Mapped[str] = mapped_column(String)
     index_price: Mapped[float] = mapped_column(Float)
     cum_ret: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     trend_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vol: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # PRD Regime Upgrade Patch §7.1: Multi-axis regime fields
+    model_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    trend: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # UP/DOWN/FLAT
+    vol_regime: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # LOW/NORMAL/HIGH/SHOCK
+    liquidity: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # GOOD/THIN/STRESSED
+    risk: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # RISK_ON/NEUTRAL/RISK_OFF
+    session: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # OPENING/MIDDAY/POWER_HOUR/CLOSE
+    vol_of_vol: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    liquidity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class ScannerSnapshot(Base):
@@ -155,3 +178,66 @@ class SecTicker(Base):
     cik: Mapped[str] = mapped_column(String, index=True)
     title: Mapped[str] = mapped_column(String)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ExternalSnapshot(Base):
+    """
+    Layer 1: Raw external API data (GEX, flow) captured at regular intervals.
+    Immutable, append-only. Used for historical replay.
+    """
+
+    __tablename__ = "external_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)  # 'gex', 'flow'
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    snapshot_time: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    data_json: Mapped[dict] = mapped_column(JSON)
+
+
+class FeatureSnapshot(Base):
+    """
+    Layer 2: Computed features at point-in-time.
+    Enables fast backtest replay without recomputing from raw bars.
+    """
+
+    __tablename__ = "feature_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    as_of_ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    code_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Core price features (denormalized for query speed)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vwap: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    atr: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    rsi: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Alpha features
+    tfi: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hurst_exponent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    frac_diff: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    net_gex: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gex_flip_dist: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    flow_zscore: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Full blob for any features not denormalized
+    features_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class DailyUniverse(Base):
+    """
+    Tracks which symbols passed filtering each day.
+    Enables understanding of what was eligible for trading.
+    """
+
+    __tablename__ = "daily_universe"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    source: Mapped[str] = mapped_column(String(32))  # 'scanner', 'static', 'dynamic'
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    meta_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

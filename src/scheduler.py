@@ -1,13 +1,13 @@
-import logging
 import subprocess
 import sys
 from datetime import datetime
 
+import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
 
-logger = logging.getLogger("CerberusScheduler")
+logger = structlog.get_logger("CerberusScheduler")
 
 
 class CerberusScheduler:
@@ -15,17 +15,6 @@ class CerberusScheduler:
         self.config = config
         self.scheduler = BlockingScheduler()
         self.tz = timezone(config.get("timezone", "America/New_York"))
-        self._setup_logging()
-
-    def _setup_logging(self):
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            logging.Formatter(
-                '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "Scheduler", "message": "%(message)s"}'
-            )
-        )
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
 
     def start(self):
         """
@@ -47,6 +36,9 @@ class CerberusScheduler:
             name="Cerberus Daily Trading Session",
             replace_existing=True,
         )
+
+        # Add Friday EOD analysis job (Stage 3)
+        self.add_weekly_analysis_job()
 
         logger.info(
             f"Scheduler started. Next run scheduled for: {trigger.get_next_fire_time(None, datetime.now(self.tz))}"
@@ -85,3 +77,46 @@ class CerberusScheduler:
                 )
         except Exception as e:
             logger.error(f"Failed to launch subprocess: {e}")
+
+    def _run_weekly_analysis(self):
+        """
+        Run weekly Stage 3 analysis after Friday market close.
+        Generates performance report with feature/model recommendations.
+        """
+        logger.info("Starting weekly analysis (Stage 3)...")
+
+        cmd = [sys.executable, "-m", "src.main", "--mode", "weekly-analysis"]
+
+        if self.config.get("config_path"):
+            cmd.extend(["--config", self.config["config_path"]])
+
+        try:
+            result = subprocess.run(cmd, capture_output=False, check=False)
+
+            if result.returncode == 0:
+                logger.info("Weekly analysis completed successfully.")
+            else:
+                logger.error(
+                    f"Weekly analysis failed with exit code {result.returncode}."
+                )
+        except Exception as e:
+            logger.error(f"Failed to launch weekly analysis subprocess: {e}")
+
+    def add_weekly_analysis_job(self):
+        """
+        Add Friday EOD job for Stage 3 weekly analysis.
+        Runs at 16:30 ET (after market close).
+        """
+        trigger = CronTrigger(day_of_week="fri", hour=16, minute=30, timezone=self.tz)
+
+        self.scheduler.add_job(
+            self._run_weekly_analysis,
+            trigger=trigger,
+            id="cerberus_weekly_analysis",
+            name="Cerberus Weekly Analysis (Stage 3)",
+            replace_existing=True,
+        )
+
+        logger.info(
+            f"Weekly analysis job scheduled. Next run: {trigger.get_next_fire_time(None, datetime.now(self.tz))}"
+        )

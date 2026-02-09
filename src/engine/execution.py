@@ -12,7 +12,13 @@ from src.analysis.schema import Order as DbOrder
 from src.analysis.schema import ScannerSnapshot
 from src.analysis.schema import Signal as DbSignal
 from src.analysis.schema import Trade as DbTrade
-from src.core.domain import Position, ScanResult, Side, WatchlistSymbol
+from src.analytics.meta_labeler import MetaLabeler
+from src.core.domain import (
+    Position,
+    ScanResult,
+    Side,
+    WatchlistSymbol,
+)
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
 from src.engine.health import HealthMonitor
@@ -60,10 +66,11 @@ class ExecutionEngine:
         self.strategies: Dict[str, BaseStrategy] = {}
         self.strategy_engine: Optional[StrategyEngine] = None
         self.position_manager = PositionManager()
+        self.meta_labeler = MetaLabeler(logger)
         self.symbol_states: Dict[str, SymbolState] = {}
         # M1 Memory Audit Fix: bounded trade capture for backtests/analysis
         # Keeps last 5000 trades to prevent unbounded growth in multi-day runs
-        self.closed_trades: deque = deque(maxlen=5000)
+        self.closed_trades: deque = deque()  # No maxlen for research backtests
 
         # Extracted Collaborators
         self.health = HealthMonitor(config, logger, run_id, self.clock)
@@ -477,6 +484,22 @@ class ExecutionEngine:
                 ),
             )
         )
+
+        # PRD 9.2: Propagate parameter updates to existing strategies
+        strategies_cfg = config.get("strategies", {})
+        if not isinstance(strategies_cfg, dict):
+            strategies_cfg = {}
+
+        for name, strat in self.strategies.items():
+            s_cfg = strategies_cfg.get(name)
+            if isinstance(s_cfg, dict):
+                try:
+                    strat.update_params(s_cfg)
+                except Exception as e:
+                    self.logger.error(
+                        "Failed to update strategy params", strategy=name, error=str(e)
+                    )
+
         self._refresh_strategy_engine()
 
     def _refresh_strategy_engine(self) -> None:
@@ -862,7 +885,16 @@ class ExecutionEngine:
                     run_id=self.run_id,
                 )
                 self.signals_generated += 1
-                self._process_signal(sig)
+
+                # PRD Phase 6: Meta-Labeling Vetting
+                if self.meta_labeler.vet_signal(sig):
+                    self._process_signal(sig)
+                else:
+                    slog.info(
+                        "Signal rejected by meta-labeler v1",
+                        symbol=sig.symbol,
+                        strategy=sig.strategy,
+                    )
 
     def _manage_positions(self, symbol: str, state: SymbolState, log: Any) -> None:
         # PositionManager exit checks (PRD 6.7 best-effort)
@@ -1021,6 +1053,11 @@ class ExecutionEngine:
                     accepted=bool(intents),
                     rejection_reason=rejection_reason,
                     meta_json=signal.meta,
+                    feature_snapshot_json=(
+                        asdict(signal.feature_snapshot)
+                        if signal.feature_snapshot
+                        else None
+                    ),
                 )
             ),
         )
@@ -1041,6 +1078,16 @@ class ExecutionEngine:
 
         # Get max hold from strategy config
         max_hold_seconds = self._get_max_hold_seconds(signal.strategy)
+
+        # Get advanced exits config
+        adv_exits = self._get_advanced_exits_config()
+        trailing_enabled = adv_exits.get("trailing_stop", {}).get("enabled", False)
+        trailing_pct = adv_exits.get("trailing_stop", {}).get("trail_pct", 0.02)
+
+        # Calculate regime-aware stop multiplier
+        regime_stop_mult = self._get_regime_stop_multiplier(
+            signal.regime_tags, adv_exits
+        )
 
         # Prepare features payload
         features_payload = state.meta.get("features_snapshot")
@@ -1066,6 +1113,10 @@ class ExecutionEngine:
             ),
             "entry_time": signal.generated_at,
             "max_hold_seconds": max_hold_seconds,
+            # Advanced exit fields
+            "trailing_stop_enabled": trailing_enabled,
+            "trailing_stop_pct": trailing_pct if trailing_enabled else None,
+            "regime_stop_multiplier": regime_stop_mult,
         }
 
     def _get_max_hold_seconds(self, strategy_name: str) -> Optional[int]:
@@ -1079,6 +1130,35 @@ class ExecutionEngine:
         if max_hold_minutes is not None:
             return int(float(max_hold_minutes) * 60)
         return None
+
+    def _get_advanced_exits_config(self) -> Dict[str, Any]:
+        """Get advanced exits configuration from risk config."""
+        risk_cfg = self.config.get("risk", {})
+        if not isinstance(risk_cfg, dict):
+            risk_cfg = {}
+
+        adv_exits = risk_cfg.get("advanced_exits", {})
+        if not isinstance(adv_exits, dict):
+            adv_exits = {}
+
+        return adv_exits
+
+    def _get_regime_stop_multiplier(
+        self, regime_tags: Optional[Dict[str, str]], adv_exits: Dict[str, Any]
+    ) -> float:
+        """Calculate stop width multiplier based on volatility regime."""
+        if not regime_tags or not adv_exits.get("regime_aware_stops", False):
+            return 1.0
+
+        vol_regime = regime_tags.get("vol", "normal")
+        multipliers = adv_exits.get(
+            "regime_stop_multipliers",
+            {"low": 0.75, "normal": 1.0, "high": 1.5, "shock": 2.0},
+        )
+        if not isinstance(multipliers, dict):
+            return 1.0
+
+        return float(multipliers.get(vol_regime, 1.0))
 
     def _execute_signal_intents(
         self, signal: Signal, intents: List[Any], log: Any, risk_latency: float
@@ -1741,11 +1821,15 @@ class ExecutionEngine:
             "iv_rank": 0.0,
             "short_interest": 0.0,
             "call_put_ratio": 0.0,
-            "flow_bias": flow_bias,
+            "flow_bias": 0.0,
+            "dof_score": 0.0,
+            "relative_strength": 0.0,
+            "atr": 0.0,
             "flow_zscore": 0.0,
             "gap_pct": 0.0,
             "premarket_volume": 0.0,
             "features_snapshot": features_snapshot,
+            "features": features,  # Store raw object for StrategyEngine injection
         }
 
         if features:
@@ -1772,11 +1856,39 @@ class ExecutionEngine:
             meta["earnings_date"] = str(earnings) if earnings else None
             meta["iv_rank"] = float(features.extra.get("iv_rank") or 0.0)
             meta["short_interest"] = float(features.extra.get("short_interest") or 0.0)
+            # Fetch ATR from extra if available (legacy fallback)
+            if "atr" in features.extra and meta.get("atr") == 0.0:
+                meta["atr"] = float(features.extra.get("atr") or 0.0)
 
         meta["call_put_ratio"] = features.call_put_ratio
         meta["premarket_volume"] = features.premarket_volume
         meta["flow_zscore"] = features.flow_zscore
         meta["gap_pct"] = features.gap_pct
+
+        # New Alpha Signals (PRD Phase 2)
+        meta["relative_strength"] = float(getattr(features, "relative_strength", 0.0))
+        meta["flow_bias"] = float(getattr(features, "flow_bias", 0.0))
+        meta["dof_score"] = float(getattr(features, "dof_score", 0.0))
+        meta["orb_high"] = float(getattr(features, "orb_high", 0.0))
+        meta["orb_low"] = float(getattr(features, "orb_low", 0.0))
+        meta["alpha_score"] = float(getattr(features, "alpha_score", 0.0))
+        meta["alpha_rank"] = int(getattr(features, "alpha_rank", 0))
+        # ATR might be a top-level field or in extra
+        if hasattr(features, "atr") and features.atr is not None:
+            meta["atr"] = float(features.atr)
+        elif "atr" in (features.extra or {}):
+            meta["atr"] = float(features.extra.get("atr") or 0.0)
+
+        # Cointegrated Pair Trading Metadata
+        if features.extra and "pair_id" in features.extra:
+            meta["pair_trade"] = {
+                "pair_id": features.extra.get("pair_id"),
+                "side": features.extra.get("pair_side"),
+                "partner": features.extra.get("pair_partner"),
+                "partner_price": features.extra.get("pair_partner_price"),
+                "hedge_ratio": features.extra.get("hedge_ratio"),
+                "z_score": features.extra.get("spread_zscore"),
+            }
 
     def _update_retained_strategies(
         self,
@@ -1793,13 +1905,33 @@ class ExecutionEngine:
                 )
                 if scanned_sym.features:
                     features = scanned_sym.features
-                    if features.extra:
-                        self.symbol_states[sym].meta["flow_bias"] = float(
-                            features.extra.get("flow_bias") or 0.0
+                    # Update metadata for retained symbols
+                    self.symbol_states[sym].meta["flow_bias"] = float(
+                        getattr(features, "flow_bias", 0.0)
+                    )
+                    self.symbol_states[sym].meta["dof_score"] = float(
+                        getattr(features, "dof_score", 0.0)
+                    )
+                    self.symbol_states[sym].meta["relative_strength"] = float(
+                        getattr(features, "relative_strength", 0.0)
+                    )
+                    self.symbol_states[sym].meta["orb_high"] = float(
+                        getattr(features, "orb_high", 0.0)
+                    )
+                    self.symbol_states[sym].meta["orb_low"] = float(
+                        getattr(features, "orb_low", 0.0)
+                    )
+                    self.symbol_states[sym].meta["premarket_volume"] = (
+                        features.premarket_volume
+                    )
+                    # Update ATR
+                    if hasattr(features, "atr") and features.atr is not None:
+                        self.symbol_states[sym].meta["atr"] = float(features.atr)
+                    elif "atr" in (features.extra or {}):
+                        self.symbol_states[sym].meta["atr"] = float(
+                            features.extra.get("atr") or 0.0
                         )
-                    self.symbol_states[sym].meta[
-                        "premarket_volume"
-                    ] = features.premarket_volume
+
                     self.symbol_states[sym].meta["features_snapshot"] = (
                         self._sanitize_features_snapshot(asdict(features))
                     )

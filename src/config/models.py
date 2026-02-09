@@ -3,6 +3,54 @@ from typing import Dict, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+class TrailingStopConfig(BaseModel):
+    """Configuration for trailing stop behavior."""
+
+    enabled: bool = False
+    trail_pct: float = Field(
+        default=0.02, description="Trail by X% from high water mark"
+    )
+    min_profit_to_activate: float = Field(
+        default=0.005, description="Only start trailing after X% profit"
+    )
+
+
+class PartialExitConfig(BaseModel):
+    """Configuration for partial profit taking."""
+
+    enabled: bool = False
+    first_exit_at_r: float = Field(
+        default=1.0, description="Exit first tranche at X*R profit"
+    )
+    first_exit_pct: float = Field(
+        default=0.5, description="Exit X% of position at first target"
+    )
+
+
+class AdvancedExitsConfig(BaseModel):
+    """
+    Advanced exit configuration for trailing stops, regime-aware stops, and partial exits.
+
+    When enabled, broker-managed exits are disabled and PositionManager handles all exits.
+    """
+
+    enabled: bool = Field(default=False, description="Enable advanced exit management")
+    trailing_stop: TrailingStopConfig = Field(default_factory=TrailingStopConfig)
+    partial_exits: PartialExitConfig = Field(default_factory=PartialExitConfig)
+    regime_aware_stops: bool = Field(
+        default=True, description="Adjust stop width based on volatility regime"
+    )
+    regime_stop_multipliers: Dict[str, float] = Field(
+        default_factory=lambda: {
+            "low": 0.75,
+            "normal": 1.0,
+            "high": 1.5,
+            "shock": 2.0,
+        },
+        description="Stop width multipliers by volatility regime",
+    )
+
+
 class RegimeConfig(BaseModel):
     enabled: bool = True
     max_risk_per_trade: Optional[float] = None
@@ -15,6 +63,36 @@ class StrategyConfig(BaseModel):
     max_risk_per_trade: Optional[float] = None
     regimes: Dict[str, RegimeConfig] = Field(default_factory=dict)
     parameters: Dict[str, float] = Field(default_factory=dict)
+
+
+class PairTradingConfig(BaseModel):
+    """Configuration for Pair Trading (StatArb)."""
+
+    enabled: bool = False
+    min_correlation: float = Field(
+        default=0.8, description="Minimum Pearson correlation"
+    )
+    max_eg_pvalue: float = Field(
+        default=0.05, description="Maximum Engle-Granger p-value"
+    )
+    lookback_days: int = Field(
+        default=120, description="Lookback bars for cointegration test"
+    )
+    entry_zscore: float = Field(
+        default=2.0, description="Spread Z-Score to trigger entry"
+    )
+    exit_zscore: float = Field(
+        default=0.0, description="Spread Z-Score to trigger exit"
+    )
+    max_active_pairs: int = Field(
+        default=10, description="Maximum simultaneous active pairs"
+    )
+    min_half_life: int = Field(
+        default=2, description="Minimum mean-reversion half-life"
+    )
+    max_half_life: int = Field(
+        default=40, description="Maximum mean-reversion half-life"
+    )
 
 
 class RiskConfig(BaseModel):
@@ -58,6 +136,23 @@ class RiskConfig(BaseModel):
         },
         description="Multipliers applied to position sizing based on regime axes",
     )
+
+    # Advanced exits configuration (trailing stops, partial exits, regime-aware stops)
+    advanced_exits: AdvancedExitsConfig = Field(default_factory=AdvancedExitsConfig)
+
+    # Tournament-style rank-based risk scaling
+    alpha_rank_multipliers: Dict[int, float] = Field(
+        default_factory=lambda: {
+            1: 1.5,
+            2: 1.25,
+            3: 1.1,
+            5: 1.0,
+            10: 0.75,
+        },
+        description="Multipliers applied to max_risk_per_trade based on alpha rank",
+    )
+
+    pair_trading: PairTradingConfig = Field(default_factory=PairTradingConfig)
 
     # L5 fix: Bounds validation for critical risk parameters
     @field_validator("max_daily_loss")

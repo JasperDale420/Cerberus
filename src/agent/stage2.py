@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import itertools
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,6 +7,8 @@ from typing import Any, Callable, Dict, List, Optional, TypedDict, cast
 
 from src.agent.bars_provider import BarsProvider, JsonlBarsProvider
 from src.agent.models import ActionType, AgentAction, StrategyDailyStats
+from src.analytics.optimizer import GridSearchOptimizer
+from src.analytics.walk_forward import WalkForwardManager
 from src.core.config import ConfigLoader
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
@@ -167,9 +168,14 @@ class DeterministicStage2Evaluator:
         regime: Regime,
         params: Dict[str, Any],
         as_of: Optional[datetime] = None,
+        start_override: Optional[datetime] = None,
+        end_override: Optional[datetime] = None,
     ) -> Stage2Metrics:
         now = as_of or self.clock()
-        start, end = self._bars_window(now)
+        if start_override and end_override:
+            start, end = start_override, end_override
+        else:
+            start, end = self._bars_window(now)
         symbols = self._symbols()
         if not symbols:
             self.logger.warning(
@@ -339,13 +345,15 @@ class Stage2Tuner:
         self,
         logger: StructuredLogger,
         config_loader: ConfigLoader,
-        config_path_or_dir: str,
-        evaluator: Optional[Any] = None,
+        config_path_or_dir: Optional[str] = None,
+        evaluator: Optional[DeterministicStage2Evaluator] = None,
     ):
         self.logger = logger
         self.config_loader = config_loader
         self.config_path_or_dir = config_path_or_dir
         self.evaluator = evaluator
+        self.optimizer = GridSearchOptimizer(logger)
+        self.wf_manager = WalkForwardManager(logger)
 
     def tune_parameters(
         self,
@@ -385,116 +393,112 @@ class Stage2Tuner:
         search_space: Dict[str, Any] = (
             dict(raw_search_space) if isinstance(raw_search_space, dict) else {}
         )
-        raw_strat_space = search_space.get(stats.strategy)
-        strat_space = raw_strat_space if isinstance(raw_strat_space, dict) else {}
+        strat_space = search_space.get(stats.strategy, {})
         if not strat_space:
-            self.logger.info(
-                "Agent Stage 2: no search space configured",
-                strategy=stats.strategy,
-                regime=stats.regime,
-            )
             return []
 
         evaluator = self.evaluator
         if evaluator is None:
-
-            def _clock(now: datetime = now) -> datetime:
-                return now
-
             evaluator = DeterministicStage2Evaluator(
                 cfg if isinstance(cfg, dict) else {},
                 self.config_loader,
                 self.logger,
-                clock=_clock,
+                clock=lambda: now,
                 bars_provider=JsonlBarsProvider(Path(offline_dir)),
             )
 
-        def _regime() -> Any:
+        def _get_regime_enum() -> Regime:
             r = str(stats.regime or "").strip().lower()
-            from src.core.domain import Regime as RegimeEnum
-
             if r == "bull":
-                return RegimeEnum.BULL
+                return Regime.BULL
             if r == "bear":
-                return RegimeEnum.BEAR
-            return RegimeEnum.CHOP
+                return Regime.BEAR
+            return Regime.CHOP
 
-        # Evaluate baseline
-        if callable(evaluator) and not hasattr(evaluator, "evaluate"):
-            baseline_metrics = evaluator(stats, dict(current_config))
-        else:
-            m0 = evaluator.evaluate(
-                stats.strategy, _regime(), dict(current_config), as_of=now
-            )
-            baseline_metrics = {
-                "expectancy": float(m0.expectancy),
-                "max_drawdown_r": float(m0.max_drawdown_r),
-                "n_trades": int(m0.n_trades),
+        regime_enum = _get_regime_enum()
+
+        def _evaluate_params(params: Dict[str, Any]) -> Dict[str, Any]:
+            merged = {**current_config, **params}
+            m = evaluator.evaluate(stats.strategy, regime_enum, merged, as_of=now)
+            return {
+                "expectancy": float(m.expectancy),
+                "max_drawdown_r": float(m.max_drawdown_r),
+                "n_trades": int(m.n_trades),
             }
 
-        baseline_expectancy = float(baseline_metrics.get("expectancy", 0.0))
-        baseline_dd = float(baseline_metrics.get("max_drawdown_r", 0.0))
-        baseline_n = int(baseline_metrics.get("n_trades", 0))
+        def _score_fn(metrics: Dict[str, Any]) -> float:
+            exp = float(metrics.get("expectancy", 0.0))
+            dd = float(metrics.get("max_drawdown_r", 0.0))
+            n = int(metrics.get("n_trades", 0))
+            return exp * 1_000_000.0 - dd * 1_000.0 + n
 
-        if baseline_n < int(min_trades):
+        # Baseline Evaluation
+        baseline_metrics = _evaluate_params({})
+        baseline_expectancy = float(baseline_metrics["expectancy"])
+        baseline_dd = float(baseline_metrics["max_drawdown_r"])
+
+        if int(baseline_metrics["n_trades"]) < int(min_trades):
             self.logger.info(
-                "Agent Stage 2: insufficient baseline sample size",
+                "Insufficient baseline trades",
                 strategy=stats.strategy,
-                regime=stats.regime,
-                n_trades=baseline_n,
-                min_trades=min_trades,
+                n=baseline_metrics["n_trades"],
             )
             return []
 
-        # Build candidates
-        keys = sorted(strat_space.keys())
-        values_list = []
-        for k in keys:
-            v = strat_space.get(k)
-            if isinstance(v, list):
-                values_list.append([x for x in v])
-            else:
-                values_list.append([v])
-
-        best_params: Dict[str, Any] = {}
-        best_score: Optional[float] = None
-        best_metrics: Dict[str, Any] = {}
-
-        for combo in itertools.product(*values_list):
-            cand = dict(zip(keys, combo, strict=True))
-            merged = {**current_config, **cand}
-            if callable(evaluator) and not hasattr(evaluator, "evaluate"):
-                metrics = evaluator(stats, merged)
-            else:
-                m = evaluator.evaluate(stats.strategy, _regime(), merged, as_of=now)
-                metrics = {
-                    "expectancy": float(m.expectancy),
-                    "max_drawdown_r": float(m.max_drawdown_r),
-                    "n_trades": int(m.n_trades),
-                }
-
-            expectancy = float(metrics.get("expectancy", 0.0))
-            dd = float(metrics.get("max_drawdown_r", 0.0))
-            n = int(metrics.get("n_trades", 0))
-
-            if n < int(min_trades):
-                continue
-            if dd > float(max_dd_r):
-                continue
-            if expectancy <= baseline_expectancy:
-                continue
-            if dd > baseline_dd:
-                continue
-
-            score = expectancy * 1_000_000.0 - dd * 1_000.0 + n
-
-            if best_score is None or score > best_score:
-                best_score = score
-                best_params = cand
-                best_metrics = dict(metrics)
+        # Parameter Search
+        best_params, best_metrics = self.optimizer.optimize(
+            evaluate_fn=_evaluate_params,
+            search_space=strat_space,
+            min_trades=min_trades,
+            score_fn=_score_fn,
+        )
 
         if not best_params:
             return []
+
+        # Baseline checks: skip if no improvement
+        if float(best_metrics["expectancy"]) <= baseline_expectancy:
+            return []
+        if float(best_metrics["max_drawdown_r"]) > baseline_dd and float(
+            best_metrics["max_drawdown_r"]
+        ) > float(max_dd_r):
+            # Only allow DD increase if it's within global limits
+            return []
+
+        # optional Walk-Forward Validation
+        wf_cfg = stage2.get("walk_forward", {})
+        if wf_cfg.get("enabled", False):
+            n_win = int(wf_cfg.get("n_windows", 3))
+            step = int(wf_cfg.get("step_days", 7))
+            windows = self.wf_manager.get_windows(
+                now, int(stage2.get("window_days", 30)), step
+            )
+
+            wf_results = []
+            for start, end in windows:
+
+                def _wf_eval(
+                    params_inner: Dict[str, Any], s=start, e=end
+                ) -> Dict[str, Any]:
+                    merged = {**current_config, **params_inner}
+                    m = evaluator.evaluate(
+                        stats.strategy,
+                        regime_enum,
+                        merged,
+                        start_override=s,
+                        end_override=e,
+                    )
+                    return {"expectancy": m.expectancy, "n_trades": m.n_trades}
+
+                wf_results.append(_wf_eval(best_params))
+
+            if not self.wf_manager.evaluate_stability(wf_results):
+                self.logger.warning(
+                    "Optimization rejected due to walk-forward instability",
+                    strategy=stats.strategy,
+                    best_params=best_params,
+                )
+                return []
 
         return [
             AgentAction(
@@ -506,12 +510,8 @@ class Stage2Tuner:
                     "new_params": best_params,
                     "metrics": best_metrics,
                     "baseline_metrics": baseline_metrics,
-                    "window_days": int(
-                        ((stage2 or {}).get("window_days", 30))
-                        if isinstance(stage2, dict)
-                        else 30
-                    ),
+                    "walk_forward": wf_cfg.get("enabled", False),
                 },
-                reason="Deterministic Stage 2 parameter tuning",
+                reason=f"Deterministic Stage 2 tuning (Improved expectancy from {baseline_expectancy:.3f} to {best_metrics['expectancy']:.3f})",
             )
         ]

@@ -116,13 +116,11 @@ class StrategyEngine:
         Determines which strategies are active for the current symbol and market state.
 
         Uses activation policies when available, falls back to legacy regime routing.
-        When scanner_bypass is set, skips routing and returns all allowed strategies.
+        When scanner_bypass is set, skips legacy regime routing but STILL respects
+        activation policies (e.g., session filters).
         """
         allowed = set(symbol_state.allowed_strategies)
-
-        # If scanner_bypass is set, skip routing and use all allowed strategies
-        if symbol_state.meta.get("scanner_bypass", False):
-            return sorted(list(allowed))
+        scanner_bypass = symbol_state.meta.get("scanner_bypass", False)
 
         active: List[str] = []
 
@@ -135,14 +133,31 @@ class StrategyEngine:
                 if market_state.regime_snapshot is not None:
                     if policy.is_active(market_state.regime_snapshot):
                         active.append(name)
+                elif scanner_bypass:
+                    # scanner_bypass + no snapshot: allow (can't filter without snapshot)
+                    active.append(name)
                 else:
                     # No snapshot available, fall back to legacy check
                     if self._legacy_regime_allows(name, market_state.regime):
                         active.append(name)
             else:
-                # Legacy: Use strategies_by_regime mapping
-                if self._legacy_regime_allows(name, market_state.regime):
+                # No activation policy for this strategy
+                if scanner_bypass:
+                    # Skip legacy routing when scanner_bypass is set
                     active.append(name)
+                else:
+                    # Legacy: Use strategies_by_regime mapping
+                    if self._legacy_regime_allows(name, market_state.regime):
+                        active.append(name)
+
+            # --- Hard Stop Enforcement ---
+            if name in active:
+                strat = self.strategies_by_name.get(name)
+                if strat and hasattr(strat, "is_past_hard_stop"):
+                    # Use last known price bar time if available, otherwise current wall clock is risky in backtest
+                    # Better to pass current_time explicitly to _get_active_strategies
+                    if strat.is_past_hard_stop(market_state.time):
+                        active.remove(name)
 
         return sorted(active)
 
@@ -165,7 +180,15 @@ class StrategyEngine:
             return None
 
         try:
-            return strat.on_bar(symbol, bar, symbol_state, market_state)
+            sig = strat.on_bar(symbol, bar, symbol_state, market_state)
+            if sig and not sig.feature_snapshot:
+                # Inject feature snapshot from metadata if available
+                # Note: symbol_state.meta["features"] is usually a SymbolFeatures object
+                # We can store it as is or a dict snapshot.
+                features = symbol_state.meta.get("features")
+                if features:
+                    sig.feature_snapshot = features
+            return sig
         except Exception as e:
             if self.on_error:
                 try:

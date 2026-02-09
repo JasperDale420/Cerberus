@@ -1,0 +1,153 @@
+# 5-Year Backtest Config - VWAP_TREND_RIDER Strategy Isolation
+# Purpose: Test vwap_trend_rider strategy alone on 5 years of data (2020-2024)
+#
+database_url: sqlite:///backtest_5yr_vwap_trend_rider.db
+timezone: US/Eastern
+index_symbol: SPY
+log_level: INFO
+auto_eod_agent: false
+position_mismatch_mode: warn
+regime:
+  vol_symbol: VXX
+  window: 60
+  min_bars: 20
+  vol_baseline_window: 120
+  smooth_k: 5
+strategy_routing:
+  bull:
+  - vwap_trend_rider
+  bear:
+  - vwap_trend_rider
+  chop:
+  - vwap_trend_rider
+strategies:
+  orb:
+    enabled: false
+  vwap_reversion:
+    enabled: false
+  trend_pullback:
+    enabled: false
+  vwap_trend_rider:
+    enabled: true
+    vwap_slope_threshold: 0.001
+    ema_confirmation_period: 9
+    activation:
+      session:
+      - opening
+      - midday
+      - power_hour
+      trend:
+      - up
+      - down
+      - flat
+      vol:
+      - low
+      - normal
+      - high
+      liquidity:
+      - good
+      risk:
+      - risk_on
+      - neutral
+      - risk_off
+      min_confidence: 0.0
+  flow_momentum:
+    enabled: false
+  failed_breakout:
+    enabled: false
+  index_mean_reversion:
+    enabled: false
+  gap_fill:
+    enabled: false
+  momentum_continuation:
+    enabled: false
+  vix_spike_fade:
+    enabled: false
+risk:
+  max_daily_loss: 10000.0
+  max_risk_per_trade: 1000.0
+  max_open_risk: 10000.0
+  max_trades_per_day: 100
+  max_orders_per_day: 1000
+  max_open_positions: 50
+  max_positions_per_strategy: 25
+  max_notional_per_order: 50000.0
+  max_notional_per_symbol: 50000.0
+  time_in_force: day
+  risk_mode: normal
+  commission_per_share: 0.0
+  min_commission: 0.0
+  slippage_bps: 2.0
+  advanced_exits:
+    enabled: true
+    trailing_stop:
+      enabled: true
+      trail_pct: 0.02
+      min_profit_to_activate: 0.005
+    partial_exits:
+      enabled: false
+      first_exit_at_r: 1.0
+      first_exit_pct: 0.5
+    regime_aware_stops: true
+    regime_stop_multipliers:
+      low: 0.75
+      normal: 1.0
+      high: 1.5
+      shock: 2.0
+backtest:
+  disable_flow_strategies: false
+  partial_fill_mode: none
+  partial_fill_pct: 1.0
+  partial_fill_rate: 0.1
+  slippage_mode: fixed
+  slippage_impact_mult: 5.0
+  spread_mode: fixed
+  daily_equity_reset: false
+scanner:
+  enabled: false
+  interval_minutes: 5
+  max_watchlist_size: 50
+  top_k_per_strategy: 10
+  min_price: 5.0
+  max_price: 500.0
+  min_volume: 100000
+universe:
+  symbols:
+  - SPY
+  - QQQ
+  - AAPL
+  - AMD
+  - AMZN
+  - AVGO
+  - BAC
+  - CCL
+  - COIN
+  - CRM
+  - CVX
+  - DAL
+  - F
+  - GM
+  - GOOGL
+  - GS
+  - HOOD
+  - INTC
+  - JPM
+  - LYFT
+  - META
+  - MSFT
+  - MS
+  - MU
+  - NFLX
+  - NVDA
+  - ORCL
+  - PLTR
+  - QCOM
+  - SOFI
+  - TSLA
+  - UBER
+  - VXX
+  - XOM
+  - AAL
+  dynamic:
+    previous_day_top_volume:
+      enabled: false

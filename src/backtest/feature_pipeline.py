@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pytz  # type: ignore
 
-from src.core.domain import Bar, SymbolFeatures
+from src.core.domain import Bar, Regime, ScanResult, SymbolFeatures, WatchlistSymbol
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 
@@ -27,6 +27,36 @@ class BacktestFeaturePipeline:
     Uses already-loaded bars (from BacktestRunner) to compute `SymbolFeatures` at a scan_time.
     """
 
+    async def scan(self, regime: Regime, scan_time: datetime) -> ScanResult:
+        """
+        Shim for the Scanner protocol used during backtests.
+        Wraps compute_technicals_only results into a ScanResult.
+        """
+        symbols = list(self._series.keys())
+        features_map = await self.compute_technicals_only(symbols, as_of=scan_time)
+
+        # Build WatchlistSymbol objects expected by ExecutionEngine
+        watchlist = []
+        routing_cfg = self.config.get("strategy_routing", {})
+        regime_key = regime.value if hasattr(regime, "value") else str(regime)
+        regime_strategies = list(routing_cfg.get(regime_key, []))
+
+        watchlist = [
+            WatchlistSymbol(
+                symbol=sym,
+                score=float(feat.relative_strength),
+                strategies=regime_strategies,
+                features=feat,
+            )
+            for sym, feat in features_map.items()
+        ]
+
+        return ScanResult(
+            generated_at=scan_time,
+            regime=regime,
+            watchlist=watchlist,
+        )
+
     def __init__(
         self,
         bars_by_symbol: Dict[str, List[Bar]],
@@ -38,6 +68,9 @@ class BacktestFeaturePipeline:
         self.config = config or {}
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.calculator = FeatureCalculator()
+
+        # Shim for PairScanner/Scanner which expects pipeline.fetcher.fetch_bars
+        self.fetcher = self
 
         fp_cfg = (
             (self.config.get("feature_pipeline") or {})
@@ -53,6 +86,11 @@ class BacktestFeaturePipeline:
         self._build_index(bars_by_symbol)
 
         self.last_run_metrics: Dict[str, int] = {}
+
+        # Per-day feature cache: Alpha Ranking factors (50/200-day SMAs) only change daily,
+        # so we cache them to avoid re-slicing 200k+ bars per symbol on every intraday scan.
+        self._daily_feature_cache: Dict[str, SymbolFeatures] = {}
+        self._cache_date: Optional[datetime] = None
 
     def _build_index(self, bars_by_symbol: Dict[str, List[Bar]]) -> None:
         for sym_raw, bars in bars_by_symbol.items():
@@ -79,12 +117,9 @@ class BacktestFeaturePipeline:
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
 
-        end_et = end.astimezone(US_EASTERN)
-        start_day = end_et.date()
-        if end_et.time() < time(4, 0):
-            start_day = start_day - timedelta(days=1)
-        start_et = US_EASTERN.localize(datetime.combine(start_day, time(4, 0)))
-        start = start_et.astimezone(timezone.utc)
+        # Expand lookback to 365 days (~252 trading days) to ensure we have sufficient
+        # historical data for 200-day SMAs (Alpha Ranking Factors).
+        start = end - timedelta(days=365)
         return start, end
 
     def _slice_bars(self, sym: str, start: datetime, end: datetime) -> List[Bar]:
@@ -109,6 +144,16 @@ class BacktestFeaturePipeline:
         # Fallback: use volume accumulated today (partial day).
         return float(vols.get(day, 0.0))
 
+    async def fetch_bars(
+        self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"
+    ) -> tuple[List[Bar], Dict[str, Any]]:
+        """
+        Shim for DataFetcher.fetch_bars used by Scanner._scan_pairs.
+        """
+        # Note: Backtest currently ignores timeframe and uses whatever bars were provided
+        bars = self._slice_bars(symbol, start, end)
+        return bars, {}
+
     async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
     ) -> Dict[str, SymbolFeatures]:
@@ -121,6 +166,15 @@ class BacktestFeaturePipeline:
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
 
+        # Cache invalidation: clear cache at day boundary
+        current_date = now.date()
+        if self._cache_date is None or self._cache_date != current_date:
+            self._daily_feature_cache.clear()
+            self._cache_date = current_date
+            self.logger.info(
+                "Feature cache cleared for new trading day", date=str(current_date)
+            )
+
         metrics: Dict[str, int] = {
             "symbols_total": int(len(symbols)),
             "features_ok": 0,
@@ -131,8 +185,21 @@ class BacktestFeaturePipeline:
         start, end = self._calculate_fetch_window(now)
         out: Dict[str, SymbolFeatures] = {}
 
+        # 1. Fetch benchmark (SPY) for Relative Strength
+        index_sym = str(self.config.get("index_symbol", "SPY")).upper()
+        benchmark_bars = []
+        if index_sym in self._series:
+            benchmark_bars = self._slice_bars(index_sym, start, end)
+
         for s in symbols:
             sym = str(s).strip().upper()
+
+            # Check cache first (alpha factors only change daily, not intraday)
+            if sym in self._daily_feature_cache:
+                out[sym] = self._daily_feature_cache[sym]
+                metrics["features_ok"] += 1
+                continue
+
             bars = self._slice_bars(sym, start, end)
             if not bars:
                 metrics["no_bars"] += 1
@@ -141,6 +208,17 @@ class BacktestFeaturePipeline:
             if not tech:
                 metrics["technicals_fail"] += 1
                 continue
+
+            # 2. Compute Relative Strength vs SPY
+            # Anchor RS to 9:30 AM ET (Market Open) for institutional baseline
+            market_open = US_EASTERN.localize(datetime.combine(now.date(), time(9, 30)))
+            if bars and benchmark_bars:
+                common_start = max(market_open, bars[0].time, benchmark_bars[0].time)
+                sym_al = [b.close for b in bars if b.time >= common_start]
+                ben_al = [b.close for b in benchmark_bars if b.time >= common_start]
+                rs = self.calculator.calculate_relative_strength(sym_al, ben_al)
+            else:
+                rs = 0.0
 
             avg_daily_volume = self._avg_daily_volume(sym, now)
             feat = SymbolFeatures(
@@ -163,21 +241,35 @@ class BacktestFeaturePipeline:
                 distance_from_ema20=float(tech.distance_from_ema20),
                 prior_day_high=float(tech.prior_day_high),
                 prior_day_low=float(tech.prior_day_low),
+                atr=float(tech.atr),
                 bb_upper=float(tech.bb_upper),
                 bb_lower=float(tech.bb_lower),
                 price_zscore=float(tech.price_zscore),
+                # options flow (Mostly unobserved in technical-only backtest)
                 flow_zscore=0.0,
                 call_put_ratio=0.0,
                 large_sweeps_count=0,
                 aggressive_flow_share=0.0,
+                # Fusion Signals
+                relative_strength=float(rs),
+                flow_bias=0.0,
+                dof_score=0.0,
+                orb_high=float(tech.orb_high),
+                orb_low=float(tech.orb_low),
+                # Alpha Factors for RankingEngine
+                ma_dist_50=float(tech.ma_dist_50),
+                ma_dist_200=float(tech.ma_dist_200),
                 extra={
                     "flow_raw_count": 0,
                     "flow_bias": 0.0,
                     "volatility": float(tech.atr_pct),
                     "last_bar_volume": float(tech.volume),
                     "avg_daily_volume_days": int(self.daily_volume_lookback_days),
+                    "atr": float(tech.atr),
                 },
             )
+            # Cache the computed features for subsequent intraday scans
+            self._daily_feature_cache[sym] = feat
             out[sym] = feat
             metrics["features_ok"] += 1
 
