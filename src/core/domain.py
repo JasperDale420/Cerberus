@@ -173,6 +173,7 @@ class Signal:
     # Multi-axis regime (replaces legacy BULL/BEAR/CHOP)
     regime_tags: Dict[str, str] = field(default_factory=dict)
     regime_confidence: Dict[str, float] = field(default_factory=dict)
+    feature_snapshot: Optional["TechnicalFeatures"] = None  # Full alpha context
 
     def __post_init__(self) -> None:
         # PRD 3.2 / 2.1: correlation_id is required for cross-module tracing.
@@ -240,6 +241,20 @@ class Position:
     # H1 fix: Track when position last modified to prevent reconciliation race conditions
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
+    # --- Advanced Exit Fields ---
+    # Trailing stop configuration
+    trailing_stop_enabled: bool = False
+    trailing_stop_pct: Optional[float] = None  # Trail by X% from high water mark
+    trailing_high_water: Optional[float] = None  # Best favorable price seen
+    initial_stop_price: Optional[float] = None  # Original stop before trailing
+
+    # Partial exit tracking
+    initial_qty: float = 0.0  # Original position size at entry
+    partial_exits_taken: int = 0  # Number of partial exits completed
+
+    # Regime-aware stop multiplier applied at entry
+    regime_stop_multiplier: float = 1.0
+
 
 @dataclass
 class SymbolState:
@@ -277,6 +292,7 @@ class TechnicalFeatures:
     price: float
     volume: float
     timestamp: datetime
+    atr: float
     atr_pct: float
     intraday_range_pct: float
     gap_pct: float
@@ -290,6 +306,23 @@ class TechnicalFeatures:
     bb_lower: float
     price_zscore: float
     premarket_volume: float
+    last_updated: datetime
+
+    # New Mean Reversion factors for ranking
+    ma_dist_50: float = 0.0
+    ma_dist_200: float = 0.0
+    tfi: float = 0.0  # Trade Flow Imbalance (-1.0 to 1.0)
+    net_gex: float = 0.0  # Total Net Gamma Exposure (MM hedging pressure)
+    gex_flip_dist: float = 0.0  # Distance to GEX Flip/Pin level (%)
+    frac_diff_close: float = 0.0  # Fractionally differentiated close price
+    hurst_exponent: float = 0.0  # Hurst Exponent (0-1, <0.5 MR, >0.5 Trend)
+
+    # Fusion Alpha Fields (with defaults, MUST be at the end)
+    relative_strength: float = 0.0  # Stock return vs Benchmark (e.g. SPY)
+    flow_bias: float = 0.0  # Institutional net direction score (-1 to 1)
+    dof_score: float = 0.0  # Directional Options Flow score (0 to 1)
+    orb_high: float = 0.0  # Opening Range High (9:30-9:45 AM ET)
+    orb_low: float = 0.0  # Opening Range Low (9:30-9:45 AM ET)
 
 
 # --- Scanner / Features (PRD 4.3) ---
@@ -324,9 +357,27 @@ class SymbolFeatures:
     call_put_ratio: float
     large_sweeps_count: int
     aggressive_flow_share: float
-
-    # misc
     last_updated: datetime
+
+    # Fusion Signals
+    relative_strength: float = 0.0
+    flow_bias: float = 0.0
+    dof_score: float = 0.0
+    atr: float = 0.0
+    orb_high: float = 0.0
+    orb_low: float = 0.0
+    tfi: float = 0.0
+    net_gex: float = 0.0
+    gex_flip_dist: float = 0.0
+    frac_diff_close: float = 0.0
+    hurst_exponent: float = 0.0
+
+    # Ranking Engine Outputs
+    ma_dist_50: float = 0.0
+    ma_dist_200: float = 0.0
+    alpha_score: float = 0.0
+    alpha_rank: int = 0
+
     extra: Dict[str, Any] = field(default_factory=dict)
 
 

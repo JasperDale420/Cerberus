@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
@@ -75,6 +75,22 @@ class FeatureCalculator:
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
 
+    @staticmethod
+    def calculate_relative_strength(
+        symbol_closes: List[float], benchmark_closes: List[float]
+    ) -> float:
+        """
+        Calculate Relative Strength (Price Performance) vs Benchmark.
+        Returns the difference in returns over the provided window.
+        """
+        if not symbol_closes or not benchmark_closes:
+            return 0.0
+
+        sym_ret = (symbol_closes[-1] / symbol_closes[0]) - 1.0
+        bench_ret = (benchmark_closes[-1] / benchmark_closes[0]) - 1.0
+
+        return sym_ret - bench_ret
+
     def compute_technicals(self, bars_data: List[Any]) -> Optional[TechnicalFeatures]:
         """
         Computes technical indicators from a list of bar data.
@@ -106,7 +122,7 @@ class FeatureCalculator:
             prev_close = float(closes[-2])
             gap_pct = ((open_ - prev_close) / prev_close) if prev_close > 0 else 0.0
 
-        _, atr_pct = self._compute_atr(closes, highs, lows, price)
+        atr, atr_pct = self._compute_atr(closes, highs, lows, price)
         ema20_slope, distance_from_ema20 = self._compute_ema_metrics(closes, price)
         _, distance_from_vwap = self._compute_vwap(
             vwaps, timestamps, highs, lows, closes, volumes, price
@@ -117,11 +133,16 @@ class FeatureCalculator:
         )
         bb_upper, bb_lower, price_zscore = self._compute_bollinger(closes, price)
         premarket_vol = self._compute_premarket_volume(timestamps, volumes)
+        orb_high, orb_low = self._compute_opening_range(timestamps, highs, lows)
+
+        ma_dist_50 = self._compute_ma_dist(closes, price, 50)
+        ma_dist_200 = self._compute_ma_dist(closes, price, 200)
 
         return TechnicalFeatures(
             price=price,
             volume=volume,
             timestamp=timestamp,
+            atr=atr,
             atr_pct=atr_pct,
             intraday_range_pct=intraday_range_pct,
             gap_pct=gap_pct,
@@ -135,7 +156,53 @@ class FeatureCalculator:
             bb_lower=bb_lower,
             price_zscore=price_zscore,
             premarket_volume=premarket_vol,
+            last_updated=timestamp,  # Use the bar timestamp as last_updated
+            orb_high=orb_high,
+            orb_low=orb_low,
+            ma_dist_50=ma_dist_50,
+            ma_dist_200=ma_dist_200,
+            tfi=0.0,
+            net_gex=0.0,
+            gex_flip_dist=0.0,
+            frac_diff_close=0.0,
+            hurst_exponent=0.0,
         )
+
+    def _compute_opening_range(
+        self, timestamps: List[datetime], highs: List[float], lows: List[float]
+    ) -> Tuple[float, float]:
+        """
+        Calculates the Opening Range High and Low for the current day.
+        Assumes a 30-minute opening range from market open (9:30 AM ET).
+        """
+        orb_high = 0.0
+        orb_low = float("inf")
+        market_open_time = time(9, 30)
+        orb_duration_minutes = 30
+
+        if not timestamps:
+            return 0.0, 0.0
+
+        latest_date_et = timestamps[-1].astimezone(_ET_TZ).date()
+
+        for ts, h, low_val in zip(timestamps, highs, lows, strict=True):
+            ts_et = ts.astimezone(_ET_TZ)
+
+            if ts_et.date() == latest_date_et:
+                # Check if within the opening range
+                market_open_dt = _ET_TZ.localize(
+                    datetime.combine(latest_date_et, market_open_time)
+                )
+                orb_end_dt = market_open_dt + timedelta(minutes=orb_duration_minutes)
+
+                if market_open_dt <= ts_et <= orb_end_dt:
+                    orb_high = max(orb_high, float(h))
+                    orb_low = min(orb_low, float(low_val))
+
+        if orb_low == float("inf"):  # No data found in ORB
+            orb_low = 0.0
+
+        return orb_high, orb_low
 
     def _parse_ts(self, v: Any) -> Optional[datetime]:
         if v is None:
@@ -160,22 +227,56 @@ class FeatureCalculator:
         rows = []
         for b in bars_data:
             bd = b if isinstance(b, dict) else getattr(b, "__dict__", {})
-            ts = self._parse_ts(
-                bd.get("t") or bd.get("timestamp") or getattr(b, "t", None)
+
+            # 1. Parse Timestamp (handle 'time', 't', or 'timestamp')
+            ts_val = (
+                bd.get("time")
+                or bd.get("t")
+                or bd.get("timestamp")
+                or getattr(b, "time", None)
+                or getattr(b, "t", None)
             )
+            ts = self._parse_ts(ts_val)
             if ts is None:
                 continue
-            o = self._to_float(bd.get("o") or bd.get("open") or getattr(b, "o", None))
-            h = self._to_float(bd.get("h") or bd.get("high") or getattr(b, "h", None))
-            low_val = self._to_float(
-                bd.get("l") or bd.get("low") or getattr(b, "l", None)
+
+            # 2. Parse OHLCV (handle full names or shorthand)
+            o = self._to_float(
+                bd.get("open")
+                or bd.get("o")
+                or getattr(b, "open", None)
+                or getattr(b, "o", None)
             )
-            c = self._to_float(bd.get("c") or bd.get("close") or getattr(b, "c", None))
-            v = self._to_float(bd.get("v") or bd.get("volume") or getattr(b, "v", None))
+            h = self._to_float(
+                bd.get("high")
+                or bd.get("h")
+                or getattr(b, "high", None)
+                or getattr(b, "h", None)
+            )
+            low_val = self._to_float(
+                bd.get("low")
+                or bd.get("l")
+                or getattr(b, "low", None)
+                or getattr(b, "l", None)
+            )
+            c = self._to_float(
+                bd.get("close")
+                or bd.get("c")
+                or getattr(b, "close", None)
+                or getattr(b, "c", None)
+            )
+            v = self._to_float(
+                bd.get("volume")
+                or bd.get("v")
+                or getattr(b, "volume", None)
+                or getattr(b, "v", None)
+            )
             vwap = self._to_float(bd.get("vwap") or getattr(b, "vwap", None))
+
             if o is None or h is None or low_val is None or c is None or v is None:
                 continue
             rows.append((ts, o, h, low_val, c, v, vwap))
+
         rows.sort(key=lambda r: r[0])
         return rows
 
@@ -205,6 +306,14 @@ class FeatureCalculator:
         ema20_slope = (ema20_val - ema20_prev) if ema20_prev > 0 else 0.0
         distance_from_ema20 = (price - ema20_val) / ema20_val if ema20_val > 0 else 0.0
         return ema20_slope, distance_from_ema20
+
+    def _compute_ma_dist(self, closes: List[float], price: float, period: int) -> float:
+        """Simple Moving Average distance calculation."""
+        if len(closes) < period:
+            return 0.0
+        window = closes[-period:]
+        sma = sum(window) / period
+        return (price - sma) / sma if sma > 0 else 0.0
 
     def _compute_vwap(
         self,
@@ -339,10 +448,10 @@ class FeatureCalculator:
 
     def compute_flow_metrics(
         self, flow_data: List[Any]
-    ) -> Tuple[float, float, int, float, float]:
+    ) -> Tuple[float, float, int, float, float, float]:
         """
         Computes options flow metrics.
-        Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias)
+        Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias, dof_score)
         """
         call_vol_total = 0.0
         put_vol_total = 0.0
@@ -377,11 +486,12 @@ class FeatureCalculator:
         flow_zscore = (
             ((call_n_total - put_n_total) / math.sqrt(n_total)) if n_total > 0 else 0.0
         )
-        flow_bias = (
-            ((call_vol_total - put_vol_total) / total_qty_total)
-            if total_qty_total > 0
-            else 0.0
-        )
+        # DOF Score: Signal Alignment Probability (0.0 to 1.0)
+        # Combines bias, aggression, and sweep conviction
+        dof_score = abs(flow_bias) * aggressive_flow_share
+        if sweep_count_total > 5:
+            dof_score *= 1.2
+        dof_score = max(0.0, min(1.0, dof_score))
 
         return (
             call_put_ratio,
@@ -389,6 +499,7 @@ class FeatureCalculator:
             sweep_count_total,
             aggressive_flow_share,
             flow_bias,
+            dof_score,
         )
 
     def _parse_and_validate_ts(
@@ -442,3 +553,191 @@ class FeatureCalculator:
                 open_px = o_f
 
         return float(open_px)
+
+    def calculate_tfi(self, trades: List[Dict[str, Any]]) -> float:
+        """
+        Calculates Trade Flow Imbalance (TFI) using the Tick Test (Lee-Ready).
+        TFI = (BuyVolume - SellVolume) / TotalVolume
+        Result range: [-1.0, 1.0]
+        """
+        if not trades:
+            return 0.0
+
+        buy_vol = 0.0
+        sell_vol = 0.0
+        total_vol = 0.0
+        last_price: Optional[float] = None
+        last_dir = 0  # 1 for buy, -1 for sell
+
+        for t in trades:
+            px = float(t.get("p", 0))
+            sz = float(t.get("s", 0))
+            total_vol += sz
+
+            if last_price is not None:
+                if px > last_price:
+                    # Uptick -> Buy
+                    buy_vol += sz
+                    last_dir = 1
+                elif px < last_price:
+                    # Downtick -> Sell
+                    sell_vol += sz
+                    last_dir = -1
+                else:
+                    # No change -> Use last direction (Tick Test)
+                    if last_dir == 1:
+                        buy_vol += sz
+                    elif last_dir == -1:
+                        sell_vol += sz
+
+            last_price = px
+
+        if total_vol <= 0:
+            return 0.0
+
+        return (buy_vol - sell_vol) / total_vol
+
+    def calculate_gex_metrics(
+        self, exposure_data: List[Dict[str, Any]], spot_price: float
+    ) -> Tuple[float, float]:
+        """
+        Calculates Net Gamma Exposure (GEX) and distance to GEX Flip.
+        Net GEX = (Sum of Call Gamma - Sum of Put Gamma) * Multiplier
+        Note: Multiplier is assumed to be 0.1% or 1% of spot as per UW definition.
+
+        Returns: (net_gex, gex_flip_dist)
+        """
+        if not exposure_data or spot_price <= 0:
+            return 0.0, 0.0
+
+        total_net_gex = 0.0
+        # Stratify by strike to find flip
+        by_strike: Dict[float, float] = {}
+
+        for item in exposure_data:
+            try:
+                strike = float(item.get("strike", 0))
+                cg = float(item.get("call_gamma", 0))
+                pg = float(item.get("put_gamma", 0))
+
+                # Standard convention: Net GEX at strike = CallGamma - PutGamma
+                # This approximates MMs being short calls/puts
+                net_at_strike = cg - pg
+                total_net_gex += net_at_strike
+
+                by_strike[strike] = net_at_strike
+            except (TypeError, ValueError):
+                continue
+
+        # Find "Flip" strike (where net GEX is min / closest to zero)
+        # Or ideally where it crosses zero. For simplicity, we find the absolute minimum net exposure strike
+        # as a proxy for the 'Zero GEX' pin or flip point.
+        if not by_strike:
+            return total_net_gex, 0.0
+
+        # Sort strikes
+        sorted_strikes = sorted(by_strike.keys())
+
+        # Simple heuristic: find the strike closest to zero net exposure
+        flip_strike = min(by_strike.keys(), key=lambda s: abs(by_strike[s]))
+
+        # Alternatively: Find where it crosses zero
+        for i in range(len(sorted_strikes) - 1):
+            s1, s2 = sorted_strikes[i], sorted_strikes[i + 1]
+            v1, v2 = by_strike[s1], by_strike[s2]
+            if (v1 < 0 and v2 > 0) or (v1 > 0 and v2 < 0):
+                # Zero cross found!
+                flip_strike = s1 if abs(v1) < abs(v2) else s2
+                break
+
+        dist_to_flip = (
+            (flip_strike - spot_price) / spot_price if spot_price > 0 else 0.0
+        )
+
+        return total_net_gex, dist_to_flip
+
+    @staticmethod
+    def get_frac_diff_weights(d: float, size: int) -> List[float]:
+        """
+        Compute weights for fractional differentiation using iterative formula.
+        w_k = -w_{k-1} * (d - k + 1) / k
+        """
+        w = [1.0]
+        for k in range(1, size):
+            w_k = -w[-1] * (d - k + 1.0) / k
+            w.append(w_k)
+        return w
+
+    def apply_frac_diff(
+        self, series: List[float], d: float, threshold: float = 1e-5
+    ) -> float:
+        """
+        Applies Fractional Differentiation (Fixed-width window) to a series.
+        Preserves memory while achieving stationarity.
+        Returns the last fractionally differentiated value.
+        """
+        if len(series) < 2:
+            return series[-1] if series else 0.0
+
+        # Determine weight window (ignore weights below threshold)
+        weights = self.get_frac_diff_weights(d, len(series))
+
+        # Only use weights above threshold for computational efficiency
+        # We start from the end and apply weights backwards
+        res = 0.0
+        for i, w in enumerate(weights):
+            if abs(w) < threshold and i > 0:
+                break
+            # Current value is at index -1, previous at -2, etc.
+            res += w * series[-(i + 1)]
+
+        return res
+
+    def calculate_hurst_exponent(self, series: List[float]) -> float:
+        """
+        Calculates the Hurst exponent using Rescaled Range (R/S) analysis.
+        H < 0.5: Mean-reverting
+        H = 0.5: Random walk
+        H > 0.5: Trending
+        """
+        if len(series) < 50:  # Need sufficient data for R/S analysis
+            return 0.5
+
+        # Log returns
+        rets = [math.log(series[i] / series[i - 1]) for i in range(1, len(series))]
+        n = len(rets)
+
+        # We use a single window for simplicity in this implementation,
+        # but full R/S would use multiple window sizes.
+        # This is the "Simplified Hurst" or "Single Window Hurst".
+
+        mean_ret = sum(rets) / n
+        centered = [r - mean_ret for r in rets]
+
+        # Cumulative deviation
+        cum_dev = []
+        curr = 0.0
+        for c in centered:
+            curr += c
+            cum_dev.append(curr)
+
+        # Range
+        r = max(cum_dev) - min(cum_dev)
+
+        # Standard Deviation
+        variance = sum((r_i - mean_ret) ** 2 for r_i in rets) / n
+        s = math.sqrt(variance)
+
+        if s == 0:
+            return 0.5
+
+        # R/S = (Max - Min) / StdDev
+        rs = r / s
+
+        # Hurst: rs = (n/2)^H  => H = log(rs) / log(n/2)
+        # Using n/2 as a standard normalization for short-window Hurst estimations
+        try:
+            h = math.log(rs) / math.log(n)
+            return max(0.0, min(1.0, h))
+        except (ValueError, ZeroDivisionError):
+            return 0.5

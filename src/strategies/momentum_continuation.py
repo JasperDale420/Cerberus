@@ -113,6 +113,14 @@ class MomentumContinuationStrategy(BaseStrategy):
         # 9. Get breakout levels
         high_level, low_level = self._get_breakout_levels(bars, bar)
         if high_level is None or low_level is None:
+            # Debug: Log when breakout levels unavailable
+            if len(bars) % 100 == 0:
+                self.logger.debug(
+                    "MomentumCont: No breakout levels",
+                    symbol=symbol,
+                    bar_count=len(bars),
+                    lookback_days=self.breakout_lookback,
+                )
             return None
 
         # 10. Check volume condition
@@ -123,6 +131,18 @@ class MomentumContinuationStrategy(BaseStrategy):
         vol_ok = float(bar.volume) > (avg_vol * self.vol_mult)
         if not vol_ok:
             return None
+
+        # Debug: Log periodically when no breakout condition met
+        if len(bars) % 200 == 0:
+            self.logger.debug(
+                "MomentumCont: No breakout",
+                symbol=symbol,
+                close=round(bar.close, 2),
+                high_level=round(high_level, 2),
+                low_level=round(low_level, 2),
+                uptrend=is_uptrend,
+                downtrend=is_downtrend,
+            )
 
         # 11. Check for breakout with strong close
         signal = None

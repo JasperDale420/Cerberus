@@ -13,6 +13,13 @@ auto_eod_agent: true
 position_mismatch_mode: "halt"   # halt|warn
 max_bar_latency_ms: 1000         # PRD 11.2 observability threshold (warn-only)
 
+# Snapshot capture for historical replay
+snapshots:
+  enabled: true
+  gex_capture_time: "09:35"      # ET, after market open stabilization
+  flow_interval_minutes: 5       # Capture flow every N minutes during market hours
+  feature_interval: "every_bar"  # "every_bar" or "5min"
+
 # Logging Configuration
 logging:
   file_path: "logs/cerberus.log"
@@ -37,16 +44,39 @@ agent:
     z_high: 1.645
     max_drawdown_r: 10.0
   stage2:
-    enabled: false
+    enabled: true
     window_days: 30
-    search_space: {}
+    # PRD 9.2: Parameter search space for offline deterministic tuning
+    search_space:
+      vwap_reversion:
+        band_sigma: [1.5, 2.0, 2.5]
+        max_hold_minutes: [30, 60, 90]
+      orb:
+        orb_minutes: [10, 15, 20]
+        risk_reward: [1.5, 2.0, 2.5]
+      gap_fill:
+        min_gap: [0.01, 0.015, 0.02]
+        max_gap: [0.08, 0.10, 0.12]
+      vwap_trend_rider:
+        min_trend_score: [1.0, 1.5, 2.0]
+        vol_mult: [1.0, 1.2, 1.5]
+      index_mean_reversion:
+        bb_std: [1.5, 2.0, 2.5]
+        stop_pct: [0.003, 0.005, 0.007]
     # PRD 9.2: deterministic offline evaluation source (no live network).
     offline_bars_dir: ""
+    walk_forward:
+      enabled: true
+      n_windows: 3
+      step_days: 7
+      stability_threshold: 0.7
   stage3:
-    enabled: false
-    # PRD 9.3: requires explicit human approval before writing any proposal files.
+    enabled: true
+    # PRD 9.3: requires explicit human approval before generating reports.
     # Set env var CERBERUS_STAGE3_APPROVED=true (or change approval_env_var).
     approval_env_var: "CERBERUS_STAGE3_APPROVED"
+    # Mode: "weekly_report" for analysis reports, "code_proposal" for code changes
+    mode: "weekly_report"
     # If true, writes proposals under src/strategies/proposals; otherwise uses artifacts/proposals.
     write_to_src: false
     # If true, Stage 3 may also propose scanner profile changes (still gated by approval_env_var).
@@ -57,10 +87,11 @@ agent:
 # Unusual Whales flow configuration (PRD 10.6)
 unusual_whales:
   # PRD 10.6: Toggle to enable/disable external flow data integration.
-  enabled: false
+  enabled: true
   # HTTP URL template; must include `{symbol}` and should accept `?date=YYYY-MM-DD`.
   # Example: "https://my-uw-proxy.internal/uw/flow/{symbol}"
   flow_url_template: ""
+
 
 # Strategy routing by regime (PRD 6.4 / 7.2)
 strategy_routing:

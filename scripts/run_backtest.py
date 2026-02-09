@@ -22,6 +22,12 @@ async def main():
         help="Optional directory of {SYMBOL}_{timeframe}.jsonl bars for deterministic offline runs",
     )
     parser.add_argument(
+        "--warmup-days",
+        type=int,
+        default=250,
+        help="Number of historical days to load for indicator warmup (default: 250)",
+    )
+    parser.add_argument(
         "--output",
         default=None,
         help="Path to save results JSON (default: results/backtest_results_{timestamp}.json)",
@@ -58,6 +64,7 @@ async def main():
             args.start_date,
             args.end_date,
             offline_bars_dir=args.offline_bars_dir,
+            warmup_days=args.warmup_days,
         )
         result = await runner.run()  # Now returns dict
 

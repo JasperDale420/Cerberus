@@ -255,13 +255,13 @@ async def async_main():
         engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore
 
     # Register Strategies (config-driven, deterministic; PRD plug-and-play intent)
-    from src.strategies.failed_breakout import FailedBreakoutStrategy
     from src.strategies.flow_momentum import FlowMomentumStrategy
+    from src.strategies.fusion_v1 import FusionStrategyV1
     from src.strategies.gap_fill import GapFillStrategy
     from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
     from src.strategies.momentum_continuation import MomentumContinuationStrategy
     from src.strategies.orb import ORBStrategy
-    from src.strategies.trend_pullback import TrendPullbackStrategy
+    from src.strategies.pair_trading import PairTradingStrategy
     from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
     from src.strategies.vwap_reversion import VWAPReversionStrategy
     from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
@@ -269,14 +269,14 @@ async def async_main():
     strategy_registry = {
         "vwap_reversion": VWAPReversionStrategy,
         "orb": ORBStrategy,
-        "trend_pullback": TrendPullbackStrategy,
-        "failed_breakout": FailedBreakoutStrategy,
         "vwap_trend_rider": VWAPTrendRiderStrategy,
         "index_mean_reversion": IndexMeanReversionStrategy,
         "flow_momentum": FlowMomentumStrategy,
         "gap_fill": GapFillStrategy,
         "vix_spike_fade": VixSpikeFadeStrategy,
         "momentum_continuation": MomentumContinuationStrategy,
+        "fusion_v1": FusionStrategyV1,
+        "pair_trading": PairTradingStrategy,
     }
 
     strategies_cfg = config.get("strategies", {})
@@ -359,6 +359,8 @@ async def async_main():
         tz = pytz.timezone(config.get("timezone", "US/Eastern"))
 
         eod_ran_for_date = None
+        flattened_for_date = None
+        last_warning_min = None
 
         def _now_local() -> datetime | None:
             """
@@ -384,14 +386,47 @@ async def async_main():
                 continue
 
             # 1. Market Close Check (Exit at 16:00 ET)
+            # PRD: no overnight holds.
+            mins_to_close = (16 - now.hour) * 60 - now.minute
+
+            # --- Live Guardrails: Flattening ---
+            force_flat_mins = int(config.get("force_flat_before_close_mins", 15))
+            if 0 < mins_to_close <= force_flat_mins:
+                target_date = now.date()
+                if flattened_for_date != target_date:
+                    logger.warning(
+                        "Market close approaching. Triggering early flattening.",
+                        mins_to_close=mins_to_close,
+                        threshold=force_flat_mins,
+                    )
+                    try:
+                        engine.flatten_all(reason="pre_market_close")
+                        flattened_for_date = target_date
+                    except Exception as e:
+                        logger.error(
+                            "Early flatten failed", error=str(e), exc_info=True
+                        )
+                        break
+
+            # --- Live Guardrails: Countdown Warnings ---
+            warning_stages = [15, 10, 5, 1]
+            for w in warning_stages:
+                if mins_to_close == w and last_warning_min != w:
+                    logger.warning(
+                        f"MARKET CLOSE COUNTDOWN: {w} minute(s) remaining until 16:00 ET",
+                        mins_to_close=mins_to_close,
+                    )
+                    last_warning_min = w
+                    break
+
             if now.hour >= 16:
-                # PRD: no overnight holds. Flatten positions and cancel orders before exit.
+                # Ensure final flattening if not already done
                 try:
                     engine.flatten_all(reason="market_close")
                 except Exception as e:
                     logger.error("EOD flatten failed", error=str(e), exc_info=True)
-                    # With mismatch_mode=halt, do not proceed silently.
                     break
+
                 # PRD 9.1: run aggregation + Agent Stage 1 at end-of-day (configurable).
                 if bool(config.get("auto_eod_agent", False)):
                     target_date = now.date()
@@ -436,7 +471,14 @@ async def async_main():
                 (config.get("scanner") or {}) if isinstance(config, dict) else {}
             )
             interval_min = int(scanner_cfg.get("interval_minutes", 5))
-            await asyncio.sleep(max(1, interval_min * 60))
+
+            # High-fidelity mode when close to market end
+            if 0 < mins_to_close <= 20:
+                sleep_secs = 30
+            else:
+                sleep_secs = max(1, interval_min * 60)
+
+            await asyncio.sleep(sleep_secs)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")
