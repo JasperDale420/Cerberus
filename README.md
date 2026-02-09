@@ -1,232 +1,161 @@
 # Cerberus Trading System
 
-**Current Version**: 1.0.0 (Dec 2025)  
-**License**: [MIT](LICENSE) | **Security**: [SECURITY.md](SECURITY.md)
+Cerberus is an intraday algorithmic trading engine for US equities. It supports paper/live modes, multi-strategy signal generation, pre-trade risk checks, execution via Alpaca, and SQLite-backed analytics.
 
-Cerberus is an automated, modular algorithmic trading system designed for both live and paper trading on US equities. It integrates real-time market data from Alpaca and options flow from Unusual Whales to drive a suite of technical and flow-based strategies. The system features a robust execution engine, a comprehensive feature pipeline, and an agentic analytics layer for daily performance review.
+- Python: `>=3.12`
+- Package/deps: `pip` + `requirements.txt`
+- Primary entrypoint: `python -m src.main`
 
-## Current Capabilities
+## Quick Start
 
-- **Live & Paper Trading**: Seamless switching between paper simulation and live execution via `--mode`.
-- **Jan 2026 Audit Certified**: Verified reproducibility, robust risk management, and absence of look-ahead bias.
-- **Strict Session Discipline**: Optional RTH-only flattening at exactly 16:00 ET for backtest realism (`force_flat_at_1600`).
-- **Modular Strategy Engine**: 10 plug-and-play strategies including:
-  - VWAP Reversion & Trend Rider
-  - Opening Range Breakout (ORB)
-  - Trend Pullback
-  - Failed Breakout
-  - Gap Fill
-  - Flow Momentum & Index Mean Reversion
-  - Momentum Continuation *(NEW)*
-  - VIX Spike Fade *(NEW)*
-- **5-Axis Regime System**: Multi-dimensional market context classification:
-  - Trend (UP/DOWN/FLAT)
-  - Volatility (LOW/NORMAL/HIGH/SHOCK)
-  - Liquidity (GOOD/THIN/STRESSED)
-  - Risk Sentiment (RISK_ON/NEUTRAL/RISK_OFF)
-  - Session (OPENING/MIDDAY/POWER_HOUR/CLOSE)
-- **Advanced Exit System**:
-  - Trailing stops with high-water mark tracking
-  - Partial profit taking (1R scale-out)
-  - Regime-aware stop width multipliers
-- **Advanced Data Pipeline**:
-  - Real-time bar aggregation and technical indicator calculation (Pandas-TA).
-  - Unusual Whales options flow integration.
-  - Multi-stage scanner with data quality gates.
-- **Backtesting Engine**: Full parity with live trading:
-  - Volume-aware partial fills
-  - Volume-impact slippage modeling
-  - ATR-based spread simulation
-  - Daily equity reset for research trials
-- **Resilient Execution**:
-  - Automated market open/close handling.
-  - End-of-Day (EOD) position flattening (`flat-on-close`).
-  - "Noop" executor mode for safe logic verification.
-- **Agentic Analytics**: Automated EOD performance analysis and database aggregation.
-- **Internal Scheduler**: Native `APScheduler` integration for persistent process management (replaces external cron).
-
-## Non-Capabilities / Explicit Non-Goals
-
-- **High-Frequency Trading (HFT)**: Not designed for microsecond-latency arbitrage.
-- **Crypto/Forex**: strictly US Equities focused.
-- **Multi-Broker**: Currently tightly coupled to Alpaca for execution.
-- **Overnight Holds**: Strictly intraday; all positions are closed at 16:00 ET.
-
-## Architecture Overview
-
-Cerberus follows a vertical-slice architecture optimized for reliability and testability:
-
-1.  **Scanner (`src/scanner`)**: Filters the universe of 8000+ tickers down to actionable candidates using technicals and flow.
-2.  **Feature Pipeline (`src/data`)**: Ingests raw data (Alpaca/UW), computes features, and caches results.
-3.  **Strategy Engine (`src/strategies`)**: Evaluates candidates against active strategies to generate Signals.
-4.  **Execution Engine (`src/engine`)**: Converts Signals into Orders, manages Risk (sizing/limits), and handles Fills.
-5.  **Analytics (`src/analysis`)**: Persists trade state to SQLite (`cerberus.db`) and generates reports.
-
-## Repository Structure
-
-```
-├── .github/                # CI/CD workflows
-├── artifacts/              # Generated reports and logs
-├── config/                 # Application configuration (YAML)
-├── scripts/                # Utility scripts (ingestion, manual loops)
-├── src/
-│   ├── analysis/           # Database, Schema, Analytics Engine
-│   ├── data/               # Data Fetchers, Pipeline, Alpaca/UW Clients
-│   ├── engine/             # Execution Engine, Order Management
-│   ├── scanner/            # Universe Selection, Profiles, Validation
-│   ├── strategies/         # Strategy Implementations
-│   ├── main.py             # Application Entry Point
-│   └── scheduler.py        # Internal Scheduler Service
-├── tests/                  # Pytest Suite (Unit, Integration, E2E)
-├── Dockerfile              # Container definition
-├── Makefile                # Dev automation commands
-├── pyproject.toml          # Tool configuration (Ruff, Mypy, Pytest)
-└── requirements.txt        # Python dependencies
-```
-
-## Setup & Installation
-
-### Prerequisites
-- Python 3.11+
-- SQLite3
-- Alpaca API Credentials (Paper or Live)
-- Unusual Whales API Token (Optional, for flow strategies)
-
-### Local Setup
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/EmpireTrading/Cerberus.git
-    cd Cerberus
-    ```
-2.  **Install dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **Environment Configuration**:
-    Copy the example environment file and fill in your credentials:
-    ```bash
-    cp .env.example .env
-    # Edit .env with your actual API keys (never commit this file!)
-    ```
-    
-    Required variables:
-    - `ALPACA_API_KEY` - Your Alpaca API key
-    - `ALPACA_SECRET_KEY` - Your Alpaca secret key
-    - `UW_API_TOKEN` - (Optional) Unusual Whales API token for flow strategies
-    
-    See [.env.example](.env.example) for all configuration options.
-
-### Docker Setup
-1.  **Build image**:
-    ```bash
-    docker build -t cerberus .
-    ```
-2.  **Run container**:
-    ```bash
-    docker run --env-file .env cerberus
-    ```
-
-## How to Run
-
-### Development / Paper Trading
-Run a single pass of the system in paper mode:
+1. Install dependencies:
 ```bash
-python -m src.main --mode paper --run-once
+python -m pip install -r requirements.txt
 ```
-
-Run the continuous trading loop (paper):
+2. Configure environment:
+```bash
+cp .env.example .env
+# Fill in API credentials
+```
+3. Run health check:
+```bash
+python -m src.main --healthcheck
+```
+4. Run paper mode:
 ```bash
 python -m src.main --mode paper
 ```
 
-### Production / Live Trading
-**WARNING**: Real money risk. Ensure `APCA_API_BASE_URL` points to live API.
-```bash
-python -m src.main --mode live --config config/prod.yaml
+## Runtime Modes
+
+| Mode | Command | Purpose |
+|---|---|---|
+| Paper loop | `python -m src.main --mode paper` | Continuous paper trading |
+| Live loop | `python -m src.main --mode live` | Real execution (high risk) |
+| One-shot | `python -m src.main --mode paper --run-once` | Validate startup + initial scan |
+| Scheduler | `python -m src.main --scheduler` | Persistent APScheduler process |
+| EOD | `python -m src.main --eod` | Run daily aggregation + agent then exit |
+| Healthcheck | `python -m src.main --healthcheck` | Validate DB and credentials |
+
+## Architecture
+
+Cerberus follows a vertical-slice pipeline:
+
+```mermaid
+flowchart LR
+  A[Alpaca + Unusual Whales] --> B[Data / Feature Pipeline]
+  B --> C[Scanner]
+  C --> D[Strategy Engine]
+  D --> E[Risk Manager]
+  E --> F[Order Executor]
+  F --> G[Broker Fills]
+  G --> H[Position Manager]
+  H --> I[(SQLite: cerberus.db)]
+  I --> J[Analytics / Agent]
 ```
 
-### Persistent Scheduler
-Run as a background service that auto-starts trading at market open:
-```bash
-python -m src.main --scheduler
-```
+## Module Map
 
-### Utility Commands
-- **Healthcheck**: `python -m src.main --healthcheck`
-  - Verifies database connectivity, API credentials, and overall system health
-  - Useful for monitoring and operational readiness checks
-- **Ingest SEC Tickers**: `python scripts/ingest_sec_tickers.py`
-- **Run EOD Analytics**: `python -m src.main --eod`
+| Path | Responsibility |
+|---|---|
+| `src/main.py` | CLI entrypoint and process orchestration |
+| `src/engine/` | Execution, order routing, position/risk management |
+| `src/strategies/` | Signal logic (ORB, VWAP, gap, flow, pair, fusion, etc.) |
+| `src/scanner/` | Universe selection, ranking, scanner profiles |
+| `src/data/` | Alpaca/UW clients, feature pipeline, snapshots |
+| `src/backtest/` | Offline replay runner + mock executor |
+| `src/analysis/` | DB schema, persistence, reporting |
+| `src/analytics/` | Optimization, walk-forward, meta-labeling utilities |
+| `src/agent/` | Stage-based analysis/tuning/report generation |
+| `config/` | Runtime config overlays (`config.yaml`, `risk.yaml`, etc.) |
+| `tests/` | Unit/integration/contract/e2e/smoke tests |
 
-### Backtesting
-Run a historical replay using the full `ExecutionEngine` (portfolio-style, across all symbols):
+## Strategies
+
+Runtime strategy registry in `src/main.py` currently supports:
+
+- `vwap_reversion`
+- `orb`
+- `vwap_trend_rider`
+- `index_mean_reversion`
+- `flow_momentum`
+- `gap_fill`
+- `vix_spike_fade`
+- `momentum_continuation`
+- `fusion_v1`
+- `pair_trading`
+
+Archived strategies live under `src/strategies/archived/` and are not registered by default.
+
+## Configuration
+
+Config is merged by `src/core/config.py` from (in order):
+
+- `config/config.yaml`
+- `config/strategies.yaml`
+- `config/risk.yaml`
+- `config/scanner.yaml`
+- `config/universe.yaml`
+- `config/logging.yaml`
+- optional `config/strategies.auto.yaml`
+- optional explicit `--config` file/directory override
+- env var overrides via `APP_*`
+
+See:
+- Environment vars: [`docs/environment-variables.md`](docs/environment-variables.md)
+- Architecture: [`docs/architecture.md`](docs/architecture.md)
+
+## Backtesting
+
+Run backtest:
 ```bash
 python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10
 ```
 
-For deterministic offline runs (no Alpaca historical fetch), provide JSONL bars:
+Offline deterministic replay:
 ```bash
-python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/bars
-```
-Bars directory format: `{SYMBOL}_{timeframe}.jsonl` (example: `AAPL_1Min.jsonl`) with one JSON object per line:
-`{"t":"2025-01-01T14:30:00+00:00","o":1,"h":1,"l":1,"c":1,"v":100}`.
-
-Accuracy notes:
-- Backtests enforce **flat-at-close** by flattening at the end of each session (robust even when your dataset has no `16:00` bar).
-- Optional realism knobs (in `risk:`): `slippage_bps`, `spread_bps`, `commission_per_share`, `min_commission`.
-- Optional stale order cancel (top-level): `max_open_order_age_sec`.
-- If `scanner.enabled: true` and `scanner.interval_minutes > 0`, backtests replay scanner gating at that cadence using technical features computed from the loaded bars (flow features are neutral unless you implement an offline flow source).
-- Output keys:
-  - `metrics`: engine-native summary derived from closed trades
-  - `engine_trades`: per-trade records (net/gross, MAE/MFE, holding time, etc.)
-  - `metrics_fills`: legacy fill-based analyzer output (useful for debugging but less accurate)
-
-## Configuration
-
-Configuration is managed via `config/config.yaml` and environment variables. Key sections:
-
--   **`trading`**: Risk limits, leverage, max positions.
--   **`scanner`**: Universe filters, min volume/price.
--   **`strategies`**: Enable/disable specific strategies and tune parameters.
--   **`logging`**: Log levels and formatting.
-
-## Error Handling & Logging
-
--   **Structured Logging**: JSON-formatted logs written to `logs/` and stdout.
--   **Error Policy**: Fails fast on startup/config errors. During trading, catches strategy exceptions to prevent system crash, logging them as `ERROR` while maintaining the main loop.
--   **Observability**: Key metrics (fetch failures, scan times) are logged for monitoring.
-
-## Testing Status
-
-The project maintains high test coverage via `pytest`.
-
--   **Unit Tests**: `tests/unit/` - Core logic verification.
--   **Integration Tests**: `tests/integration/` - Database and Component interaction.
--   **E2E Tests**: `tests/e2e/` - Full flow validation with mocked Broker.
-
-**Run all tests**:
-```bash
-pytest
-```
-**Run with coverage**:
-```bash
-pytest --cov=src
+python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/jsonl_bars
 ```
 
-## Safety & Risk Notes
+Backtest realism controls are under the `backtest:` section in config (partial fills, slippage mode, spread mode, flow-strategy gating, strict session flatten options).
 
--   **Noop Executor**: Use `--order-executor noop` to verify logic without sending orders to Alpaca.
--   **Flatten on Close**: The main loop enforces a hard exit at 16:00 ET, attempting to close all positions.
--   **Database Buffer**: Writes are buffered to SQLite to handle high-throughput periods, but this implies a potential (small) data loss risk on hard crash.
+## Development
 
-## Known Gaps & TODOs
+Common commands:
 
--   **Data Quality**: Scanner validation is implemented but could be expanded for complex flow anomalies.
--   **Backfill**: Historical data backfill tooling is basic (`scripts/ingest_sec_tickers.py` restored, but full OHLCV backfill is manual).
--   **LLM Integration**: `LLMClient` stubbed in code; full agentic reasoning loop is in early stages ("Agent Stage 1").
+```bash
+make test
+make test-ci
+make test-unit
+make test-integration
+make test-contract
+make test-e2e
+make lint
+make type-check
+make security
+```
 
-## Contribution Notes
+## Docker
 
-1.  **Vertical Slices**: Implement complete features (API -> DB), not horizontal layers.
-2.  **Testing**: New features must include unit tests. Run `make lint` and `pytest` before PR.
-3.  **Docs**: Update `CHANGELOG.md` upon merging.
+Build:
+```bash
+docker build -t empire/cerberus:latest .
+```
+
+Run paper trader:
+```bash
+docker compose up -d cerberus-trader
+```
+
+Run scheduler profile:
+```bash
+docker compose --profile scheduler up -d cerberus-scheduler
+```
+
+## Operations and Safety
+
+- Default safety: use paper mode until explicitly ready for live mode.
+- Validate runtime with `--healthcheck` before market hours.
+- Review operational procedures in [`docs/runbook.md`](docs/runbook.md).
+- Security policy in [`SECURITY.md`](SECURITY.md).
+- Testing conventions in [`TESTING.md`](TESTING.md).

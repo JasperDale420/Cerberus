@@ -1,6 +1,6 @@
-# Contributing / Development Workflow
+# Contributing
 
-## Setup
+## Local Setup
 
 ```bash
 python -m pip install -r requirements.txt
@@ -8,29 +8,40 @@ python -m pip install pre-commit
 pre-commit install
 ```
 
-## Quality (Local)
+## Development Workflow
 
-- Run the full hygiene stack: `pre-commit run --all-files`
-- Lint only: `ruff check .`
-- Format check: `black --check .`
-- Type-check: `mypy .`
-- Security: `make security`
+1. Create a branch from `main`.
+2. Implement changes with tests.
+3. Run quality gates.
+4. Update `CHANGELOG.md`.
+5. Open PR.
 
-## Tests + Coverage
+## Quality Gates
 
-- All tests + coverage gate: `make test`
-- CI-equivalent (JUnit + coverage.xml): `make test-ci`
-- Marked subsets: `make test-unit`, `make test-contract`, `make test-integration`, `make test-e2e`
+```bash
+make lint
+make type-check
+make test
+make security
+pre-commit run --all-files
+```
 
-`coverage.xml` is written at repo root for Sonar.
+## Testing Targets
 
-## CI Notes
+```bash
+make test-unit
+make test-integration
+make test-contract
+make test-e2e
+```
 
-- GitHub Actions runs `pre-commit run --all-files` and `make test-ci`.
-- Sonar analysis uses `sonar-project.properties` and consumes `coverage.xml` (and JUnit if configured).
+## Documentation Requirements
 
-## Secrets Hygiene
+- Keep `README.md` and affected docs in sync with code changes.
+- Keep `.env.example` aligned with runtime env variables.
+- Add notable changes to `CHANGELOG.md`.
 
-- `detect-secrets` is enforced in pre-commit using `.secrets.baseline`.
-- If you add a new *non-secret* string that trips the scanner, update the baseline intentionally:
-  - `detect-secrets scan --update .secrets.baseline`
+## Commit Guidance
+
+- Use clear commit messages with scope prefix, e.g. `docs: ...`, `fix: ...`, `feat: ...`.
+- Avoid committing secrets, credentials, or `.env` files.

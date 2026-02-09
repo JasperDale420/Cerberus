@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+- Comprehensive documentation audit and remediation completed.
+- Rewrote `README.md` to match current runtime architecture, commands, and modules.
+- Reworked `docs/architecture.md` with updated system/data-flow diagrams and module map.
+- Added `docs/environment-variables.md` as source-of-truth env var reference.
+- Updated `.env.example` to include current runtime vars and APCA aliases.
+- Updated `docs/runbook.md`, `docs/order_flow.md`, and `docs/strategy_guide.md` for current interfaces/CLI behavior.
+- Updated `CONTRIBUTING.md`, `TESTING.md`, and `SECURITY.md` for current workflows.
+- Removed stale auto-generated `codebase.md`.
+
 ### Changed
 - **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
   - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
