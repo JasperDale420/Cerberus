@@ -51,9 +51,12 @@ class BacktestOrderExecutor:
 
     def __init__(self, logger: StructuredLogger, *, initial_cash: float = 100000.0):
         self.logger = logger
+        self._initial_cash: float = float(initial_cash)
         self.cash: float = float(initial_cash)
         self._positions: Dict[str, Dict[str, float]] = {}  # symbol -> {qty, avg_price}
         self._orders: list[_PendingOrder] = []
+        # Performance: Symbol-indexed pending orders for O(1) lookup
+        self._pending_by_symbol: Dict[str, list[_PendingOrder]] = {}
         # Public, analysis-friendly records (stable keys).
         self.fills: list[Dict[str, Any]] = []
 
@@ -73,6 +76,8 @@ class BacktestOrderExecutor:
         self._slippage_impact_mult: float = 5.0  # multiplier for volume impact
         # Spread configuration
         self._spread_mode: str = "fixed"  # fixed|atr_based
+        # Daily equity reset for regime analysis backtests
+        self._daily_equity_reset: bool = False
 
     def set_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> None:
         self._risk_cfg = dict(risk_cfg) if isinstance(risk_cfg, dict) else {}
@@ -126,23 +131,55 @@ class BacktestOrderExecutor:
         # Spread mode: fixed|atr_based
         self._spread_mode = str(self._backtest_cfg.get("spread_mode", "fixed")).lower()
 
+        # Daily equity reset: start each day fresh with initial_cash
+        self._daily_equity_reset = bool(
+            self._backtest_cfg.get("daily_equity_reset", False)
+        )
+
+        # Check if advanced exits are enabled (from risk config)
+        # If so, disable broker_managed_exits to let PositionManager handle exits
+        adv_exits = self._risk_cfg.get("advanced_exits", {})
+        if isinstance(adv_exits, dict) and adv_exits.get("enabled", False):
+            self.broker_managed_exits = False
+            self.logger.info(
+                "Advanced exits enabled, broker_managed_exits disabled",
+                trailing_stop=adv_exits.get("trailing_stop", {}).get("enabled", False),
+                partial_exits=adv_exits.get("partial_exits", {}).get("enabled", False),
+                regime_aware_stops=adv_exits.get("regime_aware_stops", True),
+            )
+
     def set_max_open_order_age_sec(self, value: Any) -> None:
         try:
             self._max_open_order_age_sec = int(value or 0)
         except Exception:
             self._max_open_order_age_sec = 0
 
+    def reset_daily_equity(self) -> None:
+        """Reset cash to initial value for regime analysis backtests."""
+        if self._daily_equity_reset:
+            old_cash = self.cash
+            self.cash = self._initial_cash
+            self.logger.info(
+                "Daily equity reset",
+                old_cash=old_cash,
+                new_cash=self.cash,
+            )
+
     def submit(self, intent: OrderIntent) -> Dict[str, Any]:
         submitted_at = _ensure_dt((intent.meta or {}).get("created_at"))
         order_id = f"bt-{len(self._orders) + 1}"
-        self._orders.append(
-            _PendingOrder(
-                id=order_id,
-                intent=intent,
-                status="new",
-                submitted_at=submitted_at,
-            )
+        order = _PendingOrder(
+            id=order_id,
+            intent=intent,
+            status="new",
+            submitted_at=submitted_at,
         )
+        self._orders.append(order)
+        # Performance: Index by symbol for O(1) lookup in fill_pending_for_bar
+        sym = str(intent.symbol)
+        if sym not in self._pending_by_symbol:
+            self._pending_by_symbol[sym] = []
+        self._pending_by_symbol[sym].append(order)
         self.logger.info(
             "Backtest order submitted",
             order_id=order_id,
@@ -362,13 +399,17 @@ class BacktestOrderExecutor:
         """
         Attempt fills for pending orders for `symbol` using this bar's OHLC.
         Fills only occur on bars strictly after the order was submitted.
+
+        Performance: Uses symbol-indexed orders for O(1) lookup instead of O(n) scan.
         """
         now = _ensure_dt(bar.time)
 
         # P3: Check and cancel expired orders at the start of each bar
         self._cancel_all_expired_orders(now)
 
-        for o in self._orders:
+        # Performance: O(1) symbol lookup instead of iterating all orders
+        pending = self._pending_by_symbol.get(symbol, [])
+        for o in pending:
             if not self._can_fill_order(o, symbol, now):
                 continue
 
@@ -722,6 +763,8 @@ class BacktestOrderExecutor:
         for o in self._orders:
             if o.status == "new":
                 o.status = "canceled"
+        # Performance: Clear symbol index (orders still in _orders for history)
+        self._pending_by_symbol.clear()
 
 
 # Backwards-compatible name used in tests/runner wiring.

@@ -138,7 +138,7 @@ class ORBScannerProfile(ScannerProfile):
     Likes: Gaps, High Premarket Volume, High Relative Vol.
     """
 
-    def __init__(self, min_gap_pct: float = 0.01, min_price: float = 10.0):
+    def __init__(self, min_gap_pct: float = 0.02, min_price: float = 10.0):
         self.min_gap_pct = min_gap_pct
         self.min_price = min_price
 
@@ -262,7 +262,7 @@ class VWAPTrendRiderProfile(ScannerProfile):
     Likes: Strong Trend (ADX > 20), Price near VWAP.
     """
 
-    def __init__(self, min_adx: float = 20.0):
+    def __init__(self, min_adx: float = 30.0):
         self.min_adx = min_adx
 
     def min_requirements(self, features: SymbolFeatures) -> bool:
@@ -299,4 +299,89 @@ class IndexMeanReversionProfile(ScannerProfile):
 
     def score(self, features: SymbolFeatures, regime: Regime) -> float:
         score = 50.0 + (abs(features.price_zscore) * 10.0)
+        return min(max(score, 0.0), 100.0)
+
+
+class VixSpikeFadeProfile(ScannerProfile):
+    """
+    Scanner for VIX Spike Fade candidates.
+    Likes: Index ETFs (SPY/QQQ) during high volatility conditions.
+    Only activates when VIX spikes or market shows elevated fear.
+    """
+
+    def __init__(self, allowed_symbols: list = None, min_drop_pct: float = 0.015):
+        self.allowed_symbols = allowed_symbols or ["SPY", "QQQ"]
+        self.min_drop_pct = min_drop_pct
+
+    def min_requirements(self, features: SymbolFeatures) -> bool:
+        # Only trade specific index ETFs
+        if features.symbol not in self.allowed_symbols:
+            return False
+
+        # Require a significant gap down or intraday drop
+        if features.gap_pct > -self.min_drop_pct:
+            return False
+
+        return True
+
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
+        score = 50.0
+
+        # Reward larger drops (more extreme = better mean reversion opportunity)
+        drop_magnitude = abs(features.gap_pct)
+        score += drop_magnitude * 1000  # 1% drop -> +10
+
+        # Reward high volatility environment
+        score += features.atr_pct * 500
+
+        # Slight penalty if already extended from VWAP (entry should be near extremes)
+        if abs(features.distance_from_vwap) > 0.02:
+            score -= 10.0
+
+        return min(max(score, 0.0), 100.0)
+
+
+class MomentumContinuationProfile(ScannerProfile):
+    """
+    Scanner for Momentum Continuation candidates.
+    Likes: Strong breakout momentum with high volume and trend alignment.
+    """
+
+    def __init__(
+        self,
+        min_adx: float = 25.0,
+        min_gap_pct: float = 0.01,
+        min_vol_mult: float = 1.5,
+    ):
+        self.min_adx = min_adx
+        self.min_gap_pct = min_gap_pct
+        self.min_vol_mult = min_vol_mult
+
+    def min_requirements(self, features: SymbolFeatures) -> bool:
+        # Require trend strength (momentum)
+        if features.adx < self.min_adx:
+            return False
+
+        # Require gap or strong move
+        if abs(features.gap_pct) < self.min_gap_pct:
+            return False
+
+        return True
+
+    def score(self, features: SymbolFeatures, regime: Regime) -> float:
+        score = 50.0
+
+        # Reward strong trend (momentum)
+        score += (features.adx - self.min_adx) * 2.0
+
+        # Reward gap size
+        score += abs(features.gap_pct) * 500
+
+        # Reward aligned EMA trend (positive slope = bullish, check direction)
+        if features.ema_trend_strength > 0:
+            score += features.ema_trend_strength * 10.0
+
+        # Reward high ATR (volatile movers)
+        score += features.atr_pct * 500
+
         return min(max(score, 0.0), 100.0)

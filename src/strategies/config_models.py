@@ -112,6 +112,9 @@ class BaseStrategyConfig(BaseModel):
     cooldown_bars: int = Field(
         default=5, ge=0, description="Minimum bars between signals"
     )
+    hard_stop_time: Optional[str] = Field(
+        default=None, description="Time to stop trading (HH:MM)"
+    )
 
     class Config:
         """Pydantic config."""
@@ -194,7 +197,7 @@ class ORBConfig(BaseStrategyConfig):
         default=0.005, gt=0, description="Stop loss percentage (0.5%)"
     )
     min_gap_pct: float = Field(
-        default=0.0, ge=0, description="Minimum gap percentage filter"
+        default=0.01, ge=0, description="Minimum gap percentage filter"
     )
     min_flow_zscore: float = Field(
         default=0.0, description="Minimum flow z-score filter"
@@ -318,3 +321,47 @@ class MomentumContinuationConfig(BaseStrategyConfig):
     max_trades_per_session: int = Field(
         default=2, ge=1, description="Max trades per session"
     )
+
+
+class FusionStrategyConfig(BaseStrategyConfig):
+    """
+    Configuration for Fusion V1 (Multi-Factor) strategy.
+
+    Integrates:
+    - Opening Range Breakouts
+    - Directional Options Flow (DOF)
+    - Relative Strength (RS) Ranking
+    - ATR-based Dynamic Risk
+    """
+
+    # 1. Price Breakout (Opening Range inspired)
+    orb_minutes: int = Field(default=15, ge=5, description="Opening range duration")
+
+    # 2. Options Flow Alignment
+    min_dof_score: float = Field(
+        default=0.4, ge=0.0, description="Min directional conviction (0-1)"
+    )
+    min_flow_bias: float = Field(
+        default=0.2, ge=0.0, description="Min net call/put intensity"
+    )
+    require_flow: bool = Field(
+        default=True, description="If True, missing flow data prevents entry"
+    )
+
+    # 3. Relative Strength
+    min_relative_strength: float = Field(
+        default=0.01, description="Minimum outperformance vs SPY (e.g. 0.01 = 1%)"
+    )
+
+    # 4. Risk / Reward (ATR-Based)
+    atr_period: int = Field(default=14, ge=5, description="ATR calculation period")
+    stop_atr_mult: float = Field(
+        default=2.0, ge=1.0, description="Stop loss ATR multiplier"
+    )
+    target_atr_mult: float = Field(
+        default=4.0, ge=1.0, description="Take profit ATR multiplier"
+    )
+
+    # 5. Timing
+    entry_window_start: str = Field(default="09:45", description="Entry start ET")
+    entry_window_end: str = Field(default="11:00", description="Entry end ET")

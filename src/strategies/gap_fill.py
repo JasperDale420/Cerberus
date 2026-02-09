@@ -23,6 +23,10 @@ class GapFillStrategy(BaseStrategy):
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
+
+    def _set_params(self, config: Dict[str, Any]) -> None:
+        """Override to parse strategy-specific parameters."""
+        super()._set_params(config)
         cfg = GapFillConfig(**config)
         self.min_gap = cfg.min_gap
         self.max_gap = cfg.max_gap
@@ -64,15 +68,28 @@ class GapFillStrategy(BaseStrategy):
         # Requires scanner/pipeline-provided `gap_pct` in `symbol_state.meta`.
         gap_pct = float(symbol_state.meta.get("gap_pct", 0.0) or 0.0)
         if gap_pct == 0.0:
-            if len(symbol_state.bars) < 20:
-                self.logger.warning(
-                    "Missing gap_pct for GapFill strategy", symbol=symbol
+            # Debug: Log periodically when gap_pct is missing
+            if len(symbol_state.bars) >= 20 and len(symbol_state.bars) % 100 == 0:
+                self.logger.debug(
+                    "GapFill: No gap_pct in meta",
+                    symbol=symbol,
+                    bar_count=len(symbol_state.bars),
+                    meta_keys=list(symbol_state.meta.keys())[:10],
                 )
             return None
 
         # PRD 7.2: enforce X–Y% gap size constraint.
         gap_abs = abs(gap_pct)
         if gap_abs < float(self.min_gap) or gap_abs > float(self.max_gap):
+            # Debug: Log when gap exists but is outside threshold
+            self.logger.debug(
+                "GapFill: Gap outside threshold",
+                symbol=symbol,
+                gap_pct=round(gap_pct * 100, 2),
+                gap_abs_pct=round(gap_abs * 100, 2),
+                min_gap_pct=round(float(self.min_gap) * 100, 2),
+                max_gap_pct=round(float(self.max_gap) * 100, 2),
+            )
             return None
 
         gap_up = gap_pct > 0

@@ -32,6 +32,7 @@ class DataFetcher:
         # H2 Memory Audit Fix: LRU cache with maxsize for bars
         # Uses OrderedDict for LRU ordering; evicts oldest when maxsize exceeded
         self._bars_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._trades_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         try:
             self._cache_maxsize = int(self.config.get("bars_cache_maxsize", 500))
         except (TypeError, ValueError):
@@ -133,6 +134,35 @@ class DataFetcher:
             metrics["alpaca_no_bars"] += 1
 
         return final_bars, metrics
+
+    async def fetch_trades(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """
+        Fetches historical trades for a symbol.
+        Used for Trade Flow Imbalance (TFI) calculation.
+        """
+        metrics = {"alpaca_trades_fetch_fail": 0, "alpaca_no_trades": 0}
+        sym = str(symbol).strip().upper()
+
+        try:
+            import asyncio
+
+            trades = await asyncio.to_thread(
+                self.alpaca_client.get_historical_trades, sym, start, end
+            )
+            if not trades:
+                metrics["alpaca_no_trades"] += 1
+            return trades, metrics
+        except Exception as e:
+            metrics["alpaca_trades_fetch_fail"] += 1
+            self.logger.warning(
+                "Alpaca trades fetch failed",
+                error_code=ErrorCode.ALPACA_TRADES_FETCH_FAILED.value,
+                symbol=sym,
+                error=str(e),
+            )
+            return [], metrics
 
     def _extract_volume(self, bar: Any) -> Optional[float]:
         try:
@@ -268,6 +298,21 @@ class DataFetcher:
             self.logger.warning(
                 "Unusual Whales flow fetch failed; using neutral flow",
                 error_code=ErrorCode.UW_FLOW_FETCH_FAILED.value,
+                symbol=symbol,
+                error=str(e),
+            )
+            return []
+
+    async def fetch_gex(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Fetches Unusual Whales greek exposure data.
+        Used for Net GEX and Flip distance calculation.
+        """
+        try:
+            return await self.unusual_whales_client.get_greek_exposure(symbol)
+        except Exception as e:
+            self.logger.warning(
+                "Unusual Whales GEX fetch failed",
                 symbol=symbol,
                 error=str(e),
             )

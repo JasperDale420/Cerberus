@@ -730,6 +730,22 @@ class BaseStrategy(ABC):
 	8.	Gap‑Fill Scalper (CHOP / weak trend)
 	•	Morning gaps of size X–Y%.
 	•	Fade gap if extension fails early in session.
+	9.	Momentum Continuation (BULL/BEAR) ✅ IMPLEMENTED
+	•	Trend continuation strategy with RSI and EMA confirmation.
+	•	Enter on pullback to EMA when trend is strongly aligned.
+	•	Requires ADX > threshold and RSI reset from overbought/oversold.
+	•	Config parameters:
+	•	ema_fast, ema_slow
+	•	adx_threshold
+	•	rsi_entry_zone.
+	10.	VIX Spike Fade (VOLATILITY) ✅ IMPLEMENTED
+	•	Mean reversion on volatility spikes using VXX/VIX.
+	•	Enter SHORT on extreme VIX readings (> 2σ above mean).
+	•	Volatility clustering: requires confirmation of spike exhaustion.
+	•	Config parameters:
+	•	vix_z_threshold
+	•	max_hold_minutes
+	•	exit_z_threshold.
 
 Each strategy:
 	•	Has a scanner profile to identify symbols likely to fit it.
@@ -1083,7 +1099,100 @@ Each vertical slice must:
 
 ⸻
 
-# PRD Regime Upgrade Patch (v2)
+12. Advanced Exit System ✅ IMPLEMENTED
+
+This section documents the dynamic exit management system that replaces static broker-managed bracket orders with self-managed exits for greater control and parity.
+
+12.1 Architectural Shift
+	•	Broker-managed exits disabled when advanced_exits.enabled = true.
+	•	PositionManager becomes the single source of truth for all exit decisions.
+	•	Ensures 100% parity between live trading and backtesting.
+
+12.2 Trailing Stops
+	•	Configuration: TrailingStopConfig (enabled, trail_pct, min_profit_to_activate).
+	•	High-water mark tracking: Position.trailing_high_water.
+	•	Ratchet mechanism: Stop only moves in favorable direction.
+	•	Implementation: PositionManager._update_trailing_stop().
+
+12.3 Partial Profit Taking
+	•	Configuration: PartialExitConfig (first_exit_at_r, first_exit_pct).
+	•	Trigger: 1R profit with 50% scale-out (configurable).
+	•	State tracking: Position.partial_exits_taken prevents re-triggering.
+	•	Implementation: PositionManager._check_partial_exit().
+
+12.4 Regime-Aware Stop Multipliers
+	•	Volatility-based stop width adjustment.
+	•	Multipliers: { low: 0.75, normal: 1.0, high: 1.5, shock: 2.0 }.
+	•	Captured at entry via Position.regime_stop_multiplier.
+
+12.5 Configuration Model
+
+class AdvancedExitsConfig(BaseModel):
+    enabled: bool = False
+    trailing_stop: TrailingStopConfig
+    partial_exits: PartialExitConfig
+    regime_aware_stops: bool = True
+    regime_stop_multipliers: Dict[str, float]
+
+⸻
+
+13. Backtesting Engine ✅ IMPLEMENTED
+
+This section documents the backtesting system that achieves 100% logic parity with live trading.
+
+13.1 Architecture
+	•	BacktestRunner instantiates the production ExecutionEngine.
+	•	BacktestOrderExecutor provides mock execution with configurable realism.
+	•	BacktestFeaturePipeline computes features from historical data.
+
+13.2 Execution Realism
+
+Volume-Aware Partial Fills:
+	•	partial_fill_mode: none | fixed | volume_aware
+	•	Calculates fill_qty = min(order_qty, bar.volume * partial_fill_rate).
+	•	Prevents infinite liquidity assumption.
+
+Volume-Impact Slippage:
+	•	slippage_mode: fixed | volume_impact
+	•	Formula: base_bps * (1.0 + (qty / volume) * impact_mult).
+
+ATR-Based Spread:
+	•	spread_mode: fixed | atr_based
+	•	Scales bid-ask spread with ATR-derived volatility.
+
+Bracket Exit Modes:
+	•	stop_first (default): Conservative; stop wins on same-bar triggers.
+	•	best_exit: Target wins on same-bar triggers (matches production M3).
+
+13.3 Gap Awareness
+	•	Gaps past exit levels fill at bar open price.
+	•	Realistic slippage for stop events, better fills for gap-up targets.
+
+13.4 Daily Equity Reset
+	•	Optional: daily_equity_reset: true.
+	•	Resets cash to initial value ($100k) each session.
+	•	Prevents compounding drawdown from biasing research trials.
+
+13.5 Flow Strategy Gating
+	•	disable_flow_strategies: true skips flow-dependent strategies.
+	•	Flow features are neutral (zeros) in backtests without offline flow source.
+
+13.6 Configuration
+
+backtest:
+  partial_fill_mode: volume_aware
+  partial_fill_rate: 0.10
+  slippage_mode: volume_impact
+  slippage_bps: 5.0
+  slippage_impact_mult: 2.0
+  spread_mode: atr_based
+  bracket_exit_mode: best_exit
+  daily_equity_reset: true
+  disable_flow_strategies: true
+
+⸻
+
+# PRD Regime Upgrade Patch (v2) ✅ IMPLEMENTED
 
 This patch upgrades the PRD “Multi‑Strategy Intraday Scalping System (Equities, Alpaca + Unusual Whales)” from a single **SPY‑only BULL/BEAR/CHOP** label to a **multi‑axis market context + per‑symbol micro‑context** regime system.
 

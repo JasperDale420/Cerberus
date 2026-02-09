@@ -1,15 +1,12 @@
-# Hygiene stack: ruff (lint), black (format), mypy (types), bandit (security), detect-secrets (secrets)
+# Hygiene stack: ruff (lint + format), mypy (types), bandit (security), detect-secrets (secrets)
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.9
     hooks:
       - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
         args: ["--exit-non-zero-on-fix"]
-      
-  - repo: https://github.com/psf/black
-    rev: 25.12.0
-    hooks:
-      - id: black
       
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1

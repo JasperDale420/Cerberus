@@ -1,6 +1,8 @@
+import random
 from datetime import datetime
 from typing import Any, Callable, Optional, Set
 
+from alpaca.data.enums import DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.screener import ScreenerClient
 from alpaca.data.live import StockDataStream
@@ -8,6 +10,7 @@ from alpaca.data.requests import (
     MarketMoversRequest,
     MostActivesRequest,
     StockBarsRequest,
+    StockTradesRequest,
 )
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
@@ -17,6 +20,13 @@ from src.core.config import ConfigLoader
 from src.core.domain import Bar
 from src.core.logger import StructuredLogger
 
+# WebSocket resilience constants (from KI: engineering/alpaca_resilience.md)
+HEARTBEAT_TIMEOUT_SEC = 120.0  # Force reconnect if no data for 2 minutes
+FIRST_BAR_TIMEOUT_SEC = 10.0  # Fast fallback on cold start
+BACKOFF_MAX_SEC = 30.0
+BACKOFF_JITTER_MAX = 0.5
+MAX_RETRIES = 5
+
 
 class AlpacaClient:
     """
@@ -25,6 +35,7 @@ class AlpacaClient:
 
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.logger = logger
+        self._config_loader = config_loader  # Store for later use (e.g., feed config)
 
         try:
             self.api_key = config_loader.get_env("ALPACA_API_KEY")
@@ -172,6 +183,47 @@ class AlpacaClient:
             )
             raise
 
+    def get_historical_trades(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> list[dict]:
+        """
+        Fetches historical trades for a symbol via Alpaca historical data client.
+        Required for Trade Flow Imbalance (TFI) calculation.
+        """
+        try:
+            req = StockTradesRequest(
+                symbol_or_symbols=symbol,
+                start=start,
+                end=end,
+            )
+            resp = self.historical_client.get_stock_trades(req)
+            trades = (resp.data or {}).get(symbol) or []
+
+            out = []
+            for t in trades:
+                out.append(
+                    {
+                        "t": getattr(t, "timestamp", None),
+                        "p": float(getattr(t, "price", 0.0)),
+                        "s": float(getattr(t, "size", 0.0)),
+                        "c": getattr(t, "conditions", []),
+                        "x": getattr(t, "exchange", ""),
+                        "z": getattr(t, "tape", ""),
+                    }
+                )
+            return out
+        except Exception as e:
+            from src.core.errors import ErrorCode
+
+            self.logger.error(
+                "Failed to fetch historical trades",
+                error_code=ErrorCode.ALPACA_TRADES_FETCH_FAILED
+                or "ALPACA_TRADES_FETCH_FAILED",
+                symbol=symbol,
+                error=str(e),
+            )
+            raise
+
     def get_most_actives(self, top: int = 20) -> list[str]:
         """
         Fetches most active stocks by volume using Alpaca Screener API.
@@ -232,9 +284,16 @@ class AlpacaClient:
     def get_stream_client(self) -> StockDataStream:
         """
         Returns a configured StockDataStream client.
+        Always pass explicit feed parameter to avoid IEX fallback on premium accounts.
         """
         if not self.stream_client:
-            self.stream_client = StockDataStream(self.api_key, self.secret_key)
+            # Determine feed from env; default to SIP for premium, IEX for free
+            feed_str = self._config_loader.get_env("ALPACA_DATA_FEED", "sip").lower()
+            feed = DataFeed.SIP if feed_str == "sip" else DataFeed.IEX
+            self.stream_client = StockDataStream(
+                self.api_key, self.secret_key, feed=feed
+            )
+            self.logger.info("Stock data stream initialized", feed=feed_str)
         return self.stream_client
 
     def get_trading_stream_client(self) -> TradingStream:
@@ -344,13 +403,17 @@ class AlpacaClient:
         on_reconnect: Any,
         pre_run_hook: Optional[Callable[[Any], None]] = None,
     ) -> None:
+        """
+        Runs stream with exponential backoff + jitter.
+        Detects terminal errors (connection limit exceeded) and raises for fallback.
+        """
         import asyncio
 
         backoff = 1.0
-        backoff_max = 30.0
         had_failure = False
+        retries = 0
 
-        while True:
+        while retries < MAX_RETRIES:
             if had_failure and on_reconnect:
                 await self._invoke_callback_safely(on_reconnect)
 
@@ -367,12 +430,33 @@ class AlpacaClient:
                 self._stop_stream_safely(stream)
                 raise
             except Exception as e:
+                error_str = str(e).lower()
+                # Terminal error: connection limit exceeded - don't retry
+                if "connection limit exceeded" in error_str:
+                    self.logger.error(
+                        "Terminal error: connection limit exceeded, falling back",
+                        error=str(e),
+                    )
+                    raise  # Bubble up for REST fallback
+
+                # Add jitter to backoff
+                jitter = random.uniform(0, BACKOFF_JITTER_MAX)
+                delay = backoff + jitter
                 self.logger.error(
-                    "Stream failed; retrying", error=str(e), backoff_sec=backoff
+                    "Stream failed; retrying",
+                    error=str(e),
+                    backoff_sec=delay,
+                    retry=retries + 1,
+                    max_retries=MAX_RETRIES,
                 )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2.0, backoff_max)
+                await asyncio.sleep(delay)
+                backoff = min(backoff * 2.0, BACKOFF_MAX_SEC)
                 had_failure = True
+                retries += 1
+
+        # Exhausted retries
+        self.logger.error("Stream retries exhausted", retries=retries)
+        raise RuntimeError(f"WebSocket stream failed after {MAX_RETRIES} retries")
 
     async def start_stream(self, callback, on_reconnect=None):
         """
@@ -394,13 +478,13 @@ class AlpacaClient:
         stream = self.get_trading_stream_client()
         loop = asyncio.get_running_loop()
 
-        # Sync callback for the Thread-based stream, dispatching to loop
-        def on_trade_update(data: Any) -> None:
+        # Async handler wrapper required by Alpaca SDK
+        async def on_trade_update(data: Any) -> None:
             try:
                 if asyncio.iscoroutinefunction(callback):
-                    asyncio.run_coroutine_threadsafe(callback(data), loop)
+                    await callback(data)
                 else:
-                    loop.call_soon_threadsafe(callback, data)
+                    callback(data)
             except Exception as e:
                 self.logger.error("Trade update callback failed", error=str(e))
 

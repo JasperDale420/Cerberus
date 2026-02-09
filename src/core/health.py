@@ -6,7 +6,6 @@ Provides system health verification for monitoring and operational readiness.
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,9 +54,12 @@ def check_database_connectivity(db_path: str = "cerberus.db") -> Dict[str, Any]:
 
 def check_alpaca_credentials() -> Dict[str, Any]:
     """Verify Alpaca API credentials are configured."""
-    api_key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
-    secret_key = os.getenv("ALPACA_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
-    base_url = os.getenv("ALPACA_BASE_URL") or os.getenv("APCA_API_BASE_URL")
+    from src.core.settings import get_settings
+
+    settings = get_settings()
+    api_key = settings.resolved_api_key
+    secret_key = settings.resolved_secret_key
+    base_url = settings.resolved_base_url
 
     if not api_key or not secret_key:
         return {
@@ -65,7 +67,7 @@ def check_alpaca_credentials() -> Dict[str, Any]:
             "error": "Missing ALPACA_API_KEY or ALPACA_SECRET_KEY environment variables",
         }
 
-    is_paper = os.getenv("ALPACA_PAPER", "").lower() in ("true", "1", "yes")
+    is_paper = settings.alpaca_paper
     mode = "paper" if is_paper else "live"
 
     return {
