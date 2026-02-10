@@ -25,14 +25,22 @@ def test_get_alpaca_bars_contract_builds_correct_path_and_params() -> None:
         seen["method"] = request.method
         seen["url"] = str(request.url)
         seen["query"] = dict(request.url.params)
-        return httpx.Response(200, json={"bars": []})
+        seen["gateway_key"] = request.headers.get("X-Gateway-Key")
+        return httpx.Response(200, json={"success": True, "data": {"bars": []}})
 
     cfg = MagicMock()
-    cfg.get_env.return_value = "http://central.test"
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "gw_test_key"
+        if key == "CERBERUS_GATEWAY_KEY"
+        else "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
     logger = MagicMock()
 
     c = CentralApiClient(cfg, logger)
     c.client = _make_client(handler)
+    c.client.headers["X-Gateway-Key"] = "gw_test_key"
 
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end = datetime(2025, 1, 2, tzinfo=timezone.utc)
@@ -40,9 +48,10 @@ def test_get_alpaca_bars_contract_builds_correct_path_and_params() -> None:
 
     assert out == {"bars": []}
     assert seen["method"] == "GET"
-    assert seen["url"].startswith("http://central.test/alpaca/bars/AAPL")
+    assert seen["url"].startswith("http://central.test/api/v1/alpaca/stocks/AAPL/bars")
     assert seen["query"]["timeframe"] == "1Min"
     assert "start" in seen["query"] and "end" in seen["query"]
+    assert seen["gateway_key"] == "gw_test_key"
 
 
 @pytest.mark.contract
@@ -51,18 +60,27 @@ def test_get_uw_flow_contract_calls_expected_path() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["url"] = str(request.url)
+        seen["gateway_key"] = request.headers.get("X-Gateway-Key")
         return httpx.Response(200, json={"data": []})
 
     cfg = MagicMock()
-    cfg.get_env.return_value = "http://central.test"
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "gw_test_key"
+        if key == "CERBERUS_GATEWAY_KEY"
+        else "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
     logger = MagicMock()
 
     c = CentralApiClient(cfg, logger)
     c.client = _make_client(handler)
+    c.client.headers["X-Gateway-Key"] = "gw_test_key"
 
     out = c.get_uw_flow("SPY")
     assert out == {"data": []}
-    assert seen["url"].startswith("http://central.test/uw/flow/SPY")
+    assert seen["url"].startswith("http://central.test/api/v1/uw/flow/SPY")
+    assert seen["gateway_key"] == "gw_test_key"
 
 
 @pytest.mark.contract
@@ -78,7 +96,11 @@ def test_chat_completion_contract_uses_openai_like_payload() -> None:
         return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
     cfg = MagicMock()
-    cfg.get_env.return_value = "http://central.test"
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
     logger = MagicMock()
 
     c = CentralApiClient(cfg, logger)
@@ -108,7 +130,11 @@ def test_central_api_client_raises_on_http_error(
         return httpx.Response(500, json={"error": "boom"})
 
     cfg = MagicMock()
-    cfg.get_env.return_value = "http://central.test"
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
     logger = MagicMock()
 
     c = CentralApiClient(cfg, logger)

@@ -28,6 +28,20 @@ This document is the source of truth for environment variables used by Cerberus.
 |---|---|---|---|---|
 | `CERBERUS_STAGE3_APPROVED` | Conditional | empty | `src/agent/core.py`, `src/agent/stage3.py` | Approval gate for Stage 3 proposal/report operations |
 
+## Data-Gateway and Heber Integration
+
+| Variable | Required | Default | Used By | Description |
+|---|---|---|---|---|
+| `CERBERUS_DATA_BACKEND` | No | `legacy` | `src/core/settings.py`, `src/core/health.py` | Data read mode: `legacy`, `gateway`, `dual` |
+| `CERBERUS_STORAGE_BACKEND` | No | `sqlite` | `src/core/settings.py` | Storage mode: `sqlite`, `heber`, `dual` |
+| `CERBERUS_GATEWAY_URL` | No | `http://localhost:8080` | `src/core/settings.py`, `src/data/api_client.py`, `src/core/health.py` | Base URL for Data-Gateway |
+| `CERBERUS_GATEWAY_KEY` | No | empty | `src/core/settings.py`, `src/data/api_client.py`, `src/core/health.py` | API key sent as `X-Gateway-Key` |
+| `CERBERUS_GATEWAY_TIMEOUT_SECONDS` | No | `30` | `src/core/settings.py`, `src/data/api_client.py`, `src/core/health.py` | Gateway request timeout |
+| `CERBERUS_HEBER_CATALOG_URL` | No | empty | `src/core/settings.py`, `src/core/health.py` | Heber catalog API base URL |
+| `CERBERUS_HEBER_DATA_ROOT` | No | empty | `src/core/settings.py` | Optional local data root for Heber reads |
+| `CERBERUS_DUAL_READ_COMPARE` | No | `false` | `src/core/settings.py` | Enable side-by-side read comparison in dual mode |
+| `CERBERUS_FAILOVER_TO_LEGACY` | No | `true` | `src/core/settings.py` | Allow fallback to legacy data path on errors |
+
 ## Config Override Pattern
 
 Cerberus supports environment-driven config overrides through `APP_*` keys in `src/core/config.py`.
@@ -48,7 +62,8 @@ The loader attempts type coercion for booleans and numeric values.
 |---|---|---|
 | `KILL_SWITCH` | `scripts/paper_live_test.py` | Script-level stop trigger |
 | `PAPER_LIVE` | `scripts/paper_live_test.py` | Script-level mode flag |
-| `DATA_INGESTION_URL` | tests | Used in tests only |
+| `DATA_INGESTION_URL` | `src/data/api_client.py`, tests | Backward-compatible alias for gateway URL |
+| `CENTRAL_LLM_API_URL` | `src/data/api_client.py` | Optional override for LLM `/v1/chat/completions` base URL |
 
 ## Related Files
 
