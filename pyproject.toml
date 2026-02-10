@@ -96,33 +96,31 @@ exclude = "(^src/data/alpaca\\.py$|^src/data/pipeline\\.py$)"
 testpaths = ["tests"]
 pythonpath = ["."]
 python_files = "test_*.py"
-addopts = "--verbose --strict-markers"
+addopts = "-v --tb=short --strict-markers"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
 markers = [
-    "unit: fast, isolated tests",
-    "integration: tests across modules and real DB/filesystem",
-    "contract: boundary tests for external APIs/protocols",
-    "e2e: end-to-end smoke flows (offline/fake dependencies)",
+    "unit: Fast, isolated unit tests (no I/O, no network)",
+    "integration: Tests with real DB, file I/O, or component interactions",
+    "contract: Boundary tests for external APIs/protocols",
+    "e2e: End-to-end full system flow tests",
+    "slow: Tests that take >1s (opt-in, excluded by default)",
 ]
 
 [tool.coverage.run]
 branch = true
 source = ["src"]
-omit = [
-    "src/main.py",
-]
+omit = ["tests/*", "scripts/*", "*/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true
-skip_covered = true
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
     "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
 ]
