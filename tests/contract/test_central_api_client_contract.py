@@ -183,6 +183,73 @@ def test_get_uw_gex_contract_calls_expected_path() -> None:
 
 
 @pytest.mark.contract
+def test_get_alpaca_most_actives_contract_calls_expected_path() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={"success": True, "data": {"most_actives": [{"symbol": "AAPL"}]}},
+        )
+
+    cfg = MagicMock()
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
+    logger = MagicMock()
+
+    c = CentralApiClient(cfg, logger)
+    c.client = _make_client(handler)
+
+    out = c.get_alpaca_most_actives(top=15)
+    assert seen["url"].startswith(
+        "http://central.test/api/v1/alpaca/screener/most-actives"
+    )
+    assert seen["query"]["top"] == "15"
+    assert out == ["AAPL"]
+
+
+@pytest.mark.contract
+def test_get_alpaca_movers_contract_calls_expected_path() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "gainers": [{"symbol": "NVDA"}],
+                    "losers": [{"symbol": "TSLA"}],
+                },
+            },
+        )
+
+    cfg = MagicMock()
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
+    logger = MagicMock()
+
+    c = CentralApiClient(cfg, logger)
+    c.client = _make_client(handler)
+
+    out = c.get_alpaca_movers(top=7)
+    assert seen["url"].startswith("http://central.test/api/v1/alpaca/screener/movers")
+    assert seen["query"]["top"] == "7"
+    assert out["gainers"] == ["NVDA"]
+    assert out["losers"] == ["TSLA"]
+
+
+@pytest.mark.contract
 @pytest.mark.parametrize(
     "method_name,args",
     [
@@ -190,6 +257,8 @@ def test_get_uw_gex_contract_calls_expected_path() -> None:
         ("get_uw_flow", ("SPY",)),
         ("get_alpaca_trades", ("AAPL",)),
         ("get_uw_gex", ("SPY",)),
+        ("get_alpaca_most_actives", (10,)),
+        ("get_alpaca_movers", (10,)),
         ("chat_completion", ("m", [{"role": "user", "content": "x"}])),
     ],
 )

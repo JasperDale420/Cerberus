@@ -231,6 +231,7 @@ async def async_main():
         config=config,
         config_path_or_dir=args.config,
         alpaca_client=alpaca_client,
+        central_api_client=central_api_client,
         clock=clock,
     )
     scanner = Scanner(universe_builder, feature_pipeline, logger, config=config)

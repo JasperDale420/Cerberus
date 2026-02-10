@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+from src.core.settings import get_settings
 from src.data.alpaca import AlpacaClient
+from src.data.api_client import CentralApiClient
 
 if TYPE_CHECKING:
     from src.agent.bars_provider import JsonlBarsProvider
@@ -24,6 +26,7 @@ class UniverseBuilder:
         config: Optional[Dict[str, Any]] = None,
         config_path_or_dir: Optional[str] = None,
         alpaca_client: Optional[AlpacaClient] = None,
+        central_api_client: Optional[CentralApiClient] = None,
         clock: Optional[Callable[[], datetime]] = None,
         offline_bars_provider: Optional["JsonlBarsProvider"] = None,
     ):
@@ -35,10 +38,76 @@ class UniverseBuilder:
         )
         self.logger = logger
         self.alpaca_client = alpaca_client
+        self.central_api_client = central_api_client
         self.clock: Callable[[], datetime] = clock or (
             lambda: datetime.now(timezone.utc)
         )
         self.offline_bars_provider = offline_bars_provider
+        runtime = get_settings()
+        self.use_gateway_data = runtime.use_gateway_data
+        self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
+
+    def _get_historical_bars(
+        self, symbol: str, start: datetime, end: datetime, timeframe: str
+    ) -> Any:
+        """Fetch historical bars using selected backend, with optional failover."""
+        if self.use_gateway_data and self.central_api_client is not None:
+            try:
+                return self.central_api_client.get_alpaca_bars(
+                    symbol=symbol,
+                    start=start,
+                    end=end,
+                    timeframe=timeframe,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Gateway universe bars fetch failed",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    error=str(e),
+                    failover=self.allow_legacy_failover,
+                )
+                if not self.allow_legacy_failover:
+                    raise
+        if self.alpaca_client is None:
+            return []
+        return self.alpaca_client.get_historical_bars(
+            symbol, start, end, timeframe=timeframe
+        )
+
+    def _get_screener_most_actives(self, top: int) -> List[str]:
+        """Fetch most actives from selected backend with fallback."""
+        if self.use_gateway_data and self.central_api_client is not None:
+            try:
+                return self.central_api_client.get_alpaca_most_actives(top=top)
+            except Exception as e:
+                self.logger.warning(
+                    "Gateway screener most_actives failed",
+                    error=str(e),
+                    failover=self.allow_legacy_failover,
+                )
+                if not self.allow_legacy_failover:
+                    raise
+        if self.alpaca_client is None:
+            return []
+        return self.alpaca_client.get_most_actives(top=top)
+
+    def _get_screener_movers(self, top: int) -> Dict[str, List[str]]:
+        """Fetch movers from selected backend with fallback."""
+        if self.use_gateway_data and self.central_api_client is not None:
+            try:
+                return self.central_api_client.get_alpaca_movers(top=top)
+            except Exception as e:
+                self.logger.warning(
+                    "Gateway screener movers failed",
+                    error=str(e),
+                    failover=self.allow_legacy_failover,
+                )
+                if not self.allow_legacy_failover:
+                    raise
+        if self.alpaca_client is None:
+            return {"gainers": [], "losers": []}
+        return self.alpaca_client.get_movers(top=top)
 
     def _dedupe_preserve_order(self, symbols: List[str]) -> List[str]:
         seen = set()
@@ -72,11 +141,9 @@ class UniverseBuilder:
     ) -> Optional[float]:
         """Get last bar volume for symbol from Alpaca or offline provider."""
         # Try Alpaca first
-        if self.alpaca_client is not None:
+        if self.alpaca_client is not None or self.central_api_client is not None:
             try:
-                bars = self.alpaca_client.get_historical_bars(
-                    symbol, start, end, timeframe="1Day"
-                )
+                bars = self._get_historical_bars(symbol, start, end, timeframe="1Day")
                 if isinstance(bars, dict) and "bars" in bars:
                     bars = bars["bars"]
                 if isinstance(bars, list) and bars:
@@ -89,7 +156,7 @@ class UniverseBuilder:
                         return float(v)
             except Exception as e:
                 self.logger.warning(
-                    "Dynamic universe volume fetch failed (Alpaca)",
+                    "Dynamic universe volume fetch failed (primary source)",
                     symbol=symbol,
                     error=str(e),
                 )
@@ -232,7 +299,7 @@ class UniverseBuilder:
         if (
             isinstance(screener_cfg, dict)
             and bool(screener_cfg.get("enabled", False))
-            and self.alpaca_client is not None
+            and (self.alpaca_client is not None or self.central_api_client is not None)
             and not is_backtest  # Skip in backtest - use volume ranking instead
         ):
             screener_added: List[str] = []
@@ -241,7 +308,7 @@ class UniverseBuilder:
             actives_n = int(screener_cfg.get("most_actives_top_n", 0))
             if actives_n > 0:
                 try:
-                    actives = self.alpaca_client.get_most_actives(top=actives_n)
+                    actives = self._get_screener_most_actives(top=actives_n)
                     screener_added.extend(actives)
                 except Exception as e:
                     self.logger.warning(
@@ -253,7 +320,7 @@ class UniverseBuilder:
             movers_n = int(screener_cfg.get("movers_top_n", 0))
             if movers_n > 0:
                 try:
-                    movers = self.alpaca_client.get_movers(top=movers_n)
+                    movers = self._get_screener_movers(top=movers_n)
                     screener_added.extend(movers.get("gainers", []))
                     screener_added.extend(movers.get("losers", []))
                 except Exception as e:
