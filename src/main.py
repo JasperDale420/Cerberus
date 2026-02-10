@@ -106,18 +106,14 @@ async def async_main():
         - Uses async/await for concurrent WebSocket and scheduler
     """
     parser = argparse.ArgumentParser(description="Scalper Trading Bot")
-    parser.add_argument(
-        "--mode", choices=["paper", "live"], default="paper", help="Trading mode"
-    )
+    parser.add_argument("--mode", choices=["paper", "live"], default="paper", help="Trading mode")
     parser.add_argument(
         "--order-executor",
         choices=["alpaca", "noop"],
         default="alpaca",
         help="Order routing backend (alpaca submits broker orders; noop simulates).",
     )
-    parser.add_argument(
-        "--config", default="config/config.yaml", help="Path to config file"
-    )
+    parser.add_argument("--config", default="config/config.yaml", help="Path to config file")
     parser.add_argument(
         "--run-once",
         action="store_true",
@@ -174,6 +170,17 @@ async def async_main():
 
     # 1. Setup
     bootstrap_logger = StructuredLogger("Bootstrap", level="INFO")
+
+    # Validate startup settings before proceeding
+    try:
+        from src.core.settings import validate_startup_settings
+
+        validate_startup_settings()
+        bootstrap_logger.info("Startup settings validation passed")
+    except ValueError as e:
+        bootstrap_logger.error("Startup settings validation failed", error=str(e))
+        raise
+
     config_loader = ConfigLoader(logger=bootstrap_logger)
     config = config_loader.load_config(args.config)
 
@@ -201,9 +208,7 @@ async def async_main():
 
     # Deterministic clock (injectable for replay/tests)
     if isinstance(config, dict) and config.get("start_time_utc"):
-        start = datetime.fromisoformat(
-            str(config["start_time_utc"]).replace("Z", "+00:00")
-        )
+        start = datetime.fromisoformat(str(config["start_time_utc"]).replace("Z", "+00:00"))
         clock = _fixed_clock(start)
     else:
         clock = _utc_now_clock()
@@ -237,9 +242,7 @@ async def async_main():
     scanner = Scanner(universe_builder, feature_pipeline, logger, config=config)
 
     # Database
-    db = DatabaseDatabase(
-        config_loader, logger, config=config, config_path_or_dir=args.config
-    )
+    db = DatabaseDatabase(config_loader, logger, config=config, config_path_or_dir=args.config)
     db.init_db()
 
     # Meta-System Components
@@ -306,11 +309,7 @@ async def async_main():
     # 3. Startup Meta-Loop
     if args.mode == "live" or args.mode == "paper":
         if args.eod:
-            target = (
-                datetime.fromisoformat(args.eod_date).date()
-                if args.eod_date
-                else clock().date()
-            )
+            target = datetime.fromisoformat(args.eod_date).date() if args.eod_date else clock().date()
             logger.info("Running EOD aggregation + Agent Stage 1", date=str(target))
             analytics.run_daily_aggregation(cast(date_type, target))
             agent.run_cycle_with_db(db, as_of=clock())
@@ -331,16 +330,12 @@ async def async_main():
     # 4. Initial Scan
     logger.info("Starting Alpaca stream...")
     stream_task = asyncio.create_task(
-        alpaca_client.start_stream(
-            engine.on_bar, on_reconnect=engine.reconcile_broker_state
-        )
+        alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
     )
     trade_stream_task = None
     if args.order_executor == "alpaca":
         trade_stream_task = asyncio.create_task(
-            alpaca_client.start_trade_stream(
-                engine.on_trade_update, on_reconnect=engine.reconcile_broker_state
-            )
+            alpaca_client.start_trade_stream(engine.on_trade_update, on_reconnect=engine.reconcile_broker_state)
         )
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
@@ -411,9 +406,7 @@ async def async_main():
                         engine.flatten_all(reason="pre_market_close")
                         flattened_for_date = target_date
                     except Exception as e:
-                        logger.error(
-                            "Early flatten failed", error=str(e), exc_info=True
-                        )
+                        logger.error("Early flatten failed", error=str(e), exc_info=True)
                         break
 
             # --- Live Guardrails: Countdown Warnings ---
@@ -444,9 +437,7 @@ async def async_main():
                             date=str(target_date),
                         )
                         try:
-                            analytics.run_daily_aggregation(
-                                cast(date_type, target_date)
-                            )
+                            analytics.run_daily_aggregation(cast(date_type, target_date))
                             agent.run_cycle_with_db(db, as_of=engine.market_state.time)
                             # Reload config to pick up changes
                             config = config_loader.load_config(args.config)
@@ -475,9 +466,7 @@ async def async_main():
             await engine.run_scan()
 
             # Wait for next scan interval
-            scanner_cfg = (
-                (config.get("scanner") or {}) if isinstance(config, dict) else {}
-            )
+            scanner_cfg = (config.get("scanner") or {}) if isinstance(config, dict) else {}
             interval_min = int(scanner_cfg.get("interval_minutes", 5))
 
             # High-fidelity mode when close to market end

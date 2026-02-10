@@ -47,9 +47,7 @@ class DataFetcher:
         except (TypeError, ValueError):
             self._cache_maxsize = 500
 
-    def _resolve_fetch_start(
-        self, symbol: str, start: datetime
-    ) -> Tuple[datetime, List[Dict[str, Any]]]:
+    def _resolve_fetch_start(self, symbol: str, start: datetime) -> Tuple[datetime, List[Dict[str, Any]]]:
         cached = self._bars_cache.get(symbol)
         if not cached or cached.get("start") != start:
             return start, []
@@ -91,16 +89,12 @@ class DataFetcher:
             return list(new_bars["bars"])
         return list(new_bars or [])
 
-    def _get_historical_bars_sync(
-        self, symbol: str, start: datetime, end: datetime, timeframe: str
-    ) -> Any:
+    def _get_historical_bars_sync(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> Any:
         """Fetch bars from configured backend with optional legacy failover."""
         sym = str(symbol).strip().upper()
         if self.use_gateway_data and self.central_api_client is not None:
             try:
-                bars = self.central_api_client.get_alpaca_bars(
-                    sym, start, end, timeframe
-                )
+                bars = self.central_api_client.get_alpaca_bars(sym, start, end, timeframe)
                 if self.enable_dual_compare:
                     self._compare_bars_with_legacy(sym, start, end, timeframe, bars)
                 return bars
@@ -127,15 +121,9 @@ class DataFetcher:
     ) -> None:
         """Log comprehensive dual-read parity diagnostics without affecting control flow."""
         try:
-            legacy = self.alpaca_client.get_historical_bars(
-                symbol, start, end, timeframe
-            )
+            legacy = self.alpaca_client.get_historical_bars(symbol, start, end, timeframe)
             legacy_bars = legacy.get("bars", []) if isinstance(legacy, dict) else legacy
-            gateway_bars = (
-                gateway_payload.get("bars", [])
-                if isinstance(gateway_payload, dict)
-                else gateway_payload
-            )
+            gateway_bars = gateway_payload.get("bars", []) if isinstance(gateway_payload, dict) else gateway_payload
 
             if not isinstance(legacy_bars, list) or not isinstance(gateway_bars, list):
                 self.logger.warning(
@@ -212,12 +200,14 @@ class DataFetcher:
                         if legacy_float != 0:
                             pct_diff = abs(legacy_float - gateway_float) / legacy_float
                             if pct_diff > 0.0001:
-                                mismatches.append({
-                                    "field": long_name,
-                                    "legacy": legacy_float,
-                                    "gateway": gateway_float,
-                                    "pct_diff": round(pct_diff * 100, 4),
-                                })
+                                mismatches.append(
+                                    {
+                                        "field": long_name,
+                                        "legacy": legacy_float,
+                                        "gateway": gateway_float,
+                                        "pct_diff": round(pct_diff * 100, 4),
+                                    }
+                                )
                     except (ValueError, TypeError):
                         pass
 
@@ -252,9 +242,7 @@ class DataFetcher:
 
         if fetch_start < end:
             try:
-                new_bars = await self._fetch_alpaca_bars_internal(
-                    sym, fetch_start, end, timeframe
-                )
+                new_bars = await self._fetch_alpaca_bars_internal(sym, fetch_start, end, timeframe)
                 if new_bars and existing_bars:
                     metrics["incremental_fetches"] += 1
             except Exception as e:
@@ -311,13 +299,9 @@ class DataFetcher:
                 except Exception:
                     if not self.allow_legacy_failover:
                         raise
-                    trades = await asyncio.to_thread(
-                        self.alpaca_client.get_historical_trades, sym, start, end
-                    )
+                    trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, sym, start, end)
             else:
-                trades = await asyncio.to_thread(
-                    self.alpaca_client.get_historical_trades, sym, start, end
-                )
+                trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, sym, start, end)
             if not trades:
                 metrics["alpaca_no_trades"] += 1
             return trades, metrics
@@ -342,9 +326,7 @@ class DataFetcher:
         try:
             import asyncio
 
-            legacy_trades = await asyncio.to_thread(
-                self.alpaca_client.get_historical_trades, symbol, start, end
-            )
+            legacy_trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, symbol, start, end)
 
             legacy_count = len(legacy_trades) if isinstance(legacy_trades, list) else 0
             gateway_count = len(gateway_trades) if isinstance(gateway_trades, list) else 0
@@ -385,9 +367,7 @@ class DataFetcher:
             )
             return None
 
-    def fetch_avg_daily_volume(
-        self, symbol: str, end: datetime, lookback_days: int
-    ) -> Optional[float]:
+    def fetch_avg_daily_volume(self, symbol: str, end: datetime, lookback_days: int) -> Optional[float]:
         """
         Fetches daily bars to calculate average volume.
         """
@@ -398,17 +378,13 @@ class DataFetcher:
         try:
             daily = self._get_historical_bars_sync(symbol, start, end, timeframe="1Day")
         except Exception as e:
-            self.logger.warning(
-                "Failed to fetch avg volume", symbol=symbol, error=str(e)
-            )
+            self.logger.warning("Failed to fetch avg volume", symbol=symbol, error=str(e))
             return None
 
         if not daily:
             return None
 
-        bars_list = (
-            daily.get("bars") if isinstance(daily, dict) and "bars" in daily else daily
-        )
+        bars_list = daily.get("bars") if isinstance(daily, dict) and "bars" in daily else daily
         if not isinstance(bars_list, list):
             return None
 
@@ -447,23 +423,17 @@ class DataFetcher:
                 return float(val)
         return 0.0
 
-    def fetch_prior_day_stats(
-        self, symbol: str, current_time: datetime
-    ) -> Tuple[float, float, float]:
+    def fetch_prior_day_stats(self, symbol: str, current_time: datetime) -> Tuple[float, float, float]:
         """
         Returns (High, Low, Close) from daily bars for the prior complete day.
         """
         try:
             start = current_time - timedelta(days=7)
-            bars = self._get_historical_bars_sync(
-                symbol, start, current_time, timeframe="1Day"
-            )
+            bars = self._get_historical_bars_sync(symbol, start, current_time, timeframe="1Day")
             if not bars:
                 return (0.0, 0.0, 0.0)
 
-            bars_list = (
-                bars.get("bars") if isinstance(bars, dict) and "bars" in bars else bars
-            )
+            bars_list = bars.get("bars") if isinstance(bars, dict) and "bars" in bars else bars
             if not isinstance(bars_list, list):
                 return (0.0, 0.0, 0.0)
 
@@ -486,9 +456,7 @@ class DataFetcher:
             return (h, low_px, c)
 
         except Exception as e:
-            self.logger.warning(
-                "Failed to fetch prior day stats", symbol=symbol, error=str(e)
-            )
+            self.logger.warning("Failed to fetch prior day stats", symbol=symbol, error=str(e))
             return (0.0, 0.0, 0.0)
 
     async def fetch_flow(self, symbol: str, date_str: str) -> List[Any]:
@@ -519,6 +487,42 @@ class DataFetcher:
             )
             return []
 
+    async def _compare_flow_with_legacy(
+        self,
+        symbol: str,
+        date_str: str,
+        gateway_flow: List[Any],
+    ) -> None:
+        """Log dual-read parity for options flow data."""
+        try:
+            legacy_flow = await self.unusual_whales_client.get_option_flow(symbol, date_str)
+            legacy_count = len(legacy_flow) if isinstance(legacy_flow, list) else 0
+            gateway_count = len(gateway_flow) if isinstance(gateway_flow, list) else 0
+
+            if legacy_count != gateway_count:
+                self.logger.warning(
+                    "Dual read flow count mismatch",
+                    symbol=symbol,
+                    date=date_str,
+                    legacy_count=legacy_count,
+                    gateway_count=gateway_count,
+                    delta=abs(legacy_count - gateway_count),
+                )
+            elif legacy_count > 0:
+                self.logger.info(
+                    "Dual read flow parity confirmed",
+                    symbol=symbol,
+                    date=date_str,
+                    count=legacy_count,
+                )
+        except Exception as e:
+            self.logger.debug(
+                "Dual read flow comparison error",
+                symbol=symbol,
+                date=date_str,
+                error=str(e),
+            )
+
     async def fetch_gex(self, symbol: str) -> List[Dict[str, Any]]:
         """
         Fetches Unusual Whales greek exposure data.
@@ -526,9 +530,7 @@ class DataFetcher:
         """
         try:
             if self.use_gateway_data and self.central_api_client is not None:
-                gex_data = await asyncio.to_thread(
-                    self.central_api_client.get_uw_gex, symbol
-                )
+                gex_data = await asyncio.to_thread(self.central_api_client.get_uw_gex, symbol)
                 if self.enable_dual_compare:
                     await self._compare_gex_with_legacy(symbol, gex_data)
                 return gex_data
