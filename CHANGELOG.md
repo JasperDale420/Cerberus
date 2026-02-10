@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Documentation
+
 - Comprehensive documentation audit and remediation completed.
 - Rewrote `README.md` to match current runtime architecture, commands, and modules.
 - Reworked `docs/architecture.md` with updated system/data-flow diagrams and module map.
@@ -15,6 +16,8 @@ All notable changes to this project will be documented in this file.
 - Removed stale auto-generated `codebase.md`.
 
 ### Changed
+
+- **HTTP Client: requests → httpx** — Migrated `scripts/update_universe_lists.py` from `requests` to `httpx`
 - **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
   - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
   - `Position.regime_at_entry` replaced with `Position.regime_tags_at_entry: Dict[str, str]`
@@ -28,6 +31,7 @@ All notable changes to this project will be documented in this file.
   - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
 
 ### Added
+
 - **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
   - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
   - Volume-impact slippage: `slippage_mode` (fixed|volume_impact) with `slippage_impact_mult` for market impact simulation
@@ -41,6 +45,7 @@ All notable changes to this project will be documented in this file.
   - `UniverseBuilder` screener dynamic source with configurable `most_actives_top_n` and `movers_top_n`
   - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
   - Setup guide: `docs/screener_snapshot_setup.md`
+
 ### Added
 
 - **Config: pydantic-settings for runtime env vars** (2026-02-09)
