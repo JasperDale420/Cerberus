@@ -1,0 +1,44 @@
+{
+  "agents": {
+    "agent-1770762438593-ub9ki1": {
+      "agentId": "agent-1770762438593-ub9ki1",
+      "agentType": "architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic"
+      },
+      "createdAt": "2026-02-10T22:27:18.593Z",
+      "model": "opus",
+      "modelRoutedBy": "default"
+    },
+    "agent-1770762439510-yirpmv": {
+      "agentId": "agent-1770762439510-yirpmv",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic"
+      },
+      "createdAt": "2026-02-10T22:27:19.510Z",
+      "model": "sonnet",
+      "modelRoutedBy": "default"
+    },
+    "agent-1770762440468-odlo6e": {
+      "agentId": "agent-1770762440468-odlo6e",
+      "agentType": "tester",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic"
+      },
+      "createdAt": "2026-02-10T22:27:20.468Z",
+      "model": "sonnet",
+      "modelRoutedBy": "default"
+    }
+  },
+  "version": "3.0.0"
+}

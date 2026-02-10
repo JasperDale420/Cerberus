@@ -1,0 +1,31 @@
+{
+  "tasks": {
+    "task-1770762371037-q9vjb1": {
+      "taskId": "task-1770762371037-q9vjb1",
+      "type": "implementation",
+      "description": "Execute Cerberus -> Data-Gateway -> Heber integration plan using docs/cerberus-data-gateway-heber-architecture.md, docs/cerberus-data-gateway-heber-migration-roadmap.md, docs/cerberus-data-gateway-heber-implementation-checklist.md, docs/INTEGRATION_VERIFICATION_REPORT.md",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-02-10T22:26:11.037Z",
+      "startedAt": null,
+      "completedAt": null
+    },
+    "task-1770762430767-8ukjbr": {
+      "taskId": "task-1770762430767-8ukjbr",
+      "type": "implementation",
+      "description": "Cerberus Data-Gateway Heber integration from existing docs",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-02-10T22:27:10.767Z",
+      "startedAt": null,
+      "completedAt": null
+    }
+  },
+  "version": "3.0.0"
+}
