@@ -66,9 +66,7 @@ class Settings(BaseSettings):
     # Heber
     cerberus_heber_catalog_url: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "CERBERUS_HEBER_CATALOG_URL", "HEBER_CATALOG_URL"
-        ),
+        validation_alias=AliasChoices("CERBERUS_HEBER_CATALOG_URL", "HEBER_CATALOG_URL"),
     )
     cerberus_heber_data_root: str = Field(
         default="",
@@ -95,8 +93,64 @@ class Settings(BaseSettings):
         """Return True when Data-Gateway should be used for market-data reads."""
         return self.cerberus_data_backend in {"gateway", "dual"}
 
+    @property
+    def use_heber_storage(self) -> bool:
+        """Return True when Heber should be used for storage reads."""
+        return self.cerberus_storage_backend in {"heber", "dual"}
+
+    def validate_startup_mode(self) -> list[str]:
+        """Validate required environment variables for configured backend modes.
+
+        Returns:
+            List of validation error messages (empty if all valid).
+        """
+        errors: list[str] = []
+
+        # Gateway mode validation
+        if self.use_gateway_data:
+            if not self.cerberus_gateway_url or self.cerberus_gateway_url == "http://localhost:8080":
+                errors.append("CERBERUS_GATEWAY_URL must be set when using gateway or dual data backend mode")
+            if not self.cerberus_gateway_key:
+                errors.append("CERBERUS_GATEWAY_KEY must be set when using gateway or dual data backend mode")
+
+        # Heber mode validation
+        if self.use_heber_storage:
+            if not self.cerberus_heber_catalog_url:
+                errors.append("CERBERUS_HEBER_CATALOG_URL must be set when using heber or dual storage backend mode")
+            # Optional: heber_data_root validation only if using filesystem reads
+            # Uncomment if required:
+            # if not self.cerberus_heber_data_root:
+            #     errors.append(
+            #         "CERBERUS_HEBER_DATA_ROOT must be set when using heber or dual storage backend mode"
+            #     )
+
+        # Legacy mode validation (Alpaca credentials required unless gateway-only)
+        if self.cerberus_data_backend == "legacy" or (
+            self.cerberus_data_backend == "dual" and self.cerberus_failover_to_legacy
+        ):
+            if not self.resolved_api_key:
+                errors.append("ALPACA_API_KEY (or APCA_API_KEY_ID) required for legacy or dual+failover mode")
+            if not self.resolved_secret_key:
+                errors.append("ALPACA_SECRET_KEY (or APCA_API_SECRET_KEY) required for legacy or dual+failover mode")
+
+        return errors
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return a cached singleton Settings instance."""
     return Settings()
+
+
+def validate_startup_settings() -> None:
+    """Validate startup settings and raise if configuration is invalid.
+
+    Raises:
+        ValueError: If required environment variables are missing for configured mode.
+    """
+    settings = get_settings()
+    errors = settings.validate_startup_mode()
+
+    if errors:
+        error_msg = "Startup configuration validation failed:\n" + "\n".join(f"  - {err}" for err in errors)
+        raise ValueError(error_msg)
