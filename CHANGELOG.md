@@ -29,6 +29,12 @@ All notable changes to this project will be documented in this file.
   - Upgraded `src/data/api_client.py` to Data-Gateway v1 routes and `X-Gateway-Key` support while preserving LLM chat compatibility.
   - Expanded `src/core/health.py` to check Data-Gateway and Heber connectivity, including gateway-mode credential handling.
   - Updated contract tests in `tests/contract/test_central_api_client_contract.py` for route and header expectations.
+- Wired gateway-backed fetching in runtime data path:
+  - Added Data-Gateway adapters in `src/data/api_client.py` for Alpaca trades and UW GEX.
+  - Enabled `src/data/fetcher.py` to route bars/trades/flow/gex through Data-Gateway when `CERBERUS_DATA_BACKEND=gateway|dual`, with failover control via `CERBERUS_FAILOVER_TO_LEGACY`.
+  - Added lightweight dual-mode parity diagnostics for bar-count mismatch in `src/data/fetcher.py`.
+  - Injected `CentralApiClient` into `FeaturePipeline` from `src/main.py`.
+  - Added new contract coverage for `get_alpaca_trades` and `get_uw_gex`.
 - **HTTP Client: requests → httpx** — Migrated `scripts/update_universe_lists.py` from `requests` to `httpx`
 - **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
   - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`

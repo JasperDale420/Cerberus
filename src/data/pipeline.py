@@ -7,6 +7,7 @@ import pytz  # type: ignore
 from src.core.domain import SymbolFeatures
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+from src.data.api_client import CentralApiClient
 from src.data.calculator import FeatureCalculator
 from src.data.fetcher import DataFetcher
 from src.data.unusual_whales import UnusualWhalesClient
@@ -31,6 +32,7 @@ class FeaturePipeline:
         config: Optional[Dict[str, Any]] = None,
         clock: Optional[Callable[[], datetime]] = None,
         snapshot_manager: Optional["SnapshotManager"] = None,
+        central_api_client: Optional[CentralApiClient] = None,
     ):
         self.alpaca_client = alpaca_client
         self.unusual_whales_client = unusual_whales_client
@@ -57,7 +59,12 @@ class FeaturePipeline:
 
         # New Collaborators
         self.fetcher = DataFetcher(
-            alpaca_client, unusual_whales_client, logger, config, self.clock
+            alpaca_client,
+            unusual_whales_client,
+            logger,
+            central_api_client=central_api_client,
+            config=config,
+            clock=self.clock,
         )
         self.calculator = FeatureCalculator()
 

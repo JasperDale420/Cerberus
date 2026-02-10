@@ -12,6 +12,7 @@ from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+from src.data.api_client import CentralApiClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
@@ -213,9 +214,15 @@ async def async_main():
 
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
+    central_api_client = CentralApiClient(config_loader, logger)
 
     feature_pipeline = FeaturePipeline(
-        alpaca_client, uw_client, logger, config=config, clock=clock
+        alpaca_client,
+        uw_client,
+        logger,
+        central_api_client=central_api_client,
+        config=config,
+        clock=clock,
     )
 
     universe_builder = UniverseBuilder(

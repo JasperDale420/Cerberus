@@ -115,11 +115,81 @@ def test_chat_completion_contract_uses_openai_like_payload() -> None:
 
 
 @pytest.mark.contract
+def test_get_alpaca_trades_contract_calls_expected_path_and_normalizes() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "trades": [
+                        {
+                            "timestamp": "2025-01-01T09:30:00Z",
+                            "price": 101.25,
+                            "size": 10,
+                            "conditions": ["@"],
+                        }
+                    ]
+                },
+            },
+        )
+
+    cfg = MagicMock()
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
+    logger = MagicMock()
+
+    c = CentralApiClient(cfg, logger)
+    c.client = _make_client(handler)
+
+    out = c.get_alpaca_trades("MSFT")
+    assert seen["url"].startswith(
+        "http://central.test/api/v1/alpaca/stocks/MSFT/trades"
+    )
+    assert out and out[0]["t"] == "2025-01-01T09:30:00Z"
+    assert out[0]["p"] == 101.25
+    assert "limit" in seen["query"]
+
+
+@pytest.mark.contract
+def test_get_uw_gex_contract_calls_expected_path() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"success": True, "data": [{"strike": 500}]})
+
+    cfg = MagicMock()
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
+    logger = MagicMock()
+
+    c = CentralApiClient(cfg, logger)
+    c.client = _make_client(handler)
+
+    out = c.get_uw_gex("SPY")
+    assert seen["url"].startswith("http://central.test/api/v1/uw/gex/SPY")
+    assert out == [{"strike": 500}]
+
+
+@pytest.mark.contract
 @pytest.mark.parametrize(
     "method_name,args",
     [
         ("get_alpaca_bars", ("AAPL",)),
         ("get_uw_flow", ("SPY",)),
+        ("get_alpaca_trades", ("AAPL",)),
+        ("get_uw_gex", ("SPY",)),
         ("chat_completion", ("m", [{"role": "user", "content": "x"}])),
     ],
 )
