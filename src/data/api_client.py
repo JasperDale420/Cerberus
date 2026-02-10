@@ -44,8 +44,60 @@ class CentralApiClient:
             return payload
         data = payload.get("data")
         if isinstance(data, dict) and isinstance(data.get("bars"), list):
-            return {"bars": data["bars"]}
+            return {"bars": [self._normalize_bar(item) for item in data["bars"]]}
         return payload
+
+    def _normalize_bar(self, item: Any) -> Dict[str, Any]:
+        """Normalize a bar item into Cerberus-compatible keys."""
+        if not isinstance(item, dict):
+            return {}
+        return {
+            "t": item.get("t") or item.get("timestamp"),
+            "o": item.get("o") if item.get("o") is not None else item.get("open"),
+            "h": item.get("h") if item.get("h") is not None else item.get("high"),
+            "l": item.get("l") if item.get("l") is not None else item.get("low"),
+            "c": item.get("c") if item.get("c") is not None else item.get("close"),
+            "v": item.get("v") if item.get("v") is not None else item.get("volume"),
+        }
+
+    def _normalize_trades_response(
+        self, payload: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Normalize Data-Gateway trade response into legacy trade list."""
+        trades: List[Dict[str, Any]] = []
+        raw = payload
+        data = payload.get("data")
+        if isinstance(data, dict):
+            raw = cast(Dict[str, Any], data)
+
+        raw_trades = raw.get("trades")
+        if not isinstance(raw_trades, list):
+            return trades
+
+        for item in raw_trades:
+            if not isinstance(item, dict):
+                continue
+            trades.append(
+                {
+                    "t": item.get("t") or item.get("timestamp"),
+                    "p": item.get("p")
+                    if item.get("p") is not None
+                    else item.get("price", 0.0),
+                    "s": item.get("s")
+                    if item.get("s") is not None
+                    else item.get("size", 0.0),
+                    "c": item.get("c")
+                    if item.get("c") is not None
+                    else item.get("conditions", []),
+                    "x": item.get("x")
+                    if item.get("x") is not None
+                    else item.get("exchange", ""),
+                    "z": item.get("z")
+                    if item.get("z") is not None
+                    else item.get("tape", ""),
+                }
+            )
+        return trades
 
     def _resolve_llm_client(self) -> httpx.Client:
         """Return the client used for chat completions."""
@@ -104,6 +156,56 @@ class CentralApiClient:
         except httpx.HTTPError as e:
             self.logger.error(
                 "Failed to fetch UW flow from central API", ticker=ticker, error=str(e)
+            )
+            raise
+
+    def get_alpaca_trades(
+        self,
+        symbol: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        limit: int = 10000,
+    ) -> List[Dict[str, Any]]:
+        """Fetch historical trades via Data-Gateway and normalize output."""
+        params: Dict[str, Any] = {"limit": int(limit)}
+        if start:
+            params["start"] = start.isoformat()
+        if end:
+            params["end"] = end.isoformat()
+
+        try:
+            response = self.client.get(
+                f"/api/v1/alpaca/stocks/{symbol.upper()}/trades",
+                params=params,
+            )
+            response.raise_for_status()
+            payload = cast(Dict[str, Any], response.json())
+            return self._normalize_trades_response(payload)
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch Alpaca trades from central API",
+                symbol=symbol,
+                error=str(e),
+            )
+            raise
+
+    def get_uw_gex(self, ticker: str) -> List[Dict[str, Any]]:
+        """Fetch Unusual Whales GEX via Data-Gateway."""
+        try:
+            response = self.client.get(f"/api/v1/uw/gex/{ticker.upper()}")
+            response.raise_for_status()
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data")
+            if isinstance(data, list):
+                return cast(List[Dict[str, Any]], data)
+            if isinstance(data, dict):
+                return cast(List[Dict[str, Any]], data.get("rows", []))
+            return []
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch UW GEX from central API",
+                ticker=ticker,
+                error=str(e),
             )
             raise
 
