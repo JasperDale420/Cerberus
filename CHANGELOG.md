@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added local Claude/Swarm workspace tooling assets and skill bundles:
+  - `.claude/` helpers, settings, and skill definitions
+  - `.claude-flow/` agent/task state files
+  - `.swarm/` runtime state files
+  - `CLAUDE.md` and `vectors.db` local support artifacts
+
 - **Data-Gateway/Heber Phase 1 Completion** (2026-02-10):
   - Enhanced dual-read parity logging with comprehensive comparison:
     - Bar value comparison (OHLCV) with percentage difference tracking

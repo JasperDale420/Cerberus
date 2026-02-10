@@ -1,6 +1,25 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any, Dict, Optional
+
+
+class CerberusError(Exception):
+    """Base exception for all Cerberus errors."""
+
+    def __init__(self, message: str, code: str | ErrorCode, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.message = message
+        self.code = str(code.value) if isinstance(code, Enum) else str(code)
+        self.details = details or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "error": True,
+            "code": self.code,
+            "message": self.message,
+            "details": self.details,
+        }
 
 
 class ErrorCode(str, Enum):

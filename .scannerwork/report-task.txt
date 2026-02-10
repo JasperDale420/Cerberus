@@ -1,6 +1,6 @@
 projectKey=cerberus
 serverUrl=http://localhost:9000
-serverVersion=25.11.0.114957
+serverVersion=26.1.0.118079
 dashboardUrl=http://localhost:9000/dashboard?id=cerberus
-ceTaskId=08b417c5-117f-4118-bc0d-25a058d4ccd8
-ceTaskUrl=http://localhost:9000/api/ce/task?id=08b417c5-117f-4118-bc0d-25a058d4ccd8
+ceTaskId=39696964-91c4-4a3a-a423-c550dfef6650
+ceTaskUrl=http://localhost:9000/api/ce/task?id=39696964-91c4-4a3a-a423-c550dfef6650
