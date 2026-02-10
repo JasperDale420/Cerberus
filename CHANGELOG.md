@@ -23,8 +23,11 @@ All notable changes to this project will be documented in this file.
     - Integrated validation into `src/main.py` startup sequence
   - Comprehensive gateway/failover integration tests:
     - Created `tests/integration/test_gateway_failover_integration.py` with 11 test scenarios
-    - Created `tests/unit/test_startup_validation_unit.py` with 13 validation tests
+    - Created `tests/unit/test_startup_validation_unit.py` with 14 validation tests
     - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
+  - Tightened startup validation test precision:
+    - Gateway required-field test now uses explicit empty URL value for deterministic assertions
+    - Added a focused unit test confirming custom gateway URL only flags missing gateway key
 
 ### Documentation
 
