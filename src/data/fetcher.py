@@ -125,7 +125,7 @@ class DataFetcher:
         timeframe: str,
         gateway_payload: Any,
     ) -> None:
-        """Log lightweight dual-read parity diagnostics without affecting control flow."""
+        """Log comprehensive dual-read parity diagnostics without affecting control flow."""
         try:
             legacy = self.alpaca_client.get_historical_bars(
                 symbol, start, end, timeframe
@@ -136,17 +136,100 @@ class DataFetcher:
                 if isinstance(gateway_payload, dict)
                 else gateway_payload
             )
-            if isinstance(legacy_bars, list) and isinstance(gateway_bars, list):
-                if len(legacy_bars) != len(gateway_bars):
-                    self.logger.warning(
-                        "Dual read bars count mismatch",
-                        symbol=symbol,
-                        timeframe=timeframe,
-                        legacy_count=len(legacy_bars),
-                        gateway_count=len(gateway_bars),
-                    )
-        except Exception:
+
+            if not isinstance(legacy_bars, list) or not isinstance(gateway_bars, list):
+                self.logger.warning(
+                    "Dual read bars type mismatch",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    legacy_type=type(legacy_bars).__name__,
+                    gateway_type=type(gateway_bars).__name__,
+                )
+                return
+
+            legacy_count = len(legacy_bars)
+            gateway_count = len(gateway_bars)
+
+            # Count comparison
+            if legacy_count != gateway_count:
+                self.logger.warning(
+                    "Dual read bars count mismatch",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    legacy_count=legacy_count,
+                    gateway_count=gateway_count,
+                    delta=abs(legacy_count - gateway_count),
+                )
+
+            # Sample value comparison (first and last bars if both non-empty)
+            if legacy_count > 0 and gateway_count > 0:
+                self._compare_bar_values(symbol, timeframe, legacy_bars[0], gateway_bars[0], "first")
+                if legacy_count > 1 and gateway_count > 1:
+                    self._compare_bar_values(symbol, timeframe, legacy_bars[-1], gateway_bars[-1], "last")
+
+            # Success log for parity
+            if legacy_count == gateway_count and legacy_count > 0:
+                self.logger.info(
+                    "Dual read bars parity confirmed",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    count=legacy_count,
+                )
+        except Exception as e:
             # Diagnostics only - never fail fetch path on comparison errors.
+            self.logger.debug(
+                "Dual read comparison error",
+                symbol=symbol,
+                error=str(e),
+            )
+            return
+
+    def _compare_bar_values(
+        self,
+        symbol: str,
+        timeframe: str,
+        legacy_bar: Any,
+        gateway_bar: Any,
+        position: str,
+    ) -> None:
+        """Compare OHLCV values between legacy and gateway bars."""
+        try:
+            legacy_dict = legacy_bar if isinstance(legacy_bar, dict) else {}
+            gateway_dict = gateway_bar if isinstance(gateway_bar, dict) else {}
+
+            fields = [("o", "open"), ("h", "high"), ("l", "low"), ("c", "close"), ("v", "volume")]
+            mismatches = []
+
+            for short, long_name in fields:
+                legacy_val = legacy_dict.get(short) or legacy_dict.get(long_name)
+                gateway_val = gateway_dict.get(short) or gateway_dict.get(long_name)
+
+                if legacy_val is not None and gateway_val is not None:
+                    try:
+                        legacy_float = float(legacy_val)
+                        gateway_float = float(gateway_val)
+                        # Allow small floating point differences (0.01%)
+                        if legacy_float != 0:
+                            pct_diff = abs(legacy_float - gateway_float) / legacy_float
+                            if pct_diff > 0.0001:
+                                mismatches.append({
+                                    "field": long_name,
+                                    "legacy": legacy_float,
+                                    "gateway": gateway_float,
+                                    "pct_diff": round(pct_diff * 100, 4),
+                                })
+                    except (ValueError, TypeError):
+                        pass
+
+            if mismatches:
+                self.logger.warning(
+                    "Dual read bar value mismatch",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    position=position,
+                    mismatches=mismatches,
+                )
+        except Exception:
             return
 
     async def fetch_bars(
@@ -223,6 +306,8 @@ class DataFetcher:
                         start,
                         end,
                     )
+                    if self.enable_dual_compare:
+                        await self._compare_trades_with_legacy(sym, start, end, trades)
                 except Exception:
                     if not self.allow_legacy_failover:
                         raise
@@ -245,6 +330,45 @@ class DataFetcher:
                 error=str(e),
             )
             return [], metrics
+
+    async def _compare_trades_with_legacy(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        gateway_trades: List[Dict[str, Any]],
+    ) -> None:
+        """Log dual-read parity for trades data."""
+        try:
+            import asyncio
+
+            legacy_trades = await asyncio.to_thread(
+                self.alpaca_client.get_historical_trades, symbol, start, end
+            )
+
+            legacy_count = len(legacy_trades) if isinstance(legacy_trades, list) else 0
+            gateway_count = len(gateway_trades) if isinstance(gateway_trades, list) else 0
+
+            if legacy_count != gateway_count:
+                self.logger.warning(
+                    "Dual read trades count mismatch",
+                    symbol=symbol,
+                    legacy_count=legacy_count,
+                    gateway_count=gateway_count,
+                    delta=abs(legacy_count - gateway_count),
+                )
+            elif legacy_count > 0:
+                self.logger.info(
+                    "Dual read trades parity confirmed",
+                    symbol=symbol,
+                    count=legacy_count,
+                )
+        except Exception as e:
+            self.logger.debug(
+                "Dual read trades comparison error",
+                symbol=symbol,
+                error=str(e),
+            )
 
     def _extract_volume(self, bar: Any) -> Optional[float]:
         try:
@@ -379,9 +503,10 @@ class DataFetcher:
                     date_str,
                 )
                 data = response.get("data") if isinstance(response, dict) else None
-                if isinstance(data, list):
-                    return data
-                return []
+                flow_data = data if isinstance(data, list) else []
+                if self.enable_dual_compare:
+                    await self._compare_flow_with_legacy(symbol, date_str, flow_data)
+                return flow_data
 
             # mypy: ignore
             return await self.unusual_whales_client.get_option_flow(symbol, date_str)  # type: ignore
@@ -401,9 +526,12 @@ class DataFetcher:
         """
         try:
             if self.use_gateway_data and self.central_api_client is not None:
-                return await asyncio.to_thread(
+                gex_data = await asyncio.to_thread(
                     self.central_api_client.get_uw_gex, symbol
                 )
+                if self.enable_dual_compare:
+                    await self._compare_gex_with_legacy(symbol, gex_data)
+                return gex_data
             return await self.unusual_whales_client.get_greek_exposure(symbol)
         except Exception as e:
             self.logger.warning(
@@ -412,3 +540,36 @@ class DataFetcher:
                 error=str(e),
             )
             return []
+
+    async def _compare_gex_with_legacy(
+        self,
+        symbol: str,
+        gateway_gex: List[Dict[str, Any]],
+    ) -> None:
+        """Log dual-read parity for GEX data."""
+        try:
+            legacy_gex = await self.unusual_whales_client.get_greek_exposure(symbol)
+
+            legacy_count = len(legacy_gex) if isinstance(legacy_gex, list) else 0
+            gateway_count = len(gateway_gex) if isinstance(gateway_gex, list) else 0
+
+            if legacy_count != gateway_count:
+                self.logger.warning(
+                    "Dual read GEX count mismatch",
+                    symbol=symbol,
+                    legacy_count=legacy_count,
+                    gateway_count=gateway_count,
+                    delta=abs(legacy_count - gateway_count),
+                )
+            elif legacy_count > 0:
+                self.logger.info(
+                    "Dual read GEX parity confirmed",
+                    symbol=symbol,
+                    count=legacy_count,
+                )
+        except Exception as e:
+            self.logger.debug(
+                "Dual read GEX comparison error",
+                symbol=symbol,
+                error=str(e),
+            )
