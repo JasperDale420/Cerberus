@@ -37,7 +37,7 @@ def parse_time(t_str):
         return None
     try:
         return datetime.fromisoformat(t_str.replace("Z", "+00:00"))
-    except:
+    except ValueError:
         return None
 
 
@@ -80,9 +80,9 @@ def analyze_win_loss_distribution(trades):
         print(f"    Min loss: ${max(losses):.2f}")  # Least negative
 
         # Loss size buckets
-        small_losses = [l for l in losses if l > -10]
-        medium_losses = [l for l in losses if -50 <= l <= -10]
-        large_losses = [l for l in losses if l < -50]
+        small_losses = [loss for loss in losses if loss > -10]
+        medium_losses = [loss for loss in losses if -50 <= loss <= -10]
+        large_losses = [loss for loss in losses if loss < -50]
         print(
             f"    Small losses (>-$10): {len(small_losses)} ({sum(small_losses):,.0f})"
         )
@@ -282,7 +282,6 @@ def analyze_meta_characteristics(trades):
         breakout_types.items(), key=lambda x: x[1]["pnl"], reverse=True
     ):
         wr = stats["wins"] / stats["count"] * 100 if stats["count"] > 0 else 0
-        avg = stats["pnl"] / stats["count"] if stats["count"] > 0 else 0
         profitable = "✅" if stats["pnl"] > 0 else "❌"
         print(
             f"    {profitable} {bt:12} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}"
@@ -293,7 +292,6 @@ def analyze_meta_characteristics(trades):
         gap_buckets.items(), key=lambda x: x[1]["pnl"], reverse=True
     ):
         wr = stats["wins"] / stats["count"] * 100 if stats["count"] > 0 else 0
-        avg = stats["pnl"] / stats["count"] if stats["count"] > 0 else 0
         profitable = "✅" if stats["pnl"] > 0 else "❌"
         print(
             f"    {profitable} {gap:16} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}"
@@ -359,9 +357,6 @@ def generate_optimization_recommendations(trades):
     print("\n" + "=" * 70)
     print("  7. OPTIMIZATION RECOMMENDATIONS")
     print("=" * 70)
-
-    # Collect all insights
-    insights = []
 
     # Symbol analysis
     symbols = defaultdict(lambda: {"count": 0, "pnl": 0})

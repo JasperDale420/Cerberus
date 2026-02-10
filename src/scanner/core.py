@@ -573,7 +573,7 @@ class Scanner:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 price_data = {}
-                for sym, res in zip(symbols, results):
+                for sym, res in zip(symbols, results, strict=False):
                     if isinstance(res, Exception) or not res:
                         continue
                     bars, _ = res

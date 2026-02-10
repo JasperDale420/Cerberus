@@ -14,10 +14,8 @@ import pytest
 @pytest.mark.asyncio
 async def test_loop_guardrails_logic():
     # Mock dependencies
-    logger = MagicMock()
     engine = MagicMock()
     engine.market_state = MagicMock()
-    config = {"force_flat_before_close_mins": 15}
 
     # We want to test the logic:
     # now = _now_local()

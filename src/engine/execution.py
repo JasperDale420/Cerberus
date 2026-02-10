@@ -1052,9 +1052,11 @@ class ExecutionEngine:
                     raw_size=signal.size_hint,
                     accepted=bool(intents),
                     rejection_reason=rejection_reason,
-                    meta_json=signal.meta,
+                    meta_json=self._sanitize_features_snapshot(signal.meta),
                     feature_snapshot_json=(
-                        asdict(signal.feature_snapshot)
+                        self._sanitize_features_snapshot(
+                            asdict(signal.feature_snapshot)
+                        )
                         if signal.feature_snapshot
                         else None
                     ),
@@ -1808,7 +1810,6 @@ class ExecutionEngine:
     def _build_scan_meta(self, scanned_sym: Any) -> Dict[str, Any]:
         """Build symbol metadata from scan result."""
         features = scanned_sym.features
-        flow_bias = self._determine_flow_bias(features)
         features_snapshot = (
             self._sanitize_features_snapshot(asdict(features)) if features else {}
         )

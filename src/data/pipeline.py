@@ -368,9 +368,13 @@ class FeaturePipeline:
                     # Log already handled in fetcher but we can log context here too if needed
                     flow_data = []
 
-            (c_p_ratio, f_zscore, sw_count, agg_share, f_bias, d_score) = (
+            (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = (
                 self.calculator.compute_flow_metrics(flow_data)
             )
+            d_score = abs(float(f_bias)) * float(agg_share)
+            if int(sw_count) > 5:
+                d_score *= 1.2
+            d_score = max(0.0, min(1.0, d_score))
 
             # Compute GEX metrics
             net_gex, gex_flip_dist = self.calculator.calculate_gex_metrics(

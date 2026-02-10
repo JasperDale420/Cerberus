@@ -170,6 +170,8 @@ class Signal:
     generated_at: datetime
     meta: Dict[str, Any] = field(default_factory=dict)  # indicators, features, etc.
     correlation_id: str = ""  # for cross-module tracing
+    # Legacy regime field kept for backward compatibility in older tests/callers.
+    regime: Optional[Regime] = None
     # Multi-axis regime (replaces legacy BULL/BEAR/CHOP)
     regime_tags: Dict[str, str] = field(default_factory=dict)
     regime_confidence: Dict[str, float] = field(default_factory=dict)
@@ -227,6 +229,8 @@ class Position:
     strategy: str
     entry_time: Optional[datetime] = None
     correlation_id: str = ""
+    # Legacy regime field kept for backward compatibility in older tests/callers.
+    regime_at_entry: Optional[Regime] = None
     # Multi-axis regime at entry (replaces legacy Regime enum)
     regime_tags_at_entry: Dict[str, str] = field(default_factory=dict)
     open_risk: Optional[float] = None

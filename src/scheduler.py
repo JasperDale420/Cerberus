@@ -37,8 +37,9 @@ class CerberusScheduler:
             replace_existing=True,
         )
 
-        # Add Friday EOD analysis job (Stage 3)
-        self.add_weekly_analysis_job()
+        # Keep daily-only scheduling as default for backward compatibility.
+        if bool(self.config.get("enable_weekly_analysis", False)):
+            self.add_weekly_analysis_job()
 
         logger.info(
             f"Scheduler started. Next run scheduled for: {trigger.get_next_fire_time(None, datetime.now(self.tz))}"

@@ -93,6 +93,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Stability and quality gate fixes** (2026-02-10):
+  - Restored compatibility imports for archived strategies via `src/strategies/failed_breakout.py` and `src/strategies/trend_pullback.py`.
+  - Reinstated legacy CHOP-only guards for standalone `FailedBreakoutStrategy` and `VWAPReversionStrategy` tests.
+  - Fixed `RiskManager` regime-disable rejection behavior (`REGIME_DISABLED`) and preserved rejection reason precedence when qty/risk resolves to zero.
+  - Fixed signal DB persistence JSON serialization by sanitizing datetime-containing payloads before insert.
+  - Normalized agent regime placeholders (e.g. `{}`) to `chop` for Stage 1 action targeting.
+  - Added Stage 2 evaluator callable compatibility for deterministic test evaluators.
+  - Restored flow-metric backward compatibility to 5-tuple output and kept DOF scoring in pipeline enrichment.
+  - Hardened pair scanner for non-datetime price indexes and replaced statsmodels OLS dependency with numpy least-squares in pair stats/half-life calculations.
+  - Made weekly scheduler job opt-in (`enable_weekly_analysis`) to keep daily-only default behavior backward compatible.
+
 - **Critical: TechnicalFeatures Missing Field**: Added missing `last_updated` field to `TechnicalFeatures` constructor in `calculator.py`.
 - **Critical: Alpaca Trade Stream Handler**: Fixed async handler compatibility with latest Alpaca SDK in `alpaca.py`.
 - **Critical: Zero Signal Backtest Bug**: Fixed `BacktestFeaturePipeline` lookup window (extended to 24h) and data parity issue that prevented signal generation.

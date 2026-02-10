@@ -60,7 +60,7 @@ def analyze_by_combination(trades: List[Dict], axes: List[str]) -> Dict[str, Dic
     for t in trades:
         regime_tags = t.get("regime_tags_at_entry", {})
         key = tuple(regime_tags.get(a, "unknown") for a in axes)
-        key_str = " | ".join(f"{a}={v}" for a, v in zip(axes, key))
+        key_str = " | ".join(f"{a}={v}" for a, v in zip(axes, key, strict=False))
         pnl = t.get("pnl_net", 0) or 0
 
         groups[key_str]["trades"] += 1

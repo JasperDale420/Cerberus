@@ -88,6 +88,11 @@ class VWAPReversionStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # Legacy standalone behavior: this strategy only runs in CHOP.
+        regime_name = str(getattr(market_state.regime, "value", market_state.regime))
+        if regime_name != "chop":
+            return None
+
         # P4 fix: Check cooldown before processing
         if not self._check_cooldown(symbol, bar.time):
             return None
