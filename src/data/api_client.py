@@ -209,6 +209,57 @@ class CentralApiClient:
             )
             raise
 
+    def get_alpaca_most_actives(self, top: int = 20) -> List[str]:
+        """Fetch most active stock symbols via Data-Gateway screener."""
+        try:
+            response = self.client.get(
+                "/api/v1/alpaca/screener/most-actives",
+                params={"by": "volume", "top": int(top)},
+            )
+            response.raise_for_status()
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data", {})
+            rows = data.get("most_actives", []) if isinstance(data, dict) else []
+            symbols: List[str] = []
+            for row in rows:
+                if isinstance(row, dict):
+                    sym = row.get("symbol")
+                    if sym:
+                        symbols.append(str(sym).upper())
+            return symbols
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch most actives from central API", error=str(e)
+            )
+            raise
+
+    def get_alpaca_movers(self, top: int = 10) -> Dict[str, List[str]]:
+        """Fetch top gainers/losers via Data-Gateway screener."""
+        try:
+            response = self.client.get(
+                "/api/v1/alpaca/screener/movers",
+                params={"market_type": "stocks", "top": int(top)},
+            )
+            response.raise_for_status()
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data", {})
+            if not isinstance(data, dict):
+                return {"gainers": [], "losers": []}
+            out: Dict[str, List[str]] = {"gainers": [], "losers": []}
+            for key in ("gainers", "losers"):
+                rows = data.get(key, [])
+                if not isinstance(rows, list):
+                    continue
+                for row in rows:
+                    if isinstance(row, dict):
+                        sym = row.get("symbol")
+                        if sym:
+                            out[key].append(str(sym).upper())
+            return out
+        except httpx.HTTPError as e:
+            self.logger.error("Failed to fetch movers from central API", error=str(e))
+            raise
+
     def chat_completion(
         self, model: str, messages: List[Dict[str, str]]
     ) -> Dict[str, Any]:

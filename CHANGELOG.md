@@ -35,6 +35,11 @@ All notable changes to this project will be documented in this file.
   - Added lightweight dual-mode parity diagnostics for bar-count mismatch in `src/data/fetcher.py`.
   - Injected `CentralApiClient` into `FeaturePipeline` from `src/main.py`.
   - Added new contract coverage for `get_alpaca_trades` and `get_uw_gex`.
+- Extended gateway-backed universe sourcing:
+  - Added Data-Gateway screener adapters (`most_actives`, `movers`) in `src/data/api_client.py`.
+  - Updated `src/scanner/universe.py` to use Data-Gateway for dynamic volume/screener sources in gateway mode, with optional legacy failover.
+  - Injected `CentralApiClient` into `UniverseBuilder` in `src/main.py`.
+  - Added contract coverage for `get_alpaca_most_actives` and `get_alpaca_movers`.
 - **HTTP Client: requests → httpx** — Migrated `scripts/update_universe_lists.py` from `requests` to `httpx`
 - **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
   - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
