@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Data-Gateway/Heber Phase 1 Completion** (2026-02-10):
+  - Enhanced dual-read parity logging with comprehensive comparison:
+    - Bar value comparison (OHLCV) with percentage difference tracking
+    - Trades count parity logging for gateway vs legacy
+    - Flow count parity logging for gateway vs legacy
+    - GEX data parity confirmation logging
+    - Success logs for confirmed parity across all data types
+  - Startup environment validation for gateway/heber modes:
+    - Added `validate_startup_mode()` method to `Settings` class
+    - Added `validate_startup_settings()` function for main entry point validation
+    - Validates required env vars based on configured backend mode:
+      - Gateway mode: requires `CERBERUS_GATEWAY_URL` and `CERBERUS_GATEWAY_KEY`
+      - Heber mode: requires `CERBERUS_HEBER_CATALOG_URL`
+      - Legacy/dual+failover: requires Alpaca credentials
+    - Integrated validation into `src/main.py` startup sequence
+  - Comprehensive gateway/failover integration tests:
+    - Created `tests/integration/test_gateway_failover_integration.py` with 11 test scenarios
+    - Created `tests/unit/test_startup_validation_unit.py` with 13 validation tests
+    - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
+
 ### Documentation
 
 - Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
@@ -353,7 +375,7 @@ All notable changes to this project will be documented in this file.
 - **Critical ConfigLoader Bug**: Fixed issue where specific config files (e.g., `config_vwap_trend_rider.yaml`) were being ignored - ConfigLoader now loads the specific file AFTER suite files to properly override settings
 - **Strategy Isolation Configs**: Added ORB to `generate_isolation_configs.py` - now generates all 7 strategy configs
 
-### Changed  
+### Changed
 
 - `src/core/config.py`: ConfigLoader.load_config() now tracks specific file paths and loads them after the suite files to allow proper overrides
 - `scripts/generate_isolation_configs.py`: Added ORB strategy configuration with OPEN_ACTIVATION filters
