@@ -6,8 +6,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Iterable, List
 
+import httpx
 import pandas as pd
-import requests
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for src in SOURCES:
-        resp = requests.get(
+        resp = httpx.get(
             src.url,
             headers={"User-Agent": "CerberusBot/1.0 (repo-to-PRD audit)"},
             timeout=30,
