@@ -55,7 +55,7 @@ def test_gateway_mode_requires_gateway_url_and_key() -> None:
     """Gateway mode should require CERBERUS_GATEWAY_URL and CERBERUS_GATEWAY_KEY."""
     settings = build_settings(
         CERBERUS_DATA_BACKEND="gateway",
-        CERBERUS_GATEWAY_URL="http://localhost:8080",
+        CERBERUS_GATEWAY_URL="",
         CERBERUS_GATEWAY_KEY="",
     )
 
@@ -64,6 +64,20 @@ def test_gateway_mode_requires_gateway_url_and_key() -> None:
     assert len(errors) >= 2
     assert any("CERBERUS_GATEWAY_URL" in err for err in errors)
     assert any("CERBERUS_GATEWAY_KEY" in err for err in errors)
+
+
+def test_gateway_mode_with_custom_url_only_requires_key() -> None:
+    """Gateway mode with a non-default URL should only require key when key is missing."""
+    settings = build_settings(
+        CERBERUS_DATA_BACKEND="gateway",
+        CERBERUS_GATEWAY_URL="http://gateway.test",
+        CERBERUS_GATEWAY_KEY="",
+    )
+
+    errors = settings.validate_startup_mode()
+
+    assert any("CERBERUS_GATEWAY_KEY" in err for err in errors)
+    assert not any("CERBERUS_GATEWAY_URL" in err for err in errors)
 
 
 def test_gateway_mode_with_valid_config_passes() -> None:
