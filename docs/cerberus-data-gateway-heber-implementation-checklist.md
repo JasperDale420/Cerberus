@@ -8,9 +8,9 @@
 ## Phase 0: Contract and Environment Readiness
 
 ### Cerberus
-- [ ] Add integration env vars to Cerberus runtime settings (`src/core/settings.py` or equivalent env access layer).
-- [ ] Add startup validation for required variables in gateway/heber modes.
-- [ ] Add health probes for Gateway and Heber to `src/core/health.py`.
+- [x] Add integration env vars to Cerberus runtime settings (`src/core/settings.py` or equivalent env access layer).
+- [x] Add startup validation for required variables in gateway/heber modes.
+- [x] Add health probes for Gateway and Heber to `src/core/health.py`.
 
 ### Data-Gateway
 - [ ] Confirm Cerberus client record in `Data-Gateway/config/clients.yaml` includes required providers/feeds.
@@ -31,21 +31,21 @@
 
 ### Files To Edit (Cerberus)
 - `src/data/api_client.py`
-  - [ ] Replace non-versioned paths with Data-Gateway routes (`/api/v1/alpaca/...`, `/api/v1/uw/...`).
-  - [ ] Add `X-Gateway-Key` header support.
+  - [x] Replace non-versioned paths with Data-Gateway routes (`/api/v1/alpaca/...`, `/api/v1/uw/...`).
+  - [x] Add `X-Gateway-Key` header support.
   - [ ] Add robust timeout/retry classification for 401/403/429/5xx.
 - `src/data/fetcher.py`
-  - [ ] Introduce backend interface (`legacy` vs `gateway`) with same return shape.
+  - [x] Introduce backend interface (`legacy` vs `gateway`) with same return shape.
 - `src/data/pipeline.py`
-  - [ ] Route fetch calls through backend interface; preserve feature semantics.
+  - [x] Route fetch calls through backend interface; preserve feature semantics.
 - `src/scanner/universe.py`
-  - [ ] Route screener calls through adapter instead of direct Alpaca client when enabled.
+  - [x] Route screener calls through adapter instead of direct Alpaca client when enabled.
 - `src/main.py`
-  - [ ] Wire backend selection flag from env/config at composition root.
+  - [x] Wire backend selection flag from env/config at composition root.
 
 ### Tests (Cerberus)
-- [ ] Extend `tests/contract/test_central_api_client_contract.py` for actual Data-Gateway route contracts.
-- [ ] Add parity tests for bars/trades/flow between legacy and gateway modes.
+- [x] Extend `tests/contract/test_central_api_client_contract.py` for actual Data-Gateway route contracts.
+- [x] Add parity tests for bars/trades/flow between legacy and gateway modes.
 
 ### Gate
 - [ ] `CERBERUS_DATA_BACKEND=legacy` behaves unchanged.
