@@ -31,25 +31,32 @@ class MetaLabeler:
             )
             return True
 
+        # If features are effectively neutral/empty, do not block the trade.
+        if (
+            features.hurst_exponent <= 0.0
+            and abs(features.tfi) < 1e-12
+            and abs(features.net_gex) < 1e-12
+        ):
+            return True
+
         # Heuristic 1: Hurst Exponent (Trend Persistence)
         # We prefer trading in trending regimes for momentum strategies
         is_trending = features.hurst_exponent > 0.5
 
         # Heuristic 2: Trade Flow Imbalance (Microstructure)
         # TFI should align with signal direction
+        side = str(getattr(signal.side, "value", signal.side)).lower()
         tfi_ok = True
-        if signal.side == "buy" and features.tfi < -0.1:
+        if side == "buy" and features.tfi < -0.1:
             tfi_ok = False
-        elif signal.side == "sell" and features.tfi > 0.1:
+        elif side == "sell" and features.tfi > 0.1:
             tfi_ok = False
 
         # Heuristic 3: Net GEX (Market Magnetism)
         # Extreme negative GEX can lead to high volatility/slippage
         gex_ok = True
         # Simple threshold: if GEX is deeply negative, be cautious with longs
-        if (
-            signal.side == "buy" and features.net_gex < -1000000
-        ):  # Placeholder threshold
+        if side == "buy" and features.net_gex < -1000000:  # Placeholder threshold
             gex_ok = False
 
         # Vetting Decision

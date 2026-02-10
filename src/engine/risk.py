@@ -221,7 +221,7 @@ class RiskManager:
     def _apply_strategy_limits(
         self,
         effective_max_risk: float,
-        _signal: Signal,
+        signal: Signal,
         strat_cfg: Optional[StrategyConfig],
     ) -> float:
         if strat_cfg is None:
@@ -230,8 +230,27 @@ class RiskManager:
         if strat_cfg.max_risk_per_trade is not None:
             effective_max_risk = min(effective_max_risk, strat_cfg.max_risk_per_trade)
 
-        # Legacy regime overrides removed - multi-axis regime gating handles this at engine level
-        # If specific regime-based risk limits are needed, configure via regime_risk_multipliers
+        # Backward-compatible legacy regime override support.
+        # Prefer explicit signal.regime if provided by older callers/tests.
+        if strat_cfg.regimes:
+            regime_name: Optional[str] = None
+            if signal.regime is not None:
+                regime_name = str(getattr(signal.regime, "value", signal.regime))
+            elif isinstance(signal.regime_tags, dict):
+                legacy = signal.regime_tags.get("legacy")
+                if legacy:
+                    regime_name = str(legacy)
+
+            if regime_name:
+                r_cfg = strat_cfg.regimes.get(regime_name)
+                if r_cfg is not None:
+                    if not r_cfg.enabled:
+                        self.last_rejection_reason = "REGIME_DISABLED"
+                        return 0.0
+                    if r_cfg.max_risk_per_trade is not None:
+                        effective_max_risk = min(
+                            effective_max_risk, r_cfg.max_risk_per_trade
+                        )
 
         return effective_max_risk
 
@@ -297,7 +316,8 @@ class RiskManager:
             )
 
         if effective_max_risk <= 0:
-            self.last_rejection_reason = "ZERO_RISK_LIMIT"
+            if self.last_rejection_reason is None:
+                self.last_rejection_reason = "ZERO_RISK_LIMIT"
             return 0
 
         qty_limit = int(effective_max_risk / risk_per_share)
@@ -312,7 +332,8 @@ class RiskManager:
             qty = qty_limit
 
         if qty <= 0:
-            self.last_rejection_reason = "ZERO_QTY"
+            if self.last_rejection_reason is None:
+                self.last_rejection_reason = "ZERO_QTY"
             return 0
 
         # PRD Addendum: Apply regime-based risk multiplier

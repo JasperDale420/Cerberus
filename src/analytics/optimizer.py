@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.logger import StructuredLogger
@@ -48,7 +49,7 @@ class GridSearchOptimizer(BaseOptimizer):
         self.logger.info("Starting grid search", n_combinations=len(combinations))
 
         for combo in combinations:
-            params = dict(zip(keys, combo))
+            params = dict(zip(keys, combo, strict=False))
             try:
                 metrics = evaluate_fn(params)
                 n_trades = int(metrics.get("n_trades", 0))

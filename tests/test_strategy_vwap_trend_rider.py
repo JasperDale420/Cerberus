@@ -229,11 +229,13 @@ def test_vwap_trend_rider_prefers_injected_vwap_over_computed():
     assert sig is not None
     assert sig.meta.get("vwap") == pytest.approx(101.5)
 
+
 @pytest.mark.unit
 def test_bug_missing_current_bar(vtr_strategy):
     # Use fixed Eastern Time within trading window (9:45-15:30 ET)
     # to ensure deterministic behavior
     from zoneinfo import ZoneInfo
+
     eastern = ZoneInfo("America/New_York")
     base_time = datetime(2025, 1, 10, 11, 0, 0, tzinfo=eastern)
 
@@ -266,16 +268,11 @@ def test_bug_missing_current_bar(vtr_strategy):
                 price - 0.5,
                 price,
                 1000,
-                vwap=price - 0.1 # VWAP slightly below price in uptrend
+                vwap=price - 0.1,  # VWAP slightly below price in uptrend
             )
         )
 
     # Bar 15 (Index 14) is last one. Price = 114.
-
-    # Bar 15 (b_prev) - still uptrend, above VWAP.
-    # Let's make it explicit.
-    b_prev = bars[-1]
-    # Price 114, VWAP 113.9. Above.
 
     # Bar 16 (b_below) - The DIP.
     drop_price = 110
@@ -287,7 +284,7 @@ def test_bug_missing_current_bar(vtr_strategy):
         drop_price - 1,
         drop_price,
         1000,
-        vwap=113.0 # VWAP didn't drop as fast. Price < VWAP.
+        vwap=113.0,  # VWAP didn't drop as fast. Price < VWAP.
     )
 
     # Bar 17 (b_reclaim) - The Reclaim.
@@ -301,7 +298,7 @@ def test_bug_missing_current_bar(vtr_strategy):
         reclaim_price - 1,
         reclaim_price,
         high_vol,
-        vwap=113.5 # Price > VWAP.
+        vwap=113.5,  # Price > VWAP.
     )
 
     # Construct state WITHOUT b_reclaim
@@ -325,6 +322,8 @@ def test_bug_missing_current_bar(vtr_strategy):
     # We expect NO signal if the bug is present.
 
     # Assert that we DO get a signal (asserting the fix)
-    assert sig is not None, "Signal should be generated if strategy handles missing current bar correctly"
+    assert sig is not None, (
+        "Signal should be generated if strategy handles missing current bar correctly"
+    )
     assert sig.side.value == "buy"
     assert sig.strategy == "vwap_trend_rider"

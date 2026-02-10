@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Legacy regime classifier (BULL/BEAR/CHOP).
 
@@ -8,6 +6,8 @@ New code should prefer multi-axis classification via:
   - src.analysis.regime.MarketContextService
   - src.core.domain.MarketRegimeSnapshot
 """
+
+from __future__ import annotations
 
 from collections import Counter, deque
 from typing import Callable, Optional, Tuple

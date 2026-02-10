@@ -448,10 +448,10 @@ class FeatureCalculator:
 
     def compute_flow_metrics(
         self, flow_data: List[Any]
-    ) -> Tuple[float, float, int, float, float, float]:
+    ) -> Tuple[float, float, int, float, float]:
         """
         Computes options flow metrics.
-        Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias, dof_score)
+        Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias)
         """
         call_vol_total = 0.0
         put_vol_total = 0.0
@@ -479,6 +479,10 @@ class FeatureCalculator:
         else:
             call_put_ratio = 0.0
 
+        # Flow bias: normalized directional pressure in [-1, 1]
+        denom = call_vol_total + put_vol_total
+        flow_bias = ((call_vol_total - put_vol_total) / denom) if denom > 0 else 0.0
+
         aggressive_flow_share = (
             (aggressive_qty_total / total_qty_total) if total_qty_total > 0 else 0.0
         )
@@ -486,20 +490,12 @@ class FeatureCalculator:
         flow_zscore = (
             ((call_n_total - put_n_total) / math.sqrt(n_total)) if n_total > 0 else 0.0
         )
-        # DOF Score: Signal Alignment Probability (0.0 to 1.0)
-        # Combines bias, aggression, and sweep conviction
-        dof_score = abs(flow_bias) * aggressive_flow_share
-        if sweep_count_total > 5:
-            dof_score *= 1.2
-        dof_score = max(0.0, min(1.0, dof_score))
-
         return (
             call_put_ratio,
             flow_zscore,
             sweep_count_total,
             aggressive_flow_share,
             flow_bias,
-            dof_score,
         )
 
     def _parse_and_validate_ts(

@@ -184,10 +184,11 @@ class Agent:
                 .all()
             )
             for r in rows:
+                raw_regime = str(getattr(r, "regime", "") or "")
                 rows_data.append(
                     {
                         "strategy": str(getattr(r, "strategy", "") or ""),
-                        "regime": str(getattr(r, "regime", "") or ""),
+                        "regime": self._normalize_regime_name(raw_regime),
                         "n_trades": int(getattr(r, "n_trades", 0) or 0),
                         "winrate": float(getattr(r, "winrate", 0.0) or 0.0),
                         "avg_r": float(getattr(r, "avg_r", 0.0) or 0.0),
@@ -263,6 +264,13 @@ class Agent:
                 )
             )
         return out
+
+    def _normalize_regime_name(self, regime: str) -> str:
+        """Map legacy/serialized regime placeholders to a usable regime key."""
+        val = str(regime or "").strip().lower()
+        if val in ("", "{}", "none", "null"):
+            return "chop"
+        return val
 
     def _persist_actions(
         self, db: DatabaseDatabase, actions: List[AgentAction]
@@ -471,7 +479,7 @@ class Agent:
             if t["pnl_r"] > 0:
                 stats_by_strategy[strat]["wins"] += 1
 
-        for strat, s in stats_by_strategy.items():
+        for s in stats_by_strategy.values():
             s["winrate"] = s["wins"] / s["n_trades"] if s["n_trades"] > 0 else 0.0
             s["avg_r"] = s["total_r"] / s["n_trades"] if s["n_trades"] > 0 else 0.0
 

@@ -51,8 +51,12 @@ class PairScanner:
         if not self.config.enabled:
             return []
 
-        # Aggregate 1-minute bars to daily closes for efficient cointegration testing.
-        daily_data = price_data.resample("D").last().dropna(how="all")
+        # Aggregate 1-minute bars to daily closes when index is time-like.
+        # If callers already pass daily data with a non-datetime index, use it as-is.
+        if isinstance(price_data.index, pd.DatetimeIndex):
+            daily_data = price_data.resample("D").last().dropna(how="all")
+        else:
+            daily_data = price_data.dropna(how="all")
 
         if len(daily_data) < 30:
             self.logger.warning(
@@ -139,24 +143,27 @@ class PairScanner:
 
     def _calculate_pair_stats(self, y: pd.Series, x: pd.Series) -> Optional[Dict]:
         """
-        Calculates hedge ratio and spread statistics using OLS.
+        Calculates hedge ratio and spread statistics using least squares.
         """
-        import statsmodels.api as sm
+        y_arr = y.to_numpy(dtype=float)
+        x_arr = x.to_numpy(dtype=float)
+        if y_arr.size == 0 or x_arr.size == 0 or y_arr.size != x_arr.size:
+            return None
 
-        x_with_const = sm.add_constant(x)
-        model = sm.OLS(y, x_with_const).fit()
-        alpha = model.params.iloc[0]
-        hedge_ratio = model.params.iloc[1]
-        spread = y - (hedge_ratio * x) - alpha
+        x_design = np.column_stack([np.ones_like(x_arr), x_arr])
+        coeffs, *_ = np.linalg.lstsq(x_design, y_arr, rcond=None)
+        alpha = float(coeffs[0])
+        hedge_ratio = float(coeffs[1])
+        spread = y_arr - (hedge_ratio * x_arr) - alpha
 
-        spread_mean = float(spread.mean())
-        spread_std = float(spread.std())
+        spread_mean = float(np.mean(spread))
+        spread_std = float(np.std(spread))
 
         if spread_std == 0:
             return None
 
         # Half-life calculation for mean reversion speed
-        half_life = self._calculate_half_life(spread)
+        half_life = self._calculate_half_life(pd.Series(spread))
 
         if (
             half_life < self.config.min_half_life
@@ -170,27 +177,24 @@ class PairScanner:
             "spread_mean": spread_mean,
             "spread_std": spread_std,
             "half_life": half_life,
-            "last_spread": float(spread.iloc[-1]),
+            "last_spread": float(spread[-1]),
         }
 
     def _calculate_half_life(self, spread: pd.Series) -> float:
         """
         Calculates the half-life of mean reversion using Ornstein-Uhlenbeck process.
         """
-        spread_lag = spread.shift(1)
-        spread_diff = spread - spread_lag
-        spread_lag = spread_lag.dropna()
-        spread_diff = spread_diff.dropna()
+        spread_lag = spread.shift(1).dropna().to_numpy(dtype=float)
+        spread_diff = (spread - spread.shift(1)).dropna().to_numpy(dtype=float)
+        if spread_lag.size == 0 or spread_diff.size == 0:
+            return 999.0
 
-        # OLS of diff on lag with constant to account for mean
-        import statsmodels.api as sm
-
-        spread_lag_with_const = sm.add_constant(spread_lag)
-        model = sm.OLS(spread_diff, spread_lag_with_const).fit()
-        # The coefficient for spread_lag is at index 1 (constant is at index 0)
-        lambda_val = model.params.iloc[1]
+        # OLS of diff on lag with constant: diff = a + lambda * lag
+        x_design = np.column_stack([np.ones_like(spread_lag), spread_lag])
+        coeffs, *_ = np.linalg.lstsq(x_design, spread_diff, rcond=None)
+        lambda_val = float(coeffs[1])
 
         if lambda_val >= 0:
             return 999.0  # Not mean reverting
 
-        return -np.log(2) / lambda_val
+        return float(-np.log(2) / lambda_val)

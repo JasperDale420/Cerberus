@@ -419,11 +419,20 @@ class Stage2Tuner:
 
         def _evaluate_params(params: Dict[str, Any]) -> Dict[str, Any]:
             merged = {**current_config, **params}
-            m = evaluator.evaluate(stats.strategy, regime_enum, merged, as_of=now)
+            if callable(evaluator) and not hasattr(evaluator, "evaluate"):
+                m_raw = evaluator(stats, merged)
+                m_dict = cast(Dict[str, Any], m_raw)
+                return {
+                    "expectancy": float(m_dict.get("expectancy", 0.0)),
+                    "max_drawdown_r": float(m_dict.get("max_drawdown_r", 0.0)),
+                    "n_trades": int(m_dict.get("n_trades", 0)),
+                }
+
+            m_metrics = evaluator.evaluate(stats.strategy, regime_enum, merged, as_of=now)
             return {
-                "expectancy": float(m.expectancy),
-                "max_drawdown_r": float(m.max_drawdown_r),
-                "n_trades": int(m.n_trades),
+                "expectancy": float(m_metrics.expectancy),
+                "max_drawdown_r": float(m_metrics.max_drawdown_r),
+                "n_trades": int(m_metrics.n_trades),
             }
 
         def _score_fn(metrics: Dict[str, Any]) -> float:
@@ -468,7 +477,6 @@ class Stage2Tuner:
         # optional Walk-Forward Validation
         wf_cfg = stage2.get("walk_forward", {})
         if wf_cfg.get("enabled", False):
-            n_win = int(wf_cfg.get("n_windows", 3))
             step = int(wf_cfg.get("step_days", 7))
             windows = self.wf_manager.get_windows(
                 now, int(stage2.get("window_days", 30)), step

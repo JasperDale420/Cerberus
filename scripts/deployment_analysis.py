@@ -107,7 +107,6 @@ def print_matrix(name: str, data: Dict, row_labels: List[str], col_labels: List[
             key = f"{row}|{col}"
             stats = data.get(key, {"trades": 0, "pnl": 0, "wins": 0})
             if stats["trades"] >= 20:  # Minimum sample
-                wr = stats["wins"] / stats["trades"] * 100 if stats["trades"] > 0 else 0
                 pnl = stats["pnl"]
                 if pnl > 0:
                     cell = f"✅{pnl:>7.0f}"

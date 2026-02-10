@@ -34,6 +34,11 @@ class FailedBreakoutStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # Legacy standalone behavior: this strategy only runs in CHOP.
+        regime_name = str(getattr(market_state.regime, "value", market_state.regime))
+        if regime_name != "chop":
+            return None
+
         # P1 fix: Add cooldown check to prevent rapid-fire signals
         if not self._check_cooldown(symbol, bar.time):
             return None

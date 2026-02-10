@@ -18,7 +18,7 @@ import pandas as pd
 
 try:
     import lightgbm as lgb
-    from sklearn.metrics import classification_report, roc_auc_score
+    from sklearn.metrics import roc_auc_score
     from sklearn.model_selection import train_test_split
 
     HAS_ML = True
