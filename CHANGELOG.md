@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
+  - `docs/cerberus-data-gateway-heber-architecture.md`
+  - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+  - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
 - Comprehensive documentation audit and remediation completed.
 - Rewrote `README.md` to match current runtime architecture, commands, and modules.
 - Reworked `docs/architecture.md` with updated system/data-flow diagrams and module map.
