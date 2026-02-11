@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Gateway + Heber smoke gate hardening** (2026-02-11):
+  - Extended `scripts/smoke_gateway_heber_integration.py` to validate:
+    - sink publish activity via `gateway_sink_publish_total` metric deltas
+    - fresh Bronze write detection after probe request
+    - fresh Silver write detection after probe request
+  - Added smoke unit coverage for metric growth and fresh-file checks:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+  - Added gateway-mode integration coverage for scanner + feature pipeline:
+    - `tests/integration/test_gateway_scanner_feature_pipeline_integration.py`
+
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:
     - `scripts/smoke_gateway_heber_integration.py`

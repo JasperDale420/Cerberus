@@ -23,11 +23,11 @@
 
 ### Gate
 - [ ] One command smoke test script succeeds for:
-  - Cerberus -> Gateway authenticated call
-  - Gateway -> Redis stream publish
-  - Heber consumer -> Bronze/Silver write
-  - Script added: `scripts/smoke_gateway_heber_integration.py`
-  - Unit coverage added: `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+  - [x] Cerberus -> Gateway authenticated call validation
+  - [x] Gateway -> Redis stream publish validation (Prometheus sink counter delta)
+  - [x] Heber consumer -> Bronze/Silver fresh write validation
+  - [x] Script added: `scripts/smoke_gateway_heber_integration.py`
+  - [x] Unit coverage added: `tests/unit/test_smoke_gateway_heber_integration_unit.py`
 
 ## Phase 1: Cerberus Data Adapter Cut-In (No Behavior Change)
 
@@ -51,7 +51,7 @@
 
 ### Gate
 - [x] `CERBERUS_DATA_BACKEND=legacy` behaves unchanged.
-- [ ] `CERBERUS_DATA_BACKEND=gateway` passes scanner + feature pipeline integration tests.
+- [x] `CERBERUS_DATA_BACKEND=gateway` passes scanner + feature pipeline integration tests.
 - [x] `CERBERUS_DATA_BACKEND=dual` emits comparable outputs with acceptable delta.
 
 ## Phase 2: Data-Gateway Stream Sink Activation
