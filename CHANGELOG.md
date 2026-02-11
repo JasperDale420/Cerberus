@@ -66,6 +66,15 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- **Data-Gateway/Heber docs alignment review** (2026-02-11):
+  - Updated migration docs to match current Cerberus runtime behavior and test evidence:
+    - `docs/cerberus-data-gateway-heber-architecture.md`
+    - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
+    - `docs/environment-variables.md`
+  - Added audit artifact with truth matrix, line-level findings, and remediation mapping:
+    - `docs/audits/data-gateway-heber-doc-review.md`
+
 - Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
   - `docs/cerberus-data-gateway-heber-architecture.md`
   - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
