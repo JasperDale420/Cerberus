@@ -84,6 +84,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Gateway-only dynamic universe ranking fix** (2026-02-11):
+  - Updated `src/scanner/universe.py` so dynamic previous-day volume ranking runs when `CentralApiClient` is the only data source.
+  - Added regression coverage in `tests/unit/test_universe_builder_unit.py` to ensure gateway-only mode correctly includes top-volume symbols.
+
 - **Central API retry classification for gateway integration** (2026-02-11):
   - Added status-aware retry policy in `src/data/api_client.py`:
     - no retry for `401/403`
