@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -20,9 +21,7 @@ class CentralApiClient:
         )
         self.gateway_key = config_loader.get_env("CERBERUS_GATEWAY_KEY", "")
         try:
-            timeout = float(
-                config_loader.get_env("CERBERUS_GATEWAY_TIMEOUT_SECONDS", "30")
-            )
+            timeout = float(config_loader.get_env("CERBERUS_GATEWAY_TIMEOUT_SECONDS", "30"))
         except ValueError:
             timeout = 30.0
 
@@ -35,8 +34,94 @@ class CentralApiClient:
             timeout=timeout,
             headers=headers,
         )
+        try:
+            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
+        except ValueError:
+            self.gateway_max_retries = 1
+        try:
+            self.gateway_retry_backoff_seconds = max(
+                0.0,
+                float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")),
+            )
+        except ValueError:
+            self.gateway_retry_backoff_seconds = 0.25
         self.llm_base_url = config_loader.get_env("CENTRAL_LLM_API_URL", self.base_url)
         self._llm_client: Optional[httpx.Client] = None
+
+    @staticmethod
+    def _is_retryable_status(status_code: int) -> bool:
+        """Return True when an HTTP status should be retried."""
+        return status_code == 429 or status_code >= 500
+
+    def _get_retry_delay_seconds(
+        self,
+        attempt: int,
+        response: Optional[httpx.Response] = None,
+    ) -> float:
+        """Calculate delay before next retry attempt."""
+        if response is not None and response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    return max(0.0, float(retry_after))
+                except ValueError:
+                    pass
+        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> httpx.Response:
+        """Execute an HTTP request with retry classification for gateway errors."""
+        max_attempts = self.gateway_max_retries + 1
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.client.request(method, path, params=params, json=json)
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                if attempt >= max_attempts:
+                    raise
+                delay = self._get_retry_delay_seconds(attempt)
+                self.logger.warning(
+                    "Gateway request retrying after transport error",
+                    method=method,
+                    path=path,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    delay_seconds=delay,
+                    error=str(exc),
+                )
+                if delay > 0:
+                    time.sleep(delay)
+                continue
+
+            if response.status_code < 400:
+                return response
+
+            if response.status_code in {401, 403}:
+                response.raise_for_status()
+
+            if self._is_retryable_status(response.status_code) and attempt < max_attempts:
+                delay = self._get_retry_delay_seconds(attempt, response=response)
+                self.logger.warning(
+                    "Gateway request retrying after HTTP error",
+                    method=method,
+                    path=path,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    status_code=response.status_code,
+                    delay_seconds=delay,
+                )
+                if delay > 0:
+                    time.sleep(delay)
+                continue
+
+            response.raise_for_status()
+
+        raise RuntimeError("Request retry loop exhausted unexpectedly")
 
     def _normalize_bars_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize Data-Gateway envelope response into legacy bars payload."""
@@ -60,9 +145,7 @@ class CentralApiClient:
             "v": item.get("v") if item.get("v") is not None else item.get("volume"),
         }
 
-    def _normalize_trades_response(
-        self, payload: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    def _normalize_trades_response(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Normalize Data-Gateway trade response into legacy trade list."""
         trades: List[Dict[str, Any]] = []
         raw = payload
@@ -80,21 +163,11 @@ class CentralApiClient:
             trades.append(
                 {
                     "t": item.get("t") or item.get("timestamp"),
-                    "p": item.get("p")
-                    if item.get("p") is not None
-                    else item.get("price", 0.0),
-                    "s": item.get("s")
-                    if item.get("s") is not None
-                    else item.get("size", 0.0),
-                    "c": item.get("c")
-                    if item.get("c") is not None
-                    else item.get("conditions", []),
-                    "x": item.get("x")
-                    if item.get("x") is not None
-                    else item.get("exchange", ""),
-                    "z": item.get("z")
-                    if item.get("z") is not None
-                    else item.get("tape", ""),
+                    "p": item.get("p") if item.get("p") is not None else item.get("price", 0.0),
+                    "s": item.get("s") if item.get("s") is not None else item.get("size", 0.0),
+                    "c": item.get("c") if item.get("c") is not None else item.get("conditions", []),
+                    "x": item.get("x") if item.get("x") is not None else item.get("exchange", ""),
+                    "z": item.get("z") if item.get("z") is not None else item.get("tape", ""),
                 }
             )
         return trades
@@ -124,11 +197,11 @@ class CentralApiClient:
             params["end"] = end.isoformat()
 
         try:
-            response = self.client.get(
+            response = self._request_with_retry(
+                "GET",
                 f"/api/v1/alpaca/stocks/{symbol.upper()}/bars",
                 params=params,
             )
-            response.raise_for_status()
             payload = cast(Dict[str, Any], response.json())
             return self._normalize_bars_response(payload)
         except httpx.HTTPError as e:
@@ -147,16 +220,14 @@ class CentralApiClient:
             params: Dict[str, Any] = {}
             if date:
                 params["date"] = date
-            response = self.client.get(
+            response = self._request_with_retry(
+                "GET",
                 f"/api/v1/uw/flow/{ticker.upper()}",
                 params=params or None,
             )
-            response.raise_for_status()
             return cast(Dict[str, Any], response.json())
         except httpx.HTTPError as e:
-            self.logger.error(
-                "Failed to fetch UW flow from central API", ticker=ticker, error=str(e)
-            )
+            self.logger.error("Failed to fetch UW flow from central API", ticker=ticker, error=str(e))
             raise
 
     def get_alpaca_trades(
@@ -174,11 +245,11 @@ class CentralApiClient:
             params["end"] = end.isoformat()
 
         try:
-            response = self.client.get(
+            response = self._request_with_retry(
+                "GET",
                 f"/api/v1/alpaca/stocks/{symbol.upper()}/trades",
                 params=params,
             )
-            response.raise_for_status()
             payload = cast(Dict[str, Any], response.json())
             return self._normalize_trades_response(payload)
         except httpx.HTTPError as e:
@@ -192,8 +263,7 @@ class CentralApiClient:
     def get_uw_gex(self, ticker: str) -> List[Dict[str, Any]]:
         """Fetch Unusual Whales GEX via Data-Gateway."""
         try:
-            response = self.client.get(f"/api/v1/uw/gex/{ticker.upper()}")
-            response.raise_for_status()
+            response = self._request_with_retry("GET", f"/api/v1/uw/gex/{ticker.upper()}")
             payload = cast(Dict[str, Any], response.json())
             data = payload.get("data")
             if isinstance(data, list):
@@ -212,11 +282,11 @@ class CentralApiClient:
     def get_alpaca_most_actives(self, top: int = 20) -> List[str]:
         """Fetch most active stock symbols via Data-Gateway screener."""
         try:
-            response = self.client.get(
+            response = self._request_with_retry(
+                "GET",
                 "/api/v1/alpaca/screener/most-actives",
                 params={"by": "volume", "top": int(top)},
             )
-            response.raise_for_status()
             payload = cast(Dict[str, Any], response.json())
             data = payload.get("data", {})
             rows = data.get("most_actives", []) if isinstance(data, dict) else []
@@ -228,19 +298,17 @@ class CentralApiClient:
                         symbols.append(str(sym).upper())
             return symbols
         except httpx.HTTPError as e:
-            self.logger.error(
-                "Failed to fetch most actives from central API", error=str(e)
-            )
+            self.logger.error("Failed to fetch most actives from central API", error=str(e))
             raise
 
     def get_alpaca_movers(self, top: int = 10) -> Dict[str, List[str]]:
         """Fetch top gainers/losers via Data-Gateway screener."""
         try:
-            response = self.client.get(
+            response = self._request_with_retry(
+                "GET",
                 "/api/v1/alpaca/screener/movers",
                 params={"market_type": "stocks", "top": int(top)},
             )
-            response.raise_for_status()
             payload = cast(Dict[str, Any], response.json())
             data = payload.get("data", {})
             if not isinstance(data, dict):
@@ -260,23 +328,17 @@ class CentralApiClient:
             self.logger.error("Failed to fetch movers from central API", error=str(e))
             raise
 
-    def chat_completion(
-        self, model: str, messages: List[Dict[str, str]]
-    ) -> Dict[str, Any]:
+    def chat_completion(self, model: str, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         Sends a chat completion request.
         """
         payload = {"model": model, "messages": messages}
         try:
-            response = self._resolve_llm_client().post(
-                "/v1/chat/completions", json=payload
-            )
+            response = self._resolve_llm_client().post("/v1/chat/completions", json=payload)
             response.raise_for_status()
             return cast(Dict[str, Any], response.json())
         except httpx.HTTPError as e:
-            self.logger.error(
-                "Failed to get chat completion from central API", error=str(e)
-            )
+            self.logger.error("Failed to get chat completion from central API", error=str(e))
             raise
 
     def close(self) -> None:

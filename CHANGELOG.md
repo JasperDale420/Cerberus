@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
+  - Added one-command integration smoke script:
+    - `scripts/smoke_gateway_heber_integration.py`
+  - Added unit coverage for smoke gate checks:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+
 - Added local Claude/Swarm workspace tooling assets and skill bundles:
   - `.claude/` helpers, settings, and skill definitions
   - `.claude-flow/` agent/task state files
@@ -54,6 +60,14 @@ All notable changes to this project will be documented in this file.
 - Removed stale auto-generated `codebase.md`.
 
 ### Changed
+
+- **Central API retry classification for gateway integration** (2026-02-11):
+  - Added status-aware retry policy in `src/data/api_client.py`:
+    - no retry for `401/403`
+    - retry for `429`, `5xx`, timeout, and transport errors
+    - support for `Retry-After` with exponential backoff fallback
+  - Updated checklist progress in:
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
 
 - Added Phase 1 integration scaffolding for Data-Gateway/Heber:
   - Extended runtime settings in `src/core/settings.py` with backend mode and Gateway/Heber config.

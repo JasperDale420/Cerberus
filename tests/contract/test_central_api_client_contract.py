@@ -12,9 +12,7 @@ from src.data.api_client import CentralApiClient
 
 def _make_client(handler) -> httpx.Client:
     transport = httpx.MockTransport(handler)
-    return httpx.Client(
-        base_url="http://central.test", transport=transport, timeout=5.0
-    )
+    return httpx.Client(base_url="http://central.test", transport=transport, timeout=5.0)
 
 
 @pytest.mark.contract
@@ -150,9 +148,7 @@ def test_get_alpaca_trades_contract_calls_expected_path_and_normalizes() -> None
     c.client = _make_client(handler)
 
     out = c.get_alpaca_trades("MSFT")
-    assert seen["url"].startswith(
-        "http://central.test/api/v1/alpaca/stocks/MSFT/trades"
-    )
+    assert seen["url"].startswith("http://central.test/api/v1/alpaca/stocks/MSFT/trades")
     assert out and out[0]["t"] == "2025-01-01T09:30:00Z"
     assert out[0]["p"] == 101.25
     assert "limit" in seen["query"]
@@ -206,9 +202,7 @@ def test_get_alpaca_most_actives_contract_calls_expected_path() -> None:
     c.client = _make_client(handler)
 
     out = c.get_alpaca_most_actives(top=15)
-    assert seen["url"].startswith(
-        "http://central.test/api/v1/alpaca/screener/most-actives"
-    )
+    assert seen["url"].startswith("http://central.test/api/v1/alpaca/screener/most-actives")
     assert seen["query"]["top"] == "15"
     assert out == ["AAPL"]
 
@@ -262,9 +256,7 @@ def test_get_alpaca_movers_contract_calls_expected_path() -> None:
         ("chat_completion", ("m", [{"role": "user", "content": "x"}])),
     ],
 )
-def test_central_api_client_raises_on_http_error(
-    method_name: str, args: tuple[Any, ...]
-) -> None:
+def test_central_api_client_raises_on_http_error(method_name: str, args: tuple[Any, ...]) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "boom"})
 
@@ -282,3 +274,100 @@ def test_central_api_client_raises_on_http_error(
     fn = getattr(c, method_name)
     with pytest.raises(httpx.HTTPError):
         fn(*args)
+
+
+def _gateway_retry_cfg() -> MagicMock:
+    cfg = MagicMock()
+
+    def _env(key: str, default: Any = None) -> Any:
+        if key in {
+            "CERBERUS_GATEWAY_URL",
+            "DATA_INGESTION_URL",
+            "CENTRAL_LLM_API_URL",
+        }:
+            return "http://central.test"
+        if key == "CERBERUS_GATEWAY_TIMEOUT_SECONDS":
+            return "5"
+        if key == "CERBERUS_GATEWAY_MAX_RETRIES":
+            return "2"
+        if key == "CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS":
+            return "0"
+        return default
+
+    cfg.get_env.side_effect = _env
+    return cfg
+
+
+@pytest.mark.contract
+def test_gateway_401_is_not_retried() -> None:
+    attempts = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(401, json={"error": "unauthorized"})
+
+    logger = MagicMock()
+    c = CentralApiClient(_gateway_retry_cfg(), logger)
+    c.client = _make_client(handler)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        c.get_alpaca_bars("AAPL")
+
+    assert attempts["count"] == 1
+
+
+@pytest.mark.contract
+def test_gateway_429_retries_and_succeeds() -> None:
+    attempts = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"}, json={"error": "rate_limited"})
+        return httpx.Response(200, json={"success": True, "data": {"bars": []}})
+
+    logger = MagicMock()
+    c = CentralApiClient(_gateway_retry_cfg(), logger)
+    c.client = _make_client(handler)
+
+    out = c.get_alpaca_bars("AAPL")
+    assert out == {"bars": []}
+    assert attempts["count"] == 2
+
+
+@pytest.mark.contract
+def test_gateway_5xx_retries_up_to_limit_then_raises() -> None:
+    attempts = {"count": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(503, json={"error": "service_unavailable"})
+
+    logger = MagicMock()
+    c = CentralApiClient(_gateway_retry_cfg(), logger)
+    c.client = _make_client(handler)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        c.get_uw_flow("SPY")
+
+    # initial request + 2 retries
+    assert attempts["count"] == 3
+
+
+@pytest.mark.contract
+def test_gateway_timeout_retries_then_succeeds() -> None:
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.ReadTimeout("timeout", request=request)
+        return httpx.Response(200, json={"data": []})
+
+    logger = MagicMock()
+    c = CentralApiClient(_gateway_retry_cfg(), logger)
+    c.client = _make_client(handler)
+
+    out = c.get_uw_flow("SPY")
+    assert out == {"data": []}
+    assert attempts["count"] == 2
