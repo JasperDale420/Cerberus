@@ -1,204 +1,154 @@
 # Cerberus + Data-Gateway + Heber Integration Architecture
 
 ## Goal
-Replace Cerberus direct market-data/storage paths with:
-- Data-Gateway for provider access, normalization, auth, rate limiting, and stream fanout.
-- Heber for Bronze/Silver/Gold storage and point-in-time-safe reads.
+Use a controlled migration path where:
+- Data-Gateway becomes the default source for market/flow reads.
+- Heber becomes the default point-in-time-safe historical read store.
+- Cerberus keeps ownership of strategy, risk, and execution.
 
-This is an implementation-focused target architecture for the current codebases in:
-- `/Users/jacobmcmillan/Empire/Cerberus`
-- `/Users/jacobmcmillan/Empire/Data-Gateway`
-- `/Users/jacobmcmillan/Empire/Heber`
+This document is scoped to Cerberus code truth and marks external repo items as dependencies.
 
-## Current State (Important Facts)
-- Cerberus runtime still pulls data directly from provider SDK/HTTP clients in:
-  - `src/data/alpaca.py`
-  - `src/data/unusual_whales.py`
-  - `src/data/fetcher.py`
-  - `src/data/pipeline.py`
-- Cerberus has a generic HTTP client (`src/data/api_client.py`) but its paths do not match current Data-Gateway routes.
-- Data-Gateway already exposes versioned routes and authentication (`X-Gateway-Key`) via:
-  - `/api/v1/alpaca/...`
-  - `/api/v1/uw/...`
-  - `/ws` (websocket auth handshake)
-- Data-Gateway can publish normalized `EventEnvelope` records to Redis Streams for Heber through:
-  - `gateway/main.py` stream sink dispatch
-  - `gateway/core/data_sink.py`
-  - `gateway/core/redis_sink.py`
-- Heber already consumes stream events and writes Bronze/Silver via:
-  - `heber/writer/consumer.py`
-  - `heber/writer/bronze.py`
-  - `heber/writer/silver.py`
-- Heber provides point-in-time-safe reads in SDK via:
-  - `heber/sdk/client.py` (`read_asof`, `asof_join`)
+## Current Cerberus Implementation (Code-Verified)
 
-## Target Boundaries
+### Runtime mode controls
+Configured in `/Users/jacobmcmillan/Empire/Cerberus/src/core/settings.py`:
+- `CERBERUS_DATA_BACKEND=legacy|gateway|dual`
+- `CERBERUS_STORAGE_BACKEND=sqlite|heber|dual`
+- `CERBERUS_FAILOVER_TO_LEGACY=true|false`
+- `CERBERUS_DUAL_READ_COMPARE=true|false`
 
-### Cerberus Owns
-- Strategy/risk/execution logic.
-- Trade lifecycle persistence and replay logic.
-- Orchestration and decision-making.
+### Read-path routing in Cerberus
+Implemented in `/Users/jacobmcmillan/Empire/Cerberus/src/data/fetcher.py`:
+- `legacy`: reads via direct provider clients (`AlpacaClient`, `UnusualWhalesClient`).
+- `gateway`: reads via `CentralApiClient`.
+- `dual`: reads via gateway + parity diagnostics against legacy.
+- `heber` storage mode: first tries `HeberReadClient`, then falls back to gateway/legacy according to flags.
 
-### Data-Gateway Owns
-- Provider connectivity (Alpaca/UW/etc).
-- Authentication, authorization, input validation, rate limiting.
-- Envelope normalization and idempotent event IDs.
-- Optional stream fanout to Heber ingestion stream.
+### Gateway routes currently used by Cerberus
+Implemented in `/Users/jacobmcmillan/Empire/Cerberus/src/data/api_client.py`:
+- `GET /api/v1/alpaca/stocks/{symbol}/bars`
+- `GET /api/v1/alpaca/stocks/{symbol}/trades`
+- `GET /api/v1/alpaca/screener/most-actives`
+- `GET /api/v1/alpaca/screener/movers`
+- `GET /api/v1/uw/flow/{symbol}`
+- `GET /api/v1/uw/gex/{symbol}`
 
-### Heber Owns
-- Durable market data storage (Bronze raw + Silver typed).
-- Point-in-time semantics (`ts_event`, `ts_ingest`, `ts_available`).
-- Feature/gold datasets for analytics and model training.
+Notes:
+- Auth header: `X-Gateway-Key`.
+- Cerberus has retry controls for transport errors and `429/5xx`.
+- Quotes/snapshot endpoints are not currently wired in `CentralApiClient` for Cerberus runtime paths.
+
+### Heber read behavior currently used by Cerberus
+Implemented in `/Users/jacobmcmillan/Empire/Cerberus/src/data/heber_read_client.py`:
+- Reads parquet from local Heber silver path (`CERBERUS_HEBER_DATA_ROOT`).
+- Applies anti-leakage filter with `ts_available <= as_of`.
+- Normalizes bars/trades into Cerberus-compatible shapes.
+
+This means current Cerberus Heber integration is file/catalog-root based, not direct SDK `read_asof/asof_join` calls.
+
+### Health checks currently implemented
+Implemented in `/Users/jacobmcmillan/Empire/Cerberus/src/core/health.py`:
+- Gateway connectivity probe (`/health/ready`).
+- Heber catalog connectivity probe.
+- Heber freshness probe using latest parquet file age for required feeds.
+
+## Target Future State (Planned)
+
+### Cerberus
+- Uses Data-Gateway as primary market/flow source in live runtime.
+- Uses Heber as primary historical/replay source.
+- Keeps order submission and trade lifecycle in Cerberus.
+
+### Data-Gateway (dependency)
+- Owns provider auth/rate-limit/cache/normalization.
+- Optionally fans out normalized envelopes to Redis stream for Heber ingestion.
+
+### Heber (dependency)
+- Owns Bronze/Silver durability and schema governance.
+- Provides point-in-time-safe read APIs at scale.
+
+## Boundary Ownership
+
+### Cerberus owns
+- Strategy/risk/execution and decision logic.
+- Runtime orchestration and mode switching.
+- Trade persistence and analytics outputs in Cerberus context.
+
+### Data-Gateway owns
+- Provider connectivity, auth, retries, and normalization.
+- Stream fanout when enabled.
+
+### Heber owns
+- Durable data storage and dataset contracts.
+- Consumer/write reliability and DLQ behavior.
 
 ## Target Flow
 ```mermaid
 flowchart LR
-  C[Cerberus Runtime] -->|REST / WS| G[Data-Gateway]
-  G -->|EventEnvelope to Redis Stream| R[(Redis stream heber:events)]
-  R --> H[Heber EventConsumer]
-  H --> B[Bronze JSONL]
-  H --> S[Silver Parquet]
-  C -->|Point-in-time reads| HS[Heber SDK/Catalog]
-  C -->|Orders only| A[Alpaca Trading API]
+  C[Cerberus Runtime] -->|REST| G[Data-Gateway]
+  G -->|EventEnvelope| R[(Redis stream heber:events)]
+  R --> H[Heber Consumer]
+  H --> B[Bronze]
+  H --> S[Silver]
+  C -->|Heber historical reads| HS[Heber data root / catalog]
+  C -->|Orders| A[Alpaca Trading API]
 ```
 
 ## Interface Contracts
 
-### Cerberus -> Data-Gateway REST
-Use `X-Gateway-Key` for every request (see `Data-Gateway/config/clients.yaml`).
+### Cerberus -> Data-Gateway
+- Header: `X-Gateway-Key`.
+- Base URL: `CERBERUS_GATEWAY_URL`.
+- Runtime timeout/retries:
+  - `CERBERUS_GATEWAY_TIMEOUT_SECONDS`
+  - `CERBERUS_GATEWAY_MAX_RETRIES`
+  - `CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`
 
-Minimum endpoint mapping for Cerberus replacement:
-- Historical bars:
-  - Cerberus current intent: `/alpaca/bars/{symbol}`
-  - Data-Gateway route: `/api/v1/alpaca/stocks/{symbol}/bars`
-- Historical trades:
-  - Data-Gateway route: `/api/v1/alpaca/stocks/{symbol}/trades`
-- Latest quotes/snapshots:
-  - `/api/v1/alpaca/stocks/{symbol}/quotes`
-  - `/api/v1/alpaca/stocks/{symbol}/snapshot`
-- Screener universe:
-  - `/api/v1/alpaca/screener/most-actives`
-  - `/api/v1/alpaca/screener/movers`
-- UW flow:
-  - Cerberus current intent: `/uw/flow/{ticker}`
-  - Data-Gateway route: `/api/v1/uw/flow/{symbol}`
-- UW GEX:
-  - `/api/v1/uw/gex/{symbol}`
+### Cerberus -> Heber (current)
+- Local/catalog-backed read path through `HeberReadClient`.
+- Required anti-leakage constraint: `ts_available <= as_of`.
 
-### Cerberus -> Data-Gateway WebSocket (optional for lower latency)
-- Endpoint: `/ws`
-- First message must be auth action with key (see `gateway/api/websocket.py`).
-- Subscribe/unsubscribe actions can be used for incremental real-time updates.
+### Cerberus -> Heber (future option)
+- Direct SDK `read_asof/asof_join` usage can be adopted later.
+- Not currently the active Cerberus implementation.
 
-### Data-Gateway -> Heber Stream Contract
-Envelope is produced by `gateway/core/envelope.py` and consumed by `heber/models/envelope.py`.
-Critical required fields:
-- `event_id`, `provider`, `feed`, `source`
-- `instrument_type`, `instrument_key`, `symbol`
-- `ts_event`, `ts_ingest`
-- `schema_version`, `lineage`, `quality_flags`, `payload`
+## Canonical Data Rules
+- Instrument identity remains canonical (`instrument_key` style from Gateway contracts).
+- Time fields:
+  - `ts_event`: source event time.
+  - `ts_ingest`: ingest processing time.
+  - `ts_available`: safe read barrier for point-in-time correctness.
 
-Stream settings to align:
-- Data-Gateway dispatch topic is hardcoded as `heber:events` in `gateway/main.py`.
-- Heber consumer default stream is `HEBER_REDIS_STREAM_NAME` (`heber:events`) in `heber/config.py`.
+## Failure Modes and Controls
 
-### Cerberus -> Heber Reads
-Use Heber SDK in strategy/backtest paths for historical/point-in-time data:
-- `HeberClient.read_asof(...)`
-- `HeberClient.asof_join(...)`
+1. Gateway auth/config errors (`401/403`)
+- Fail startup validation in gateway/dual mode when key/url missing.
 
-## Data Contract and Canonical Mapping
+2. Gateway degradation (`429/5xx`, transport failures)
+- Apply retries with backoff.
+- Fail over to legacy only when `CERBERUS_FAILOVER_TO_LEGACY=true`.
 
-### Canonical IDs
-- Continue using `instrument_key` generated by Data-Gateway (`equity:AAPL`, `option:OCC:...`).
-- Cerberus should stop inventing symbol identity conventions in parallel.
+3. Heber read unavailable or stale
+- Health and freshness checks report degraded/error.
+- Fetcher falls back to gateway/legacy based on mode and failover.
 
-### Time Semantics
-- `ts_event`: source event time.
-- `ts_ingest`: gateway processing time.
-- `ts_available`: Heber safe query time (anti-leakage guard).
+4. Dual parity drift
+- Dual mode emits parity diagnostics for bars/trades/flow/gex.
+- Used for migration confidence, not direct control-flow blocking.
 
-Cerberus backtests/replay should be constrained by `ts_available <= decision_time`.
-
-### Feed-to-Feature Mapping Baseline
-- Bars/quotes/trades remain primary for technical features (ATR, VWAP, RSI, trend).
-- Flow and GEX move to Data-Gateway sourced feeds, persisted in Heber Silver as typed datasets.
-- Cerberus feature pipeline becomes a consumer of canonical data, not provider-specific adapters.
-
-## Failure Modes and Handling
-
-### 1) Gateway auth or permission failures
-Symptoms:
-- 401/403 from `/api/v1/*`.
-Controls:
-- Validate `X-Gateway-Key` startup check in Cerberus health path.
-- Keep explicit fail-fast startup if required scopes/providers are missing.
-
-### 2) Gateway rate limits / provider degradation
-Symptoms:
-- 429/5xx spikes, incomplete responses.
-Controls:
-- Per-endpoint retry/backoff in Cerberus Gateway client adapter.
-- Respect Gateway cache-backed routes when possible.
-- Temporary fallback mode flag to legacy provider clients during migration window only.
-
-### 3) Stream sink backpressure drops
-Symptoms:
-- Data-Gateway logs `stream_sink_publish_backpressure_drop`.
-Controls:
-- Tune `GATEWAY_DATA_SINK_STREAM_PUBLISH_MAX_INFLIGHT` and `...MAX_PENDING`.
-- Alert on drop count > 0 sustained.
-
-### 4) Heber consumer poison messages
-Symptoms:
-- Repeated processing retries then DLQ writes.
-Controls:
-- Monitor `HEBER_REDIS_DLQ_STREAM_NAME`.
-- Add replay/repair tooling for DLQ records.
-
-### 5) Schema drift between Gateway and Heber
-Symptoms:
-- Silver write type errors, salvage writes, dropped rows.
-Controls:
-- Contract tests for envelope + feed-specific payload keys before rollout.
-- Staged schema version changes with explicit compatibility checks.
-
-### 6) Anti-leakage regression
-Symptoms:
-- Backtest/live mismatch, unrealistically high replay quality.
-Controls:
-- Enforce `read_asof` usage in replay/training codepaths.
-- Add CI checks that reject direct reads bypassing `ts_available` in model/backtest paths.
-
-## Observability Plan
-
-### Data-Gateway
-Track and alert from existing metrics/log hooks:
-- Request and route metrics (middleware).
-- `record_sink_publish(...)`
-- `record_stream_sink_dispatch_event(...)`
-- `record_stream_fanout_dispatch_event(...)`
-- Health/readiness endpoints (`/health`, `/health/ready`).
-
-### Heber
-Track:
-- `record_event_received`, `record_event_processed`
-- `record_ingest_latency`
-- `record_write`, `record_write_error`
-- DLQ growth (`heber:events:dlq`).
-
-### Cerberus
-Add integration health panel:
-- Gateway reachability + auth check.
-- Heber read probe (sample dataset as-of query).
-- Data freshness check (`now - max(ts_event)` and `now - max(ts_available)`).
+## Observability (Cerberus side)
+- Startup mode validation errors (`validate_startup_mode`).
+- Gateway and Heber health probes.
+- Heber freshness checks on required feeds.
+- Dual-read parity logs in fetcher for migration monitoring.
 
 ## Security and Access
-- Do not pass provider keys into Cerberus once Data-Gateway cutover is complete.
-- Cerberus should hold only Gateway key and (if needed) Heber catalog/API key.
-- Provider/API key ownership shifts to Data-Gateway and Heber service runtimes.
+- During/after cutover, Cerberus should only need:
+  - Gateway key for Data-Gateway calls.
+  - Heber catalog/data-root access for historical reads.
+- Provider keys in Cerberus should be retained only while legacy/failover paths are still active.
 
 ## Non-Goals
-- No immediate replacement of Cerberus trade execution path (Alpaca orders stay in Cerberus for now).
-- No direct rewrite of strategy logic in this phase.
-- No immediate deprecation of SQLite trade journal; that is a later optional step after stable data cutover.
+- No change to Cerberus order execution ownership.
+- No strategy logic rewrite in this migration doc.
+- No mandatory immediate replacement of SQLite trade journal.
