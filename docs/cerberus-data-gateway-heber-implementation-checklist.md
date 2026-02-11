@@ -102,19 +102,20 @@
 
 ### Files To Edit (Cerberus)
 - `src/data/pipeline.py`
-  - [ ] Add Heber-backed read mode for historical/replay paths.
+  - [x] Add Heber-backed read mode for historical/replay paths.
+    - Implemented via `src/data/fetcher.py` + `src/data/heber_read_client.py` adapter wiring.
 - `src/analysis/*` and replay paths
   - [ ] Use point-in-time reads (`ts_available`-aware) for offline evaluation.
 - `src/core/health.py`
-  - [ ] Add Heber read freshness checks.
+  - [x] Add Heber read freshness checks.
 
 ### Supporting Files (Heber)
 - `heber/sdk/client.py`
-  - [ ] Confirm usage pattern for `read_asof` and `asof_join` in Cerberus adapters.
+  - [x] Confirm usage pattern for `read_asof` and `asof_join` in Cerberus adapters.
 
 ### Tests
 - [ ] Add shadow parity suite comparing current vs Heber-backed feature inputs.
-- [ ] Add anti-leakage tests that fail on lookahead.
+- [x] Add anti-leakage tests that fail on lookahead.
 
 ### Gate
 - [ ] Shadow outputs stable for multiple sessions.

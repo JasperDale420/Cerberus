@@ -9,6 +9,7 @@ from src.core.settings import get_settings
 from src.core.time_utils import get_eastern_timezone
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
+from src.data.heber_read_client import HeberReadClient
 from src.data.unusual_whales import UnusualWhalesClient
 
 
@@ -35,8 +36,19 @@ class DataFetcher:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         runtime = get_settings()
         self.use_gateway_data = runtime.use_gateway_data
+        self.use_heber_storage = runtime.use_heber_storage
         self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
         self.enable_dual_compare = bool(runtime.cerberus_data_backend == "dual")
+        self.heber_client: Optional[HeberReadClient] = None
+        if self.use_heber_storage and runtime.cerberus_heber_data_root:
+            self.heber_client = HeberReadClient(
+                data_root=runtime.cerberus_heber_data_root,
+                logger=logger,
+            )
+        elif self.use_heber_storage:
+            self.logger.warning(
+                "Heber storage backend enabled but CERBERUS_HEBER_DATA_ROOT is not set; falling back to gateway/legacy sources",
+            )
 
         # H2 Memory Audit Fix: LRU cache with maxsize for bars
         # Uses OrderedDict for LRU ordering; evicts oldest when maxsize exceeded
@@ -92,6 +104,30 @@ class DataFetcher:
     def _get_historical_bars_sync(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> Any:
         """Fetch bars from configured backend with optional legacy failover."""
         sym = str(symbol).strip().upper()
+        if self.heber_client is not None:
+            try:
+                heber_bars = self.heber_client.get_bars(
+                    symbol=sym,
+                    start=start,
+                    end=end,
+                    timeframe=timeframe,
+                    as_of=end,
+                )
+                if heber_bars:
+                    return heber_bars
+                self.logger.info(
+                    "Heber bars read returned no rows; trying gateway/legacy source",
+                    symbol=sym,
+                    timeframe=timeframe,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Heber bars read failed; trying gateway/legacy source",
+                    symbol=sym,
+                    timeframe=timeframe,
+                    error=str(e),
+                )
+
         if self.use_gateway_data and self.central_api_client is not None:
             try:
                 bars = self.central_api_client.get_alpaca_bars(sym, start, end, timeframe)
@@ -285,6 +321,28 @@ class DataFetcher:
 
         try:
             import asyncio
+
+            if self.heber_client is not None:
+                try:
+                    heber_trades = await asyncio.to_thread(
+                        self.heber_client.get_trades,
+                        sym,
+                        start,
+                        end,
+                        end,
+                    )
+                    if heber_trades:
+                        return heber_trades, metrics
+                    self.logger.info(
+                        "Heber trades read returned no rows; trying gateway/legacy source",
+                        symbol=sym,
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        "Heber trades read failed; trying gateway/legacy source",
+                        symbol=sym,
+                        error=str(e),
+                    )
 
             if self.use_gateway_data and self.central_api_client is not None:
                 try:

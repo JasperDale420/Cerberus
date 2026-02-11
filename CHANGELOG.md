@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Heber read-path integration for Cerberus historical data** (2026-02-11):
+  - Added `src/data/heber_read_client.py` to read Heber Silver `bars` and `trades` with `ts_available` point-in-time filtering.
+  - Wired Heber reads into `src/data/fetcher.py` for `CERBERUS_STORAGE_BACKEND=heber|dual` with fallback to gateway/legacy sources.
+  - Added Heber freshness health signal in `src/core/health.py` (`check_heber_freshness`) and included it in the runtime healthcheck summary.
+  - Added unit coverage:
+    - `tests/unit/test_heber_read_client_unit.py`
+    - `tests/unit/test_health_heber_freshness_unit.py`
+
 - **Gateway + Heber smoke gate hardening** (2026-02-11):
   - Extended `scripts/smoke_gateway_heber_integration.py` to validate:
     - sink publish activity via `gateway_sink_publish_total` metric deltas
