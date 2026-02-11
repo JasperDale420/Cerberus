@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Heber shadow parity integration suite for Phase 4 reads** (2026-02-11):
+  - Added `tests/integration/test_heber_shadow_parity_integration.py`.
+  - Verifies Heber-backed bars/trades match gateway-mode feature inputs when data is equivalent.
+  - Verifies Heber falls back to gateway when rows are not `ts_available`-safe for the decision window.
+
 - **Heber read-path integration for Cerberus historical data** (2026-02-11):
   - Added `src/data/heber_read_client.py` to read Heber Silver `bars` and `trades` with `ts_available` point-in-time filtering.
   - Wired Heber reads into `src/data/fetcher.py` for `CERBERUS_STORAGE_BACKEND=heber|dual` with fallback to gateway/legacy sources.

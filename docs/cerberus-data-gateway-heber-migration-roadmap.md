@@ -171,6 +171,8 @@ Data-Gateway/Heber side toggles already present:
   - `tests/unit/test_execution_engine_trade_persistence_unit.py`
 - Add gateway-mode contract tests for exact route/payload mapping.
 - Add dual-read diff tests (legacy vs gateway) for bars/trades/flow/gex.
+- Add Heber shadow parity integration tests for as-of-safe bars/trades inputs:
+  - `tests/integration/test_heber_shadow_parity_integration.py`
 
 ### Data-Gateway
 - Validate health/auth/metrics:

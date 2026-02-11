@@ -114,7 +114,8 @@
   - [x] Confirm usage pattern for `read_asof` and `asof_join` in Cerberus adapters.
 
 ### Tests
-- [ ] Add shadow parity suite comparing current vs Heber-backed feature inputs.
+- [x] Add shadow parity suite comparing current vs Heber-backed feature inputs.
+  - Added: `tests/integration/test_heber_shadow_parity_integration.py`
 - [x] Add anti-leakage tests that fail on lookahead.
 
 ### Gate
