@@ -13,12 +13,12 @@
 - [x] Add health probes for Gateway and Heber to `src/core/health.py`.
 
 ### Data-Gateway
-- [ ] Confirm Cerberus client record in `Data-Gateway/config/clients.yaml` includes required providers/feeds.
-- [ ] Confirm `gateway/config.py` values for sink and cache are explicit per environment.
-- [ ] Confirm `/health` and `/health/ready` are wired in deployment checks.
+- [x] Confirm Cerberus client record in `Data-Gateway/config/clients.yaml` includes required providers/feeds.
+- [x] Confirm `gateway/config.py` values for sink and cache are explicit per environment.
+- [x] Confirm `/health` and `/health/ready` are wired in deployment checks.
 
 ### Heber
-- [ ] Confirm `heber/config.py` stream settings match Gateway stream topic (`heber:events`).
+- [x] Confirm `heber/config.py` stream settings match Gateway stream topic (`heber:events`).
 - [ ] Confirm Redis, Postgres, and data root are valid for the target environment.
 
 ### Gate
@@ -26,6 +26,8 @@
   - Cerberus -> Gateway authenticated call
   - Gateway -> Redis stream publish
   - Heber consumer -> Bronze/Silver write
+  - Script added: `scripts/smoke_gateway_heber_integration.py`
+  - Unit coverage added: `tests/unit/test_smoke_gateway_heber_integration_unit.py`
 
 ## Phase 1: Cerberus Data Adapter Cut-In (No Behavior Change)
 
@@ -33,7 +35,7 @@
 - `src/data/api_client.py`
   - [x] Replace non-versioned paths with Data-Gateway routes (`/api/v1/alpaca/...`, `/api/v1/uw/...`).
   - [x] Add `X-Gateway-Key` header support.
-  - [ ] Add robust timeout/retry classification for 401/403/429/5xx.
+  - [x] Add robust timeout/retry classification for 401/403/429/5xx.
 - `src/data/fetcher.py`
   - [x] Introduce backend interface (`legacy` vs `gateway`) with same return shape.
 - `src/data/pipeline.py`
@@ -48,9 +50,9 @@
 - [x] Add parity tests for bars/trades/flow between legacy and gateway modes.
 
 ### Gate
-- [ ] `CERBERUS_DATA_BACKEND=legacy` behaves unchanged.
+- [x] `CERBERUS_DATA_BACKEND=legacy` behaves unchanged.
 - [ ] `CERBERUS_DATA_BACKEND=gateway` passes scanner + feature pipeline integration tests.
-- [ ] `CERBERUS_DATA_BACKEND=dual` emits comparable outputs with acceptable delta.
+- [x] `CERBERUS_DATA_BACKEND=dual` emits comparable outputs with acceptable delta.
 
 ## Phase 2: Data-Gateway Stream Sink Activation
 
