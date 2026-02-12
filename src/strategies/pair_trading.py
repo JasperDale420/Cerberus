@@ -34,9 +34,7 @@ class PairTradingStrategy(BaseStrategy):
             return None
 
         if symbol_state.position is None:
-            return self._handle_entry(
-                symbol, bar, symbol_state, market_state, pair_info
-            )
+            return self._handle_entry(symbol, bar, symbol_state, market_state, pair_info)
         else:
             return self._handle_exit(symbol, bar, symbol_state, market_state, pair_info)
 
@@ -63,14 +61,8 @@ class PairTradingStrategy(BaseStrategy):
         atr = symbol_state.meta.get("atr", bar.close * 0.02)
         stop_dist = atr * 4.0
 
-        stop_price = (
-            bar.close - stop_dist if side == OrderSide.BUY else bar.close + stop_dist
-        )
-        target_price = (
-            bar.close + stop_dist * 2
-            if side == OrderSide.BUY
-            else bar.close - stop_dist * 2
-        )
+        stop_price = bar.close - stop_dist if side == OrderSide.BUY else bar.close + stop_dist
+        target_price = bar.close + stop_dist * 2 if side == OrderSide.BUY else bar.close - stop_dist * 2
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -93,6 +85,8 @@ class PairTradingStrategy(BaseStrategy):
     ) -> Optional[Signal]:
         z_score = pair_info.get("z_score", 0.0)
         pos = symbol_state.position
+        if pos is None:
+            return None
 
         should_exit = False
         if pos.side == Side.LONG and z_score >= self.exit_zscore:

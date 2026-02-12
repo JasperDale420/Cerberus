@@ -127,6 +127,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Runtime type-safety backlog reduction (mypy src clean)** (2026-02-12):
+  - Eliminated all `mypy src` errors (from 28 to 0) across runtime modules.
+  - Added explicit optional/default typing in scanner strategy/profile code and ranking engine.
+  - Hardened scanner pair-discovery typing around async gather results and pandas series construction.
+  - Improved replay/snapshot typing and symbol feature reconstruction boundaries.
+  - Tightened logger processor typing and backtest clock/cache typing consistency.
+  - Added guard for optional pair-trading position exit path.
+
 - **Type-check tooling compatibility cleanup** (2026-02-12):
   - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.
   - Added `scripts/__init__.py` to keep script module resolution explicit for imports/type tooling.

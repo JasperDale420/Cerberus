@@ -115,8 +115,9 @@ class BacktestRunner:
         # Use UniverseBuilder to determine universe from config
         # Pass clock lambda that returns simulation time (or start_date as fallback for init)
         def _backtest_clock() -> datetime:
-            if self.engine.market_state.time:
-                return self.engine.market_state.time
+            market_time = self.engine.market_state.time
+            if isinstance(market_time, datetime):
+                return market_time
             return datetime.combine(self.start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
 
         self.universe_builder = UniverseBuilder(

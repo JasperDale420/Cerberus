@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -12,7 +12,7 @@ class RankingEngine:
     Applies cross-sectional Z-score normalization to features.
     """
 
-    def __init__(self, logger: StructuredLogger = None):
+    def __init__(self, logger: Optional[StructuredLogger] = None):
         self.logger = logger or StructuredLogger("RankingEngine")
 
     def rank_symbols(self, symbols: List[SymbolFeatures]) -> List[SymbolFeatures]:
@@ -43,9 +43,7 @@ class RankingEngine:
         # Weights based on Audit ICs: ma_dist_200 (0.5), ma_dist_50 (0.3), RS (0.2)
         # We multiply by -1 because distance from MA has negative IC (Low factor -> High return)
         alpha_scores = -1.0 * (
-            0.5 * z_scores["ma_dist_200"]
-            + 0.3 * z_scores["ma_dist_50"]
-            + 0.2 * z_scores["relative_strength"]
+            0.5 * z_scores["ma_dist_200"] + 0.3 * z_scores["ma_dist_50"] + 0.2 * z_scores["relative_strength"]
         )
 
         # 4. Map back to features

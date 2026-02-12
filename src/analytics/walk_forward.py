@@ -17,13 +17,11 @@ class WalkForwardManager:
     def __init__(self, logger: StructuredLogger):
         self.logger = logger
 
-    def get_windows(
-        self, end_date: datetime, n_days: int, step_days: int
-    ) -> List[tuple[datetime, datetime]]:
+    def get_windows(self, end_date: datetime, n_days: int, step_days: int) -> List[tuple[datetime, datetime]]:
         """
         Produce a list of (start, end) windows for rolling optimization.
         """
-        windows = []
+        windows: List[tuple[datetime, datetime]] = []
         current_end = end_date
         while len(windows) < 5:  # Limit to 5 windows for now
             current_start = current_end - timedelta(days=n_days)
