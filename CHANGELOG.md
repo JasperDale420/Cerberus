@@ -120,6 +120,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Gateway timeout root-cause fix for off-hours restart storms** (2026-02-12):
+  - Updated `src/main.py` market-session control to use wall-clock time by default (with optional `use_market_time_for_session_control=true` for replay-style behavior).
+  - Updated post-close behavior in `src/main.py` to sleep until next weekday 09:30 ET instead of exiting, unless `exit_on_market_close=true`.
+  - Added `_next_market_open_local` helper and unit coverage in `tests/unit/test_main_stream_mode_unit.py`.
+  - Prevents Docker `restart: always` loops from repeatedly re-running initial scans and overloading Data-Gateway overnight.
+
 - **Heber catalog smoke gate + Docker runtime defaults for integration kickoff** (2026-02-12):
   - Updated `scripts/smoke_gateway_heber_integration.py` to fail when catalog datasets endpoint is reachable but empty (forces catalog seed before go-live).
   - Added unit coverage for non-empty catalog inventory requirement in:
