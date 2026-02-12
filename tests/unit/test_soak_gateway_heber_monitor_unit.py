@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from scripts.soak_gateway_heber_monitor import (
     PollSnapshot,
@@ -206,7 +207,7 @@ def test_collect_snapshot_captures_probe_timeout_without_crashing(monkeypatch) -
         lambda *_args, **_kwargs: 0.0,
     )
 
-    snapshot = _collect_snapshot(SoakConfig(), _DummyClient())
+    snapshot = _collect_snapshot(SoakConfig(), cast(Any, _DummyClient()))
 
     assert snapshot.gateway_ready is True
     assert snapshot.sink_ready is True

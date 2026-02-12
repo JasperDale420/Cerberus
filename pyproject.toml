@@ -70,7 +70,7 @@ files = ["src"]
 # Some modules are heavily dynamic or depend on third-party stubs that are not
 # compatible with mypy out of the box; exclude them from the CI type-check until
 # they are annotated or proper stubs are added.
-exclude = "(^src/data/alpaca\\.py$|^src/data/pipeline\\.py$|^scripts/|^tests/|^tools/)"
+exclude = "(^src/data/alpaca\\.py$|^src/data/pipeline\\.py$)"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

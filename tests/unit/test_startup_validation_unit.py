@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -9,9 +10,9 @@ import pytest
 from src.core.settings import Settings, validate_runtime_execution_requirements, validate_startup_settings
 
 
-def build_settings(**overrides: object) -> Settings:
+def build_settings(**overrides: Any) -> Settings:
     """Create runtime settings using environment aliases used in production."""
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "CERBERUS_DATA_BACKEND": "legacy",
         "CERBERUS_STORAGE_BACKEND": "sqlite",
         "CERBERUS_FAILOVER_TO_LEGACY": True,

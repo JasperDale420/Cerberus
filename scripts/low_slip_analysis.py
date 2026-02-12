@@ -6,6 +6,7 @@ Quick deployment analysis specifically for low-slippage results.
 import json
 from collections import defaultdict
 from pathlib import Path
+from typing import Any, DefaultDict
 
 RESULTS_DIR = Path("results")
 STRATEGIES = [
@@ -19,17 +20,26 @@ STRATEGIES = [
 ]
 
 
-def load_trades(strategy: str):
+def load_trades(strategy: str) -> list[dict[str, Any]]:
     path = RESULTS_DIR / f"backtest_5yr_low_slip_{strategy}.json"
     if not path.exists():
         return []
     with open(path) as f:
-        return json.load(f).get("engine_trades", [])
+        data = json.load(f)
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
-def analyze_all_conditions(trades):
+def analyze_all_conditions(
+    trades: list[dict[str, Any]],
+) -> dict[tuple[Any, Any, Any, Any], dict[str, float]]:
     """Get all session×regime combinations."""
-    combos = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0, "pnl_gross": 0.0})
+    combos: DefaultDict[tuple[Any, Any, Any, Any], dict[str, float]] = defaultdict(
+        lambda: {"trades": 0.0, "wins": 0.0, "pnl": 0.0, "pnl_gross": 0.0}
+    )
 
     for t in trades:
         regime = t.get("regime_tags_at_entry", {})
@@ -78,9 +88,7 @@ def main():
         combos = analyze_all_conditions(trades)
 
         # Find profitable conditions
-        profitable = [
-            (k, v) for k, v in combos.items() if v["pnl"] > 0 and v["trades"] >= 50
-        ]
+        profitable = [(k, v) for k, v in combos.items() if v["pnl"] > 0 and v["trades"] >= 50]
         profitable.sort(key=lambda x: x[1]["pnl"], reverse=True)
 
         if profitable:
@@ -89,12 +97,8 @@ def main():
                 session, trend, vol, risk = key
                 wr = stats["wins"] / stats["trades"] * 100
                 avg_pnl = stats["pnl"] / stats["trades"]
-                print(
-                    f"    ✅ session={session} | trend={trend} | vol={vol} | risk={risk}"
-                )
-                print(
-                    f"       {stats['trades']} trades | WR={wr:.1f}% | PnL=${stats['pnl']:,.0f} | Avg=${avg_pnl:.2f}"
-                )
+                print(f"    ✅ session={session} | trend={trend} | vol={vol} | risk={risk}")
+                print(f"       {stats['trades']} trades | WR={wr:.1f}% | PnL=${stats['pnl']:,.0f} | Avg=${avg_pnl:.2f}")
 
                 all_profitable.append(
                     {
@@ -123,9 +127,7 @@ def main():
 
         for p in all_profitable[:20]:
             print(f"  ✅ {p['strategy'].upper()}")
-            print(
-                f"     Session: {p['session']} | Trend: {p['trend']} | Vol: {p['vol']} | Risk: {p['risk']}"
-            )
+            print(f"     Session: {p['session']} | Trend: {p['trend']} | Vol: {p['vol']} | Risk: {p['risk']}")
             print(
                 f"     {p['trades']} trades | WR={p['win_rate']:.1f}% | PnL=${p['pnl']:,.0f} | Avg=${p['avg_pnl']:.2f}/trade"
             )

@@ -134,7 +134,13 @@ All notable changes to this project will be documented in this file.
   - Improved replay/snapshot typing and symbol feature reconstruction boundaries.
   - Tightened logger processor typing and backtest clock/cache typing consistency.
   - Added guard for optional pair-trading position exit path.
-  - Aligned mypy scope to runtime enforcement when running `mypy .` by excluding `scripts/`, `tests/`, and `tools/` in `pyproject.toml`.
+
+- **Full-repo type-check pass for scripts/tests/tools** (2026-02-12):
+  - Re-enabled `mypy .` coverage for `scripts/`, `tests/`, and `tools/` by restoring default exclude scope in `pyproject.toml`.
+  - Added targeted type annotations/casts in backtest analysis scripts (`scripts/*`) to eliminate untyped container and JSON-return errors.
+  - Hardened test typing for settings builders, monkeypatched methods, deque-backed `SymbolState`, and typed mock usage.
+  - Added compatibility-safe typing updates to helper tooling under `tools/`.
+  - Result: `mypy .` now passes across `399` files.
 
 - **Type-check tooling compatibility cleanup** (2026-02-12):
   - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.

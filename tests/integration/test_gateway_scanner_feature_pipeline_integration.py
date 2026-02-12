@@ -116,7 +116,7 @@ async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_an
     as_of = datetime(2025, 1, 6, 15, 0, tzinfo=timezone.utc)
 
     pipeline._fetch_supplementary_data = AsyncMock(return_value=(1_000_000.0, (101.0, 99.0, 100.0)))  # type: ignore[method-assign]
-    pipeline.calculator.compute_technicals = MagicMock(
+    pipeline.calculator.compute_technicals = MagicMock(  # type: ignore[method-assign]
         return_value=SimpleNamespace(
             price=101.0,
             atr_pct=0.01,
@@ -142,11 +142,11 @@ async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_an
             hurst_exponent=0.5,
         )
     )
-    pipeline.calculator.calculate_relative_strength = MagicMock(return_value=0.1)
-    pipeline.calculator.calculate_tfi = MagicMock(return_value=0.0)
-    pipeline.calculator.apply_frac_diff = MagicMock(return_value=0.02)
-    pipeline.calculator.calculate_hurst_exponent = MagicMock(return_value=0.55)
-    pipeline.calculator.calculate_session_open_price = MagicMock(return_value=100.0)
+    pipeline.calculator.calculate_relative_strength = MagicMock(return_value=0.1)  # type: ignore[method-assign]
+    pipeline.calculator.calculate_tfi = MagicMock(return_value=0.0)  # type: ignore[method-assign]
+    pipeline.calculator.apply_frac_diff = MagicMock(return_value=0.02)  # type: ignore[method-assign]
+    pipeline.calculator.calculate_hurst_exponent = MagicMock(return_value=0.55)  # type: ignore[method-assign]
+    pipeline.calculator.calculate_session_open_price = MagicMock(return_value=100.0)  # type: ignore[method-assign]
 
     features = await pipeline.compute_technicals_only(["AAPL"], as_of=as_of)
 

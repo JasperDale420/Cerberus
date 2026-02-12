@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
@@ -14,8 +15,8 @@ from src.core.settings import Settings
 from src.data.fetcher import DataFetcher
 
 
-def _build_settings(**overrides: object) -> Settings:
-    defaults: dict[str, object] = {
+def _build_settings(**overrides: Any) -> Settings:
+    defaults: dict[str, Any] = {
         "CERBERUS_DATA_BACKEND": "gateway",
         "CERBERUS_STORAGE_BACKEND": "sqlite",
         "CERBERUS_FAILOVER_TO_LEGACY": False,

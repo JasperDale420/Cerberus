@@ -17,18 +17,24 @@ import json
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any, DefaultDict
 
 RESULTS_DIR = Path("results")
 
 
-def load_orb_trades():
+def load_orb_trades() -> list[dict[str, Any]]:
     """Load ORB trades from low-slippage backtest."""
     path = RESULTS_DIR / "backtest_5yr_low_slip_orb.json"
     if not path.exists():
         print(f"Error: {path} not found")
         return []
     with open(path) as f:
-        return json.load(f).get("engine_trades", [])
+        data = json.load(f)
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
 def parse_time(t_str):
@@ -83,15 +89,9 @@ def analyze_win_loss_distribution(trades):
         small_losses = [loss for loss in losses if loss > -10]
         medium_losses = [loss for loss in losses if -50 <= loss <= -10]
         large_losses = [loss for loss in losses if loss < -50]
-        print(
-            f"    Small losses (>-$10): {len(small_losses)} ({sum(small_losses):,.0f})"
-        )
-        print(
-            f"    Medium losses (-$10 to -$50): {len(medium_losses)} ({sum(medium_losses):,.0f})"
-        )
-        print(
-            f"    Large losses (<-$50): {len(large_losses)} ({sum(large_losses):,.0f})"
-        )
+        print(f"    Small losses (>-$10): {len(small_losses)} ({sum(small_losses):,.0f})")
+        print(f"    Medium losses (-$10 to -$50): {len(medium_losses)} ({sum(medium_losses):,.0f})")
+        print(f"    Large losses (<-$50): {len(large_losses)} ({sum(large_losses):,.0f})")
 
 
 def analyze_pnl_r_multiples(trades):
@@ -111,12 +111,8 @@ def analyze_pnl_r_multiples(trades):
 
     print(f"\n  R-multiple stats (n={len(r_values):,}):")
     print(f"    Avg R: {sum(r_values) / len(r_values):.3f}")
-    print(
-        f"    Positive R trades: {len(positive_r)} ({len(positive_r) / len(r_values) * 100:.1f}%)"
-    )
-    print(
-        f"    Negative R trades: {len(negative_r)} ({len(negative_r) / len(r_values) * 100:.1f}%)"
-    )
+    print(f"    Positive R trades: {len(positive_r)} ({len(positive_r) / len(r_values) * 100:.1f}%)")
+    print(f"    Negative R trades: {len(negative_r)} ({len(negative_r) / len(r_values) * 100:.1f}%)")
 
     if positive_r:
         print(f"    Avg positive R: {sum(positive_r) / len(positive_r):.2f}")
@@ -124,7 +120,7 @@ def analyze_pnl_r_multiples(trades):
         print(f"    Avg negative R: {sum(negative_r) / len(negative_r):.2f}")
 
     # R-bucket analysis
-    buckets = defaultdict(lambda: {"count": 0, "pnl": 0})
+    buckets: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0})
     for t in trades:
         r = t.get("pnl_r", 0) or 0
         pnl = t.get("pnl_net", 0) or 0
@@ -172,7 +168,7 @@ def analyze_holding_period(trades):
     print(f"    Max: {max(valid_holding) / 60:.1f} minutes")
 
     # Bucket by holding time and calculate PnL
-    buckets = defaultdict(lambda: {"count": 0, "pnl": 0, "wins": 0})
+    buckets: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0, "wins": 0.0})
     for t in trades:
         h = t.get("holding_period_seconds", 0) or 0
         pnl = t.get("pnl_net", 0) or 0
@@ -211,7 +207,7 @@ def analyze_by_symbol(trades):
     print("  4. SYMBOL ANALYSIS")
     print("=" * 70)
 
-    symbols = defaultdict(lambda: {"count": 0, "pnl": 0, "wins": 0})
+    symbols: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0, "wins": 0.0})
     for t in trades:
         sym = t.get("symbol", "unknown")
         pnl = t.get("pnl_net", 0) or 0
@@ -247,8 +243,8 @@ def analyze_meta_characteristics(trades):
     print("=" * 70)
 
     # Breakout type analysis
-    breakout_types = defaultdict(lambda: {"count": 0, "pnl": 0, "wins": 0})
-    gap_buckets = defaultdict(lambda: {"count": 0, "pnl": 0, "wins": 0})
+    breakout_types: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0, "wins": 0.0})
+    gap_buckets: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0, "wins": 0.0})
 
     for t in trades:
         meta = t.get("meta") or {}
@@ -278,24 +274,16 @@ def analyze_meta_characteristics(trades):
             gap_buckets[gap_bucket]["wins"] += 1
 
     print("\n  By BREAKOUT TYPE:")
-    for bt, stats in sorted(
-        breakout_types.items(), key=lambda x: x[1]["pnl"], reverse=True
-    ):
+    for bt, stats in sorted(breakout_types.items(), key=lambda x: x[1]["pnl"], reverse=True):
         wr = stats["wins"] / stats["count"] * 100 if stats["count"] > 0 else 0
         profitable = "✅" if stats["pnl"] > 0 else "❌"
-        print(
-            f"    {profitable} {bt:12} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}"
-        )
+        print(f"    {profitable} {bt:12} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}")
 
     print("\n  By GAP SIZE:")
-    for gap, stats in sorted(
-        gap_buckets.items(), key=lambda x: x[1]["pnl"], reverse=True
-    ):
+    for gap, stats in sorted(gap_buckets.items(), key=lambda x: x[1]["pnl"], reverse=True):
         wr = stats["wins"] / stats["count"] * 100 if stats["count"] > 0 else 0
         profitable = "✅" if stats["pnl"] > 0 else "❌"
-        print(
-            f"    {profitable} {gap:16} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}"
-        )
+        print(f"    {profitable} {gap:16} | {stats['count']:5,} trades | WR={wr:5.1f}% | PnL: ${stats['pnl']:>10,.0f}")
 
 
 def analyze_entry_time_within_session(trades):
@@ -304,7 +292,7 @@ def analyze_entry_time_within_session(trades):
     print("  6. INTRA-SESSION TIMING")
     print("=" * 70)
 
-    time_buckets = defaultdict(lambda: {"count": 0, "pnl": 0, "wins": 0})
+    time_buckets: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0, "wins": 0.0})
 
     for t in trades:
         entry_time = parse_time(t.get("entry_time"))
@@ -359,16 +347,14 @@ def generate_optimization_recommendations(trades):
     print("=" * 70)
 
     # Symbol analysis
-    symbols = defaultdict(lambda: {"count": 0, "pnl": 0})
+    symbols: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "pnl": 0.0})
     for t in trades:
         sym = t.get("symbol", "unknown")
         pnl = t.get("pnl_net", 0) or 0
         symbols[sym]["count"] += 1
         symbols[sym]["pnl"] += pnl
 
-    profitable_symbols = [
-        s for s, d in symbols.items() if d["pnl"] > 0 and d["count"] >= 100
-    ]
+    profitable_symbols = [s for s, d in symbols.items() if d["pnl"] > 0 and d["count"] >= 100]
     losing_symbols = [s for s, d in symbols.items() if d["pnl"] < -1000]
 
     # Holding period analysis
@@ -390,20 +376,20 @@ def generate_optimization_recommendations(trades):
   1. SYMBOL FILTER:
      • Profitable symbols (>100 trades, positive PnL): {", ".join(profitable_symbols[:5])}
      • Consider EXCLUDING: {", ".join(losing_symbols[:5])}
-     
+
   2. HOLDING PERIOD:
      • Short holds (<15 min): {short_hold["count"]:,} trades, PnL ${short_hold["pnl"]:,.0f}
      • Long holds (>15 min): {long_hold["count"]:,} trades, PnL ${long_hold["pnl"]:,.0f}
      • Recommendation: {"Keep positions shorter" if long_hold["pnl"] < short_hold["pnl"] else "Allow trades more time"}
-     
+
   3. REGIME FILTER (from earlier analysis):
      • Only trade in: flat/down trends + high/low volatility
      • Avoid: up trends (highest losses)
-     
+
   4. GAP FILTER:
      • Analyze whether small gaps or large gaps perform better
      • Consider min/max gap_pct thresholds
-     
+
   5. EXECUTION:
      • Current slippage: 2.0 bps - strategy is profitable with good execution
      • Consider using limit orders instead of market orders at breakout
@@ -423,9 +409,7 @@ def main():
     total_pnl = sum(t.get("pnl_net", 0) or 0 for t in trades)
     wins = sum(1 for t in trades if (t.get("pnl_net", 0) or 0) > 0)
 
-    print(
-        f"\n  OVERVIEW: {len(trades):,} trades | WR={wins / len(trades) * 100:.1f}% | Net PnL=${total_pnl:,.0f}"
-    )
+    print(f"\n  OVERVIEW: {len(trades):,} trades | WR={wins / len(trades) * 100:.1f}% | Net PnL=${total_pnl:,.0f}")
 
     analyze_win_loss_distribution(trades)
     analyze_pnl_r_multiples(trades)

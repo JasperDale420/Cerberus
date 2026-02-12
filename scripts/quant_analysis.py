@@ -13,6 +13,7 @@ import json
 import math
 from collections import defaultdict
 from pathlib import Path
+from typing import Any, DefaultDict
 
 RESULTS_DIR = Path("results")
 STRATEGIES = [
@@ -26,16 +27,20 @@ STRATEGIES = [
 ]
 
 
-def load_trades(strategy: str):
+def load_trades(strategy: str) -> list[dict[str, Any]]:
     path = RESULTS_DIR / f"backtest_5yr_{strategy}.json"
     if not path.exists():
         return []
     with open(path) as f:
         data = json.load(f)
-    return data.get("engine_trades", [])
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
-def parse_year(entry_time):
+def parse_year(entry_time: Any) -> int:
     """Extract year from entry_time string."""
     if isinstance(entry_time, str):
         return int(entry_time[:4])
@@ -62,9 +67,7 @@ def analyze_strategy_deep(strategy: str, trades):
     avg_loss = sum(losses) / len(losses) if losses else 0
 
     # Expectancy = (WR * avg_win) - ((1-WR) * abs(avg_loss))
-    expectancy = (win_rate * avg_win) + (
-        (1 - win_rate) * avg_loss
-    )  # avg_loss is negative
+    expectancy = (win_rate * avg_win) + ((1 - win_rate) * avg_loss)  # avg_loss is negative
 
     # Profit factor = gross profit / gross loss
     gross_profit = sum(wins)
@@ -96,7 +99,7 @@ def analyze_strategy_deep(strategy: str, trades):
     )
 
     # Yearly breakdown
-    yearly = defaultdict(lambda: {"trades": 0, "pnl": 0, "wins": 0})
+    yearly: DefaultDict[int, dict[str, float]] = defaultdict(lambda: {"trades": 0.0, "pnl": 0.0, "wins": 0.0})
     for t in trades:
         year = parse_year(t.get("entry_time", "2020"))
         pnl = t.get("pnl_net", 0) or 0
@@ -110,13 +113,13 @@ def analyze_strategy_deep(strategy: str, trades):
         y = yearly[year]
         wr = y["wins"] / y["trades"] if y["trades"] else 0
         profitable = "✅" if y["pnl"] > 0 else "❌"
-        print(
-            f"    {profitable} {year}: {y['trades']:,} trades | WR={wr * 100:.1f}% | PnL=${y['pnl']:,.0f}"
-        )
+        print(f"    {profitable} {year}: {y['trades']:,} trades | WR={wr * 100:.1f}% | PnL=${y['pnl']:,.0f}")
 
     # Look for ANY profitable micro-conditions (min 20 trades for rough signal)
     print("\n  PROFITABLE MICRO-CONDITIONS (>= 20 trades):")
-    combos = defaultdict(lambda: {"trades": 0, "pnl": 0, "wins": 0})
+    combos: DefaultDict[tuple[Any, Any, Any, Any], dict[str, float]] = defaultdict(
+        lambda: {"trades": 0.0, "pnl": 0.0, "wins": 0.0}
+    )
     for t in trades:
         regime = t.get("regime_tags_at_entry", {})
         key = (
@@ -131,9 +134,7 @@ def analyze_strategy_deep(strategy: str, trades):
         if pnl > 0:
             combos[key]["wins"] += 1
 
-    profitable_combos = [
-        (k, v) for k, v in combos.items() if v["pnl"] > 0 and v["trades"] >= 20
-    ]
+    profitable_combos = [(k, v) for k, v in combos.items() if v["pnl"] > 0 and v["trades"] >= 20]
     profitable_combos.sort(key=lambda x: x[1]["pnl"], reverse=True)
 
     if profitable_combos:
@@ -141,9 +142,7 @@ def analyze_strategy_deep(strategy: str, trades):
             wr = stats["wins"] / stats["trades"]
             session, trend, vol, risk = key
             print(f"    ✅ session={session} | trend={trend} | vol={vol} | risk={risk}")
-            print(
-                f"       {stats['trades']} trades | WR={wr * 100:.1f}% | PnL=${stats['pnl']:,.0f}"
-            )
+            print(f"       {stats['trades']} trades | WR={wr * 100:.1f}% | PnL=${stats['pnl']:,.0f}")
     else:
         print("    None found - strategy has no edge in any regime combination")
 
@@ -182,24 +181,24 @@ def main():
     print("=" * 80)
     print("""
   KEY FINDINGS:
-  
+
   1. EDGE ANALYSIS: No strategy shows positive expectancy across any meaningful
      sample size. This suggests either:
      a) The strategies fundamentally don't have an edge
      b) Transaction costs (slippage model) are too aggressive
      c) Position sizing/risk management is destroying edge
-     
+
   2. TRANSACTION COSTS: Check if gross PnL is positive but net is negative.
      If so, the edge exists but is being eaten by execution costs.
-     
+
   3. YEARLY DECAY: If early years are profitable but later years are not,
      this suggests the strategy was overfit to historical data.
-     
+
   4. SAMPLE SIZE: Micro-conditions with < 100 trades are not reliable.
      Even profitable-looking segments may be noise.
-     
+
   RECOMMENDED NEXT STEPS:
-  
+
   1. Check gross PnL (before slippage) - if positive, optimize execution
   2. Reduce slippage model aggressiveness and retest
   3. Focus on strategies with profit factor > 0.9 (closest to edge)
