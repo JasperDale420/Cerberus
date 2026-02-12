@@ -120,6 +120,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Strategy registry parity fix for runtime/backtest startup** (2026-02-12):
+  - Updated `src/main.py` runtime strategy registry to include:
+    - `trend_pullback`
+    - `failed_breakout`
+  - Updated `src/backtest/runner.py` strategy registry to include:
+    - `trend_pullback`
+    - `failed_breakout`
+  - Added registry regression tests in:
+    - `tests/unit/test_strategy_registry_unit.py`
+  - Eliminates `Unknown strategy in config; skipping` warnings for enabled default strategies in `config/config.yaml`.
+
 - **Scanner and SQLite runtime hardening for live gateway/heber operation** (2026-02-12):
   - Added legacy SQLite schema patching in `src/analysis/db.py` during `init_db()` so older local DB files are upgraded in-place for known missing columns:
     - `trades.regime_tags_entry_json`
