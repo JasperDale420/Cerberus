@@ -120,6 +120,21 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Scanner and SQLite runtime hardening for live gateway/heber operation** (2026-02-12):
+  - Added legacy SQLite schema patching in `src/analysis/db.py` during `init_db()` so older local DB files are upgraded in-place for known missing columns:
+    - `trades.regime_tags_entry_json`
+    - `trades.regime_tags_exit_json`
+    - `signals.feature_snapshot_json`
+    - `regime_history.{model_version, trend, vol_regime, liquidity, risk, session, vol_of_vol, liquidity_score, risk_score, confidence_json}`
+  - Hardened `src/data/calculator.py` against non-positive baseline prices in:
+    - `calculate_relative_strength()`
+    - `calculate_hurst_exponent()`
+  - Hardened `src/data/pipeline.py` per-symbol processing so one symbol failure does not abort the full scan batch.
+  - Added regression tests:
+    - `tests/unit/test_db_sqlite_schema_patch_unit.py`
+    - `tests/test_statistical_alpha.py`
+    - `tests/test_pipeline.py`
+
 - **Gateway timeout root-cause fix for off-hours restart storms** (2026-02-12):
   - Updated `src/main.py` market-session control to use wall-clock time by default (with optional `use_market_time_for_session_control=true` for replay-style behavior).
   - Updated post-close behavior in `src/main.py` to sleep until next weekday 09:30 ET instead of exiting, unless `exit_on_market_close=true`.

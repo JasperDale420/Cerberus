@@ -188,49 +188,58 @@ class FeaturePipeline:
         sym = str(symbol).strip().upper()
 
         async with sem:
-            # 1. Fetch Bars
-            bars_data, fetch_metrics = await self._fetch_bars_wrapper(sym, as_of)
-            for k, v in fetch_metrics.items():
-                local[k] = int(local.get(k, 0)) + int(v)
+            try:
+                # 1. Fetch Bars
+                bars_data, fetch_metrics = await self._fetch_bars_wrapper(sym, as_of)
+                for k, v in fetch_metrics.items():
+                    local[k] = int(local.get(k, 0)) + int(v)
 
-            if not bars_data:
-                self.logger.warning("No bars found for technicals", symbol=sym)
-                local["alpaca_no_bars"] += 1
-                return sym, None, local
+                if not bars_data:
+                    self.logger.warning("No bars found for technicals", symbol=sym)
+                    local["alpaca_no_bars"] += 1
+                    return sym, None, local
 
-            # 2. Compute Technicals
-            tech_result = self.calculator.compute_technicals(bars_data)
-            if not tech_result:
+                # 2. Compute Technicals
+                tech_result = self.calculator.compute_technicals(bars_data)
+                if not tech_result:
+                    local["technicals_fail"] += 1
+                    return sym, None, local
+
+                # 2b. Compute Relative Strength if benchmark available
+                if benchmark_closes and bars_data:
+                    sym_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    tech_result.relative_strength = self.calculator.calculate_relative_strength(
+                        sym_closes, benchmark_closes
+                    )
+
+                # 3. Fetch Supplementary Data
+                _, end = self._calculate_fetch_window(as_of)
+                avg_daily_volume, prior_stats = await self._fetch_supplementary_data(sym, end)
+
+                # 4. Fetch Trades for TFI (last 5 minutes for high-res microstructure)
+                trades_start = as_of - timedelta(minutes=5)
+                trades_data, _ = await self.fetcher.fetch_trades(sym, trades_start, as_of)
+                tech_result.tfi = self.calculator.calculate_tfi(trades_data)
+
+                # 4b. Compute Statistical Alpha (FracDiff & Hurst)
+                if bars_data:
+                    closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    tech_result.frac_diff_close = self.calculator.apply_frac_diff(closes, d=0.4)
+                    tech_result.hurst_exponent = self.calculator.calculate_hurst_exponent(closes)
+
+                # 5. Build Features
+                feat = self._build_symbol_features(sym, tech_result, avg_daily_volume, prior_stats, bars_data, end)
+
+                local["features_ok"] += 1
+                return sym, feat, local
+            except Exception as e:
                 local["technicals_fail"] += 1
-                return sym, None, local
-
-            # 2b. Compute Relative Strength if benchmark available
-            if benchmark_closes and bars_data:
-                sym_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
-                tech_result.relative_strength = self.calculator.calculate_relative_strength(
-                    sym_closes, benchmark_closes
+                self.logger.error(
+                    "Feature pipeline symbol processing failed",
+                    symbol=sym,
+                    error=str(e),
                 )
-
-            # 3. Fetch Supplementary Data
-            _, end = self._calculate_fetch_window(as_of)
-            avg_daily_volume, prior_stats = await self._fetch_supplementary_data(sym, end)
-
-            # 4. Fetch Trades for TFI (last 5 minutes for high-res microstructure)
-            trades_start = as_of - timedelta(minutes=5)
-            trades_data, _ = await self.fetcher.fetch_trades(sym, trades_start, as_of)
-            tech_result.tfi = self.calculator.calculate_tfi(trades_data)
-
-            # 4b. Compute Statistical Alpha (FracDiff & Hurst)
-            if bars_data:
-                closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
-                tech_result.frac_diff_close = self.calculator.apply_frac_diff(closes, d=0.4)
-                tech_result.hurst_exponent = self.calculator.calculate_hurst_exponent(closes)
-
-            # 5. Build Features
-            feat = self._build_symbol_features(sym, tech_result, avg_daily_volume, prior_stats, bars_data, end)
-
-            local["features_ok"] += 1
-            return sym, feat, local
+                return sym, None, local
 
     async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
