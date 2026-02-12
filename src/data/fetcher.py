@@ -21,7 +21,7 @@ class DataFetcher:
 
     def __init__(
         self,
-        alpaca_client: AlpacaClient,
+        alpaca_client: Optional[AlpacaClient],
         unusual_whales_client: UnusualWhalesClient,
         logger: StructuredLogger,
         config: Optional[Dict[str, Any]] = None,
@@ -145,6 +145,8 @@ class DataFetcher:
                 if not self.allow_legacy_failover:
                     raise
 
+        if self.alpaca_client is None:
+            raise RuntimeError("Legacy Alpaca bars fallback requested but Alpaca client is not initialized")
         return self.alpaca_client.get_historical_bars(sym, start, end, timeframe)
 
     def _compare_bars_with_legacy(
@@ -157,6 +159,8 @@ class DataFetcher:
     ) -> None:
         """Log comprehensive dual-read parity diagnostics without affecting control flow."""
         try:
+            if self.alpaca_client is None:
+                return
             legacy = self.alpaca_client.get_historical_bars(symbol, start, end, timeframe)
             legacy_bars = legacy.get("bars", []) if isinstance(legacy, dict) else legacy
             gateway_bars = gateway_payload.get("bars", []) if isinstance(gateway_payload, dict) else gateway_payload
@@ -354,11 +358,17 @@ class DataFetcher:
                     )
                     if self.enable_dual_compare:
                         await self._compare_trades_with_legacy(sym, start, end, trades)
-                except Exception:
+                except Exception as e:
                     if not self.allow_legacy_failover:
                         raise
+                    if self.alpaca_client is None:
+                        raise RuntimeError(
+                            "Legacy Alpaca trades fallback requested but Alpaca client is not initialized"
+                        ) from e
                     trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, sym, start, end)
             else:
+                if self.alpaca_client is None:
+                    raise RuntimeError("Alpaca trades requested but Alpaca client is not initialized")
                 trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, sym, start, end)
             if not trades:
                 metrics["alpaca_no_trades"] += 1
@@ -383,6 +393,9 @@ class DataFetcher:
         """Log dual-read parity for trades data."""
         try:
             import asyncio
+
+            if self.alpaca_client is None:
+                return
 
             legacy_trades = await asyncio.to_thread(self.alpaca_client.get_historical_trades, symbol, start, end)
 

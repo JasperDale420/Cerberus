@@ -112,6 +112,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Gateway-only startup profile for local Docker runtime** (2026-02-12):
+  - Updated `docker-compose.yml` trader command to `--order-executor noop` for gateway-only paper startup without local Alpaca keys.
+  - Added gateway-mode runtime environment defaults in `docker-compose.yml`:
+    - `CERBERUS_DATA_BACKEND=gateway`
+    - `CERBERUS_FAILOVER_TO_LEGACY=false`
+    - `CERBERUS_GATEWAY_URL=http://host.docker.internal:8080`
+    - `CERBERUS_GATEWAY_KEY=gw_cerberus_dev_key_12345`
+  - Updated `src/main.py` to skip both Alpaca client initialization and Alpaca stream startup in `gateway + noop + no-failover` mode.
+  - Updated `.env.example` to document Alpaca credentials as conditional and reflect gateway-first defaults.
+
 - **Docker dependency resolution fix for Cerberus image builds** (2026-02-12):
   - Updated `requirements.txt` to pin `httpx==0.27.2` to satisfy `unusualwhales-python-client==5.0.1` compatibility (`httpx<0.28`).
   - Updated `requirements.txt` to pin `numpy==2.2.6` to satisfy `pandas-ta -> numba` compatibility (`numba` requires `numpy<2.3`).

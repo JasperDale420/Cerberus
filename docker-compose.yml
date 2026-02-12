@@ -4,7 +4,7 @@ services:
     build: .
     image: empire/cerberus:latest
     container_name: cerberus_trader
-    command: python -m src.main --mode paper
+    command: python -m src.main --mode paper --order-executor noop
     restart: always
     env_file:
       - .env
@@ -16,6 +16,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/New_York
+      - CERBERUS_DATA_BACKEND=${CERBERUS_DATA_BACKEND:-gateway}
+      - CERBERUS_FAILOVER_TO_LEGACY=${CERBERUS_FAILOVER_TO_LEGACY:-false}
+      - CERBERUS_GATEWAY_URL=${CERBERUS_GATEWAY_URL:-http://host.docker.internal:8080}
+      - CERBERUS_GATEWAY_KEY=${CERBERUS_GATEWAY_KEY:-gw_cerberus_dev_key_12345}
     healthcheck:
       test: [ "CMD", "python", "-m", "src.main", "--healthcheck" ]
       interval: 5m
@@ -47,6 +51,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/New_York
+      - CERBERUS_DATA_BACKEND=${CERBERUS_DATA_BACKEND:-gateway}
+      - CERBERUS_FAILOVER_TO_LEGACY=${CERBERUS_FAILOVER_TO_LEGACY:-false}
+      - CERBERUS_GATEWAY_URL=${CERBERUS_GATEWAY_URL:-http://host.docker.internal:8080}
+      - CERBERUS_GATEWAY_KEY=${CERBERUS_GATEWAY_KEY:-gw_cerberus_dev_key_12345}
     logging:
       driver: json-file
       options:

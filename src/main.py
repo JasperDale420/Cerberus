@@ -20,6 +20,28 @@ from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
 
 
+def _should_initialize_alpaca_client(
+    order_executor: str,
+    data_backend: str,
+    failover_to_legacy: bool,
+) -> bool:
+    """Determine whether Alpaca client initialization is required."""
+    normalized_executor = str(order_executor or "").strip().lower()
+    normalized_backend = str(data_backend or "").strip().lower()
+    if normalized_backend == "gateway" and normalized_executor == "noop" and not bool(failover_to_legacy):
+        return False
+    return True
+
+
+def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
+    """Determine whether Alpaca bar/trade streams should run."""
+    normalized_executor = str(order_executor or "").strip().lower()
+    normalized_backend = str(data_backend or "").strip().lower()
+    if normalized_backend == "gateway" and normalized_executor == "noop":
+        return False
+    return True
+
+
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
     """Capture daily screener snapshot for historical backtest replay."""
     snapshot = {
@@ -174,11 +196,13 @@ async def async_main():
     # Validate startup settings before proceeding
     try:
         from src.core.settings import (
+            get_settings,
             validate_runtime_execution_requirements,
             validate_startup_settings,
         )
 
         validate_startup_settings()
+        runtime_settings = get_settings()
         validate_runtime_execution_requirements(
             order_executor=args.order_executor,
             mode=args.mode,
@@ -187,6 +211,7 @@ async def async_main():
             "Startup settings validation passed",
             order_executor=args.order_executor,
             mode=args.mode,
+            data_backend=runtime_settings.cerberus_data_backend,
         )
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
@@ -225,8 +250,19 @@ async def async_main():
         clock = _utc_now_clock()
 
     # 2. Components
-    # Alpaca Client
-    alpaca_client = AlpacaClient(config_loader, logger)
+    require_alpaca_client = _should_initialize_alpaca_client(
+        order_executor=args.order_executor,
+        data_backend=runtime_settings.cerberus_data_backend,
+        failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
+    )
+    alpaca_client = AlpacaClient(config_loader, logger) if require_alpaca_client else None
+    if not require_alpaca_client:
+        logger.info(
+            "Skipping Alpaca client initialization in gateway+noop mode",
+            data_backend=runtime_settings.cerberus_data_backend,
+            failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
+            order_executor=args.order_executor,
+        )
 
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
@@ -339,19 +375,36 @@ async def async_main():
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan
-    logger.info("Starting Alpaca stream...")
-    stream_task = asyncio.create_task(
-        alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+    start_alpaca_stream = _should_start_alpaca_stream(
+        order_executor=args.order_executor,
+        data_backend=runtime_settings.cerberus_data_backend,
     )
+    stream_task: asyncio.Task[object] | None = None
+    if start_alpaca_stream:
+        logger.info("Starting Alpaca stream...")
+        assert alpaca_client is not None
+        stream_task = asyncio.create_task(
+            alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+        )
+    else:
+        logger.info(
+            "Skipping Alpaca stream in gateway+noop mode; scanner loop will use gateway polling",
+            data_backend=runtime_settings.cerberus_data_backend,
+            order_executor=args.order_executor,
+        )
+
     trade_stream_task = None
-    if args.order_executor == "alpaca":
+    if start_alpaca_stream and args.order_executor == "alpaca":
+        assert alpaca_client is not None
         trade_stream_task = asyncio.create_task(
             alpaca_client.start_trade_stream(engine.on_trade_update, on_reconnect=engine.reconcile_broker_state)
         )
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
-    # Ensure index symbol is subscribed for regime detection.
-    alpaca_client.subscribe(config.get("index_symbol", "SPY"))
+    if start_alpaca_stream:
+        # Ensure index symbol is subscribed for regime detection.
+        assert alpaca_client is not None
+        alpaca_client.subscribe(config.get("index_symbol", "SPY"))
 
     logger.info("Running initial scan...")
     try:
@@ -464,10 +517,12 @@ async def async_main():
                                 exc_info=True,
                             )
                 # Capture daily screener snapshot for historical backtest data
-                try:
-                    _capture_screener_snapshot(alpaca_client, logger)
-                except Exception as e:
-                    logger.warning("Screener snapshot capture failed", error=str(e))
+                if start_alpaca_stream:
+                    assert alpaca_client is not None
+                    try:
+                        _capture_screener_snapshot(alpaca_client, logger)
+                    except Exception as e:
+                        logger.warning("Screener snapshot capture failed", error=str(e))
                 logger.info("Market closed. Exiting daily session.")
                 break
 
@@ -501,7 +556,7 @@ async def async_main():
         )
         raise
     finally:
-        if not stream_task.done():
+        if stream_task is not None and not stream_task.done():
             stream_task.cancel()
         if trade_stream_task is not None and not trade_stream_task.done():
             trade_stream_task.cancel()
