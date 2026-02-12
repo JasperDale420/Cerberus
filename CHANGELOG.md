@@ -127,6 +127,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Type-check tooling compatibility cleanup** (2026-02-12):
+  - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.
+  - Added `scripts/__init__.py` to keep script module resolution explicit for imports/type tooling.
+  - Result: mypy plugin bootstrap error is removed; remaining mypy failures are baseline typing debt.
+
 - **Repo hygiene tracking guardrails for generated runtime state** (2026-02-12):
   - Expanded `.gitignore` to prevent accidental tracking of local runtime/generated state:
     - `.claude-flow/`
