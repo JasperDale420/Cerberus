@@ -112,6 +112,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Docker dependency resolution fix for Cerberus image builds** (2026-02-12):
+  - Updated `requirements.txt` to pin `httpx==0.27.2` to satisfy `unusualwhales-python-client==5.0.1` compatibility (`httpx<0.28`).
+  - Updated `requirements.txt` to pin `numpy==2.2.6` to satisfy `pandas-ta -> numba` compatibility (`numba` requires `numpy<2.3`).
+  - Updated `requirements.txt` to pin `pandas==2.3.3` (from `3.0.0`) to restore compatibility with `statsmodels==0.14.4`.
+  - Added missing runtime dependency `pydantic-settings` to `requirements.txt` so Docker runtime matches `pyproject.toml`.
+  - Added missing runtime dependency `pyarrow==21.0.0` to `requirements.txt` and `pyproject.toml` for Heber parquet reads.
+  - Updated `pyproject.toml` runtime dependency bound to `httpx>=0.27,<0.28` so local installs and Docker builds use the same compatible range.
+  - Updated `pyproject.toml` runtime dependency bound to `numpy>=2.2,<2.3` to match the same resolver-safe range.
+  - Updated `pyproject.toml` runtime dependency bound to `pandas>=2.3,<3` to match the runtime-compatible range used by Docker.
+- **Docker build-context reduction for faster local rebuilds** (2026-02-12):
+  - Expanded `.dockerignore` to exclude large runtime/output directories and local artifacts (`results/`, `data/`, DB/log/cache files, local agent state directories).
+  - Prevents multi-GB context uploads during `docker compose build` and improves rebuild speed.
+
 - **Gateway-only dynamic universe ranking fix** (2026-02-11):
   - Updated `src/scanner/universe.py` so dynamic previous-day volume ranking runs when `CentralApiClient` is the only data source.
   - Added regression coverage in `tests/unit/test_universe_builder_unit.py` to ensure gateway-only mode correctly includes top-volume symbols.
