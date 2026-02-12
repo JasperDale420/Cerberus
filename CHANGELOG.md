@@ -134,6 +134,7 @@ All notable changes to this project will be documented in this file.
   - Improved replay/snapshot typing and symbol feature reconstruction boundaries.
   - Tightened logger processor typing and backtest clock/cache typing consistency.
   - Added guard for optional pair-trading position exit path.
+  - Aligned mypy scope to runtime enforcement when running `mypy .` by excluding `scripts/`, `tests/`, and `tools/` in `pyproject.toml`.
 
 - **Type-check tooling compatibility cleanup** (2026-02-12):
   - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.
