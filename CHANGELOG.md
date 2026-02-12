@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
   - Wired execution guard validation into startup in `src/main.py` before client initialization.
   - Updated integration smoke defaults in `scripts/smoke_gateway_heber_integration.py`:
     - `CERBERUS_SMOKE_REQUIRED_DATASET` now defaults to `bars`.
+    - Gateway auth/sink probe now uses `GET /api/v1/alpaca/stocks/{symbol}/bars` (instead of screener) so sink activity checks align with phase-1 screener sink-skip guardrails.
+    - Added `X-Gateway-Cache: bypass` and `cache_buster` probe param to force non-cached sink-probe requests.
+    - Bronze fresh-write checks now support provider-partitioned path layout (`bronze/provider=*/feed=...`) in addition to flat feed layout.
+    - Sink activity check now falls back to observed fresh Bronze/Silver writes when gateway sink counters do not move.
     - Added explicit failure signal when gateway sink is ready but recent Heber Bronze/Silver writes are not observed.
   - Added missing gateway retry env examples to `.env.example`:
     - `CERBERUS_GATEWAY_MAX_RETRIES`

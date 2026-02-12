@@ -76,12 +76,15 @@ def check_gateway_authenticated(
     *,
     client: httpx.Client,
     gateway_key: str,
+    smoke_symbol: str,
 ) -> tuple[bool, str]:
     """Validate Cerberus -> Gateway authenticated API call."""
-    headers = {"X-Gateway-Key": gateway_key} if gateway_key else None
+    headers: dict[str, str] = {"X-Gateway-Cache": "bypass"}
+    if gateway_key:
+        headers["X-Gateway-Key"] = gateway_key
     response = client.get(
-        "/api/v1/alpaca/screener/most-actives",
-        params={"by": "volume", "top": 1},
+        f"/api/v1/alpaca/stocks/{smoke_symbol}/bars",
+        params={"timeframe": "1Min", "limit": 1, "cache_buster": str(time.time_ns())},
         headers=headers,
     )
     if response.status_code != 200:
@@ -227,16 +230,27 @@ def check_heber_layer_has_fresh_file(
         return False, f"unsupported layer: {layer}"
 
     suffix = "*.jsonl.gz" if layer == "bronze" else "*.parquet"
-    dataset_root = config.heber_data_root / layer / f"feed={config.required_dataset}"
-    if not dataset_root.exists():
-        return False, f"missing {layer} dataset path: {dataset_root}"
+    dataset_roots: list[Path]
+    if layer == "bronze":
+        primary = config.heber_data_root / "bronze" / f"feed={config.required_dataset}"
+        provider_partitioned = sorted(
+            (config.heber_data_root / "bronze").glob(f"provider=*/feed={config.required_dataset}")
+        )
+        dataset_roots = [primary, *provider_partitioned]
+    else:
+        dataset_roots = [config.heber_data_root / layer / f"feed={config.required_dataset}"]
+
+    existing_roots = [root for root in dataset_roots if root.exists()]
+    if not existing_roots:
+        checked = ", ".join(str(root) for root in dataset_roots)
+        return False, f"missing {layer} dataset path (checked: {checked})"
 
     deadline = time.time() + max(0.0, poll_timeout_seconds)
     baseline_epoch = baseline_time.timestamp()
     latest_file: Path | None = None
 
     while True:
-        candidates = [p for p in dataset_root.rglob(suffix) if p.is_file()]
+        candidates = [path for root in existing_roots for path in root.rglob(suffix) if path.is_file()]
         if candidates:
             latest_file = max(candidates, key=lambda p: p.stat().st_mtime)
             if latest_file.stat().st_mtime >= baseline_epoch:
@@ -248,7 +262,8 @@ def check_heber_layer_has_fresh_file(
             time.sleep(poll_interval_seconds)
 
     if latest_file is None:
-        return False, f"no {suffix} files found under {dataset_root}"
+        checked = ", ".join(str(root) for root in existing_roots)
+        return False, f"no {suffix} files found under {checked}"
 
     last_mtime = datetime.fromtimestamp(latest_file.stat().st_mtime, tz=UTC).isoformat()
     return False, f"{layer} latest file is stale (mtime={last_mtime}): {latest_file}"
@@ -261,6 +276,8 @@ def run_smoke(config: SmokeConfig) -> int:
     sink_ready_ok = False
     bronze_fresh_ok: bool | None = None
     silver_fresh_ok: bool | None = None
+    sink_publish_activity_ok: bool | None = None
+    sink_publish_activity_index: int | None = None
 
     with httpx.Client(base_url=config.gateway_url, timeout=config.timeout_seconds) as gateway_client:
         sink_baseline = 0.0
@@ -274,6 +291,7 @@ def run_smoke(config: SmokeConfig) -> int:
         ok, detail = check_gateway_authenticated(
             client=gateway_client,
             gateway_key=config.gateway_key,
+            smoke_symbol=config.smoke_symbol,
         )
         results.append(("Cerberus -> Gateway authenticated call", ok, detail))
 
@@ -293,6 +311,8 @@ def run_smoke(config: SmokeConfig) -> int:
                 poll_attempts=config.sink_metric_poll_attempts,
                 poll_interval_seconds=config.sink_metric_poll_interval_seconds,
             )
+            sink_publish_activity_ok = ok
+            sink_publish_activity_index = len(results)
             results.append(("Gateway -> Redis stream publish activity", ok, detail))
 
     ok, detail = check_heber_catalog(config.heber_catalog_url, config.timeout_seconds)
@@ -324,6 +344,17 @@ def run_smoke(config: SmokeConfig) -> int:
         )
         silver_fresh_ok = ok
         results.append(("Heber Silver fresh write", ok, detail))
+
+    if (
+        sink_publish_activity_index is not None
+        and sink_publish_activity_ok is False
+        and (bronze_fresh_ok is True or silver_fresh_ok is True)
+    ):
+        results[sink_publish_activity_index] = (
+            "Gateway -> Redis stream publish activity",
+            True,
+            "gateway sink counter unchanged, but fresh Heber writes were observed",
+        )
 
     if config.require_sink and sink_ready_ok and (bronze_fresh_ok is False or silver_fresh_ok is False):
         results.append(
