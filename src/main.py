@@ -173,10 +173,21 @@ async def async_main():
 
     # Validate startup settings before proceeding
     try:
-        from src.core.settings import validate_startup_settings
+        from src.core.settings import (
+            validate_runtime_execution_requirements,
+            validate_startup_settings,
+        )
 
         validate_startup_settings()
-        bootstrap_logger.info("Startup settings validation passed")
+        validate_runtime_execution_requirements(
+            order_executor=args.order_executor,
+            mode=args.mode,
+        )
+        bootstrap_logger.info(
+            "Startup settings validation passed",
+            order_executor=args.order_executor,
+            mode=args.mode,
+        )
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
         raise

@@ -6,6 +6,21 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Gateway+Heber live-integration kickoff hardening** (2026-02-12):
+  - Added runtime execution guard validation in `src/core/settings.py`:
+    - `validate_runtime_execution_requirements(order_executor, mode)`
+    - Enforces Alpaca credentials whenever `--order-executor=alpaca`, even in gateway data mode.
+  - Wired execution guard validation into startup in `src/main.py` before client initialization.
+  - Updated integration smoke defaults in `scripts/smoke_gateway_heber_integration.py`:
+    - `CERBERUS_SMOKE_REQUIRED_DATASET` now defaults to `bars`.
+    - Added explicit failure signal when gateway sink is ready but recent Heber Bronze/Silver writes are not observed.
+  - Added missing gateway retry env examples to `.env.example`:
+    - `CERBERUS_GATEWAY_MAX_RETRIES`
+    - `CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`
+  - Expanded unit coverage:
+    - `tests/unit/test_startup_validation_unit.py`
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+
 - **Heber shadow parity integration suite for Phase 4 reads** (2026-02-11):
   - Added `tests/integration/test_heber_shadow_parity_integration.py`.
   - Verifies Heber-backed bars/trades match gateway-mode feature inputs when data is equivalent.

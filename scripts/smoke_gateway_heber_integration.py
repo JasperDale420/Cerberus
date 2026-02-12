@@ -64,7 +64,7 @@ class SmokeConfig:
             timeout_seconds=float(os.getenv("CERBERUS_SMOKE_TIMEOUT_SECONDS", "5")),
             require_sink=_env_bool("CERBERUS_SMOKE_REQUIRE_SINK", True),
             require_silver_file=_env_bool("CERBERUS_SMOKE_REQUIRE_SILVER_FILE", True),
-            required_dataset=os.getenv("CERBERUS_SMOKE_REQUIRED_DATASET", "screener"),
+            required_dataset=os.getenv("CERBERUS_SMOKE_REQUIRED_DATASET", "bars"),
             sink_metric_poll_attempts=max(1, int(os.getenv("CERBERUS_SMOKE_SINK_METRIC_POLL_ATTEMPTS", "5"))),
             sink_metric_poll_interval_seconds=float(os.getenv("CERBERUS_SMOKE_SINK_METRIC_POLL_INTERVAL_SECONDS", "1")),
             write_poll_timeout_seconds=float(os.getenv("CERBERUS_SMOKE_WRITE_POLL_TIMEOUT_SECONDS", "45")),
@@ -258,6 +258,9 @@ def run_smoke(config: SmokeConfig) -> int:
     """Run all smoke checks and return process exit code."""
     results: list[tuple[str, bool, str]] = []
     smoke_started_at = datetime.now(UTC)
+    sink_ready_ok = False
+    bronze_fresh_ok: bool | None = None
+    silver_fresh_ok: bool | None = None
 
     with httpx.Client(base_url=config.gateway_url, timeout=config.timeout_seconds) as gateway_client:
         sink_baseline = 0.0
@@ -278,6 +281,7 @@ def run_smoke(config: SmokeConfig) -> int:
             client=gateway_client,
             require_sink=config.require_sink,
         )
+        sink_ready_ok = ok
         results.append(("Gateway -> Redis sink readiness", ok, detail))
 
         if config.require_sink:
@@ -308,6 +312,7 @@ def run_smoke(config: SmokeConfig) -> int:
             poll_timeout_seconds=config.write_poll_timeout_seconds,
             poll_interval_seconds=config.write_poll_interval_seconds,
         )
+        bronze_fresh_ok = ok
         results.append(("Heber Bronze fresh write", ok, detail))
 
         ok, detail = check_heber_layer_has_fresh_file(
@@ -317,7 +322,20 @@ def run_smoke(config: SmokeConfig) -> int:
             poll_timeout_seconds=config.write_poll_timeout_seconds,
             poll_interval_seconds=config.write_poll_interval_seconds,
         )
+        silver_fresh_ok = ok
         results.append(("Heber Silver fresh write", ok, detail))
+
+    if config.require_sink and sink_ready_ok and (bronze_fresh_ok is False or silver_fresh_ok is False):
+        results.append(
+            (
+                "Gateway sink -> Heber write propagation",
+                False,
+                (
+                    "Gateway sink is ready but no recent Heber writes were observed. "
+                    "Check Heber consumer/watcher health and ingest contract mappings."
+                ),
+            )
+        )
 
     failed = 0
     for name, ok, detail in results:

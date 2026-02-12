@@ -154,3 +154,29 @@ def validate_startup_settings() -> None:
     if errors:
         error_msg = "Startup configuration validation failed:\n" + "\n".join(f"  - {err}" for err in errors)
         raise ValueError(error_msg)
+
+
+def validate_runtime_execution_requirements(order_executor: str, mode: str) -> None:
+    """Validate runtime execution requirements based on the selected order executor.
+
+    Raises:
+        ValueError: If required credentials for the selected execution mode are missing.
+    """
+    settings = get_settings()
+    normalized_executor = str(order_executor).strip().lower()
+    normalized_mode = str(mode).strip().lower()
+    errors: list[str] = []
+
+    if normalized_executor == "alpaca":
+        if not settings.resolved_api_key:
+            errors.append("ALPACA_API_KEY (or APCA_API_KEY_ID) required when order_executor=alpaca")
+        if not settings.resolved_secret_key:
+            errors.append("ALPACA_SECRET_KEY (or APCA_API_SECRET_KEY) required when order_executor=alpaca")
+
+    if errors:
+        error_msg = (
+            "Order executor validation failed "
+            f"(order_executor={normalized_executor}, mode={normalized_mode}):\n"
+            + "\n".join(f"  - {err}" for err in errors)
+        )
+        raise ValueError(error_msg)

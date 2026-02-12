@@ -14,6 +14,7 @@ from scripts.smoke_gateway_heber_integration import (
     check_gateway_sink_ready,
     check_heber_layer_has_fresh_file,
     check_heber_silver_partition,
+    run_smoke,
 )
 
 
@@ -150,3 +151,71 @@ def test_check_heber_layer_has_fresh_file_checks_modified_time(tmp_path: Path) -
 
     assert ok is True
     assert "fresh" in detail.lower()
+
+
+def test_smoke_config_defaults_required_dataset_to_bars(monkeypatch) -> None:
+    monkeypatch.delenv("CERBERUS_SMOKE_REQUIRED_DATASET", raising=False)
+    config = SmokeConfig.from_env()
+    assert config.required_dataset == "bars"
+
+
+def test_run_smoke_emits_explicit_message_when_sink_ready_but_no_recent_writes(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    config = SmokeConfig(
+        gateway_url="http://gateway.test",
+        gateway_key="gw_test_key",
+        heber_catalog_url="http://heber.test/api/v1",
+        heber_data_root=tmp_path,
+        smoke_symbol="AAPL",
+        timeout_seconds=5.0,
+        require_sink=True,
+        require_silver_file=True,
+        required_dataset="bars",
+        sink_metric_poll_attempts=1,
+        sink_metric_poll_interval_seconds=0.0,
+        write_poll_timeout_seconds=0.0,
+        write_poll_interval_seconds=0.0,
+    )
+
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration._read_sink_publish_success_total",
+        lambda **_: (True, 10.0, "metrics ok"),
+    )
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_gateway_authenticated",
+        lambda **_: (True, "gateway authenticated call ok"),
+    )
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_gateway_sink_ready",
+        lambda **_: (True, "gateway readiness and sink checks ok"),
+    )
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_gateway_sink_publish_activity",
+        lambda **_: (True, "sink publish activity observed"),
+    )
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_heber_catalog",
+        lambda *_, **__: (True, "heber catalog datasets endpoint ok"),
+    )
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_heber_silver_partition",
+        lambda *_: (True, "Silver parquet found"),
+    )
+
+    def _stale_layer(**kwargs):
+        layer = kwargs["layer"]
+        return False, f"{layer} latest file is stale"
+
+    monkeypatch.setattr(
+        "scripts.smoke_gateway_heber_integration.check_heber_layer_has_fresh_file",
+        _stale_layer,
+    )
+
+    code = run_smoke(config)
+    output = capsys.readouterr().out
+
+    assert code == 1
+    assert "Gateway sink is ready but no recent Heber writes were observed" in output
