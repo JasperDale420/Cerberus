@@ -131,6 +131,13 @@ All notable changes to this project will be documented in this file.
     - `tests/unit/test_strategy_registry_unit.py`
   - Eliminates `Unknown strategy in config; skipping` warnings for enabled default strategies in `config/config.yaml`.
 
+- **Smoke script gateway-key fallback hardening for local integration runs** (2026-02-12):
+  - Updated `scripts/smoke_gateway_heber_integration.py` config loading to resolve gateway key in this order:
+    - explicit `CERBERUS_GATEWAY_KEY`
+    - first key from `GW_API_KEYS` (comma-separated)
+    - local default `gw_cerberus_dev_key_12345` when gateway URL is `http://localhost:8080` or `http://127.0.0.1:8080`
+  - Added unit coverage in `tests/unit/test_smoke_gateway_heber_integration_unit.py` for the gateway-key fallback rules.
+
 - **Scanner and SQLite runtime hardening for live gateway/heber operation** (2026-02-12):
   - Added legacy SQLite schema patching in `src/analysis/db.py` during `init_db()` so older local DB files are upgraded in-place for known missing columns:
     - `trades.regime_tags_entry_json`

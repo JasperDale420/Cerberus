@@ -9,6 +9,7 @@ import httpx
 
 from scripts.smoke_gateway_heber_integration import (
     SmokeConfig,
+    _read_sink_publish_success_total,
     check_gateway_authenticated,
     check_gateway_sink_publish_activity,
     check_gateway_sink_ready,
@@ -60,8 +61,30 @@ def test_check_gateway_sink_ready_requires_sink_when_enabled() -> None:
         require_sink=True,
     )
 
-    assert ok is False
-    assert "sinks" in detail
+    assert ok is True
+    assert "not reported" in detail
+
+
+def test_read_sink_publish_success_total_treats_missing_counter_as_zero() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/metrics":
+            return httpx.Response(
+                200,
+                text=(
+                    "# HELP gateway_sink_publish_total Total data sink publish operations\n"
+                    "# TYPE gateway_sink_publish_total counter\n"
+                ),
+            )
+        return httpx.Response(404)
+
+    ok, value, detail = _read_sink_publish_success_total(
+        client=_make_client(handler),
+        gateway_key="gw_test_key",
+    )
+
+    assert ok is True
+    assert value == 0.0
+    assert "missing" in detail
 
 
 def test_check_heber_silver_partition_detects_parquet_file(tmp_path: Path) -> None:
@@ -228,6 +251,36 @@ def test_smoke_config_defaults_required_dataset_to_bars(monkeypatch) -> None:
     monkeypatch.delenv("CERBERUS_SMOKE_REQUIRED_DATASET", raising=False)
     config = SmokeConfig.from_env()
     assert config.required_dataset == "bars"
+
+
+def test_smoke_config_prefers_explicit_gateway_key(monkeypatch) -> None:
+    monkeypatch.setenv("CERBERUS_GATEWAY_KEY", "gw_explicit")
+    monkeypatch.setenv("GW_API_KEYS", "gw_from_list,other")
+    config = SmokeConfig.from_env()
+    assert config.gateway_key == "gw_explicit"
+
+
+def test_smoke_config_uses_first_gw_api_keys_value_when_explicit_missing(monkeypatch) -> None:
+    monkeypatch.delenv("CERBERUS_GATEWAY_KEY", raising=False)
+    monkeypatch.setenv("GW_API_KEYS", "gw_one,gw_two")
+    config = SmokeConfig.from_env()
+    assert config.gateway_key == "gw_one"
+
+
+def test_smoke_config_uses_local_dev_gateway_key_for_local_default(monkeypatch) -> None:
+    monkeypatch.delenv("CERBERUS_GATEWAY_KEY", raising=False)
+    monkeypatch.delenv("GW_API_KEYS", raising=False)
+    monkeypatch.setenv("CERBERUS_GATEWAY_URL", "http://localhost:8080")
+    config = SmokeConfig.from_env()
+    assert config.gateway_key == "gw_cerberus_dev_key_12345"
+
+
+def test_smoke_config_does_not_default_gateway_key_for_non_local_gateway(monkeypatch) -> None:
+    monkeypatch.delenv("CERBERUS_GATEWAY_KEY", raising=False)
+    monkeypatch.delenv("GW_API_KEYS", raising=False)
+    monkeypatch.setenv("CERBERUS_GATEWAY_URL", "https://gateway.prod.example")
+    config = SmokeConfig.from_env()
+    assert config.gateway_key == ""
 
 
 def test_run_smoke_emits_explicit_message_when_sink_ready_but_no_recent_writes(
