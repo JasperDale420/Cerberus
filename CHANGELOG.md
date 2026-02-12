@@ -142,6 +142,11 @@ All notable changes to this project will be documented in this file.
   - Added compatibility-safe typing updates to helper tooling under `tools/`.
   - Result: `mypy .` now passes across `399` files.
 
+- **Heber partitioned parquet read compatibility fix** (2026-02-12):
+  - Updated `src/data/heber_read_client.py` to read parquet files via `pyarrow.parquet.ParquetFile(...).read()`.
+  - Prevents partition schema merge conflicts when directory partitions include `feed=...` and the parquet file also contains a dictionary-encoded `feed` column.
+  - Added regression coverage in `tests/unit/test_heber_read_client_unit.py` for partitioned `bars` files with dictionary-encoded `feed`.
+
 - **Type-check tooling compatibility cleanup** (2026-02-12):
   - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.
   - Added `scripts/__init__.py` to keep script module resolution explicit for imports/type tooling.
