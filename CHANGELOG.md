@@ -120,6 +120,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Repo hygiene tracking guardrails for generated runtime state** (2026-02-12):
+  - Expanded `.gitignore` to prevent accidental tracking of local runtime/generated state:
+    - `.claude-flow/`
+    - `.swarm/`
+    - `.scannerwork/`
+    - `logs/tests/full_test_output*.txt`
+  - Removed tracked generated runtime files from version control so future local state does not appear as repo changes.
+
 - **Strategy registry parity fix for runtime/backtest startup** (2026-02-12):
   - Updated `src/main.py` runtime strategy registry to include:
     - `trend_pullback`
