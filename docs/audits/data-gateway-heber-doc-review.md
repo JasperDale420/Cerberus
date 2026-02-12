@@ -76,6 +76,10 @@
 - Gateway failover behavior and dual parity diagnostics.
 - Heber shadow read path via `HeberReadClient` with anti-leakage gate.
 - Startup validation and health probes for gateway/heber paths.
+- Local environment smoke validated on 2026-02-12:
+  - Gateway readiness (`checks.sinks=ok`)
+  - Heber catalog reachable with seeded datasets
+  - Fresh Bronze/Silver writes observed during smoke probe
 
 ### Still planned (Cerberus)
 - Full live cutover to gateway + heber in production runtime.

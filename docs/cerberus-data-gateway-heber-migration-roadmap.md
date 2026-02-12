@@ -24,10 +24,10 @@ Gateway/Heber dependency toggles (outside Cerberus repo):
 - `HEBER_REDIS_DLQ_STREAM_NAME=heber:events:dlq`
 
 ## Phase Status Overview
-- Phase 0 (pre-hardening): **partially implemented in Cerberus**
+- Phase 0 (pre-hardening): **implemented in Cerberus; local environment validation completed (2026-02-12)**
 - Phase 1 (gateway adapter cut-in): **implemented in Cerberus**
-- Phase 2 (Gateway stream sink): **cross-repo pending (Data-Gateway/Heber)**
-- Phase 3 (Heber shadow reads): **implemented in Cerberus shadow mode; broader rollout pending**
+- Phase 2 (Gateway stream sink): **cross-repo implemented and locally validated; sustained-load validation pending**
+- Phase 3 (Heber shadow reads): **implemented in Cerberus shadow mode; local smoke validated; broader rollout pending**
 - Phase 4 (live cutover): **pending**
 - Phase 5 (legacy decommission): **pending**
 
@@ -39,7 +39,7 @@ Gateway/Heber dependency toggles (outside Cerberus repo):
 - Env-backed routing flags centralized in runtime settings.
 
 ### Remaining
-- Environment-level validation of Redis/Postgres/data-root in target deployed environments.
+- Repeat environment-level validation in the actual market-session deployment target before live-tiny promotion.
 
 ### Evidence (Cerberus)
 - `/Users/jacobmcmillan/Empire/Cerberus/src/core/settings.py`
@@ -72,13 +72,15 @@ Gateway/Heber dependency toggles (outside Cerberus repo):
 Enable canonical Gateway stream publication and verify Heber ingestion.
 
 ### Status
-**Pending in this repo (cross-repo dependency).**
-Cerberus does not own sink/consumer implementation.
+**Cross-repo dependency; local validation complete, sustained-load validation pending.**
+Cerberus does not own sink/consumer implementation, but local stack validation confirms:
+- Gateway readiness includes `checks.sinks=ok`.
+- Cerberus-critical routes emit canonical stream feeds (`bars`, `trades`, `flow_alerts`, `greek_exposure`).
 
 ### Needed evidence (outside Cerberus)
-- Gateway sink enabled and stable.
-- Heber consumer writes healthy with bounded DLQ.
-- Stream topic alignment validated in deployed environment.
+- Gateway sink enabled and stable under market-session load.
+- Heber consumer writes healthy with bounded DLQ during soak windows.
+- Stream topic alignment validated in deployment target used for live-tiny.
 
 ## Phase 3: Heber Read Introduction (Shadow)
 
@@ -90,7 +92,7 @@ Cerberus does not own sink/consumer implementation.
 
 ### Remaining
 - Expand adoption to all offline replay/analysis paths listed in project roadmap.
-- Validate multi-session operational stability in real environment.
+- Validate multi-session operational stability in real environment (local one-command smoke passed on 2026-02-12).
 
 ### Evidence (Cerberus)
 - `/Users/jacobmcmillan/Empire/Cerberus/src/data/heber_read_client.py`
@@ -104,8 +106,8 @@ Cerberus does not own sink/consumer implementation.
 
 ### Planned actions
 - Set `CERBERUS_DATA_BACKEND=gateway`.
-- Set `CERBERUS_STORAGE_BACKEND=heber|dual`.
-- Keep `CERBERUS_FAILOVER_TO_LEGACY=true` during confidence window.
+- Set `CERBERUS_STORAGE_BACKEND=heber|dual` (current Docker default is `dual` for shadow safety).
+- Keep `CERBERUS_FAILOVER_TO_LEGACY=false` when running gateway-only/noop without local Alpaca credentials.
 
 ### Hard stop criteria
 - Sustained Gateway `5xx`/transport failure.

@@ -12,6 +12,7 @@ from scripts.smoke_gateway_heber_integration import (
     check_gateway_authenticated,
     check_gateway_sink_publish_activity,
     check_gateway_sink_ready,
+    check_heber_catalog,
     check_heber_layer_has_fresh_file,
     check_heber_silver_partition,
     run_smoke,
@@ -87,6 +88,34 @@ def test_check_heber_silver_partition_detects_parquet_file(tmp_path: Path) -> No
     ok, detail = check_heber_silver_partition(config)
     assert ok is True
     assert "parquet" in detail.lower()
+
+
+def test_check_heber_catalog_fails_when_dataset_inventory_is_empty(
+    monkeypatch,
+) -> None:
+    def _fake_get(*_args, **_kwargs):
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr("scripts.smoke_gateway_heber_integration.httpx.get", _fake_get)
+
+    ok, detail = check_heber_catalog("http://heber.test/api/v1", timeout_seconds=5.0)
+
+    assert ok is False
+    assert "no datasets" in detail
+
+
+def test_check_heber_catalog_accepts_non_empty_inventory(
+    monkeypatch,
+) -> None:
+    def _fake_get(*_args, **_kwargs):
+        return httpx.Response(200, json={"data": [{"dataset_name": "bars"}]})
+
+    monkeypatch.setattr("scripts.smoke_gateway_heber_integration.httpx.get", _fake_get)
+
+    ok, detail = check_heber_catalog("http://heber.test/api/v1", timeout_seconds=5.0)
+
+    assert ok is True
+    assert "ok" in detail.lower()
 
 
 def test_check_gateway_sink_publish_activity_observes_metrics_growth() -> None:

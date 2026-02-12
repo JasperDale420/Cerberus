@@ -16,6 +16,8 @@ This document is the source of truth for environment variables used by Cerberus.
 
 Conditional rule:
 - Alpaca credentials are required in `legacy` mode, and in `dual` mode when `CERBERUS_FAILOVER_TO_LEGACY=true`.
+- Alpaca credentials are also required when running with `--order-executor alpaca`.
+- In `gateway + noop + CERBERUS_FAILOVER_TO_LEGACY=false`, Cerberus market-data runtime can start without local Alpaca credentials.
 
 ## Unusual Whales
 

@@ -5,6 +5,7 @@
 - `[~] Implemented + validated by tests in Cerberus repo`
 - `[ ] Pending in Cerberus repo`
 - `[D] Cross-repo dependency (Data-Gateway/Heber)`
+- `[D~] Cross-repo dependency validated in local stack (not owned by Cerberus)`
 
 ## How To Use This
 - Execute phases in order.
@@ -16,12 +17,12 @@
 - `[x]` Integration env vars added in runtime settings (`src/core/settings.py`).
 - `[x]` Startup validation for gateway/heber/legacy mode requirements.
 - `[x]` Gateway/Heber connectivity health checks in `src/core/health.py`.
-- `[ ]` Environment-level verification of target Redis/Postgres/data-root for deployment.
+- `[~]` Environment-level verification completed for local target stack (`gateway:8080`, `heber-catalog:8085`, Redis stream `heber:events`, Heber data root `/Volumes/heber/data`) on 2026-02-12.
 
 ### Gate
 - `[x]` Smoke harness script exists: `scripts/smoke_gateway_heber_integration.py`.
 - `[x]` Smoke harness unit test exists: `tests/unit/test_smoke_gateway_heber_integration_unit.py`.
-- `[ ]` End-to-end environment smoke run completed and recorded for target deployment.
+- `[~]` End-to-end environment smoke run completed and recorded for local target deployment on 2026-02-12 (`8/8 checks passed`).
 
 ## Phase 1: Cerberus Data Adapter Cut-In (No Behavior Change)
 
@@ -45,14 +46,14 @@
 - `[~]` `CERBERUS_DATA_BACKEND=dual` parity diagnostics validated.
 
 ## Phase 2: Data-Gateway Stream Sink Activation
-- `[D]` Sink initialization, dispatch limits, and startup logs in Data-Gateway.
-- `[D]` Backpressure/drop metrics and behavior under load.
-- `[D]` Stream publish reliability tests in Data-Gateway.
+- `[D~]` Sink initialization and startup readiness validated in local stack (`/health/ready` returned `checks.sinks=ok` on 2026-02-12).
+- `[D]` Backpressure/drop metrics and behavior under sustained production load.
+- `[D~]` Stream publish contract and route/feed mapping tests validated in Data-Gateway (`tests/test_middleware_streaming.py`, including Cerberus-critical routes).
 
 ## Phase 3: Heber Consumer and Silver Validation
-- `[D]` Envelope compatibility checks in Heber consumer and schemas.
-- `[D]` Retry/DLQ behavior validation in Heber consumer runtime.
-- `[D]` Silver schema alignment for bars/trades/quotes/flow feeds.
+- `[D~]` Envelope/feed compatibility validated for Cerberus-critical routes (`bars`, `trades`, `flow_alerts`, `greek_exposure`) in local stream events on 2026-02-12.
+- `[D]` Retry/DLQ behavior validation under sustained production profile.
+- `[D~]` Silver schema alignment validated for Cerberus-critical feeds with active Bronze/Silver writes observed during smoke run on 2026-02-12.
 
 ## Phase 4: Cerberus Heber Read Integration (Shadow)
 

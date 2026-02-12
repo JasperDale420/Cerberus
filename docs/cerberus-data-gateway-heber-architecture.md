@@ -17,6 +17,11 @@ Configured in `/Users/jacobmcmillan/Empire/Cerberus/src/core/settings.py`:
 - `CERBERUS_FAILOVER_TO_LEGACY=true|false`
 - `CERBERUS_DUAL_READ_COMPARE=true|false`
 
+Current Docker runtime defaults in this repo:
+- `CERBERUS_DATA_BACKEND=gateway`
+- `CERBERUS_STORAGE_BACKEND=dual`
+- `CERBERUS_FAILOVER_TO_LEGACY=false`
+
 ### Read-path routing in Cerberus
 Implemented in `/Users/jacobmcmillan/Empire/Cerberus/src/data/fetcher.py`:
 - `legacy`: reads via direct provider clients (`AlpacaClient`, `UnusualWhalesClient`).
@@ -147,6 +152,7 @@ flowchart LR
   - Gateway key for Data-Gateway calls.
   - Heber catalog/data-root access for historical reads.
 - Provider keys in Cerberus should be retained only while legacy/failover paths are still active.
+- In `gateway + noop + failover=false` runtime, Cerberus can run without local Alpaca credentials for market-data reads.
 
 ## Non-Goals
 - No change to Cerberus order execution ownership.

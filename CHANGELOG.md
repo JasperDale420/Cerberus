@@ -85,6 +85,14 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- **Gateway/Heber integration status refresh for market-session readiness** (2026-02-12):
+  - Updated integration status docs to reflect local validation completed on 2026-02-12:
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
+    - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+    - `docs/cerberus-data-gateway-heber-architecture.md`
+    - `docs/audits/data-gateway-heber-doc-review.md`
+  - Updated `docs/environment-variables.md` to clarify Alpaca credential requirements by runtime mode and order executor.
+
 - **Data-Gateway/Heber docs alignment review** (2026-02-11):
   - Updated migration docs to match current Cerberus runtime behavior and test evidence:
     - `docs/cerberus-data-gateway-heber-architecture.md`
@@ -111,6 +119,17 @@ All notable changes to this project will be documented in this file.
 - Removed stale auto-generated `codebase.md`.
 
 ### Changed
+
+- **Heber catalog smoke gate + Docker runtime defaults for integration kickoff** (2026-02-12):
+  - Updated `scripts/smoke_gateway_heber_integration.py` to fail when catalog datasets endpoint is reachable but empty (forces catalog seed before go-live).
+  - Added unit coverage for non-empty catalog inventory requirement in:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+  - Updated `docker-compose.yml` runtime defaults for Cerberus trader/scheduler to include Heber dual-read shadow wiring:
+    - `CERBERUS_STORAGE_BACKEND=dual`
+    - `CERBERUS_HEBER_CATALOG_URL=http://host.docker.internal:8085/api/v1`
+    - `CERBERUS_HEBER_DATA_ROOT=/Volumes/heber/data`
+    - read-only mount: `/Volumes/heber/data:/Volumes/heber/data:ro`
+  - Updated `.env.example` integration block to reflect dual storage default and Heber data root example.
 
 - **Gateway-only startup profile for local Docker runtime** (2026-02-12):
   - Updated `docker-compose.yml` trader command to `--order-executor noop` for gateway-only paper startup without local Alpaca keys.

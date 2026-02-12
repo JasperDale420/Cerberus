@@ -199,6 +199,15 @@ def check_heber_catalog(catalog_url: str, timeout_seconds: float) -> tuple[bool,
     response = httpx.get(datasets_url, timeout=timeout_seconds)
     if response.status_code != 200:
         return False, f"heber catalog datasets call failed with HTTP {response.status_code}"
+    payload = response.json()
+    datasets: list[Any] = []
+    if isinstance(payload, dict):
+        if isinstance(payload.get("data"), list):
+            datasets = payload["data"]
+        elif isinstance(payload.get("items"), list):
+            datasets = payload["items"]
+    if not datasets:
+        return False, "heber catalog datasets endpoint returned no datasets; run catalog seed before go-live"
     return True, "heber catalog datasets endpoint ok"
 
 
