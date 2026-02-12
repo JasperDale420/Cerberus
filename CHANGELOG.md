@@ -138,6 +138,14 @@ All notable changes to this project will be documented in this file.
     - local default `gw_cerberus_dev_key_12345` when gateway URL is `http://localhost:8080` or `http://127.0.0.1:8080`
   - Added unit coverage in `tests/unit/test_smoke_gateway_heber_integration_unit.py` for the gateway-key fallback rules.
 
+- **Soak monitor reliability and local-default auth hardening** (2026-02-12):
+  - Updated `scripts/soak_gateway_heber_monitor.py` to resolve gateway key in this order:
+    - explicit `CERBERUS_GATEWAY_KEY`
+    - first key from `GW_API_KEYS`
+    - local default `gw_cerberus_dev_key_12345` for localhost gateway URLs
+  - Updated soak pass/fail logic so a flat gateway sink metric does not fail the soak when Redis stream growth and fresh Bronze/Silver writes are observed.
+  - Added regression coverage in `tests/unit/test_soak_gateway_heber_monitor_unit.py` for key resolution and sink-metric fallback behavior.
+
 - **Scanner and SQLite runtime hardening for live gateway/heber operation** (2026-02-12):
   - Added legacy SQLite schema patching in `src/analysis/db.py` during `init_db()` so older local DB files are upgraded in-place for known missing columns:
     - `trades.regime_tags_entry_json`
