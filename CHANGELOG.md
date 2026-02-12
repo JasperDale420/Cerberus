@@ -85,6 +85,13 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- **Pre-market log reset + deep repo hygiene audit** (2026-02-12):
+  - Added deep hygiene audit artifact:
+    - `docs/audits/repo-hygiene-deep-audit-2026-02-12.md`
+  - Updated repository hygiene policy and pre-market reset checklist:
+    - `docs/REPO_AUDIT.md`
+  - Recorded archive/remediation outcomes for generated runtime outputs and tracking guardrails.
+
 - **Gateway/Heber integration status refresh for market-session readiness** (2026-02-12):
   - Updated integration status docs to reflect local validation completed on 2026-02-12:
     - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
