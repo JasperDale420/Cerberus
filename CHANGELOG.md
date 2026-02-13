@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Heber Parquet Race Condition** (2026-02-13):
+  - Added retry logic to `HeberReadClient._read_parquet_rows` to handle transient `FileNotFoundError` during Heber's Silver partition compaction/rotation.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).

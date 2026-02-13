@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -171,19 +172,36 @@ class HeberReadClient:
         return files
 
     def _read_parquet_rows(self, dataset: str, parquet_file: Path) -> list[dict[str, Any]]:
-        try:
-            # Read the file directly to avoid hive-partition schema merge conflicts
-            # from path segments like feed=bars when the file also contains `feed`.
-            table = pq.ParquetFile(parquet_file).read()
-            return list(table.to_pylist())
-        except Exception as e:
-            self.logger.warning(
-                "Failed to read Heber parquet file",
-                dataset=dataset,
-                file=str(parquet_file),
-                error=f"{type(e).__name__}: {e}",
-            )
-            return []
+        max_retries = 3
+        retry_delay = 0.5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                # Read the file directly to avoid hive-partition schema merge conflicts
+                # from path segments like feed=bars when the file also contains `feed`.
+                table = pq.ParquetFile(parquet_file).read()
+                return list(table.to_pylist())
+            except FileNotFoundError:
+                if attempt < max_retries - 1:
+                    # File might be rotating/compacting — retry after brief pause
+                    time.sleep(retry_delay)
+                    continue
+                # If still missing after retries, log as warning and skip
+                self.logger.warning(
+                    "Heber parquet file missing (race condition)",
+                    dataset=dataset,
+                    file=str(parquet_file),
+                )
+                return []
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to read Heber parquet file",
+                    dataset=dataset,
+                    file=str(parquet_file),
+                    error=f"{type(e).__name__}: {e}",
+                )
+                return []
+        return []
 
     @staticmethod
     def _extract_partition_date(parquet_file: Path) -> date | None:
