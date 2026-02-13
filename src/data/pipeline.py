@@ -69,6 +69,10 @@ class FeaturePipeline:
         start = end - timedelta(hours=24)
         return start, end
 
+    def _extract_closes(self, bars_data: List[Any]) -> List[float]:
+        """Extract close prices from bar objects/dicts (fast, allocation-light)."""
+        return [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
         start, end = self._calculate_fetch_window(as_of)
         bars_data, fetch_metrics = await self.fetcher.fetch_bars(sym, start, end, "1Min")
@@ -206,10 +210,12 @@ class FeaturePipeline:
                     return sym, None, local
 
                 # 2b. Compute Relative Strength if benchmark available
+                closes: Optional[List[float]] = None
                 if benchmark_closes and bars_data:
-                    sym_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    # Performance: extract closes once to avoid a second full pass later.
+                    closes = self._extract_closes(bars_data)
                     tech_result.relative_strength = self.calculator.calculate_relative_strength(
-                        sym_closes, benchmark_closes
+                        closes, benchmark_closes
                     )
 
                 # 3. Fetch Supplementary Data
@@ -223,7 +229,8 @@ class FeaturePipeline:
 
                 # 4b. Compute Statistical Alpha (FracDiff & Hurst)
                 if bars_data:
-                    closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    if closes is None:
+                        closes = self._extract_closes(bars_data)
                     tech_result.frac_diff_close = self.calculator.apply_frac_diff(closes, d=0.4)
                     tech_result.hurst_exponent = self.calculator.calculate_hurst_exponent(closes)
 
