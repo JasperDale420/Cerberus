@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
 - Health monitor now resets invalid error counters with warning logs, with unit coverage (2026-02-13).
+- Gap Fill opening-range minimum filter added with micro backtest coverage (2026-02-13).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:

@@ -32,6 +32,7 @@ class GapFillStrategy(BaseStrategy):
         self.max_gap = cfg.max_gap
         self.risk_reward = cfg.risk_reward
         self.or_time_minutes = cfg.or_time_minutes
+        self.min_or_range_pct = cfg.min_or_range_pct
         self.weak_trend_max_score = cfg.weak_trend_max_score
 
     def on_bar(
@@ -121,10 +122,28 @@ class GapFillStrategy(BaseStrategy):
 
         or_high = max(b.high for b in or_bars)
         or_low = min(b.low for b in or_bars)
+        open_price = float(or_bars[0].open)
+
+        if float(self.min_or_range_pct) > 0:
+            if open_price <= 0:
+                self.logger.warning(
+                    "GapFill: Invalid open price for opening range filter",
+                    symbol=symbol,
+                    open_price=open_price,
+                )
+                return None
+            or_range_pct = (or_high - or_low) / open_price
+            if or_range_pct < float(self.min_or_range_pct):
+                self.logger.debug(
+                    "GapFill: Opening range too small",
+                    symbol=symbol,
+                    or_range_pct=round(or_range_pct * 100, 3),
+                    min_or_range_pct=round(float(self.min_or_range_pct) * 100, 3),
+                )
+                return None
 
         # Fade gap up (short): breakdown below OR low.
         if gap_up and bar.close < or_low:
-            open_price = float(or_bars[0].open)
             # P0 fix: Guard against division by zero (100% gap down = gap_pct = -1.0)
             if abs(1.0 + gap_pct) < 1e-9:
                 return None
@@ -149,7 +168,6 @@ class GapFillStrategy(BaseStrategy):
 
         # Fade gap down (long): breakout above OR high.
         if gap_down and bar.close > or_high:
-            open_price = float(or_bars[0].open)
             # P0 fix: Guard against division by zero
             if abs(1.0 + gap_pct) < 1e-9:
                 return None

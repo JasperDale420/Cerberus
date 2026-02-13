@@ -134,6 +134,11 @@ class GapFillConfig(BaseStrategyConfig):
     max_gap: float = Field(default=0.10, ge=0, description="Maximum gap percentage (10%)")
     risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     or_time_minutes: int = Field(default=15, ge=1, description="Opening range time window in minutes")
+    min_or_range_pct: float = Field(
+        default=0.0,
+        ge=0,
+        description="Minimum opening range size as percentage of open price",
+    )
     weak_trend_max_score: float = Field(default=1.0, ge=0, description="Max trend score for entry (weak trend filter)")
 
 
