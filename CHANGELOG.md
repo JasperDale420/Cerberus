@@ -81,6 +81,10 @@ All notable changes to this project will be documented in this file.
     - `tests/unit/test_gateway_order_executor_unit.py`
     - `tests/contract/test_central_api_client_contract.py` order-submit contract
     - `tests/unit/test_startup_validation_unit.py` gateway/paper defaults assertion
+  - Added gateway live-stream ingestion path:
+    - New `src/data/gateway_stream.py` WebSocket client for `ws://.../ws` auth + `stock_bars` subscriptions.
+    - Updated `src/main.py` to stream bars via Data-Gateway when `CERBERUS_DATA_BACKEND=gateway|dual`, while retaining Alpaca stream for legacy mode.
+    - Added unit coverage in `tests/unit/test_gateway_stream_client_unit.py`.
 
 - **Central API retry classification for gateway integration** (2026-02-11):
   - Added status-aware retry policy in `src/data/api_client.py`:
