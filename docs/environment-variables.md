@@ -9,7 +9,7 @@ This document is the source of truth for environment variables used by Cerberus.
 | `ALPACA_API_KEY` | Yes (or `APCA_API_KEY_ID`) | none | `src/data/alpaca.py`, `src/core/settings.py` | Alpaca API key |
 | `ALPACA_SECRET_KEY` | Yes (or `APCA_API_SECRET_KEY`) | none | `src/data/alpaca.py`, `src/core/settings.py` | Alpaca API secret |
 | `ALPACA_BASE_URL` | No | none | `src/core/settings.py` | Alpaca REST base URL alias |
-| `ALPACA_PAPER` | No | `false` | `src/data/alpaca.py`, `src/core/settings.py` | Paper/live flag |
+| `ALPACA_PAPER` | No | `true` | `src/data/alpaca.py`, `src/core/settings.py` | Paper/live flag |
 | `APCA_API_KEY_ID` | Yes (alias) | none | `src/core/settings.py` | Alpaca key alias |
 | `APCA_API_SECRET_KEY` | Yes (alias) | none | `src/core/settings.py` | Alpaca secret alias |
 | `APCA_API_BASE_URL` | No (alias) | none | `src/core/settings.py` | Alpaca base URL alias |
@@ -32,7 +32,7 @@ This document is the source of truth for environment variables used by Cerberus.
 
 | Variable | Required | Default | Used By | Description |
 |---|---|---|---|---|
-| `CERBERUS_DATA_BACKEND` | No | `legacy` | `src/core/settings.py`, `src/core/health.py` | Data read mode: `legacy`, `gateway`, `dual` |
+| `CERBERUS_DATA_BACKEND` | No | `gateway` | `src/core/settings.py`, `src/core/health.py` | Data read mode: `legacy`, `gateway`, `dual` |
 | `CERBERUS_STORAGE_BACKEND` | No | `sqlite` | `src/core/settings.py` | Storage mode: `sqlite`, `heber`, `dual` |
 | `CERBERUS_GATEWAY_URL` | No | `http://localhost:8080` | `src/core/settings.py`, `src/data/api_client.py`, `src/core/health.py` | Base URL for Data-Gateway |
 | `CERBERUS_GATEWAY_KEY` | No | empty | `src/core/settings.py`, `src/data/api_client.py`, `src/core/health.py` | API key sent as `X-Gateway-Key` |

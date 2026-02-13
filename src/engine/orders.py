@@ -17,6 +17,7 @@ from src.analysis.schema import Order as DbOrder
 from src.core.domain import OrderIntent
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+from src.data.api_client import CentralApiClient
 
 
 def _truncate(value: Any, *, limit: int) -> str:
@@ -494,6 +495,205 @@ class OrderExecutor:
             out["fill_price"] = price
 
         return out
+
+
+class GatewayOrderExecutor:
+    """Order executor that routes trading operations through Data-Gateway."""
+
+    broker_managed_exits: bool = False
+
+    def __init__(
+        self,
+        central_api_client: CentralApiClient,
+        logger: StructuredLogger,
+        db: Optional[DatabaseDatabase] = None,
+        clock: Optional[Callable[[], datetime]] = None,
+    ):
+        self.central_api_client = central_api_client
+        self.logger = logger
+        self.db = db
+        self.clock: Callable[[], datetime] = clock or (
+            lambda: datetime.now(timezone.utc)
+        )
+
+    def configure_advanced_exits(self, risk_cfg: dict) -> None:
+        """Gateway execution uses local exit management; keep broker exits disabled."""
+        self.broker_managed_exits = False
+        self.logger.info("Gateway order executor configured", broker_managed_exits=False)
+
+    def submit(self, intent: OrderIntent) -> dict[str, Any]:
+        """Submit an order via Data-Gateway Alpaca trading endpoint."""
+        _bind = getattr(self.logger, "bind", None)
+        log = (
+            _bind(
+                symbol=intent.symbol,
+                strategy=intent.strategy,
+                correlation_id=intent.correlation_id,
+            )
+            if callable(_bind)
+            else self.logger
+        )
+        try:
+            order = self.central_api_client.submit_alpaca_order(
+                symbol=intent.symbol,
+                side=intent.side.value,
+                qty=float(intent.qty),
+                order_type=intent.order_type.value,
+                time_in_force=intent.time_in_force,
+                limit_price=float(intent.limit_price)
+                if intent.limit_price is not None
+                else None,
+                client_order_id=intent.correlation_id,
+            )
+            order_id = str(order.get("id") or order.get("order_id") or "")
+
+            log.info(
+                "Order submitted via gateway",
+                order_id=order_id or None,
+                symbol=intent.symbol,
+                correlation_id=intent.correlation_id,
+                broker_payload=order,
+            )
+
+            if self.db:
+                created_at = None
+                if isinstance(intent.meta, dict):
+                    created_at = intent.meta.get("created_at")
+                placed = (
+                    datetime.fromisoformat(created_at)
+                    if isinstance(created_at, str) and created_at
+                    else self.clock()
+                )
+                self.db.write(
+                    "order",
+                    lambda session: session.add(
+                        DbOrder(
+                            correlation_id=intent.correlation_id,
+                            symbol=intent.symbol,
+                            side=intent.side.value,
+                            qty=intent.qty,
+                            type=intent.order_type.value,
+                            limit_price=intent.limit_price,
+                            status="submitted",
+                            time_placed=placed,
+                            time_last_update=placed,
+                            broker_order_id=order_id or None,
+                            meta_json={
+                                **(intent.meta or {}),
+                                "broker_order_id": order_id or None,
+                                "strategy": intent.strategy,
+                                "stop_loss": intent.stop_loss,
+                                "take_profit": intent.take_profit,
+                                "time_in_force": intent.time_in_force,
+                                "execution_backend": "gateway",
+                            },
+                        )
+                    ),
+                )
+
+            return order
+        except Exception as e:
+            from src.core.errors import ErrorCode
+
+            error = str(e)
+            broker_error_payload = _extract_broker_error_payload(e)
+            log.error(
+                "Gateway order submission failed",
+                error_code=ErrorCode.ORDER_SUBMIT_FAILED.value,
+                symbol=intent.symbol,
+                correlation_id=intent.correlation_id,
+                error=error,
+                exception_type=type(e).__name__,
+                broker_error_payload=broker_error_payload,
+                intent={
+                    "symbol": intent.symbol,
+                    "side": intent.side.value,
+                    "qty": intent.qty,
+                    "order_type": intent.order_type.value,
+                    "limit_price": intent.limit_price,
+                    "time_in_force": intent.time_in_force,
+                    "strategy": intent.strategy,
+                    "stop_loss": intent.stop_loss,
+                    "take_profit": intent.take_profit,
+                },
+                exc_info=True,
+            )
+
+            if self.db:
+                fail_time = self.clock()
+                self.db.write(
+                    "order_failed",
+                    lambda session: session.add(
+                        DbOrder(
+                            correlation_id=intent.correlation_id,
+                            symbol=intent.symbol,
+                            side=intent.side.value,
+                            qty=intent.qty,
+                            type=intent.order_type.value,
+                            limit_price=intent.limit_price,
+                            status="order_failed",
+                            time_placed=fail_time,
+                            time_last_update=fail_time,
+                            broker_order_id=None,
+                            meta_json={
+                                "error": error,
+                                "correlation_id": intent.correlation_id,
+                                "broker_error_payload": broker_error_payload,
+                                "execution_backend": "gateway",
+                                **(intent.meta or {}),
+                            },
+                        )
+                    ),
+                )
+
+            raise
+
+    def cancel_by_broker_order_id(self, broker_order_id: str) -> None:
+        """Best-effort cancel of a specific order through Data-Gateway."""
+        try:
+            cancelled = self.central_api_client.cancel_alpaca_order(broker_order_id)
+            self.logger.info(
+                "Gateway order cancel requested",
+                broker_order_id=broker_order_id,
+                cancelled=bool(cancelled),
+            )
+        except Exception as e:
+            self.logger.error(
+                "Gateway order cancel failed",
+                broker_order_id=broker_order_id,
+                error=str(e),
+                exc_info=True,
+            )
+            raise
+
+    def cancel_all_for_symbol(self, symbol: str) -> int:
+        """Cancel all open orders for a symbol via Data-Gateway."""
+        cancelled = 0
+        try:
+            orders = self.central_api_client.get_alpaca_orders(
+                status="open",
+                symbols=[symbol],
+                limit=500,
+            )
+            for order in orders:
+                oid = str(order.get("id") or "")
+                if not oid:
+                    continue
+                self.cancel_by_broker_order_id(oid)
+                cancelled += 1
+        except Exception as e:
+            self.logger.error(
+                "Gateway cancel-all for symbol failed",
+                symbol=symbol,
+                cancelled_before_error=cancelled,
+                error=str(e),
+                exc_info=True,
+            )
+        return cancelled
+
+    def handle_trade_update(self, update: object) -> dict:
+        """Trade updates are currently handled via reconciliation when using gateway execution."""
+        return {}
 
 
 class NoopOrderExecutor:

@@ -260,6 +260,118 @@ class CentralApiClient:
             )
             raise
 
+    def submit_alpaca_order(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float | None = None,
+        notional: float | None = None,
+        order_type: str = "market",
+        time_in_force: str = "day",
+        limit_price: float | None = None,
+        stop_price: float | None = None,
+        client_order_id: str | None = None,
+        extended_hours: bool = False,
+    ) -> Dict[str, Any]:
+        """Submit an Alpaca order via Data-Gateway trading endpoint."""
+        params: Dict[str, Any] = {
+            "symbol": symbol.upper(),
+            "side": side,
+            "order_type": order_type,
+            "time_in_force": time_in_force,
+            "extended_hours": extended_hours,
+        }
+        if qty is not None:
+            params["qty"] = float(qty)
+        if notional is not None:
+            params["notional"] = float(notional)
+        if limit_price is not None:
+            params["limit_price"] = float(limit_price)
+        if stop_price is not None:
+            params["stop_price"] = float(stop_price)
+        if client_order_id:
+            params["client_order_id"] = client_order_id
+
+        try:
+            response = self._request_with_retry(
+                "POST",
+                "/api/v1/alpaca/orders",
+                params=params,
+            )
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data")
+            return cast(Dict[str, Any], data) if isinstance(data, dict) else payload
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to submit Alpaca order via central API",
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                error=str(e),
+            )
+            raise
+
+    def get_alpaca_orders(
+        self,
+        *,
+        status: str = "open",
+        limit: int = 100,
+        direction: str = "desc",
+        symbols: Optional[List[str]] = None,
+        nested: bool = True,
+        side: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch Alpaca orders via Data-Gateway trading endpoint."""
+        params: Dict[str, Any] = {
+            "status": status,
+            "limit": int(limit),
+            "direction": direction,
+            "nested": bool(nested),
+        }
+        if symbols:
+            params["symbols"] = ",".join(s.upper() for s in symbols if s)
+        if side:
+            params["side"] = side
+
+        try:
+            response = self._request_with_retry(
+                "GET",
+                "/api/v1/alpaca/orders",
+                params=params,
+            )
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data")
+            return cast(List[Dict[str, Any]], data) if isinstance(data, list) else []
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch Alpaca orders from central API",
+                status=status,
+                symbols=symbols,
+                error=str(e),
+            )
+            raise
+
+    def cancel_alpaca_order(self, order_id: str) -> bool:
+        """Cancel an Alpaca order via Data-Gateway trading endpoint."""
+        try:
+            response = self._request_with_retry(
+                "DELETE",
+                f"/api/v1/alpaca/orders/{order_id}",
+            )
+            payload = cast(Dict[str, Any], response.json())
+            data = payload.get("data")
+            if isinstance(data, dict) and "cancelled" in data:
+                return bool(data.get("cancelled"))
+            return bool(payload.get("success", True))
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to cancel Alpaca order via central API",
+                order_id=order_id,
+                error=str(e),
+            )
+            raise
+
     def get_uw_gex(self, ticker: str) -> List[Dict[str, Any]]:
         """Fetch Unusual Whales GEX via Data-Gateway."""
         try:

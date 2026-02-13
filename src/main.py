@@ -11,8 +11,10 @@ from src.analysis.analytics import AnalyticsEngine
 from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+from src.core.settings import get_settings
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
+from src.data.gateway_stream import GatewayStreamClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
@@ -109,9 +111,9 @@ async def async_main():
     parser.add_argument("--mode", choices=["paper", "live"], default="paper", help="Trading mode")
     parser.add_argument(
         "--order-executor",
-        choices=["alpaca", "noop"],
-        default="alpaca",
-        help="Order routing backend (alpaca submits broker orders; noop simulates).",
+        choices=["gateway", "alpaca", "noop"],
+        default="gateway",
+        help="Order routing backend (gateway routes via Data-Gateway; alpaca submits direct broker orders; noop simulates).",
     )
     parser.add_argument("--config", default="config/config.yaml", help="Path to config file")
     parser.add_argument(
@@ -176,6 +178,7 @@ async def async_main():
         from src.core.settings import validate_startup_settings
 
         validate_startup_settings()
+        runtime_settings = get_settings()
         bootstrap_logger.info("Startup settings validation passed")
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
@@ -220,6 +223,7 @@ async def async_main():
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
     central_api_client = CentralApiClient(config_loader, logger)
+    gateway_stream_client = GatewayStreamClient(config_loader, logger)
 
     feature_pipeline = FeaturePipeline(
         alpaca_client,
@@ -260,10 +264,27 @@ async def async_main():
 
     engine = ExecutionEngine(config, logger, db, alpaca_client, clock=clock)
     engine.scanner = scanner  # Inject scanner
-    if args.order_executor == "noop":
+    if args.order_executor == "gateway":
+        if not runtime_settings.use_gateway_data:
+            raise ValueError(
+                "Gateway order executor requires CERBERUS_DATA_BACKEND=gateway|dual"
+            )
+        from src.engine.orders import GatewayOrderExecutor
+
+        engine.order_executor = GatewayOrderExecutor(
+            central_api_client,
+            logger,
+            db=db,
+            clock=clock,
+        )  # type: ignore
+    elif args.order_executor == "noop":
         from src.engine.orders import NoopOrderExecutor
 
         engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore
+    elif args.order_executor == "alpaca" and runtime_settings.use_gateway_data:
+        raise ValueError(
+            "Direct Alpaca order executor is blocked while CERBERUS_DATA_BACKEND uses gateway."
+        )
 
     # Register Strategies (config-driven, deterministic; PRD plug-and-play intent)
     from src.strategies.flow_momentum import FlowMomentumStrategy
@@ -328,9 +349,13 @@ async def async_main():
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan
-    logger.info("Starting Alpaca stream...")
+    stream_client = gateway_stream_client if runtime_settings.use_gateway_data else alpaca_client
+    logger.info(
+        "Starting market data stream...",
+        backend="gateway" if runtime_settings.use_gateway_data else "alpaca",
+    )
     stream_task = asyncio.create_task(
-        alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+        stream_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
     )
     trade_stream_task = None
     if args.order_executor == "alpaca":
@@ -340,7 +365,7 @@ async def async_main():
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
     # Ensure index symbol is subscribed for regime detection.
-    alpaca_client.subscribe(config.get("index_symbol", "SPY"))
+    stream_client.subscribe(config.get("index_symbol", "SPY"))
 
     logger.info("Running initial scan...")
     try:
