@@ -6,25 +6,31 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Multi-Asset Support** (2026-02-14):
+  - Introduced `MarketSession` abstraction to support both US Equity (9:30-16:00 ET) and Crypto (24/7) trading sessions.
+  - Added `CERBERUS_ASSET_CLASS` setting (`us_equity` or `crypto`).
+  - Added `get_crypto_bars` and `get_crypto_trades` to `CentralApiClient`.
+  - Updated `UniverseBuilder` to route data requests based on asset class.
+
 - **Backtest Data Provisioning via Data-Gateway + Heber** (2026-02-13):
-  - Added backfill methods to `CentralApiClient`: `request_backfill`, `get_backfill_status`, `wait_for_backfill`, `cancel_backfill` with dual-timeout strategy (hard + stall detection).
+  - Added backfill methods to `CentralApiClient`: `request_backfill`, `get_backfill_status`, `wait_for_backfill`, `cancel_backfill`.
   - Added `BacktestDataProvisioner` orchestrator supporting chunked backfills and Gateway fallback.
   - Added `--data-source` parameter to `BacktestRunner` (`alpaca`, `gateway`, `heber`).
-  - Added backfill configuration settings to `settings.py` for timeout, poll interval, stall detection, and chunk sizing.
-  - Added 22 unit tests covering backfill methods, provisioner flow, chunking, fallback, and error scenarios.
+  - Added backfill configuration settings to `settings.py`.
+  - Added 22 unit tests covering backfill methods and provisioner flow.
+
+### Changed
+
+- `main.py`: Refactored main loop to use `MarketSession` instead of hardcoded market hour checks.
+- `api_client.py`: Added retry logic for 404s on backfill polling.
 
 ### Fixed
 
 - **Heber Parquet Race Condition** (2026-02-13):
-  - Added retry logic to `HeberReadClient._read_parquet_rows` to handle transient `FileNotFoundError` during Heber's Silver partition compaction/rotation.
-
+  - Added retry logic to `HeberReadClient._read_parquet_rows` to handle transient `FileNotFoundError`.
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
-  - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
-  - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
-  - Gateway bar stream now always starts when `data_backend=gateway`, independent of order executor.
-  - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
-  - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
-  - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
+  - Fixed `_should_start_alpaca_stream()` to allow Gateway bar stream to start correctly.
+- Fixed potential infinite loop in `wait_for_backfill` tests by mocking monotonic time correctly.
 
 ### Added
 

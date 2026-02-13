@@ -40,20 +40,29 @@ class UniverseBuilder:
         runtime = get_settings()
         self.use_gateway_data = runtime.use_gateway_data
         self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
+        self.asset_class = runtime.cerberus_asset_class
 
     def _get_historical_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> Any:
         """Fetch historical bars using selected backend, with optional failover."""
         if self.use_gateway_data and self.central_api_client is not None:
             try:
-                return self.central_api_client.get_alpaca_bars(
-                    symbol=symbol,
-                    start=start,
-                    end=end,
-                    timeframe=timeframe,
-                )
+                if self.asset_class == "crypto":
+                    return self.central_api_client.get_crypto_bars(
+                        symbol=symbol,
+                        start=start,
+                        end=end,
+                        timeframe=timeframe,
+                    )
+                else:
+                    return self.central_api_client.get_alpaca_bars(
+                        symbol=symbol,
+                        start=start,
+                        end=end,
+                        timeframe=timeframe,
+                    )
             except Exception as e:
                 self.logger.warning(
-                    "Gateway universe bars fetch failed",
+                    f"Gateway universe bars fetch failed ({self.asset_class})",
                     symbol=symbol,
                     timeframe=timeframe,
                     error=str(e),
@@ -259,6 +268,7 @@ class UniverseBuilder:
 
         # Dynamic: Alpaca Screener API (most actives + movers)
         # Only runs in LIVE mode - skipped for backtest since API returns current-day data
+        # Also skipped for Crypto as screener endpoints are equity-specific
         is_backtest = self.offline_bars_provider is not None
         screener_cfg = dyn_cfg.get("screener") if isinstance(dyn_cfg, dict) else None
         if (
@@ -266,6 +276,7 @@ class UniverseBuilder:
             and bool(screener_cfg.get("enabled", False))
             and (self.alpaca_client is not None or self.central_api_client is not None)
             and not is_backtest  # Skip in backtest - use volume ranking instead
+            and self.asset_class == "us_equity"  # Skip for crypto
         ):
             screener_added: List[str] = []
 

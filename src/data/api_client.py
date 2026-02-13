@@ -196,7 +196,7 @@ class CentralApiClient:
         timeframe: str = "1Day",
     ) -> Dict[str, Any]:
         """
-        Fetches historical bars via Data-Gateway.
+        Fetches historical stock bars via Data-Gateway.
         """
         params = {"timeframe": timeframe}
         if start:
@@ -214,7 +214,39 @@ class CentralApiClient:
             return self._normalize_bars_response(payload)
         except httpx.HTTPError as e:
             self.logger.error(
-                "Failed to fetch Alpaca bars from central API",
+                "Failed to fetch Alpaca stock bars from central API",
+                symbol=symbol,
+                error=str(e),
+            )
+            raise
+
+    def get_crypto_bars(
+        self,
+        symbol: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        timeframe: str = "1Day",
+    ) -> Dict[str, Any]:
+        """
+        Fetches historical crypto bars via Data-Gateway.
+        """
+        params = {"timeframe": timeframe}
+        if start:
+            params["start"] = start.isoformat()
+        if end:
+            params["end"] = end.isoformat()
+
+        try:
+            response = self._request_with_retry(
+                "GET",
+                f"/api/v1/alpaca/crypto/{symbol.upper()}/bars",
+                params=params,
+            )
+            payload = cast(Dict[str, Any], response.json())
+            return self._normalize_bars_response(payload)
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch Alpaca crypto bars from central API",
                 symbol=symbol,
                 error=str(e),
             )
@@ -245,7 +277,7 @@ class CentralApiClient:
         end: Optional[datetime] = None,
         limit: int = 10000,
     ) -> List[Dict[str, Any]]:
-        """Fetch historical trades via Data-Gateway and normalize output."""
+        """Fetch historical stock trades via Data-Gateway and normalize output."""
         params: Dict[str, Any] = {"limit": int(limit)}
         if start:
             params["start"] = start.isoformat()
@@ -262,7 +294,37 @@ class CentralApiClient:
             return self._normalize_trades_response(payload)
         except httpx.HTTPError as e:
             self.logger.error(
-                "Failed to fetch Alpaca trades from central API",
+                "Failed to fetch Alpaca stock trades from central API",
+                symbol=symbol,
+                error=str(e),
+            )
+            raise
+
+    def get_crypto_trades(
+        self,
+        symbol: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        limit: int = 10000,
+    ) -> List[Dict[str, Any]]:
+        """Fetch historical crypto trades via Data-Gateway and normalize output."""
+        params: Dict[str, Any] = {"limit": int(limit)}
+        if start:
+            params["start"] = start.isoformat()
+        if end:
+            params["end"] = end.isoformat()
+
+        try:
+            response = self._request_with_retry(
+                "GET",
+                f"/api/v1/alpaca/crypto/{symbol.upper()}/trades",
+                params=params,
+            )
+            payload = cast(Dict[str, Any], response.json())
+            return self._normalize_trades_response(payload)
+        except httpx.HTTPError as e:
+            self.logger.error(
+                "Failed to fetch Alpaca crypto trades from central API",
                 symbol=symbol,
                 error=str(e),
             )

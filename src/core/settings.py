@@ -44,6 +44,10 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("CERBERUS_FAILOVER_TO_LEGACY"),
     )
+    cerberus_asset_class: Literal["us_equity", "crypto"] = Field(
+        default="us_equity",
+        validation_alias=AliasChoices("CERBERUS_ASSET_CLASS", "ASSET_CLASS"),
+    )
 
     # Data Gateway
     cerberus_gateway_url: str = Field(

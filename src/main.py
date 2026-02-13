@@ -3,7 +3,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from datetime import date as date_type
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
@@ -11,6 +11,7 @@ from src.analysis.analytics import AnalyticsEngine
 from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+from src.core.market_session import CryptoSession, MarketSession, USEquitySession
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
 from src.data.gateway_stream import GatewayStreamClient
@@ -43,42 +44,6 @@ def _should_start_alpaca_stream(order_executor: str) -> bool:
     """
     normalized_executor = str(order_executor or "").strip().lower()
     return normalized_executor == "alpaca"
-
-
-def _next_market_open_local(now: datetime) -> datetime:
-    """
-    Return the next regular US market open (09:30 local time on a weekday).
-
-    The input must be timezone-aware and already expressed in the market timezone.
-    """
-    if now.tzinfo is None:
-        raise ValueError("now must be timezone-aware")
-
-    today_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-    if now < today_open and now.weekday() < 5:
-        return today_open
-
-    candidate = today_open + timedelta(days=1)
-    while candidate.weekday() >= 5:
-        candidate += timedelta(days=1)
-    return candidate
-
-
-def _is_regular_market_session_local(now: datetime) -> bool:
-    """
-    Return True when within regular US session hours on a weekday.
-
-    Session window is 09:30 <= time < 16:00 in the provided local timezone.
-    """
-    if now.tzinfo is None:
-        raise ValueError("now must be timezone-aware")
-    if now.weekday() >= 5:
-        return False
-    if now.hour < 9 or (now.hour == 9 and now.minute < 30):
-        return False
-    if now.hour >= 16:
-        return False
-    return True
 
 
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
@@ -286,6 +251,15 @@ async def async_main():
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
         raise
+
+    # 1.1 Market Session Initialization
+    market_session: MarketSession
+    if runtime_settings.cerberus_asset_class == "crypto":
+        market_session = CryptoSession()
+        bootstrap_logger.info("Initialized Crypto market session (24/7)")
+    else:
+        market_session = USEquitySession()
+        bootstrap_logger.info("Initialized US Equity market session (09:30-16:00 ET)")
 
     config_loader = ConfigLoader(logger=bootstrap_logger)
     config = config_loader.load_config(args.config)
@@ -511,12 +485,13 @@ async def async_main():
 
         while True:
             now = _session_now_local()
-            is_after_close_weekday = now.weekday() < 5 and now.hour >= 16
+            now = _session_now_local()
 
-            if not _is_regular_market_session_local(now) and not is_after_close_weekday:
+            # Check if market is open
+            if not market_session.is_open(now):
                 market_state_message = "Market not open. Sleeping until regular session."
 
-                next_open = _next_market_open_local(now)
+                next_open = market_session.get_next_open(now)
                 logger.info(
                     market_state_message,
                     now=now.isoformat(),
@@ -534,11 +509,14 @@ async def async_main():
 
             # 1. Market Close Check (Exit at 16:00 ET)
             # PRD: no overnight holds.
-            mins_to_close = (16 - now.hour) * 60 - now.minute
+            close_time = market_session.get_close_time(now)
+            mins_to_close = 999999
+            if close_time:
+                mins_to_close = int((close_time - now).total_seconds() / 60)
 
             # --- Live Guardrails: Flattening ---
             force_flat_mins = int(config.get("force_flat_before_close_mins", 15))
-            if 0 < mins_to_close <= force_flat_mins:
+            if market_session.should_flatten(now, force_flat_mins=force_flat_mins):
                 target_date = now.date()
                 if flattened_for_date != target_date:
                     logger.warning(
@@ -554,17 +532,25 @@ async def async_main():
                         break
 
             # --- Live Guardrails: Countdown Warnings ---
-            warning_stages = [15, 10, 5, 1]
-            for w in warning_stages:
-                if mins_to_close == w and last_warning_min != w:
-                    logger.warning(
-                        f"MARKET CLOSE COUNTDOWN: {w} minute(s) remaining until 16:00 ET",
-                        mins_to_close=mins_to_close,
-                    )
-                    last_warning_min = w
-                    break
+            if close_time:
+                warning_stages = [15, 10, 5, 1]
+                for w in warning_stages:
+                    if mins_to_close == w and last_warning_min != w:
+                        logger.warning(
+                            f"MARKET CLOSE COUNTDOWN: {w} minute(s) remaining until close",
+                            mins_to_close=mins_to_close,
+                        )
+                        last_warning_min = w
+                        break
 
-            if now.hour >= 16:
+            # Check if we should exit/flatten due to close
+            if not market_session.is_open(now):
+                # We loop back to top which handles the "not open" case and sleeping
+                # But if we just closed, we might want to do EOD tasks first
+                pass
+
+            # If strictly AFTER close time (and valid close time exists), run EOD
+            if close_time and now >= close_time:
                 target_date = now.date()
 
                 # Ensure final flattening if not already done
@@ -610,19 +596,7 @@ async def async_main():
                     logger.info("Market closed. Exiting daily session.")
                     break
 
-                next_open = _next_market_open_local(now)
-                logger.info(
-                    "Market closed. Sleeping until next market open.",
-                    next_open=next_open.isoformat(),
-                    sleep_seconds=max(1, int((next_open - now).total_seconds())),
-                )
-                while True:
-                    current_local = datetime.now(timezone.utc).astimezone(tz)
-                    remaining = (next_open - current_local).total_seconds()
-                    if remaining <= 0:
-                        break
-                    await asyncio.sleep(min(300, max(1, int(remaining))))
-                last_warning_min = None
+                # The loop will circle back, see is_open()=False, and sleep
                 continue
 
             # 2. Run Scanner (every 5 mins)
