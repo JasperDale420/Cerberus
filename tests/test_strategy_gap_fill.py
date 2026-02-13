@@ -181,3 +181,60 @@ def test_signal_long_gap_down(gap_fill):
     assert sig is not None
     assert sig.side == OrderSide.BUY
     assert sig.target_price == pytest.approx(100.0, rel=0.01)
+
+
+def _micro_pnl(signal, next_bar):
+    if signal is None:
+        return 0.0
+    entry = float(signal.entry_price)
+    exit_price = float(next_bar.close)
+    if signal.side == OrderSide.BUY:
+        return exit_price - entry
+    return entry - exit_price
+
+
+@pytest.mark.unit
+def test_gap_fill_or_range_filter_improves_micro_pnl(mock_logger):
+    config = {
+        "min_gap": 0.02,
+        "max_gap": 0.05,
+        "risk_reward": 1.0,
+        "or_time_minutes": 15,
+        "min_or_range_pct": 0.0,
+    }
+    baseline = GapFillStrategy(config, mock_logger)
+
+    import pytz
+
+    et = pytz.timezone("US/Eastern")
+    open_dt = et.localize(datetime(2023, 10, 23, 9, 30, 0))
+    b1 = Bar("AAPL", open_dt, 103.0, 103.05, 103.0, 103.02, 1000)
+    b2 = Bar("AAPL", open_dt + timedelta(minutes=5), 103.02, 103.05, 103.0, 103.01, 1000)
+
+    current_dt = open_dt + timedelta(minutes=20)
+    current_bar = Bar("AAPL", current_dt, 103.0, 103.0, 102.8, 102.9, 500)
+    next_bar = Bar("AAPL", current_dt + timedelta(minutes=1), 103.0, 103.6, 103.0, 103.5, 500)
+
+    state = SymbolState(
+        "AAPL",
+        deque([b1, b2], maxlen=100),
+        {},
+        None,
+        {},
+        [],
+        {"gap_pct": 0.03},
+    )
+
+    market = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP)
+
+    baseline_signal = baseline.on_bar("AAPL", current_bar, state, market)
+    baseline_pnl = _micro_pnl(baseline_signal, next_bar)
+
+    config["min_or_range_pct"] = 0.01
+    filtered = GapFillStrategy(config, mock_logger)
+    filtered_signal = filtered.on_bar("AAPL", current_bar, state, market)
+    filtered_pnl = _micro_pnl(filtered_signal, next_bar)
+
+    assert baseline_signal is not None
+    assert baseline_pnl < 0.0
+    assert filtered_pnl > baseline_pnl

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+
+- Gap-Fill: Added `min_or_range_pct` filter to skip tight opening ranges (2026-02-13).
 ### Fixed
 
 - Scheduler: Validate timezone and schedule_time with structured error logs (2026-02-13).
