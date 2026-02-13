@@ -72,9 +72,19 @@ class FeaturePipeline:
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
         closes: List[float] = []
+        null_count = 0
         for bar in bars_data:
             value = bar.c if hasattr(bar, "c") else bar.get("c", 0)
-            closes.append(0.0 if value is None else float(value))
+            if value is None:
+                null_count += 1
+                closes.append(0.0)
+            else:
+                closes.append(float(value))
+        if null_count:
+            self.logger.warning(
+                "Null close values encountered; defaulting to 0.0",
+                null_closes=int(null_count),
+            )
         return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
