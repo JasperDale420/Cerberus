@@ -1,5 +1,5 @@
 import signal
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,7 @@ class PairScanner:
             return False
         return True
 
-    def find_pairs(self, price_data: pd.DataFrame) -> List[Dict]:
+    def find_pairs(self, price_data: pd.DataFrame) -> List[Dict[str, Any]]:
         """
         Finds cointegrated pairs in the provided price data.
         price_data: DataFrame with symbols as columns and timestamps as index.
@@ -67,9 +67,7 @@ class PairScanner:
             return []
 
         # Pre-filter symbols with valid data
-        valid_symbols = [
-            col for col in daily_data.columns if self._is_valid_series(daily_data[col])
-        ]
+        valid_symbols = [col for col in daily_data.columns if self._is_valid_series(daily_data[col])]
 
         if len(valid_symbols) < 2:
             self.logger.warning(
@@ -92,8 +90,11 @@ class PairScanner:
             for j in range(i + 1, n):
                 s1, s2 = symbols[i], symbols[j]
 
-                corr = corr_matrix.loc[s1, s2]
-                if pd.isna(corr) or abs(corr) < self.config.min_correlation:
+                corr_raw = corr_matrix.loc[s1, s2]
+                if pd.isna(corr_raw):
+                    continue
+                corr = float(cast(Any, corr_raw))
+                if abs(corr) < self.config.min_correlation:
                     continue
 
                 # 2. Cointegration Test with timeout protection
@@ -141,7 +142,7 @@ class PairScanner:
 
         return pairs
 
-    def _calculate_pair_stats(self, y: pd.Series, x: pd.Series) -> Optional[Dict]:
+    def _calculate_pair_stats(self, y: pd.Series, x: pd.Series) -> Optional[Dict[str, Any]]:
         """
         Calculates hedge ratio and spread statistics using least squares.
         """
@@ -165,10 +166,7 @@ class PairScanner:
         # Half-life calculation for mean reversion speed
         half_life = self._calculate_half_life(pd.Series(spread))
 
-        if (
-            half_life < self.config.min_half_life
-            or half_life > self.config.max_half_life
-        ):
+        if half_life < self.config.min_half_life or half_life > self.config.max_half_life:
             return None
 
         return {

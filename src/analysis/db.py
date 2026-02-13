@@ -3,7 +3,7 @@ from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.analysis.schema import Base
@@ -12,6 +12,26 @@ from src.core.logger import StructuredLogger
 
 
 class DatabaseDatabase:
+    SQLITE_SCHEMA_PATCHES: Dict[str, tuple[tuple[str, str], ...]] = {
+        "trades": (
+            ("regime_tags_entry_json", "TEXT"),
+            ("regime_tags_exit_json", "TEXT"),
+        ),
+        "signals": (("feature_snapshot_json", "TEXT"),),
+        "regime_history": (
+            ("model_version", "TEXT"),
+            ("trend", "TEXT"),
+            ("vol_regime", "TEXT"),
+            ("liquidity", "TEXT"),
+            ("risk", "TEXT"),
+            ("session", "TEXT"),
+            ("vol_of_vol", "REAL"),
+            ("liquidity_score", "REAL"),
+            ("risk_score", "REAL"),
+            ("confidence_json", "TEXT"),
+        ),
+    }
+
     def __init__(
         self,
         config_loader: ConfigLoader,
@@ -19,11 +39,7 @@ class DatabaseDatabase:
         config: Optional[Dict[str, Any]] = None,
         config_path_or_dir: Optional[str] = None,
     ):
-        self.config = (
-            config
-            if isinstance(config, dict)
-            else config_loader.load_config(config_path_or_dir)
-        )
+        self.config = config if isinstance(config, dict) else config_loader.load_config(config_path_or_dir)
         self.logger = logger
 
         # PRD 11.4: bounded in-memory buffering for transient DB failures.
@@ -44,12 +60,8 @@ class DatabaseDatabase:
                 # For now, just leave it as CWD relative or handle it
                 pass
 
-        self.engine = create_engine(
-            db_url, echo=self.config.get("db_echo", False), pool_pre_ping=True
-        )
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
+        self.engine = create_engine(db_url, echo=self.config.get("db_echo", False), pool_pre_ping=True)
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         self.logger.info("Database engine initialized", url=db_url)
 
     def init_db(self):
@@ -58,10 +70,33 @@ class DatabaseDatabase:
         """
         try:
             Base.metadata.create_all(bind=self.engine)
+            self._apply_sqlite_schema_patches()
             self.logger.info("Database tables verified/created")
         except Exception as e:
             self.logger.error("Failed to initialize database", error=str(e))
             raise
+
+    def _apply_sqlite_schema_patches(self) -> None:
+        """Patch known legacy SQLite schemas that predate newer ORM columns."""
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+
+        with self.engine.begin() as conn:
+            inspector = inspect(conn)
+            for table_name, columns in self.SQLITE_SCHEMA_PATCHES.items():
+                if not inspector.has_table(table_name):
+                    continue
+                existing = {str(col.get("name")) for col in inspector.get_columns(table_name) if col.get("name")}
+                for column_name, column_type in columns:
+                    if column_name in existing:
+                        continue
+                    conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'))
+                    self.logger.warning(
+                        "Applied sqlite schema patch",
+                        table=table_name,
+                        column=column_name,
+                        column_type=column_type,
+                    )
 
     @contextmanager
     def get_session(self) -> Generator[Session, None, None]:
@@ -113,11 +148,7 @@ class DatabaseDatabase:
                 return False
 
             self._write_buffer.append((kind, fn))
-            log_fn = (
-                self.logger.warning
-                if self.db_fail_mode == "warn"
-                else self.logger.error
-            )
+            log_fn = self.logger.warning if self.db_fail_mode == "warn" else self.logger.error
             log_fn(
                 "DB write failed; buffered for retry",
                 kind=kind,

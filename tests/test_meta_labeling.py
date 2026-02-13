@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from src.core.domain import Signal, TechnicalFeatures
+from src.core.domain import OrderSide, Signal, TechnicalFeatures
+from src.core.logger import StructuredLogger
 from src.engine.execution import ExecutionEngine
 
 
@@ -19,7 +20,7 @@ class MockLogger:
 
 
 def test_meta_labeler_vetting():
-    logger = MockLogger()
+    logger = StructuredLogger("test_meta_labeler_vetting")
     engine = ExecutionEngine(config={}, logger=logger)
 
     # Create a feature snapshot that is bearish (negative TFI, trending down-ish)
@@ -50,7 +51,7 @@ def test_meta_labeler_vetting():
     # Signal: Long (buy)
     signal = Signal(
         symbol="AAPL",
-        side="buy",
+        side=OrderSide.BUY,
         size_hint=100,
         entry_price=100.0,
         stop_price=98.0,
@@ -65,7 +66,7 @@ def test_meta_labeler_vetting():
 
 
 def test_meta_labeler_allowance():
-    logger = MockLogger()
+    logger = StructuredLogger("test_meta_labeler_allowance")
     engine = ExecutionEngine(config={}, logger=logger)
 
     # Create a feature snapshot that is bullish
@@ -96,7 +97,7 @@ def test_meta_labeler_allowance():
     # Signal: Long (buy)
     signal = Signal(
         symbol="AAPL",
-        side="buy",
+        side=OrderSide.BUY,
         size_hint=100,
         entry_price=100.0,
         stop_price=98.0,

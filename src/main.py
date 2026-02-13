@@ -3,7 +3,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from datetime import date as date_type
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
@@ -18,6 +18,47 @@ from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
+
+
+def _should_initialize_alpaca_client(
+    order_executor: str,
+    data_backend: str,
+    failover_to_legacy: bool,
+) -> bool:
+    """Determine whether Alpaca client initialization is required."""
+    normalized_executor = str(order_executor or "").strip().lower()
+    normalized_backend = str(data_backend or "").strip().lower()
+    if normalized_backend == "gateway" and normalized_executor == "noop" and not bool(failover_to_legacy):
+        return False
+    return True
+
+
+def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
+    """Determine whether Alpaca bar/trade streams should run."""
+    normalized_executor = str(order_executor or "").strip().lower()
+    normalized_backend = str(data_backend or "").strip().lower()
+    if normalized_backend == "gateway" and normalized_executor == "noop":
+        return False
+    return True
+
+
+def _next_market_open_local(now: datetime) -> datetime:
+    """
+    Return the next regular US market open (09:30 local time on a weekday).
+
+    The input must be timezone-aware and already expressed in the market timezone.
+    """
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+
+    today_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now < today_open and now.weekday() < 5:
+        return today_open
+
+    candidate = today_open + timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate += timedelta(days=1)
+    return candidate
 
 
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
@@ -57,6 +98,37 @@ def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -
         losers=len(snapshot["losers"]),
         path=str(output_path),
     )
+
+
+def _build_strategy_registry() -> dict[str, type]:
+    """Build the canonical strategy registry for runtime initialization."""
+    from src.strategies.failed_breakout import FailedBreakoutStrategy
+    from src.strategies.flow_momentum import FlowMomentumStrategy
+    from src.strategies.fusion_v1 import FusionStrategyV1
+    from src.strategies.gap_fill import GapFillStrategy
+    from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
+    from src.strategies.momentum_continuation import MomentumContinuationStrategy
+    from src.strategies.orb import ORBStrategy
+    from src.strategies.pair_trading import PairTradingStrategy
+    from src.strategies.trend_pullback import TrendPullbackStrategy
+    from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
+    from src.strategies.vwap_reversion import VWAPReversionStrategy
+    from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
+
+    return {
+        "vwap_reversion": VWAPReversionStrategy,
+        "orb": ORBStrategy,
+        "vwap_trend_rider": VWAPTrendRiderStrategy,
+        "index_mean_reversion": IndexMeanReversionStrategy,
+        "flow_momentum": FlowMomentumStrategy,
+        "gap_fill": GapFillStrategy,
+        "vix_spike_fade": VixSpikeFadeStrategy,
+        "momentum_continuation": MomentumContinuationStrategy,
+        "fusion_v1": FusionStrategyV1,
+        "pair_trading": PairTradingStrategy,
+        "trend_pullback": TrendPullbackStrategy,
+        "failed_breakout": FailedBreakoutStrategy,
+    }
 
 
 async def async_main():
@@ -173,10 +245,24 @@ async def async_main():
 
     # Validate startup settings before proceeding
     try:
-        from src.core.settings import validate_startup_settings
+        from src.core.settings import (
+            get_settings,
+            validate_runtime_execution_requirements,
+            validate_startup_settings,
+        )
 
         validate_startup_settings()
-        bootstrap_logger.info("Startup settings validation passed")
+        runtime_settings = get_settings()
+        validate_runtime_execution_requirements(
+            order_executor=args.order_executor,
+            mode=args.mode,
+        )
+        bootstrap_logger.info(
+            "Startup settings validation passed",
+            order_executor=args.order_executor,
+            mode=args.mode,
+            data_backend=runtime_settings.cerberus_data_backend,
+        )
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
         raise
@@ -214,8 +300,19 @@ async def async_main():
         clock = _utc_now_clock()
 
     # 2. Components
-    # Alpaca Client
-    alpaca_client = AlpacaClient(config_loader, logger)
+    require_alpaca_client = _should_initialize_alpaca_client(
+        order_executor=args.order_executor,
+        data_backend=runtime_settings.cerberus_data_backend,
+        failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
+    )
+    alpaca_client = AlpacaClient(config_loader, logger) if require_alpaca_client else None
+    if not require_alpaca_client:
+        logger.info(
+            "Skipping Alpaca client initialization in gateway+noop mode",
+            data_backend=runtime_settings.cerberus_data_backend,
+            failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
+            order_executor=args.order_executor,
+        )
 
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
@@ -266,29 +363,7 @@ async def async_main():
         engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore
 
     # Register Strategies (config-driven, deterministic; PRD plug-and-play intent)
-    from src.strategies.flow_momentum import FlowMomentumStrategy
-    from src.strategies.fusion_v1 import FusionStrategyV1
-    from src.strategies.gap_fill import GapFillStrategy
-    from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
-    from src.strategies.momentum_continuation import MomentumContinuationStrategy
-    from src.strategies.orb import ORBStrategy
-    from src.strategies.pair_trading import PairTradingStrategy
-    from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
-    from src.strategies.vwap_reversion import VWAPReversionStrategy
-    from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
-
-    strategy_registry = {
-        "vwap_reversion": VWAPReversionStrategy,
-        "orb": ORBStrategy,
-        "vwap_trend_rider": VWAPTrendRiderStrategy,
-        "index_mean_reversion": IndexMeanReversionStrategy,
-        "flow_momentum": FlowMomentumStrategy,
-        "gap_fill": GapFillStrategy,
-        "vix_spike_fade": VixSpikeFadeStrategy,
-        "momentum_continuation": MomentumContinuationStrategy,
-        "fusion_v1": FusionStrategyV1,
-        "pair_trading": PairTradingStrategy,
-    }
+    strategy_registry = _build_strategy_registry()
 
     strategies_cfg = config.get("strategies", {})
     if not isinstance(strategies_cfg, dict):
@@ -328,19 +403,36 @@ async def async_main():
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan
-    logger.info("Starting Alpaca stream...")
-    stream_task = asyncio.create_task(
-        alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+    start_alpaca_stream = _should_start_alpaca_stream(
+        order_executor=args.order_executor,
+        data_backend=runtime_settings.cerberus_data_backend,
     )
+    stream_task: asyncio.Task[object] | None = None
+    if start_alpaca_stream:
+        logger.info("Starting Alpaca stream...")
+        assert alpaca_client is not None
+        stream_task = asyncio.create_task(
+            alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+        )
+    else:
+        logger.info(
+            "Skipping Alpaca stream in gateway+noop mode; scanner loop will use gateway polling",
+            data_backend=runtime_settings.cerberus_data_backend,
+            order_executor=args.order_executor,
+        )
+
     trade_stream_task = None
-    if args.order_executor == "alpaca":
+    if start_alpaca_stream and args.order_executor == "alpaca":
+        assert alpaca_client is not None
         trade_stream_task = asyncio.create_task(
             alpaca_client.start_trade_stream(engine.on_trade_update, on_reconnect=engine.reconcile_broker_state)
         )
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
-    # Ensure index symbol is subscribed for regime detection.
-    alpaca_client.subscribe(config.get("index_symbol", "SPY"))
+    if start_alpaca_stream:
+        # Ensure index symbol is subscribed for regime detection.
+        assert alpaca_client is not None
+        alpaca_client.subscribe(config.get("index_symbol", "SPY"))
 
     logger.info("Running initial scan...")
     try:
@@ -365,28 +457,28 @@ async def async_main():
         flattened_for_date = None
         last_warning_min = None
 
-        def _now_local() -> datetime | None:
+        use_market_time_for_session_control = bool(config.get("use_market_time_for_session_control", False))
+
+        def _session_now_local() -> datetime:
             """
-            Prefer engine time derived from market data for determinism/replay.
-            Fall back to wall-clock time only if engine time is unavailable.
+            Resolve session clock for market open/close control.
+
+            Defaults to wall-clock to avoid stale market-data timestamps causing
+            repeated close/restart loops in always-on runtime environments.
             """
-            t = getattr(engine.market_state, "time", None)
-            if isinstance(t, datetime):
-                try:
-                    # If naive, assume UTC to preserve deterministic ordering.
-                    if t.tzinfo is None:
-                        t = t.replace(tzinfo=timezone.utc)
-                    return t.astimezone(tz)
-                except Exception:
-                    pass
-            return None
+            if use_market_time_for_session_control:
+                t = getattr(engine.market_state, "time", None)
+                if isinstance(t, datetime):
+                    try:
+                        if t.tzinfo is None:
+                            t = t.replace(tzinfo=timezone.utc)
+                        return t.astimezone(tz)
+                    except Exception:
+                        pass
+            return datetime.now(timezone.utc).astimezone(tz)
 
         while True:
-            now = _now_local()
-            if now is None:
-                # Wait until index bars establish engine time to keep scheduling deterministic.
-                await asyncio.sleep(1)
-                continue
+            now = _session_now_local()
 
             # 1. Market Close Check (Exit at 16:00 ET)
             # PRD: no overnight holds.
@@ -421,16 +513,19 @@ async def async_main():
                     break
 
             if now.hour >= 16:
+                target_date = now.date()
+
                 # Ensure final flattening if not already done
-                try:
-                    engine.flatten_all(reason="market_close")
-                except Exception as e:
-                    logger.error("EOD flatten failed", error=str(e), exc_info=True)
-                    break
+                if flattened_for_date != target_date:
+                    try:
+                        engine.flatten_all(reason="market_close")
+                        flattened_for_date = target_date
+                    except Exception as e:
+                        logger.error("EOD flatten failed", error=str(e), exc_info=True)
+                        break
 
                 # PRD 9.1: run aggregation + Agent Stage 1 at end-of-day (configurable).
                 if bool(config.get("auto_eod_agent", False)):
-                    target_date = now.date()
                     if eod_ran_for_date != target_date:
                         logger.info(
                             "Running automatic EOD aggregation + Agent Stage 1",
@@ -453,12 +548,31 @@ async def async_main():
                                 exc_info=True,
                             )
                 # Capture daily screener snapshot for historical backtest data
-                try:
-                    _capture_screener_snapshot(alpaca_client, logger)
-                except Exception as e:
-                    logger.warning("Screener snapshot capture failed", error=str(e))
-                logger.info("Market closed. Exiting daily session.")
-                break
+                if start_alpaca_stream:
+                    assert alpaca_client is not None
+                    try:
+                        _capture_screener_snapshot(alpaca_client, logger)
+                    except Exception as e:
+                        logger.warning("Screener snapshot capture failed", error=str(e))
+
+                if bool(config.get("exit_on_market_close", False)):
+                    logger.info("Market closed. Exiting daily session.")
+                    break
+
+                next_open = _next_market_open_local(now)
+                logger.info(
+                    "Market closed. Sleeping until next market open.",
+                    next_open=next_open.isoformat(),
+                    sleep_seconds=max(1, int((next_open - now).total_seconds())),
+                )
+                while True:
+                    current_local = datetime.now(timezone.utc).astimezone(tz)
+                    remaining = (next_open - current_local).total_seconds()
+                    if remaining <= 0:
+                        break
+                    await asyncio.sleep(min(300, max(1, int(remaining))))
+                last_warning_min = None
+                continue
 
             # 2. Run Scanner (every 5 mins)
             # In production, this should be non-blocking or scheduled properly.
@@ -490,7 +604,7 @@ async def async_main():
         )
         raise
     finally:
-        if not stream_task.done():
+        if stream_task is not None and not stream_task.done():
             stream_task.cancel()
         if trade_stream_task is not None and not trade_stream_task.done():
             trade_stream_task.cancel()

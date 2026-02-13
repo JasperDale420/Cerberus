@@ -13,7 +13,7 @@ Creates a matrix to identify optimal deployment conditions.
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, DefaultDict, Dict, List
 
 RESULTS_DIR = Path("results")
 STRATEGIES = [
@@ -27,21 +27,26 @@ STRATEGIES = [
 ]
 
 
-def load_trades(strategy: str) -> List[Dict]:
+def load_trades(strategy: str) -> List[Dict[str, Any]]:
     path = RESULTS_DIR / f"backtest_5yr_{strategy}.json"
     if not path.exists():
         return []
     with open(path) as f:
-        return json.load(f).get("engine_trades", [])
+        data = json.load(f)
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
-def analyze_session_regime_matrix(trades: List[Dict]) -> Dict:
+def analyze_session_regime_matrix(
+    trades: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Create session × regime matrix."""
     # session × trend matrix
-    matrix = defaultdict(
-        lambda: defaultdict(
-            lambda: {"trades": 0, "wins": 0, "pnl": 0.0, "pnl_gross": 0.0}
-        )
+    matrix: DefaultDict[str, DefaultDict[str, Dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: {"trades": 0.0, "wins": 0.0, "pnl": 0.0, "pnl_gross": 0.0})
     )
 
     for t in trades:
@@ -143,15 +148,11 @@ def analyze_strategy(strategy: str, trades: List[Dict]):
 
     # Session × Vol matrix
     vols = ["low", "normal", "high", "shock"]
-    print_matrix(
-        "SESSION × VOLATILITY (Net PnL)", matrix["session_vol"], sessions, vols
-    )
+    print_matrix("SESSION × VOLATILITY (Net PnL)", matrix["session_vol"], sessions, vols)
 
     # Session × Risk matrix
     risks = ["risk_on", "neutral", "risk_off"]
-    print_matrix(
-        "SESSION × RISK SENTIMENT (Net PnL)", matrix["session_risk"], sessions, risks
-    )
+    print_matrix("SESSION × RISK SENTIMENT (Net PnL)", matrix["session_risk"], sessions, risks)
 
     # Find profitable conditions (min 50 trades for reliability)
     print("\n  PROFITABLE CONDITIONS (>= 50 trades):")
@@ -166,9 +167,7 @@ def analyze_strategy(strategy: str, trades: List[Dict]):
     if profitable:
         for key, trades_n, pnl, wr in profitable[:10]:
             parts = key.split("|")
-            print(
-                f"    ✅ session={parts[0]} | trend={parts[1]} | vol={parts[2]} | risk={parts[3]}"
-            )
+            print(f"    ✅ session={parts[0]} | trend={parts[1]} | vol={parts[2]} | risk={parts[3]}")
             print(f"       {trades_n} trades | WR={wr:.1f}% | PnL=${pnl:,.0f}")
     else:
         print("    None found with >= 50 trades")
@@ -178,21 +177,15 @@ def analyze_strategy(strategy: str, trades: List[Dict]):
     gross_profitable = []
     for key, stats in matrix["full"].items():
         if stats["trades"] >= 50 and stats["pnl_gross"] > 0 and stats["pnl"] <= 0:
-            gross_profitable.append(
-                (key, stats["trades"], stats["pnl_gross"], stats["pnl"])
-            )
+            gross_profitable.append((key, stats["trades"], stats["pnl_gross"], stats["pnl"]))
 
     gross_profitable.sort(key=lambda x: x[2], reverse=True)
 
     if gross_profitable:
         for key, trades_n, pnl_gross, pnl_net in gross_profitable[:5]:
             parts = key.split("|")
-            print(
-                f"    ⚠️  session={parts[0]} | trend={parts[1]} | vol={parts[2]} | risk={parts[3]}"
-            )
-            print(
-                f"       {trades_n} trades | Gross=${pnl_gross:,.0f} | Net=${pnl_net:,.0f} (slippage impact)"
-            )
+            print(f"    ⚠️  session={parts[0]} | trend={parts[1]} | vol={parts[2]} | risk={parts[3]}")
+            print(f"       {trades_n} trades | Gross=${pnl_gross:,.0f} | Net=${pnl_net:,.0f} (slippage impact)")
     else:
         print("    None found")
 
@@ -203,7 +196,7 @@ def create_deployment_recommendations():
     print("  DEPLOYMENT RECOMMENDATIONS")
     print("=" * 80)
 
-    all_profitable = []
+    all_profitable: list[dict[str, Any]] = []
 
     for strategy in STRATEGIES:
         trades = load_trades(strategy)
@@ -233,15 +226,11 @@ def create_deployment_recommendations():
 
     if all_profitable:
         all_profitable.sort(key=lambda x: x["pnl"], reverse=True)
-        print(
-            f"\n  Found {len(all_profitable)} PROFITABLE conditions with >= 100 trades:\n"
-        )
+        print(f"\n  Found {len(all_profitable)} PROFITABLE conditions with >= 100 trades:\n")
 
         for p in all_profitable[:15]:
             print(f"  ✅ {p['strategy'].upper()}")
-            print(
-                f"     Session: {p['session']} | Trend: {p['trend']} | Vol: {p['vol']} | Risk: {p['risk']}"
-            )
+            print(f"     Session: {p['session']} | Trend: {p['trend']} | Vol: {p['vol']} | Risk: {p['risk']}")
             print(
                 f"     {p['trades']} trades | WR={p['win_rate']:.1f}% | PnL=${p['pnl']:,.0f} | Avg=${p['avg_pnl']:.2f}/trade"
             )

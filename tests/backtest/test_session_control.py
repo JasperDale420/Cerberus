@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from typing import Any
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
@@ -11,13 +12,13 @@ from src.core.domain import Bar
 @pytest.fixture
 def mock_runner():
     # Minimal config for BacktestRunner
-    config = {
+    config: dict[str, Any] = {
         "index_symbol": "SPY",
         "timezone": "US/Eastern",
         "backtest": {"rth_only": True, "force_flat_at_1600": True},
     }
     # Mocking dependencies that runner.__init__ might hit
-    runner = BacktestRunner.__new__(BacktestRunner)
+    runner: Any = BacktestRunner.__new__(BacktestRunner)
     runner.config = config
     runner.logger = MagicMock()
     runner.DEFAULT_TIMEZONE = "US/Eastern"

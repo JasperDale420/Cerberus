@@ -26,7 +26,7 @@ class FeaturePipeline:
 
     def __init__(
         self,
-        alpaca_client: AlpacaClient,
+        alpaca_client: Optional[AlpacaClient],
         unusual_whales_client: UnusualWhalesClient,
         logger: StructuredLogger,
         config: Optional[Dict[str, Any]] = None,
@@ -41,20 +41,12 @@ class FeaturePipeline:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.snapshot_manager = snapshot_manager
 
-        fp_cfg = (
-            (self.config.get("feature_pipeline") or {})
-            if isinstance(self.config, dict)
-            else {}
-        )
-        self.daily_volume_lookback_days = int(
-            fp_cfg.get("daily_volume_lookback_days", 20)
-        )
+        fp_cfg = (self.config.get("feature_pipeline") or {}) if isinstance(self.config, dict) else {}
+        self.daily_volume_lookback_days = int(fp_cfg.get("daily_volume_lookback_days", 20))
         self.max_concurrency = int(fp_cfg.get("max_concurrency", 6))
 
         # Snapshot capture settings
-        snap_cfg = (
-            self.config.get("snapshots", {}) if isinstance(self.config, dict) else {}
-        )
+        snap_cfg = self.config.get("snapshots", {}) if isinstance(self.config, dict) else {}
         self.snapshots_enabled = bool(snap_cfg.get("enabled", False))
 
         # New Collaborators
@@ -77,13 +69,9 @@ class FeaturePipeline:
         start = end - timedelta(hours=24)
         return start, end
 
-    async def _fetch_bars_wrapper(
-        self, sym: str, as_of: datetime
-    ) -> tuple[List[Any], Dict[str, int]]:
+    async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
         start, end = self._calculate_fetch_window(as_of)
-        bars_data, fetch_metrics = await self.fetcher.fetch_bars(
-            sym, start, end, "1Min"
-        )
+        bars_data, fetch_metrics = await self.fetcher.fetch_bars(sym, start, end, "1Min")
         return bars_data, fetch_metrics
 
     async def _fetch_supplementary_data(
@@ -115,10 +103,7 @@ class FeaturePipeline:
         p_high, p_low, p_close = prior_stats
 
         # Fix floating point equality check logic
-        if (
-            abs(tech_result.prior_day_high) < 1e-9
-            or abs(tech_result.prior_day_low) < 1e-9
-        ):
+        if abs(tech_result.prior_day_high) < 1e-9 or abs(tech_result.prior_day_low) < 1e-9:
             if p_high > 0:
                 prior_day_high = p_high
                 prior_day_low = p_low
@@ -142,11 +127,7 @@ class FeaturePipeline:
             symbol=sym,
             price=tech_result.price,
             atr_pct=tech_result.atr_pct,
-            avg_volume=(
-                float(avg_daily_volume)
-                if avg_daily_volume is not None
-                else float(tech_result.volume)
-            ),
+            avg_volume=(float(avg_daily_volume) if avg_daily_volume is not None else float(tech_result.volume)),
             intraday_range_pct=tech_result.intraday_range_pct,
             gap_pct=gap_pct,
             ema20_slope=tech_result.ema20_slope,
@@ -170,9 +151,7 @@ class FeaturePipeline:
             last_updated=(
                 tech_result.timestamp
                 if isinstance(tech_result.timestamp, datetime)
-                else datetime.fromisoformat(
-                    str(tech_result.timestamp).replace("Z", UTC_ZERO_STR)
-                )
+                else datetime.fromisoformat(str(tech_result.timestamp).replace("Z", UTC_ZERO_STR))
             ),
             relative_strength=getattr(tech_result, "relative_strength", 0.0),
             flow_bias=0.0,
@@ -209,63 +188,58 @@ class FeaturePipeline:
         sym = str(symbol).strip().upper()
 
         async with sem:
-            # 1. Fetch Bars
-            bars_data, fetch_metrics = await self._fetch_bars_wrapper(sym, as_of)
-            for k, v in fetch_metrics.items():
-                local[k] = int(local.get(k, 0)) + int(v)
+            try:
+                # 1. Fetch Bars
+                bars_data, fetch_metrics = await self._fetch_bars_wrapper(sym, as_of)
+                for k, v in fetch_metrics.items():
+                    local[k] = int(local.get(k, 0)) + int(v)
 
-            if not bars_data:
-                self.logger.warning("No bars found for technicals", symbol=sym)
-                local["alpaca_no_bars"] += 1
-                return sym, None, local
+                if not bars_data:
+                    self.logger.warning("No bars found for technicals", symbol=sym)
+                    local["alpaca_no_bars"] += 1
+                    return sym, None, local
 
-            # 2. Compute Technicals
-            tech_result = self.calculator.compute_technicals(bars_data)
-            if not tech_result:
-                local["technicals_fail"] += 1
-                return sym, None, local
+                # 2. Compute Technicals
+                tech_result = self.calculator.compute_technicals(bars_data)
+                if not tech_result:
+                    local["technicals_fail"] += 1
+                    return sym, None, local
 
-            # 2b. Compute Relative Strength if benchmark available
-            if benchmark_closes and bars_data:
-                sym_closes = [
-                    float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data
-                ]
-                tech_result.relative_strength = (
-                    self.calculator.calculate_relative_strength(
+                # 2b. Compute Relative Strength if benchmark available
+                if benchmark_closes and bars_data:
+                    sym_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    tech_result.relative_strength = self.calculator.calculate_relative_strength(
                         sym_closes, benchmark_closes
                     )
+
+                # 3. Fetch Supplementary Data
+                _, end = self._calculate_fetch_window(as_of)
+                avg_daily_volume, prior_stats = await self._fetch_supplementary_data(sym, end)
+
+                # 4. Fetch Trades for TFI (last 5 minutes for high-res microstructure)
+                trades_start = as_of - timedelta(minutes=5)
+                trades_data, _ = await self.fetcher.fetch_trades(sym, trades_start, as_of)
+                tech_result.tfi = self.calculator.calculate_tfi(trades_data)
+
+                # 4b. Compute Statistical Alpha (FracDiff & Hurst)
+                if bars_data:
+                    closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+                    tech_result.frac_diff_close = self.calculator.apply_frac_diff(closes, d=0.4)
+                    tech_result.hurst_exponent = self.calculator.calculate_hurst_exponent(closes)
+
+                # 5. Build Features
+                feat = self._build_symbol_features(sym, tech_result, avg_daily_volume, prior_stats, bars_data, end)
+
+                local["features_ok"] += 1
+                return sym, feat, local
+            except Exception as e:
+                local["technicals_fail"] += 1
+                self.logger.error(
+                    "Feature pipeline symbol processing failed",
+                    symbol=sym,
+                    error=str(e),
                 )
-
-            # 3. Fetch Supplementary Data
-            _, end = self._calculate_fetch_window(as_of)
-            avg_daily_volume, prior_stats = await self._fetch_supplementary_data(
-                sym, end
-            )
-
-            # 4. Fetch Trades for TFI (last 5 minutes for high-res microstructure)
-            trades_start = as_of - timedelta(minutes=5)
-            trades_data, _ = await self.fetcher.fetch_trades(sym, trades_start, as_of)
-            tech_result.tfi = self.calculator.calculate_tfi(trades_data)
-
-            # 4b. Compute Statistical Alpha (FracDiff & Hurst)
-            if bars_data:
-                closes = [
-                    float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data
-                ]
-                tech_result.frac_diff_close = self.calculator.apply_frac_diff(
-                    closes, d=0.4
-                )
-                tech_result.hurst_exponent = self.calculator.calculate_hurst_exponent(
-                    closes
-                )
-
-            # 5. Build Features
-            feat = self._build_symbol_features(
-                sym, tech_result, avg_daily_volume, prior_stats, bars_data, end
-            )
-
-            local["features_ok"] += 1
-            return sym, feat, local
+                return sym, None, local
 
     async def compute_technicals_only(
         self, symbols: List[str], as_of: Optional[datetime] = None
@@ -276,9 +250,7 @@ class FeaturePipeline:
         """
         features: Dict[str, SymbolFeatures] = {}
         if as_of is None:
-            raise ValueError(
-                "FeaturePipeline.compute_technicals_only requires as_of for deterministic behavior"
-            )
+            raise ValueError("FeaturePipeline.compute_technicals_only requires as_of for deterministic behavior")
 
         # Initialize metrics for this run
         metrics: Dict[str, int] = {
@@ -301,19 +273,12 @@ class FeaturePipeline:
         try:
             start, end = self._calculate_fetch_window(as_of)
             spy_bars, _ = await self.fetcher.fetch_bars("SPY", start, end, "1Min")
-            benchmark_closes = [
-                float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in spy_bars
-            ]
+            benchmark_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in spy_bars]
         except Exception as e:
             self.logger.warning("Failed to fetch benchmark SPY bars", error=str(e))
 
         # Use symbols list directly
-        results = await asyncio.gather(
-            *[
-                self._process_single_symbol(s, as_of, sem, benchmark_closes)
-                for s in symbols
-            ]
-        )
+        results = await asyncio.gather(*[self._process_single_symbol(s, as_of, sem, benchmark_closes) for s in symbols])
         for sym, feat, local in results:
             for k, v in local.items():
                 metrics[k] = int(metrics.get(k, 0)) + int(v)
@@ -325,9 +290,7 @@ class FeaturePipeline:
         self.last_run_metrics = dict(metrics)  # partial update
         return features
 
-    async def append_flow_features(
-        self, features_map: Dict[str, SymbolFeatures]
-    ) -> Dict[str, SymbolFeatures]:
+    async def append_flow_features(self, features_map: Dict[str, SymbolFeatures]) -> Dict[str, SymbolFeatures]:
         """
         Stage 2: Fetch and append UW options flow data for existing features.
         """
@@ -351,9 +314,7 @@ class FeaturePipeline:
         if not uw_enabled:
             # PRD 10.6: External flow integration disabled.
             # We skip fetching but must ensure fields are zeroed (already done in Stage 1 init).
-            self.logger.info(
-                "Unusual Whales flow integration disabled; skipping fetch."
-            )
+            self.logger.info("Unusual Whales flow integration disabled; skipping fetch.")
             return features_map
 
         async def _enrich_one(feat: SymbolFeatures) -> SymbolFeatures:
@@ -375,18 +336,14 @@ class FeaturePipeline:
                     # Log already handled in fetcher but we can log context here too if needed
                     flow_data = []
 
-            (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = (
-                self.calculator.compute_flow_metrics(flow_data)
-            )
+            (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = self.calculator.compute_flow_metrics(flow_data)
             d_score = abs(float(f_bias)) * float(agg_share)
             if int(sw_count) > 5:
                 d_score *= 1.2
             d_score = max(0.0, min(1.0, d_score))
 
             # Compute GEX metrics
-            net_gex, gex_flip_dist = self.calculator.calculate_gex_metrics(
-                gex_data, feat.price
-            )
+            net_gex, gex_flip_dist = self.calculator.calculate_gex_metrics(gex_data, feat.price)
 
             # Update feature object (dataclass is mutable-ish or we allow direct field update)
             # Python dataclasses are mutable by default.
@@ -442,9 +399,7 @@ class FeaturePipeline:
 
         return features_map
 
-    async def compute_features(
-        self, symbols: List[str], as_of: Optional[datetime] = None
-    ) -> Dict[str, SymbolFeatures]:
+    async def compute_features(self, symbols: List[str], as_of: Optional[datetime] = None) -> Dict[str, SymbolFeatures]:
         """
         Computes features for a list of symbols (Full Pipeline).
         """

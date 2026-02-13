@@ -13,6 +13,8 @@ from typing import Any, Dict
 
 import httpx
 
+from src.core.settings import get_settings
+
 VERSION = "1.0.0"
 
 
@@ -56,8 +58,6 @@ def check_database_connectivity(db_path: str = "cerberus.db") -> Dict[str, Any]:
 
 def check_alpaca_credentials() -> Dict[str, Any]:
     """Verify Alpaca API credentials are configured."""
-    from src.core.settings import get_settings
-
     settings = get_settings()
     api_key = settings.resolved_api_key
     secret_key = settings.resolved_secret_key
@@ -90,8 +90,6 @@ def check_alpaca_credentials() -> Dict[str, Any]:
 
 def check_gateway_connectivity() -> Dict[str, Any]:
     """Verify Data-Gateway is reachable."""
-    from src.core.settings import get_settings
-
     settings = get_settings()
     gateway_url = str(settings.cerberus_gateway_url).strip()
     if not gateway_url:
@@ -136,8 +134,6 @@ def check_gateway_connectivity() -> Dict[str, Any]:
 
 def check_heber_connectivity() -> Dict[str, Any]:
     """Verify Heber catalog endpoint is reachable when configured."""
-    from src.core.settings import get_settings
-
     settings = get_settings()
     catalog_url = str(settings.cerberus_heber_catalog_url).strip()
     if not catalog_url:
@@ -160,6 +156,84 @@ def check_heber_connectivity() -> Dict[str, Any]:
             "url": check_url,
             "error": f"{type(e).__name__}: {e}",
         }
+
+
+def _latest_dataset_file(data_root: Path, feed: str) -> Path | None:
+    dataset_root = data_root / "silver" / f"feed={feed}"
+    if not dataset_root.exists():
+        return None
+
+    latest: Path | None = None
+    latest_mtime = -1.0
+    for parquet_file in dataset_root.rglob("*.parquet"):
+        if not parquet_file.is_file():
+            continue
+        mtime = parquet_file.stat().st_mtime
+        if mtime > latest_mtime:
+            latest_mtime = mtime
+            latest = parquet_file
+    return latest
+
+
+def check_heber_freshness(
+    required_feeds: tuple[str, ...] = ("bars", "trades"),
+    max_age_seconds: float = 900.0,
+) -> Dict[str, Any]:
+    """Verify Heber Silver datasets contain recent files for required feeds."""
+    settings = get_settings()
+    if not settings.use_heber_storage:
+        return {
+            "status": "skipped",
+            "reason": "Heber storage backend not enabled",
+        }
+
+    data_root_raw = str(settings.cerberus_heber_data_root).strip()
+    if not data_root_raw:
+        return {
+            "status": "skipped",
+            "reason": "CERBERUS_HEBER_DATA_ROOT not set",
+        }
+
+    data_root = Path(data_root_raw)
+    if not data_root.exists():
+        return {
+            "status": "error",
+            "reason": f"Heber data root does not exist: {data_root}",
+        }
+
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    freshness: Dict[str, Dict[str, Any]] = {}
+    stale_feeds: list[str] = []
+
+    for feed in required_feeds:
+        latest = _latest_dataset_file(data_root, feed)
+        if latest is None:
+            stale_feeds.append(feed)
+            freshness[feed] = {
+                "status": "missing",
+                "file": None,
+                "age_seconds": None,
+            }
+            continue
+
+        age_seconds = max(0.0, now_epoch - latest.stat().st_mtime)
+        feed_status = "ok" if age_seconds <= max_age_seconds else "stale"
+        if feed_status != "ok":
+            stale_feeds.append(feed)
+
+        freshness[feed] = {
+            "status": feed_status,
+            "file": str(latest),
+            "age_seconds": round(age_seconds, 3),
+            "max_age_seconds": float(max_age_seconds),
+        }
+
+    return {
+        "status": "ok" if not stale_feeds else "degraded",
+        "data_root": str(data_root),
+        "stale_feeds": stale_feeds,
+        "freshness": freshness,
+    }
 
 
 def get_system_info() -> Dict[str, Any]:
@@ -189,6 +263,7 @@ def run_healthcheck(verbose: bool = True) -> Dict[str, Any]:
         "alpaca": check_alpaca_credentials(),
         "gateway": check_gateway_connectivity(),
         "heber": check_heber_connectivity(),
+        "heber_freshness": check_heber_freshness(),
     }
 
     # Determine overall health
@@ -223,9 +298,7 @@ def print_healthcheck_results(results: Dict[str, Any]) -> None:
     # Database
     db = results.get("database", {})
     status_symbol = "✓" if db.get("status") == "ok" else "✗"
-    print(
-        f"{status_symbol} Database connectivity: {db.get('status', 'unknown').upper()}"
-    )
+    print(f"{status_symbol} Database connectivity: {db.get('status', 'unknown').upper()}")
     if db.get("status") != "ok":
         print(f"  └─ Error: {db.get('error', 'unknown')}")
     else:
@@ -269,6 +342,22 @@ def print_healthcheck_results(results: Dict[str, Any]) -> None:
         print(f"  └─ Reason: {heber.get('reason', 'unknown')}")
     else:
         print(f"  └─ Error: {heber.get('error', 'unknown')}")
+    print()
+
+    # Heber freshness
+    heber_freshness = results.get("heber_freshness", {})
+    status_symbol = "✓" if heber_freshness.get("status") in {"ok", "skipped"} else "✗"
+    print(f"{status_symbol} Heber Freshness: {heber_freshness.get('status', 'unknown').upper()}")
+    if heber_freshness.get("status") == "ok":
+        print(f"  └─ Data Root: {heber_freshness.get('data_root', 'unknown')}")
+    elif heber_freshness.get("status") == "skipped":
+        print(f"  └─ Reason: {heber_freshness.get('reason', 'unknown')}")
+    else:
+        stale_feeds = heber_freshness.get("stale_feeds", [])
+        if stale_feeds:
+            print(f"  └─ Stale Feeds: {', '.join(stale_feeds)}")
+        elif heber_freshness.get("reason"):
+            print(f"  └─ Reason: {heber_freshness.get('reason')}")
     print()
 
     # Overall

@@ -16,6 +16,7 @@ import json
 import math
 from collections import defaultdict
 from pathlib import Path
+from typing import Any, DefaultDict
 
 RESULTS_DIR = Path("results")
 
@@ -36,12 +37,17 @@ PROFITABLE_CONDITIONS = [
 ]
 
 
-def load_trades(strategy: str):
+def load_trades(strategy: str) -> list[dict[str, Any]]:
     path = RESULTS_DIR / f"backtest_5yr_{strategy}.json"
     if not path.exists():
         return []
     with open(path) as f:
-        return json.load(f).get("engine_trades", [])
+        data = json.load(f)
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
 def filter_trades_by_condition(trades, session, trend, vol, risk):
@@ -110,7 +116,7 @@ def analyze_condition(strategy, session, trend, vol, risk):
     avg_hold_mins = sum(hold_times) / len(hold_times) / 60 if hold_times else 0
 
     # Yearly breakdown
-    yearly = defaultdict(lambda: {"trades": 0, "pnl": 0, "wins": 0})
+    yearly: DefaultDict[int, dict[str, float]] = defaultdict(lambda: {"trades": 0.0, "pnl": 0.0, "wins": 0.0})
     for t in filtered:
         year = parse_year(t.get("entry_time"))
         pnl = t.get("pnl_net", 0) or 0
@@ -120,7 +126,7 @@ def analyze_condition(strategy, session, trend, vol, risk):
             yearly[year]["wins"] += 1
 
     # Symbol breakdown
-    symbols = defaultdict(lambda: {"trades": 0, "pnl": 0, "wins": 0})
+    symbols: DefaultDict[str, dict[str, float]] = defaultdict(lambda: {"trades": 0.0, "pnl": 0.0, "wins": 0.0})
     for t in filtered:
         sym = t.get("symbol", "unknown")
         pnl = t.get("pnl_net", 0) or 0
@@ -208,26 +214,20 @@ def print_deep_analysis(result):
         y = result["yearly"][year]
         wr = y["wins"] / y["trades"] * 100 if y["trades"] > 0 else 0
         status = "✅" if y["pnl"] > 0 else "❌"
-        print(
-            f"    {status} {year}: {y['trades']:3} trades | WR={wr:5.1f}% | PnL=${y['pnl']:>8,.0f}"
-        )
+        print(f"    {status} {year}: {y['trades']:3} trades | WR={wr:5.1f}% | PnL=${y['pnl']:>8,.0f}")
 
     # Symbol concentration
     print("\n  TOP SYMBOLS:")
     for sym, stats in result["top_symbols"]:
         wr = stats["wins"] / stats["trades"] * 100 if stats["trades"] > 0 else 0
-        print(
-            f"    ✅ {sym:6} | {stats['trades']:3} trades | WR={wr:5.1f}% | PnL=${stats['pnl']:>7,.0f}"
-        )
+        print(f"    ✅ {sym:6} | {stats['trades']:3} trades | WR={wr:5.1f}% | PnL=${stats['pnl']:>7,.0f}")
 
     if result["bottom_symbols"]:
         print("\n  LOSING SYMBOLS (consider excluding):")
         for sym, stats in result["bottom_symbols"]:
             if stats["pnl"] < 0:
                 wr = stats["wins"] / stats["trades"] * 100 if stats["trades"] > 0 else 0
-                print(
-                    f"    ❌ {sym:6} | {stats['trades']:3} trades | WR={wr:5.1f}% | PnL=${stats['pnl']:>7,.0f}"
-                )
+                print(f"    ❌ {sym:6} | {stats['trades']:3} trades | WR={wr:5.1f}% | PnL=${stats['pnl']:>7,.0f}")
 
 
 def generate_optimization_recommendations(results):
@@ -247,9 +247,7 @@ def generate_optimization_recommendations(results):
 
         # Sample size check
         if r["trades"] < 100:
-            recommendations.append(
-                "LOW sample size - combine with similar regimes for robustness"
-            )
+            recommendations.append("LOW sample size - combine with similar regimes for robustness")
 
         # Yearly consistency
         if r["profitable_years"] < r["total_years"] * 0.6:
@@ -260,16 +258,12 @@ def generate_optimization_recommendations(results):
         # Win/loss ratio
         ratio = abs(r["avg_win"] / r["avg_loss"]) if r["avg_loss"] else 0
         if ratio < 1.0 and r["win_rate"] < 0.5:
-            recommendations.append(
-                "Poor risk/reward - consider widening targets or tightening stops"
-            )
+            recommendations.append("Poor risk/reward - consider widening targets or tightening stops")
 
         # CI width
         ci_width = r["ci_high"] - r["ci_low"]
         if ci_width > 0.15:
-            recommendations.append(
-                "Wide confidence interval - need more trades for reliability"
-            )
+            recommendations.append("Wide confidence interval - need more trades for reliability")
 
         # Symbol concentration
         if r["top_symbols"]:
@@ -287,9 +281,7 @@ def generate_optimization_recommendations(results):
 
         # Hold time optimization
         if r["avg_hold_mins"] < 30:
-            recommendations.append(
-                "Short hold times - verify not getting stopped out too early"
-            )
+            recommendations.append("Short hold times - verify not getting stopped out too early")
         elif r["avg_hold_mins"] > 300:
             recommendations.append("Long hold times - consider tighter trailing stops")
 
@@ -321,14 +313,10 @@ def main():
     print("  FINAL RANKING BY ROBUSTNESS (Expectancy × √Trades)")
     print(f"{'=' * 80}")
 
-    for r in sorted(
-        results, key=lambda x: x["expectancy"] * math.sqrt(x["trades"]), reverse=True
-    ):
+    for r in sorted(results, key=lambda x: x["expectancy"] * math.sqrt(x["trades"]), reverse=True):
         score = r["expectancy"] * math.sqrt(r["trades"])
         print(f"  {score:6.1f} | {r['strategy']:20} | {r['condition']}")
-        print(
-            f"         | {r['trades']:,} trades | E=${r['expectancy']:.2f} | WR={r['win_rate'] * 100:.1f}%"
-        )
+        print(f"         | {r['trades']:,} trades | E=${r['expectancy']:.2f} | WR={r['win_rate'] * 100:.1f}%")
         print()
 
 

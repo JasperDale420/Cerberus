@@ -6,6 +6,54 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Gateway+Heber live-integration kickoff hardening** (2026-02-12):
+  - Added runtime execution guard validation in `src/core/settings.py`:
+    - `validate_runtime_execution_requirements(order_executor, mode)`
+    - Enforces Alpaca credentials whenever `--order-executor=alpaca`, even in gateway data mode.
+  - Wired execution guard validation into startup in `src/main.py` before client initialization.
+  - Updated integration smoke defaults in `scripts/smoke_gateway_heber_integration.py`:
+    - `CERBERUS_SMOKE_REQUIRED_DATASET` now defaults to `bars`.
+    - Gateway auth/sink probe now uses `GET /api/v1/alpaca/stocks/{symbol}/bars` (instead of screener) so sink activity checks align with phase-1 screener sink-skip guardrails.
+    - Added `X-Gateway-Cache: bypass` and `cache_buster` probe param to force non-cached sink-probe requests.
+    - Bronze fresh-write checks now support provider-partitioned path layout (`bronze/provider=*/feed=...`) in addition to flat feed layout.
+    - Sink activity check now falls back to observed fresh Bronze/Silver writes when gateway sink counters do not move.
+    - Added explicit failure signal when gateway sink is ready but recent Heber Bronze/Silver writes are not observed.
+  - Added missing gateway retry env examples to `.env.example`:
+    - `CERBERUS_GATEWAY_MAX_RETRIES`
+    - `CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`
+  - Expanded unit coverage:
+    - `tests/unit/test_startup_validation_unit.py`
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+
+- **Heber shadow parity integration suite for Phase 4 reads** (2026-02-11):
+  - Added `tests/integration/test_heber_shadow_parity_integration.py`.
+  - Verifies Heber-backed bars/trades match gateway-mode feature inputs when data is equivalent.
+  - Verifies Heber falls back to gateway when rows are not `ts_available`-safe for the decision window.
+
+- **Heber read-path integration for Cerberus historical data** (2026-02-11):
+  - Added `src/data/heber_read_client.py` to read Heber Silver `bars` and `trades` with `ts_available` point-in-time filtering.
+  - Wired Heber reads into `src/data/fetcher.py` for `CERBERUS_STORAGE_BACKEND=heber|dual` with fallback to gateway/legacy sources.
+  - Added Heber freshness health signal in `src/core/health.py` (`check_heber_freshness`) and included it in the runtime healthcheck summary.
+  - Added unit coverage:
+    - `tests/unit/test_heber_read_client_unit.py`
+    - `tests/unit/test_health_heber_freshness_unit.py`
+
+- **Gateway + Heber smoke gate hardening** (2026-02-11):
+  - Extended `scripts/smoke_gateway_heber_integration.py` to validate:
+    - sink publish activity via `gateway_sink_publish_total` metric deltas
+    - fresh Bronze write detection after probe request
+    - fresh Silver write detection after probe request
+  - Added smoke unit coverage for metric growth and fresh-file checks:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+  - Added gateway-mode integration coverage for scanner + feature pipeline:
+    - `tests/integration/test_gateway_scanner_feature_pipeline_integration.py`
+
+- **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
+  - Added one-command integration smoke script:
+    - `scripts/smoke_gateway_heber_integration.py`
+  - Added unit coverage for smoke gate checks:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+
 - Added local Claude/Swarm workspace tooling assets and skill bundles:
   - `.claude/` helpers, settings, and skill definitions
   - `.claude-flow/` agent/task state files
@@ -37,6 +85,30 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- **Pre-market log reset + deep repo hygiene audit** (2026-02-12):
+  - Added deep hygiene audit artifact:
+    - `docs/audits/repo-hygiene-deep-audit-2026-02-12.md`
+  - Updated repository hygiene policy and pre-market reset checklist:
+    - `docs/REPO_AUDIT.md`
+  - Recorded archive/remediation outcomes for generated runtime outputs and tracking guardrails.
+
+- **Gateway/Heber integration status refresh for market-session readiness** (2026-02-12):
+  - Updated integration status docs to reflect local validation completed on 2026-02-12:
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
+    - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+    - `docs/cerberus-data-gateway-heber-architecture.md`
+    - `docs/audits/data-gateway-heber-doc-review.md`
+  - Updated `docs/environment-variables.md` to clarify Alpaca credential requirements by runtime mode and order executor.
+
+- **Data-Gateway/Heber docs alignment review** (2026-02-11):
+  - Updated migration docs to match current Cerberus runtime behavior and test evidence:
+    - `docs/cerberus-data-gateway-heber-architecture.md`
+    - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
+    - `docs/environment-variables.md`
+  - Added audit artifact with truth matrix, line-level findings, and remediation mapping:
+    - `docs/audits/data-gateway-heber-doc-review.md`
+
 - Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
   - `docs/cerberus-data-gateway-heber-architecture.md`
   - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
@@ -54,6 +126,127 @@ All notable changes to this project will be documented in this file.
 - Removed stale auto-generated `codebase.md`.
 
 ### Changed
+
+- **Runtime type-safety backlog reduction (mypy src clean)** (2026-02-12):
+  - Eliminated all `mypy src` errors (from 28 to 0) across runtime modules.
+  - Added explicit optional/default typing in scanner strategy/profile code and ranking engine.
+  - Hardened scanner pair-discovery typing around async gather results and pandas series construction.
+  - Improved replay/snapshot typing and symbol feature reconstruction boundaries.
+  - Tightened logger processor typing and backtest clock/cache typing consistency.
+  - Added guard for optional pair-trading position exit path.
+
+- **Full-repo type-check pass for scripts/tests/tools** (2026-02-12):
+  - Re-enabled `mypy .` coverage for `scripts/`, `tests/`, and `tools/` by restoring default exclude scope in `pyproject.toml`.
+  - Added targeted type annotations/casts in backtest analysis scripts (`scripts/*`) to eliminate untyped container and JSON-return errors.
+  - Hardened test typing for settings builders, monkeypatched methods, deque-backed `SymbolState`, and typed mock usage.
+  - Added compatibility-safe typing updates to helper tooling under `tools/`.
+  - Result: `mypy .` now passes across `399` files.
+
+- **Type-check tooling compatibility cleanup** (2026-02-12):
+  - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.
+  - Added `scripts/__init__.py` to keep script module resolution explicit for imports/type tooling.
+  - Result: mypy plugin bootstrap error is removed; remaining mypy failures are baseline typing debt.
+
+- **Repo hygiene tracking guardrails for generated runtime state** (2026-02-12):
+  - Expanded `.gitignore` to prevent accidental tracking of local runtime/generated state:
+    - `.claude-flow/`
+    - `.swarm/`
+    - `.scannerwork/`
+    - `logs/tests/full_test_output*.txt`
+  - Removed tracked generated runtime files from version control so future local state does not appear as repo changes.
+
+- **Strategy registry parity fix for runtime/backtest startup** (2026-02-12):
+  - Updated `src/main.py` runtime strategy registry to include:
+    - `trend_pullback`
+    - `failed_breakout`
+  - Updated `src/backtest/runner.py` strategy registry to include:
+    - `trend_pullback`
+    - `failed_breakout`
+  - Added registry regression tests in:
+    - `tests/unit/test_strategy_registry_unit.py`
+  - Eliminates `Unknown strategy in config; skipping` warnings for enabled default strategies in `config/config.yaml`.
+
+- **Smoke script gateway-key fallback hardening for local integration runs** (2026-02-12):
+  - Updated `scripts/smoke_gateway_heber_integration.py` config loading to resolve gateway key in this order:
+    - explicit `CERBERUS_GATEWAY_KEY`
+    - first key from `GW_API_KEYS` (comma-separated)
+    - local default `gw_cerberus_dev_key_12345` when gateway URL is `http://localhost:8080` or `http://127.0.0.1:8080`
+  - Added unit coverage in `tests/unit/test_smoke_gateway_heber_integration_unit.py` for the gateway-key fallback rules.
+
+- **Soak monitor reliability and local-default auth hardening** (2026-02-12):
+  - Updated `scripts/soak_gateway_heber_monitor.py` to resolve gateway key in this order:
+    - explicit `CERBERUS_GATEWAY_KEY`
+    - first key from `GW_API_KEYS`
+    - local default `gw_cerberus_dev_key_12345` for localhost gateway URLs
+  - Updated soak pass/fail logic so a flat gateway sink metric does not fail the soak when Redis stream growth and fresh Bronze/Silver writes are observed.
+  - Added regression coverage in `tests/unit/test_soak_gateway_heber_monitor_unit.py` for key resolution and sink-metric fallback behavior.
+
+- **Scanner and SQLite runtime hardening for live gateway/heber operation** (2026-02-12):
+  - Added legacy SQLite schema patching in `src/analysis/db.py` during `init_db()` so older local DB files are upgraded in-place for known missing columns:
+    - `trades.regime_tags_entry_json`
+    - `trades.regime_tags_exit_json`
+    - `signals.feature_snapshot_json`
+    - `regime_history.{model_version, trend, vol_regime, liquidity, risk, session, vol_of_vol, liquidity_score, risk_score, confidence_json}`
+  - Hardened `src/data/calculator.py` against non-positive baseline prices in:
+    - `calculate_relative_strength()`
+    - `calculate_hurst_exponent()`
+  - Hardened `src/data/pipeline.py` per-symbol processing so one symbol failure does not abort the full scan batch.
+  - Added regression tests:
+    - `tests/unit/test_db_sqlite_schema_patch_unit.py`
+    - `tests/test_statistical_alpha.py`
+    - `tests/test_pipeline.py`
+
+- **Gateway timeout root-cause fix for off-hours restart storms** (2026-02-12):
+  - Updated `src/main.py` market-session control to use wall-clock time by default (with optional `use_market_time_for_session_control=true` for replay-style behavior).
+  - Updated post-close behavior in `src/main.py` to sleep until next weekday 09:30 ET instead of exiting, unless `exit_on_market_close=true`.
+  - Added `_next_market_open_local` helper and unit coverage in `tests/unit/test_main_stream_mode_unit.py`.
+  - Prevents Docker `restart: always` loops from repeatedly re-running initial scans and overloading Data-Gateway overnight.
+
+- **Heber catalog smoke gate + Docker runtime defaults for integration kickoff** (2026-02-12):
+  - Updated `scripts/smoke_gateway_heber_integration.py` to fail when catalog datasets endpoint is reachable but empty (forces catalog seed before go-live).
+  - Added unit coverage for non-empty catalog inventory requirement in:
+    - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+  - Updated `docker-compose.yml` runtime defaults for Cerberus trader/scheduler to include Heber dual-read shadow wiring:
+    - `CERBERUS_STORAGE_BACKEND=dual`
+    - `CERBERUS_HEBER_CATALOG_URL=http://host.docker.internal:8085/api/v1`
+    - `CERBERUS_HEBER_DATA_ROOT=/Volumes/heber/data`
+    - read-only mount: `/Volumes/heber/data:/Volumes/heber/data:ro`
+  - Updated `.env.example` integration block to reflect dual storage default and Heber data root example.
+
+- **Gateway-only startup profile for local Docker runtime** (2026-02-12):
+  - Updated `docker-compose.yml` trader command to `--order-executor noop` for gateway-only paper startup without local Alpaca keys.
+  - Added gateway-mode runtime environment defaults in `docker-compose.yml`:
+    - `CERBERUS_DATA_BACKEND=gateway`
+    - `CERBERUS_FAILOVER_TO_LEGACY=false`
+    - `CERBERUS_GATEWAY_URL=http://host.docker.internal:8080`
+    - `CERBERUS_GATEWAY_KEY=gw_cerberus_dev_key_12345`
+  - Updated `src/main.py` to skip both Alpaca client initialization and Alpaca stream startup in `gateway + noop + no-failover` mode.
+  - Updated `.env.example` to document Alpaca credentials as conditional and reflect gateway-first defaults.
+
+- **Docker dependency resolution fix for Cerberus image builds** (2026-02-12):
+  - Updated `requirements.txt` to pin `httpx==0.27.2` to satisfy `unusualwhales-python-client==5.0.1` compatibility (`httpx<0.28`).
+  - Updated `requirements.txt` to pin `numpy==2.2.6` to satisfy `pandas-ta -> numba` compatibility (`numba` requires `numpy<2.3`).
+  - Updated `requirements.txt` to pin `pandas==2.3.3` (from `3.0.0`) to restore compatibility with `statsmodels==0.14.4`.
+  - Added missing runtime dependency `pydantic-settings` to `requirements.txt` so Docker runtime matches `pyproject.toml`.
+  - Added missing runtime dependency `pyarrow==21.0.0` to `requirements.txt` and `pyproject.toml` for Heber parquet reads.
+  - Updated `pyproject.toml` runtime dependency bound to `httpx>=0.27,<0.28` so local installs and Docker builds use the same compatible range.
+  - Updated `pyproject.toml` runtime dependency bound to `numpy>=2.2,<2.3` to match the same resolver-safe range.
+  - Updated `pyproject.toml` runtime dependency bound to `pandas>=2.3,<3` to match the runtime-compatible range used by Docker.
+- **Docker build-context reduction for faster local rebuilds** (2026-02-12):
+  - Expanded `.dockerignore` to exclude large runtime/output directories and local artifacts (`results/`, `data/`, DB/log/cache files, local agent state directories).
+  - Prevents multi-GB context uploads during `docker compose build` and improves rebuild speed.
+
+- **Gateway-only dynamic universe ranking fix** (2026-02-11):
+  - Updated `src/scanner/universe.py` so dynamic previous-day volume ranking runs when `CentralApiClient` is the only data source.
+  - Added regression coverage in `tests/unit/test_universe_builder_unit.py` to ensure gateway-only mode correctly includes top-volume symbols.
+
+- **Central API retry classification for gateway integration** (2026-02-11):
+  - Added status-aware retry policy in `src/data/api_client.py`:
+    - no retry for `401/403`
+    - retry for `429`, `5xx`, timeout, and transport errors
+    - support for `Retry-After` with exponential backoff fallback
+  - Updated checklist progress in:
+    - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
 
 - Added Phase 1 integration scaffolding for Data-Gateway/Heber:
   - Extended runtime settings in `src/core/settings.py` with backend mode and Gateway/Heber config.

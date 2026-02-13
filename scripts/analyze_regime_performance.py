@@ -27,12 +27,15 @@ def load_trades(strategy: str) -> List[Dict[str, Any]]:
         return []
     with open(path) as f:
         data = json.load(f)
-    return data.get("engine_trades", [])
+    trades = data.get("engine_trades", [])
+    if isinstance(trades, list):
+        return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
-def analyze_by_regime(trades: List[Dict], axis: str) -> Dict[str, Dict]:
+def analyze_by_regime(trades: List[Dict[str, Any]], axis: str) -> Dict[str, Dict[str, Any]]:
     """Group trades by a specific regime axis and calculate stats."""
-    groups = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0, "pnl_list": []})
+    groups: dict[str, Dict[str, Any]] = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0, "pnl_list": []})
 
     for t in trades:
         regime_tags = t.get("regime_tags_at_entry", {})
@@ -53,9 +56,9 @@ def analyze_by_regime(trades: List[Dict], axis: str) -> Dict[str, Dict]:
     return dict(groups)
 
 
-def analyze_by_combination(trades: List[Dict], axes: List[str]) -> Dict[str, Dict]:
+def analyze_by_combination(trades: List[Dict[str, Any]], axes: List[str]) -> Dict[str, Dict[str, Any]]:
     """Group trades by combination of regime axes."""
-    groups = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0})
+    groups: dict[str, Dict[str, Any]] = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0})
 
     for t in trades:
         regime_tags = t.get("regime_tags_at_entry", {})
@@ -75,7 +78,7 @@ def analyze_by_combination(trades: List[Dict], axes: List[str]) -> Dict[str, Dic
     return dict(groups)
 
 
-def print_regime_analysis(strategy: str, trades: List[Dict]):
+def print_regime_analysis(strategy: str, trades: List[Dict[str, Any]]):
     """Print regime analysis for a strategy."""
     print(f"\n{'=' * 70}")
     print(f"  {strategy.upper()} - {len(trades):,} trades")
@@ -92,9 +95,7 @@ def print_regime_analysis(strategy: str, trades: List[Dict]):
         results = analyze_by_regime(trades, axis)
 
         # Sort by PnL descending
-        sorted_results = sorted(
-            results.items(), key=lambda x: x[1]["pnl"], reverse=True
-        )
+        sorted_results = sorted(results.items(), key=lambda x: x[1]["pnl"], reverse=True)
 
         for value, stats in sorted_results:
             profitable = "✅" if stats["pnl"] > 0 else "❌"
@@ -117,10 +118,7 @@ def print_regime_analysis(strategy: str, trades: List[Dict]):
     if profitable_combos:
         for key, stats in profitable_combos[:10]:  # Top 10
             print(f"    ✅ {key}")
-            print(
-                f"       {stats['trades']:,} trades | WR={stats['win_rate'] * 100:.1f}% | "
-                f"PnL=${stats['pnl']:,.0f}"
-            )
+            print(f"       {stats['trades']:,} trades | WR={stats['win_rate'] * 100:.1f}% | PnL=${stats['pnl']:,.0f}")
     else:
         print("    No profitable combinations with >= 50 trades found")
 
@@ -158,9 +156,7 @@ def find_all_profitable_regimes():
     print(f"\nFound {len(profitable)} profitable combinations (>= 100 trades):\n")
     for p in profitable[:20]:  # Top 20
         print(f"  ✅ {p['strategy']:20} | {p['regime']}")
-        print(
-            f"     {p['trades']:,} trades | WR={p['win_rate'] * 100:.1f}% | PnL=${p['pnl']:,.0f}"
-        )
+        print(f"     {p['trades']:,} trades | WR={p['win_rate'] * 100:.1f}% | PnL=${p['pnl']:,.0f}")
         print()
 
 

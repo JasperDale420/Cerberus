@@ -1,154 +1,101 @@
 # Cerberus + Data-Gateway + Heber Implementation Checklist
 
+## Legend
+- `[x] Implemented in Cerberus repo`
+- `[~] Implemented + validated by tests in Cerberus repo`
+- `[ ] Pending in Cerberus repo`
+- `[D] Cross-repo dependency (Data-Gateway/Heber)`
+- `[D~] Cross-repo dependency validated in local stack (not owned by Cerberus)`
+
 ## How To Use This
-- Execute in order.
-- Do not skip phase gates.
-- Keep changes small and commit per checklist section.
+- Execute phases in order.
+- Do not mark `[x]` unless code exists in this repo.
+- Do not mark `[~]` unless code exists and test evidence is linked.
+- Track cross-repo work under dependency sections only.
 
-## Phase 0: Contract and Environment Readiness
-
-### Cerberus
-- [x] Add integration env vars to Cerberus runtime settings (`src/core/settings.py` or equivalent env access layer).
-- [x] Add startup validation for required variables in gateway/heber modes.
-- [x] Add health probes for Gateway and Heber to `src/core/health.py`.
-
-### Data-Gateway
-- [ ] Confirm Cerberus client record in `Data-Gateway/config/clients.yaml` includes required providers/feeds.
-- [ ] Confirm `gateway/config.py` values for sink and cache are explicit per environment.
-- [ ] Confirm `/health` and `/health/ready` are wired in deployment checks.
-
-### Heber
-- [ ] Confirm `heber/config.py` stream settings match Gateway stream topic (`heber:events`).
-- [ ] Confirm Redis, Postgres, and data root are valid for the target environment.
+## Phase 0: Contract and Environment Readiness (Cerberus-owned)
+- `[x]` Integration env vars added in runtime settings (`src/core/settings.py`).
+- `[x]` Startup validation for gateway/heber/legacy mode requirements.
+- `[x]` Gateway/Heber connectivity health checks in `src/core/health.py`.
+- `[~]` Environment-level verification completed for local target stack (`gateway:8080`, `heber-catalog:8085`, Redis stream `heber:events`, Heber data root `/Volumes/heber/data`) on 2026-02-12.
 
 ### Gate
-- [ ] One command smoke test script succeeds for:
-  - Cerberus -> Gateway authenticated call
-  - Gateway -> Redis stream publish
-  - Heber consumer -> Bronze/Silver write
+- `[x]` Smoke harness script exists: `scripts/smoke_gateway_heber_integration.py`.
+- `[x]` Smoke harness unit test exists: `tests/unit/test_smoke_gateway_heber_integration_unit.py`.
+- `[~]` End-to-end environment smoke run completed and recorded for local target deployment on 2026-02-12 (`8/8 checks passed`).
 
 ## Phase 1: Cerberus Data Adapter Cut-In (No Behavior Change)
 
-### Files To Edit (Cerberus)
-- `src/data/api_client.py`
-  - [x] Replace non-versioned paths with Data-Gateway routes (`/api/v1/alpaca/...`, `/api/v1/uw/...`).
-  - [x] Add `X-Gateway-Key` header support.
-  - [ ] Add robust timeout/retry classification for 401/403/429/5xx.
-- `src/data/fetcher.py`
-  - [x] Introduce backend interface (`legacy` vs `gateway`) with same return shape.
-- `src/data/pipeline.py`
-  - [x] Route fetch calls through backend interface; preserve feature semantics.
-- `src/scanner/universe.py`
-  - [x] Route screener calls through adapter instead of direct Alpaca client when enabled.
-- `src/main.py`
-  - [x] Wire backend selection flag from env/config at composition root.
+### Core implementation
+- `[~]` `src/data/api_client.py` uses Data-Gateway v1 routes and `X-Gateway-Key`.
+- `[~]` `src/data/api_client.py` supports timeout/retry classification for `401/403/429/5xx`.
+- `[~]` `src/data/fetcher.py` routes reads by `legacy|gateway|dual`.
+- `[~]` `src/data/fetcher.py` supports legacy failover control.
+- `[~]` `src/data/pipeline.py` uses routed fetch paths while preserving feature semantics.
+- `[~]` `src/scanner/universe.py` uses gateway screener adapter when enabled.
+- `[x]` `src/main.py` wires backend selection at composition root.
 
-### Tests (Cerberus)
-- [x] Extend `tests/contract/test_central_api_client_contract.py` for actual Data-Gateway route contracts.
-- [x] Add parity tests for bars/trades/flow between legacy and gateway modes.
+### Test evidence
+- `[~]` Contract tests: `tests/contract/test_central_api_client_contract.py`.
+- `[~]` Gateway/failover/dual parity tests: `tests/integration/test_gateway_failover_integration.py`.
+- `[~]` Scanner + feature pipeline gateway tests: `tests/integration/test_gateway_scanner_feature_pipeline_integration.py`.
 
 ### Gate
-- [ ] `CERBERUS_DATA_BACKEND=legacy` behaves unchanged.
-- [ ] `CERBERUS_DATA_BACKEND=gateway` passes scanner + feature pipeline integration tests.
-- [ ] `CERBERUS_DATA_BACKEND=dual` emits comparable outputs with acceptable delta.
+- `[~]` `CERBERUS_DATA_BACKEND=legacy` unchanged behavior.
+- `[~]` `CERBERUS_DATA_BACKEND=gateway` path validated.
+- `[~]` `CERBERUS_DATA_BACKEND=dual` parity diagnostics validated.
 
 ## Phase 2: Data-Gateway Stream Sink Activation
-
-### Files To Edit (Data-Gateway)
-- `gateway/main.py`
-  - [ ] Ensure sink initialization and dispatch limits are environment-tunable.
-  - [ ] Ensure startup logs include active sink mode and stream target.
-- `gateway/config.py`
-  - [ ] Verify sink config defaults are safe; no accidental enablement in wrong env.
-- `gateway/core/data_sink.py`
-  - [ ] Confirm backpressure handling/metrics and dedupe behavior are visible in logs/metrics.
-- `gateway/core/redis_sink.py`
-  - [ ] Confirm publish payload and serialization shape stays stable.
-
-### Tests (Data-Gateway)
-- [ ] Add/extend tests for sink publish success/failure and backpressure drops.
-- [ ] Validate auth and permission path under load.
-
-### Gate
-- [ ] Ingest stream volume stable.
-- [ ] Backpressure drops near zero under normal profile.
-- [ ] No critical sink publish failure bursts.
+- `[D~]` Sink initialization and startup readiness validated in local stack (`/health/ready` returned `checks.sinks=ok` on 2026-02-12).
+- `[D]` Backpressure/drop metrics and behavior under sustained production load.
+- `[D~]` Stream publish contract and route/feed mapping tests validated in Data-Gateway (`tests/test_middleware_streaming.py`, including Cerberus-critical routes).
 
 ## Phase 3: Heber Consumer and Silver Validation
-
-### Files To Edit (Heber)
-- `heber/models/envelope.py`
-  - [ ] Keep strict compatibility with Data-Gateway envelope fields.
-- `heber/writer/consumer.py`
-  - [ ] Ensure retry/DLQ behavior is deterministic and logged clearly.
-  - [ ] Ensure payload validators for required feeds match current feed schemas.
-- `heber/writer/silver.py`
-  - [ ] Ensure field mappings for critical feeds (bars, trades, quotes, flow_alerts, market_tide) are current.
-- `heber/schemas/silver.py`
-  - [ ] Confirm schema versions and required columns for Cerberus consumption.
-
-### Tests (Heber)
-- [ ] Extend consumer reliability tests for malformed/partial envelopes.
-- [ ] Validate Silver schema alignment for required feeds.
-
-### Gate
-- [ ] DLQ remains within threshold.
-- [ ] Silver write errors are not sustained.
-- [ ] Required datasets are queryable with expected columns and types.
+- `[D~]` Envelope/feed compatibility validated for Cerberus-critical routes (`bars`, `trades`, `flow_alerts`, `greek_exposure`) in local stream events on 2026-02-12.
+- `[D]` Retry/DLQ behavior validation under sustained production profile.
+- `[D~]` Silver schema alignment validated for Cerberus-critical feeds with active Bronze/Silver writes observed during smoke run on 2026-02-12.
 
 ## Phase 4: Cerberus Heber Read Integration (Shadow)
 
-### Files To Edit (Cerberus)
-- `src/data/pipeline.py`
-  - [ ] Add Heber-backed read mode for historical/replay paths.
-- `src/analysis/*` and replay paths
-  - [ ] Use point-in-time reads (`ts_available`-aware) for offline evaluation.
-- `src/core/health.py`
-  - [ ] Add Heber read freshness checks.
+### Core implementation
+- `[~]` Heber-backed shadow reads implemented through:
+  - `src/data/fetcher.py`
+  - `src/data/heber_read_client.py`
+- `[~]` Anti-leakage enforcement via `ts_available <= as_of` in Heber read path.
+- `[x]` Heber connectivity and freshness checks in `src/core/health.py`.
+- `[ ]` Wider replay/analysis path migration to Heber-backed reads (beyond current fetcher shadow scope).
+- `[ ]` Direct Heber SDK (`read_asof/asof_join`) adoption in Cerberus runtime paths (currently not active).
 
-### Supporting Files (Heber)
-- `heber/sdk/client.py`
-  - [ ] Confirm usage pattern for `read_asof` and `asof_join` in Cerberus adapters.
-
-### Tests
-- [ ] Add shadow parity suite comparing current vs Heber-backed feature inputs.
-- [ ] Add anti-leakage tests that fail on lookahead.
+### Test evidence
+- `[~]` Shadow parity integration suite: `tests/integration/test_heber_shadow_parity_integration.py`.
+- `[~]` Startup-mode validation suite: `tests/unit/test_startup_validation_unit.py`.
 
 ### Gate
-- [ ] Shadow outputs stable for multiple sessions.
-- [ ] No anti-leakage violations.
+- `[ ]` Multi-session shadow stability validated in target environment.
+- `[ ]` Operational anti-leakage checks validated in production-like runs.
 
-## Phase 5: Live Cutover and Cleanup
+## Phase 5: Live Cutover and Cleanup (Cerberus)
+- `[ ]` Set `CERBERUS_DATA_BACKEND=gateway` in live runtime.
+- `[ ]` Set `CERBERUS_STORAGE_BACKEND=heber|dual` in live runtime.
+- `[ ]` Keep `CERBERUS_FAILOVER_TO_LEGACY=true` during confidence window.
+- `[ ]` Remove runtime legacy read dependencies after soak period.
+- `[ ]` Update core operational docs after cutover.
 
-### Cutover Steps
-- [ ] Set `CERBERUS_DATA_BACKEND=gateway`.
-- [ ] Set `CERBERUS_STORAGE_BACKEND=heber` (or `dual` during confidence window).
-- [ ] Keep `CERBERUS_FAILOVER_TO_LEGACY=true` initially.
-
-### Post-Cutover Cleanup
-- [ ] Remove legacy direct data fetch paths not needed for runtime.
-- [ ] Keep order execution path untouched unless explicitly migrating it.
-- [ ] Update docs:
-  - `docs/architecture.md`
-  - `docs/runbook.md`
-  - `docs/environment-variables.md`
-
-### Gate
-- [ ] Stable live operation through agreed soak period.
-- [ ] Rollback path tested and documented.
-
-## Suggested Ownership Split
-- Cerberus team:
-  - adapter integration, feature pipeline switching, cutover toggles, runtime health
-- Data-Gateway team:
-  - route contract stability, auth/permissions, stream sink reliability
-- Heber team:
-  - stream consumption robustness, schema quality, as-of read correctness
-
-## Rollback Quick Actions
-- [ ] Set Cerberus back to legacy:
+## Rollback Quick Actions (Cerberus)
+- `[x]` Rollback toggles defined:
   - `CERBERUS_DATA_BACKEND=legacy`
   - `CERBERUS_STORAGE_BACKEND=sqlite`
-- [ ] If needed, disable Gateway sink:
+- `[D]` Optional sink disable on Gateway side:
   - `GATEWAY_DATA_SINK_ENABLED=false`
-- [ ] Keep Heber services up for post-incident replay and diagnostics.
+
+## Cross-Repo Dependencies (Not Marked Done in Cerberus)
+
+### Data-Gateway
+- `[D]` Confirm Cerberus client permissions in `Data-Gateway/config/clients.yaml`.
+- `[D]` Confirm sink defaults are safe by environment.
+- `[D]` Confirm sink reliability under production profile.
+
+### Heber
+- `[D]` Confirm stream topic + consumer group behavior in deployment.
+- `[D]` Confirm Silver schema contracts required by Cerberus.
+- `[D]` Confirm DLQ thresholds and replay/repair runbooks.
