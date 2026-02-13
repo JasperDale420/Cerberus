@@ -129,3 +129,16 @@ def test_feature_pipeline_fetch_prior_day_stats_filters_to_completed_day() -> No
 
     high, low, close = fp.fetcher.fetch_prior_day_stats("AAPL", current)
     assert (high, low, close) == (12.0, 11.0, 11.5)
+
+
+@pytest.mark.unit
+def test_feature_pipeline_extracts_closes_from_mixed_bar_shapes() -> None:
+    alpaca = MagicMock()
+    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_closes"))
+
+    class _Bar:
+        def __init__(self, c: float) -> None:
+            self.c = c
+
+    bars = [_Bar(101.0), {"c": 102.5}, {"c": None}, _Bar(103.25)]
+    assert fp._extract_closes(bars) == [101.0, 102.5, 0.0, 103.25]
