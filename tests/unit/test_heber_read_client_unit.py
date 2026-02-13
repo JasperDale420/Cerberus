@@ -150,3 +150,48 @@ def test_heber_read_client_maps_trades_shape_for_tfi(tmp_path: Path) -> None:
     assert trades[0]["s"] == 25.0
     assert trades[0]["i"] == "t1"
     assert trades[1]["x"] == "XNYS"
+
+
+@pytest.mark.unit
+def test_heber_read_client_reads_partitioned_file_when_feed_column_is_dictionary_encoded(
+    tmp_path: Path,
+) -> None:
+    start = datetime(2026, 2, 12, 14, 30, tzinfo=UTC)
+    end = datetime(2026, 2, 12, 14, 35, tzinfo=UTC)
+    as_of = datetime(2026, 2, 12, 14, 35, tzinfo=UTC)
+
+    bars_file = tmp_path / "silver" / "feed=bars" / "instrument_type=equity" / "dt=2026-02-12" / "part-0003.parquet"
+    bars_file.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.table(
+        {
+            "feed": pa.array(["bars"], type=pa.dictionary(pa.int8(), pa.string())),
+            "symbol": ["AAPL"],
+            "instrument_key": ["equity:AAPL"],
+            "timeframe": ["1Min"],
+            "bar_start_ts": ["2026-02-12T14:31:00Z"],
+            "open": [200.1],
+            "high": [200.8],
+            "low": [199.9],
+            "close": [200.4],
+            "volume": [12345.0],
+            "trade_count": [123],
+            "vwap": [200.33],
+            "ts_event": ["2026-02-12T14:31:00Z"],
+            "ts_available": ["2026-02-12T14:31:01Z"],
+        }
+    )
+    pq.write_table(table, bars_file)
+
+    logger = MagicMock()
+    client = HeberReadClient(data_root=tmp_path, logger=logger)
+    bars = client.get_bars(
+        symbol="AAPL",
+        start=start,
+        end=end,
+        timeframe="1Min",
+        as_of=as_of,
+    )
+
+    assert len(bars) == 1
+    assert bars[0]["c"] == 200.4
+    logger.warning.assert_not_called()
