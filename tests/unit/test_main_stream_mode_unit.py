@@ -70,6 +70,16 @@ def test_next_market_open_next_day_after_close() -> None:
     assert result == datetime(2026, 2, 13, 9, 30, tzinfo=tz)
 
 
+def test_next_market_open_during_session_returns_next_day() -> None:
+    """During the regular session, next open should be the next trading day."""
+    tz = ZoneInfo("America/New_York")
+    now = datetime(2026, 2, 12, 10, 15, tzinfo=tz)  # Thursday
+
+    result = _next_market_open_local(now)
+
+    assert result == datetime(2026, 2, 13, 9, 30, tzinfo=tz)
+
+
 def test_next_market_open_skips_weekend() -> None:
     """After close on Friday, next open should roll to Monday at 09:30 ET."""
     tz = ZoneInfo("America/New_York")
