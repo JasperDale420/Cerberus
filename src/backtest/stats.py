@@ -39,11 +39,7 @@ class BacktestAnalyzer:
         # 3. Totals
         total_equity_pnl = total_closed_pnl + open_pnl
         total_equity = self.initial_cash + total_equity_pnl
-        return_pct = (
-            (total_equity_pnl / self.initial_cash) * 100
-            if self.initial_cash > 0
-            else 0.0
-        )
+        return_pct = (total_equity_pnl / self.initial_cash) * 100 if self.initial_cash > 0 else 0.0
 
         # 4. Drawdown
         max_drawdown = self._calculate_drawdown(trades, open_pnl, total_closed_pnl)
@@ -63,9 +59,7 @@ class BacktestAnalyzer:
             "open_positions": unrealized["valued_open_positions"],
         }
 
-    def _calculate_realized_metrics(
-        self, trades: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def _calculate_realized_metrics(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not trades:
             return {
                 "total_trades": 0,
@@ -127,9 +121,7 @@ class BacktestAnalyzer:
 
         return {"open_pnl": open_pnl, "valued_open_positions": valued}
 
-    def _calculate_drawdown(
-        self, trades: List[Dict[str, Any]], open_pnl: float, closed_pnl: float
-    ) -> float:
+    def _calculate_drawdown(self, trades: List[Dict[str, Any]], open_pnl: float, closed_pnl: float) -> float:
         """
         Calculate maximum drawdown based on closed trades.
 
@@ -155,9 +147,7 @@ class BacktestAnalyzer:
         # H3 fix: Calculate current drawdown from closed-trade peak, including open PnL
         # This shows current drawdown state without updating peak (open positions may reverse)
         current_equity = self.initial_cash + closed_pnl + open_pnl
-        current_drawdown = (
-            (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
-        )
+        current_drawdown = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
         # Only count as drawdown if current equity is below peak (not a new high)
         if current_drawdown > 0:
             max_drawdown = max(max_drawdown, current_drawdown)
@@ -182,9 +172,7 @@ class BacktestAnalyzer:
 
         return trades, all_open_positions
 
-    def _process_symbol_fills(
-        self, symbol: str, sym_fills: List[Dict[str, Any]]
-    ) -> Any:
+    def _process_symbol_fills(self, symbol: str, sym_fills: List[Dict[str, Any]]) -> Any:
         sym_fills.sort(key=lambda x: x["filled_at"])
         position_stack: deque[Dict[str, Any]] = deque()
         trades: List[Dict[str, Any]] = []
@@ -223,9 +211,7 @@ class BacktestAnalyzer:
 
         while remaining_qty > QTY_EPSILON:
             if not stack:
-                self._open_new_stack_position(
-                    stack, side, remaining_qty, price, fill["filled_at"], fill_strategy
-                )
+                self._open_new_stack_position(stack, side, remaining_qty, price, fill["filled_at"], fill_strategy)
                 remaining_qty = 0
             else:
                 remaining_qty = self._process_stack_item(
@@ -289,11 +275,7 @@ class BacktestAnalyzer:
             match_qty = min(qty, head_qty)
 
             entry_price = float(item["price"])
-            pnl = (
-                (price - entry_price) * match_qty
-                if item["side"] == "buy"
-                else (entry_price - price) * match_qty
-            )
+            pnl = (price - entry_price) * match_qty if item["side"] == "buy" else (entry_price - price) * match_qty
 
             trades.append(
                 {

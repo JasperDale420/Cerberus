@@ -68,9 +68,7 @@ def market_state():
 class TestRMultipleCalculation:
     """Test R-multiple calculation edge cases."""
 
-    def test_r_multiple_with_breakeven_stop(
-        self, position_manager, symbol_state_with_position, market_state
-    ):
+    def test_r_multiple_with_breakeven_stop(self, position_manager, symbol_state_with_position, market_state):
         """R-multiple should be None when initial_risk is 0 (breakeven stop)."""
         # Set initial_risk to exactly 0 (breakeven stop: entry = stop)
         symbol_state_with_position.position.open_risk = 0.0
@@ -85,9 +83,7 @@ class TestRMultipleCalculation:
             "timestamp": datetime.now(timezone.utc),
         }
 
-        decision = position_manager.on_fill(
-            symbol_state_with_position, market_state, exit_fill
-        )
+        decision = position_manager.on_fill(symbol_state_with_position, market_state, exit_fill)
 
         assert decision.event == "closed"
         assert decision.closed_trade is not None
@@ -96,9 +92,7 @@ class TestRMultipleCalculation:
         # But gross PnL should still be calculated
         assert decision.closed_trade.pnl_gross == 100.0  # $1 * 100 shares
 
-    def test_r_multiple_with_normal_risk(
-        self, position_manager, symbol_state_with_position, market_state
-    ):
+    def test_r_multiple_with_normal_risk(self, position_manager, symbol_state_with_position, market_state):
         """R-multiple should calculate correctly with normal risk."""
         # Normal risk: open_risk = 200 ($2/share * 100 shares)
         assert symbol_state_with_position.position.open_risk == 200.0
@@ -113,9 +107,7 @@ class TestRMultipleCalculation:
             "timestamp": datetime.now(timezone.utc),
         }
 
-        decision = position_manager.on_fill(
-            symbol_state_with_position, market_state, exit_fill
-        )
+        decision = position_manager.on_fill(symbol_state_with_position, market_state, exit_fill)
 
         assert decision.event == "closed"
         assert decision.closed_trade is not None
@@ -125,9 +117,7 @@ class TestRMultipleCalculation:
         assert decision.closed_trade.pnl_gross == 400.0
         assert decision.closed_trade.pnl_r == pytest.approx(2.0)
 
-    def test_r_multiple_with_none_risk(
-        self, position_manager, symbol_state_with_position, market_state
-    ):
+    def test_r_multiple_with_none_risk(self, position_manager, symbol_state_with_position, market_state):
         """R-multiple should be None when initial_risk is None."""
         # Set initial_risk to None
         symbol_state_with_position.position.open_risk = None
@@ -142,17 +132,13 @@ class TestRMultipleCalculation:
             "timestamp": datetime.now(timezone.utc),
         }
 
-        decision = position_manager.on_fill(
-            symbol_state_with_position, market_state, exit_fill
-        )
+        decision = position_manager.on_fill(symbol_state_with_position, market_state, exit_fill)
 
         assert decision.event == "closed"
         assert decision.closed_trade is not None
         assert decision.closed_trade.pnl_r is None
 
-    def test_r_multiple_with_small_risk(
-        self, position_manager, symbol_state_with_position, market_state
-    ):
+    def test_r_multiple_with_small_risk(self, position_manager, symbol_state_with_position, market_state):
         """R-multiple should calculate correctly with very small risk."""
         # Very small risk (but not zero)
         symbol_state_with_position.position.open_risk = 1.0  # $0.01/share * 100 shares
@@ -167,18 +153,14 @@ class TestRMultipleCalculation:
             "timestamp": datetime.now(timezone.utc),
         }
 
-        decision = position_manager.on_fill(
-            symbol_state_with_position, market_state, exit_fill
-        )
+        decision = position_manager.on_fill(symbol_state_with_position, market_state, exit_fill)
 
         assert decision.event == "closed"
         assert decision.closed_trade is not None
         # R-multiple: $100 / $1 = 100R (large R due to tiny risk)
         assert decision.closed_trade.pnl_r == pytest.approx(100.0)
 
-    def test_r_multiple_with_loss(
-        self, position_manager, symbol_state_with_position, market_state
-    ):
+    def test_r_multiple_with_loss(self, position_manager, symbol_state_with_position, market_state):
         """R-multiple should be negative for losing trades."""
         # Normal risk: 200
         assert symbol_state_with_position.position.open_risk == 200.0
@@ -193,9 +175,7 @@ class TestRMultipleCalculation:
             "timestamp": datetime.now(timezone.utc),
         }
 
-        decision = position_manager.on_fill(
-            symbol_state_with_position, market_state, exit_fill
-        )
+        decision = position_manager.on_fill(symbol_state_with_position, market_state, exit_fill)
 
         assert decision.event == "closed"
         assert decision.closed_trade is not None

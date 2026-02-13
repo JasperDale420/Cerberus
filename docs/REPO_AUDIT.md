@@ -28,3 +28,36 @@ The Cerberus trading system is a highly modular, professional-grade trading fram
 
 ## Conclusion
 The system is in a "Ready" state for further development. The infrastructure is solid, and the backtest engine provides high-fidelity simulation. The immediate next best project is to enhance the session management to support more granular market hours control.
+
+## Repository Hygiene Policy (2026-02-12)
+
+This section is the operational policy for keeping the repo clean and stable before market sessions.
+
+### Source of Truth vs Generated Files
+
+- **Source of truth (commit to git):**
+  - `src/`, `tests/`, `config/`, `scripts/`, `docs/`, dependency manifests.
+- **Generated/local-only (never commit):**
+  - `.claude-flow/`, `.swarm/`, `.scannerwork/`
+  - runtime logs (`*.log`, `logs/tests/full_test_output*.txt`)
+  - generated outputs under `artifacts/` and `results/`
+
+### Pre-Market Log Reset Checklist
+
+1. Archive runtime and old generated logs to:
+   - `artifacts/archive/pre-market-YYYY-MM-DD/`
+2. Truncate active runtime log path:
+   - `logs/cerberus.log`
+3. Restart runtime services:
+   - `cerberus_trader`
+   - `cerberus_scheduler` (if used)
+4. Verify health and smoke checks:
+   - `docker ps` shows healthy trader
+   - `python scripts/smoke_gateway_heber_integration.py` passes
+5. Confirm fresh runtime events:
+   - Primary source is `docker logs cerberus_trader` (JSON stdout logging)
+
+### Retention Rule
+
+- Keep only the latest 24 hours in active `logs/`, `results/`, and non-archive `artifacts/`.
+- Move older generated files into timestamped archive folders under `artifacts/archive/`.

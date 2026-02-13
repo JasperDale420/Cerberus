@@ -717,7 +717,7 @@ FILE: README.md
 [![License](https://img.shields.io/pypi/l/pyqlib)](LICENSE)
 [![Join the chat at https://gitter.im/Microsoft/qlib](https://badges.gitter.im/Microsoft/qlib.svg)](https://gitter.im/Microsoft/qlib?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-## :newspaper: **What's NEW!** &nbsp;   :sparkling_heart: 
+## :newspaper: **What's NEW!** &nbsp;   :sparkling_heart:
 
 Recent released features
 
@@ -754,19 +754,19 @@ We have prepared several demo videos for you:
 
 | Feature | Status |
 | --                      | ------    |
-| [R&D-Agent-Quant](https://arxiv.org/abs/2505.15155) Published | Apply R&D-Agent to Qlib for quant trading | 
+| [R&D-Agent-Quant](https://arxiv.org/abs/2505.15155) Published | Apply R&D-Agent to Qlib for quant trading |
 | BPQP for End-to-end learning | 📈Coming soon!([Under review](https://github.com/microsoft/qlib/pull/1863)) |
 | 🔥LLM-driven Auto Quant Factory🔥 | 🚀 Released in [♾️RD-Agent](https://github.com/microsoft/RD-Agent) on Aug 8, 2024 |
 | KRNN and Sandwich models | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/1414/) on May 26, 2023 |
 | Release Qlib v0.9.0 | :octocat: [Released](https://github.com/microsoft/qlib/releases/tag/v0.9.0) on Dec 9, 2022 |
 | RL Learning Framework | :hammer: :chart_with_upwards_trend: Released on Nov 10, 2022. [#1332](https://github.com/microsoft/qlib/pull/1332), [#1322](https://github.com/microsoft/qlib/pull/1322), [#1316](https://github.com/microsoft/qlib/pull/1316),[#1299](https://github.com/microsoft/qlib/pull/1299),[#1263](https://github.com/microsoft/qlib/pull/1263), [#1244](https://github.com/microsoft/qlib/pull/1244), [#1169](https://github.com/microsoft/qlib/pull/1169), [#1125](https://github.com/microsoft/qlib/pull/1125), [#1076](https://github.com/microsoft/qlib/pull/1076)|
 | HIST and IGMTF models | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/1040) on Apr 10, 2022 |
-| Qlib [notebook tutorial](https://github.com/microsoft/qlib/tree/main/examples/tutorial) | 📖 [Released](https://github.com/microsoft/qlib/pull/1037) on Apr 7, 2022 | 
+| Qlib [notebook tutorial](https://github.com/microsoft/qlib/tree/main/examples/tutorial) | 📖 [Released](https://github.com/microsoft/qlib/pull/1037) on Apr 7, 2022 |
 | Ibovespa index data | :rice: [Released](https://github.com/microsoft/qlib/pull/990) on Apr 6, 2022 |
 | Point-in-Time database | :hammer: [Released](https://github.com/microsoft/qlib/pull/343) on Mar 10, 2022 |
 | Arctic Provider Backend & Orderbook data example | :hammer: [Released](https://github.com/microsoft/qlib/pull/744) on Jan 17, 2022 |
-| Meta-Learning-based framework & DDG-DA  | :chart_with_upwards_trend:  :hammer: [Released](https://github.com/microsoft/qlib/pull/743) on Jan 10, 2022 | 
-| Planning-based portfolio optimization | :hammer: [Released](https://github.com/microsoft/qlib/pull/754) on Dec 28, 2021 | 
+| Meta-Learning-based framework & DDG-DA  | :chart_with_upwards_trend:  :hammer: [Released](https://github.com/microsoft/qlib/pull/743) on Jan 10, 2022 |
+| Planning-based portfolio optimization | :hammer: [Released](https://github.com/microsoft/qlib/pull/754) on Dec 28, 2021 |
 | Release Qlib v0.8.0 | :octocat: [Released](https://github.com/microsoft/qlib/releases/tag/v0.8.0) on Dec 8, 2021 |
 | ADD model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/704) on Nov 22, 2021 |
 | ADARNN  model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/689) on Nov 14, 2021 |
@@ -776,10 +776,10 @@ We have prepared several demo videos for you:
 | Transformer & Localformer | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/508) on July 22, 2021 |
 | Release Qlib v0.7.0 | :octocat: [Released](https://github.com/microsoft/qlib/releases/tag/v0.7.0) on July 12, 2021 |
 | TCTS Model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/491) on July 1, 2021 |
-| Online serving and automatic model rolling | :hammer:  [Released](https://github.com/microsoft/qlib/pull/290) on May 17, 2021 | 
-| DoubleEnsemble Model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/286) on Mar 2, 2021 | 
+| Online serving and automatic model rolling | :hammer:  [Released](https://github.com/microsoft/qlib/pull/290) on May 17, 2021 |
+| DoubleEnsemble Model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/286) on Mar 2, 2021 |
 | High-frequency data processing example | :hammer: [Released](https://github.com/microsoft/qlib/pull/257) on Feb 5, 2021  |
-| High-frequency trading example | :chart_with_upwards_trend: [Part of code released](https://github.com/microsoft/qlib/pull/227) on Jan 28, 2021  | 
+| High-frequency trading example | :chart_with_upwards_trend: [Part of code released](https://github.com/microsoft/qlib/pull/227) on Jan 28, 2021  |
 | High-frequency data(1min) | :rice: [Released](https://github.com/microsoft/qlib/pull/221) on Jan 27, 2021 |
 | Tabnet Model | :chart_with_upwards_trend: [Released](https://github.com/microsoft/qlib/pull/205) on Jan 22, 2021 |
 
@@ -793,7 +793,7 @@ Qlib is an open-source, AI-oriented quantitative investment platform that aims t
 
 An increasing number of SOTA Quant research works/papers in diverse paradigms are being released in Qlib to collaboratively solve key challenges in quantitative investment. For example, 1) using supervised learning to mine the market's complex non-linear patterns from rich and heterogeneous financial data, 2) modeling the dynamic nature of the financial market using adaptive concept drift technology, and 3) using reinforcement learning to model continuous investment decisions and assist investors in optimizing their trading strategies.
 
-It contains the full ML pipeline of data processing, model training, back-testing; and covers the entire chain of quantitative investment: alpha seeking, risk modeling, portfolio optimization, and order execution. 
+It contains the full ML pipeline of data processing, model training, back-testing; and covers the entire chain of quantitative investment: alpha seeking, risk modeling, portfolio optimization, and order execution.
 For more details, please refer to our paper ["Qlib: An AI-oriented Quantitative Investment Platform"](https://arxiv.org/abs/2009.11189).
 
 
@@ -886,7 +886,7 @@ This table demonstrates the supported Python version of `Qlib`:
 | Python 3.11   | :heavy_check_mark:    | :heavy_check_mark:   | :heavy_check_mark: |
 | Python 3.12   | :heavy_check_mark:    | :heavy_check_mark:   | :heavy_check_mark: |
 
-**Note**: 
+**Note**:
 1. **Conda** is suggested for managing your Python environment. In some cases, using Python outside of a `conda` environment may result in missing header files, causing the installation failure of certain packages.
 2. Please pay attention that installing cython in Python 3.6 will raise some error when installing ``Qlib`` from source. If users use Python 3.6 on their machines, it is recommended to *upgrade* Python to version 3.8 or higher, or use `conda`'s Python to install ``Qlib`` from source.
 
@@ -917,7 +917,7 @@ Also, users can install the latest dev version ``Qlib`` by the source code accor
 
 **Tips**: If you fail to install `Qlib` or run the examples in your environment,  comparing your steps and the [CI workflow](.github/workflows/test_qlib_from_source.yml) may help you find the problem.
 
-**Tips for Mac**: If you are using Mac with M1, you might encounter issues in building the wheel for LightGBM, which is due to missing dependencies from OpenMP. To solve the problem, install openmp first with ``brew install libomp`` and then run ``pip install .`` to build it successfully. 
+**Tips for Mac**: If you are using Mac with M1, you might encounter issues in building the wheel for LightGBM, which is due to missing dependencies from OpenMP. To solve the problem, install openmp first with ``brew install libomp`` and then run ``pip install .`` to build it successfully.
 
 ## Data Preparation
 ❗ Due to more restrict data security policy. The official dataset is disabled temporarily. You can try [this data source](https://github.com/chenditc/investment_data/releases) contributed by the community.
@@ -966,11 +966,11 @@ We recommend users to prepare their own data if they have a high-quality dataset
 
 ### Automatic update of daily frequency data (from yahoo finance)
   > This step is *Optional* if users only want to try their models and strategies on history data.
-  > 
+  >
   > It is recommended that users update the data manually once (--trading_date 2021-05-25) and then set it to update automatically.
   >
   > **NOTE**: Users can't incrementally  update data based on the offline data provided by Qlib(some fields are removed to reduce the data size). Users should use [yahoo collector](https://github.com/microsoft/qlib/tree/main/scripts/data_collector/yahoo#automatic-update-of-daily-frequency-datafrom-yahoo-finance) to download Yahoo data from scratch and then incrementally update it.
-  > 
+  >
   > For more information, please refer to: [yahoo collector](https://github.com/microsoft/qlib/tree/main/scripts/data_collector/yahoo#automatic-update-of-daily-frequency-datafrom-yahoo-finance)
 
   * Automatic update of data to the "qlib" directory each trading day(Linux)
@@ -1000,7 +1000,7 @@ We recommend users to prepare their own data if they have a high-quality dataset
     ```
   * If you want more information about `check_data_health`, please refer to the [documentation](https://qlib.readthedocs.io/en/latest/component/data.html#checking-the-health-of-the-data).
 
-<!-- 
+<!--
 - Run the initialization code and get stock data:
 
   ```python
@@ -1060,7 +1060,7 @@ We recommend users to prepare their own data if they have a high-quality dataset
 8. If you want to know more information, please refer to the [documentation](https://qlib.readthedocs.io/en/latest/developer/how_to_build_image.html).
 
 ## Auto Quant Research Workflow
-Qlib provides a tool named `qrun` to run the whole workflow automatically (including building dataset, training models, backtest and evaluation). You can start an auto quant research workflow and have a graphical reports analysis according to the following steps: 
+Qlib provides a tool named `qrun` to run the whole workflow automatically (including building dataset, training models, backtest and evaluation). You can start an auto quant research workflow and have a graphical reports analysis according to the following steps:
 
 1. Quant Research Workflow: Run  `qrun` with lightgbm workflow config ([workflow_config_lightgbm_Alpha158.yaml](examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml) as following.
     ```bash
@@ -1071,7 +1071,7 @@ Qlib provides a tool named `qrun` to run the whole workflow automatically (inclu
     ```bash
     python -m pdb qlib/cli/run.py examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
     ```
-    The result of `qrun` is as follows, please refer to [docs](https://qlib.readthedocs.io/en/latest/component/strategy.html#result) for more explanations about the result. 
+    The result of `qrun` is as follows, please refer to [docs](https://qlib.readthedocs.io/en/latest/component/strategy.html#result) for more explanations about the result.
 
     ```bash
 
@@ -1092,7 +1092,7 @@ Qlib provides a tool named `qrun` to run the whole workflow automatically (inclu
     ```
     Here are detailed documents for `qrun` and [workflow](https://qlib.readthedocs.io/en/latest/component/workflow.html).
 
-2. Graphical Reports Analysis: First, run `python -m pip install .[analysis]` to install the required dependencies. Then run `examples/workflow_by_code.ipynb` with `jupyter notebook` to get graphical reports. 
+2. Graphical Reports Analysis: First, run `python -m pip install .[analysis]` to install the required dependencies. Then run `examples/workflow_by_code.ipynb` with `jupyter notebook` to get graphical reports.
     - Forecasting signal (model prediction) analysis
       - Cumulative Return of groups
       ![Cumulative Return](https://github.com/microsoft/qlib/blob/main/docs/_static/img/analysis/analysis_model_cumulative_return.png)
@@ -1108,7 +1108,7 @@ Qlib provides a tool named `qrun` to run the whole workflow automatically (inclu
     - Portfolio analysis
       - Backtest return
       ![Report](https://github.com/microsoft/qlib/blob/main/docs/_static/img/analysis/report.png)
-      <!-- 
+      <!--
       - Score IC
       ![Score IC](docs/_static/img/score_ic.png)
       - Cumulative Return
@@ -1185,7 +1185,7 @@ Here is an example of running all the models for 10 iterations:
 python run_all_model.py run 10
 ```
 
-It also provides the API to run specific models at once. For more use cases, please refer to the file's [docstrings](examples/run_all_model.py). 
+It also provides the API to run specific models at once. For more use cases, please refer to the file's [docstrings](examples/run_all_model.py).
 
 ### Break change
 In `pandas`, `group_key` is one of the parameters of the `groupby` method. From version 1.5 to 2.0 of `pandas`, the default value of `group_key` has been changed from `no default` to `True`, which will cause qlib to report an error during operation. So we set `group_key=False`, but it doesn't guarantee that some programmes will run correctly, including:
@@ -1241,7 +1241,7 @@ Based on learning paradigms, they can be categorized into reinforcement learning
 If you want to have a quick glance at the most frequently used components of qlib, you can try notebooks [here](examples/tutorial/).
 
 The detailed documents are organized in [docs](docs/).
-[Sphinx](http://www.sphinx-doc.org) and the readthedocs theme is required to build the documentation in html formats. 
+[Sphinx](http://www.sphinx-doc.org) and the readthedocs theme is required to build the documentation in html formats.
 ```bash
 cd docs/
 conda install sphinx sphinx_rtd_theme -y
@@ -1258,13 +1258,13 @@ Qlib is in active and continuing development. Our plan is in the roadmap, which 
 # Offline Mode and Online Mode
 The data server of Qlib can either deployed as `Offline` mode or `Online` mode. The default mode is offline mode.
 
-Under `Offline` mode, the data will be deployed locally. 
+Under `Offline` mode, the data will be deployed locally.
 
 Under `Online` mode, the data will be deployed as a shared data service. The data and their cache will be shared by all the clients. The data retrieval performance is expected to be improved due to a higher rate of cache hits. It will consume less disk space, too. The documents of the online mode can be found in [Qlib-Server](https://qlib-server.readthedocs.io/). The online mode can be deployed automatically with [Azure CLI based scripts](https://qlib-server.readthedocs.io/en/latest/build.html#one-click-deployment-in-azure). The source code of online data server can be found in [Qlib-Server repository](https://github.com/microsoft/qlib-server).
 
 ## Performance of Qlib Data Server
 The performance of data processing is important to data-driven methods like AI technologies. As an AI-oriented platform, Qlib provides a solution for data storage and data processing. To demonstrate the performance of Qlib data server, we
-compare it with several other data storage solutions. 
+compare it with several other data storage solutions.
 
 We evaluate the performance of several storage solutions by finishing the same task,
 which creates a dataset (14 features/factors) from the basic OHLCV daily data of a stock market (800 stocks each day from 2007 to 2020). The task involves data queries and processing.
@@ -1287,7 +1287,7 @@ Qlib data are stored in a compact format, which is efficient to be combined into
 
 # Contact Us
 - If you have any issues, please create issue [here](https://github.com/microsoft/qlib/issues/new/choose) or send messages in [gitter](https://gitter.im/Microsoft/qlib).
-- If you want to make contributions to `Qlib`, please [create pull requests](https://github.com/microsoft/qlib/compare). 
+- If you want to make contributions to `Qlib`, please [create pull requests](https://github.com/microsoft/qlib/compare).
 - For other reasons, you are welcome to contact us by email([qlib@microsoft.com](mailto:qlib@microsoft.com)).
   - We are recruiting new members(both FTEs and interns), your resumes are welcome!
 
@@ -1304,8 +1304,8 @@ Before we released Qlib as an open-source project on Github in Sep 2020, Qlib is
 
 ## Guidance
 
-This project welcomes contributions and suggestions.  
-**Here are some 
+This project welcomes contributions and suggestions.
+**Here are some
 [code standards and development guidance](docs/developer/code_standard_and_dev_guide.rst) for submiting a pull request.**
 
 Making contributions is not a hard thing. Solving an issue(maybe just answering a question raised in [issues list](https://github.com/microsoft/qlib/issues) or [gitter](https://gitter.im/Microsoft/qlib)), fixing/issuing a bug, improving the documents and even fixing a typo are important contributions to Qlib.
@@ -1319,15 +1319,15 @@ If you don't know how to start to contribute, you can refer to the following exa
 | Type | Examples |
 | -- | -- |
 | Solving issues | [Answer a question](https://github.com/microsoft/qlib/issues/749);  [issuing](https://github.com/microsoft/qlib/issues/765) or [fixing](https://github.com/microsoft/qlib/pull/792) a bug |
-| Docs | [Improve docs quality](https://github.com/microsoft/qlib/pull/797/files) ;  [Fix a typo](https://github.com/microsoft/qlib/pull/774) | 
+| Docs | [Improve docs quality](https://github.com/microsoft/qlib/pull/797/files) ;  [Fix a typo](https://github.com/microsoft/qlib/pull/774) |
 | Feature |  Implement a [requested feature](https://github.com/microsoft/qlib/projects) like [this](https://github.com/microsoft/qlib/pull/754); [Refactor interfaces](https://github.com/microsoft/qlib/pull/539/files) |
-| Dataset | [Add a dataset](https://github.com/microsoft/qlib/pull/733) | 
+| Dataset | [Add a dataset](https://github.com/microsoft/qlib/pull/733) |
 | Models |  [Implement a new model](https://github.com/microsoft/qlib/pull/689), [some instructions to contribute models](https://github.com/microsoft/qlib/tree/main/examples/benchmarks#contributing) |
 
 [Good first issues](https://github.com/microsoft/qlib/labels/good%20first%20issue) are labelled to indicate that they are easy to start your contributions.
 
 You can find some impefect implementation in Qlib by  `rg 'TODO|FIXME' qlib`
- 
+
 If you would like to become one of Qlib's maintainers to contribute more (e.g. help merge PR, triage issues), please contact us by email([qlib@microsoft.com](mailto:qlib@microsoft.com)).  We are glad to help to upgrade your permission.
 
 ## License
@@ -1915,7 +1915,7 @@ dependencies = [
   "pyyaml",
   "numpy",
   # Since version 1.1.0, pandas supports the ffill and bfill methods.
-  # Since version 2.1.0, pandas has deprecated the method parameter of the fillna method. 
+  # Since version 2.1.0, pandas has deprecated the method parameter of the fillna method.
   # qlib has updated the fillna method in PR 1987 and limited the minimum version of pandas.
   "pandas>=1.1",
   # I encoutered an Error that the set_uri does not work when downloading artifacts in mlflow 3.1.1;
@@ -2031,7 +2031,7 @@ Instead, please report them to the Microsoft Security Response Center (MSRC) at 
 
 If you prefer to submit without logging in, send email to [secure@microsoft.com](mailto:secure@microsoft.com).  If possible, encrypt your message with our PGP key; please download it from the [Microsoft Security Response Center PGP Key page](https://www.microsoft.com/en-us/msrc/pgp-key-msrc).
 
-You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Additional information can be found at [microsoft.com/msrc](https://www.microsoft.com/msrc). 
+You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Additional information can be found at [microsoft.com/msrc](https://www.microsoft.com/msrc).
 
 Please include the requested information listed below (as much as you can provide) to help us better understand the nature and scope of the possible issue:
 
@@ -2193,7 +2193,7 @@ repos:
 FILE: .pylintrc
 ================================================
 [TYPECHECK]
-# https://stackoverflow.com/a/53572939 
+# https://stackoverflow.com/a/53572939
 # List of members which are set dynamically and missed by Pylint inference
 # system, and so shouldn't trigger E1101 when accessed.
 generated-members=numpy.*, torch.*
@@ -2991,7 +2991,7 @@ Introduction
 ============
 
 The `Workflow <../component/introduction.html>`_ part introduces how to run research workflow in a loosely-coupled way. But it can only execute one ``task`` when you use ``qrun``.
-To automatically generate and execute different tasks, ``Task Management`` provides a whole process including `Task Generating`_, `Task Storing`_, `Task Training`_ and `Task Collecting`_. 
+To automatically generate and execute different tasks, ``Task Management`` provides a whole process including `Task Generating`_, `Task Storing`_, `Task Training`_ and `Task Collecting`_.
 With this module, users can run their ``task`` automatically at different periods, in different losses, or even by different models.The processes of task generation, model training and combine and collect data are shown in the following figure.
 
 .. image:: ../_static/img/Task-Gen-Recorder-Collector.svg
@@ -3003,8 +3003,8 @@ An example of the entire process is shown `here <https://github.com/microsoft/ql
 
 Task Generating
 ===============
-A ``task`` consists of `Model`, `Dataset`, `Record`, or anything added by users. 
-The specific task template can be viewed in 
+A ``task`` consists of `Model`, `Dataset`, `Record`, or anything added by users.
+The specific task template can be viewed in
 `Task Section <../component/workflow.html#task-section>`_.
 Even though the task template is fixed, users can customize their ``TaskGen`` to generate different ``task`` by task template.
 
@@ -3049,14 +3049,14 @@ It will run the whole workflow defined by ``task``, which includes *Model*, *Dat
 .. autofunction:: qlib.workflow.task.manage.run_task
     :noindex:
 
-Meanwhile, ``Qlib`` provides a module called ``Trainer``. 
+Meanwhile, ``Qlib`` provides a module called ``Trainer``.
 
 .. autoclass:: qlib.model.trainer.Trainer
     :members:
     :noindex:
 
 ``Trainer`` will train a list of tasks and return a list of model recorders.
-``Qlib`` offer two kinds of Trainer, TrainerR is the simplest way and TrainerRM is based on TaskManager to help manager tasks lifecycle automatically. 
+``Qlib`` offer two kinds of Trainer, TrainerR is the simplest way and TrainerRM is based on TaskManager to help manager tasks lifecycle automatically.
 If you do not want to use ``Task Manager`` to manage tasks, then use TrainerR to train a list of tasks generated by ``TaskGen`` is enough.
 `Here <../reference/api.html#Trainer>`_ are the details about different ``Trainer``.
 
@@ -3071,7 +3071,7 @@ To collect the results of ``task`` after training, ``Qlib`` provides `Collector 
 `Group <../reference/api.html#Group>`_ also has 2 steps including ``group`` (can group a set of object based on `group_func` and change them to a dict) and ``reduce`` (can make a dict become an ensemble based on some rule).
 For example: {(A,B,C1): object, (A,B,C2): object} ---``group``---> {(A,B): {C1: object, C2: object}} ---``reduce``---> {(A,B): object}
 
-`Ensemble <../reference/api.html#Ensemble>`_ can merge the objects in an ensemble. 
+`Ensemble <../reference/api.html#Ensemble>`_ can merge the objects in an ensemble.
 For example: {C1: object, C2: object} ---``Ensemble``---> object.
 You can set the ensembles you want in the ``Collector``'s process_list.
 Common ensembles include ``AverageEnsemble`` and ``RollingEnsemble``. Average ensemble is used to ensemble the results of different models in the same time period. Rollingensemble is used to ensemble the results of different models in the same time period
@@ -3149,7 +3149,7 @@ Qlib Format Dataset
 The price volume data look different from the actual dealing price because of they are **adjusted** (`adjusted price <https://www.investopedia.com/terms/a/adjusted_closing_price.asp>`_).  And then you may find that the adjusted price may be different from different data sources. This is because different data sources may vary in the way of adjusting prices. Qlib normalize the price on first trading day of each stock to 1 when adjusting them.
 Users can leverage `$factor` to get the original trading price (e.g. `$close / $factor` to get the original close price).
 
-Here are some discussions about the price adjusting of Qlib. 
+Here are some discussions about the price adjusting of Qlib.
 
 - https://github.com/microsoft/qlib/issues/991#issuecomment-1075252402
 
@@ -3729,7 +3729,7 @@ The design of the framework is shown in the yellow part in the middle of the fig
 
 The frequency of the trading algorithm, decision content and execution environment can be customized by users (e.g. intraday trading, daily-frequency trading, weekly-frequency trading), and the execution environment can be nested with finer-grained trading algorithm and execution environment inside (i.e. sub-workflow in the figure, e.g. daily-frequency orders can be turned into finer-grained decisions by splitting orders within the day). The flexibility of the nested decision execution framework makes it easy for users to explore the effects of combining different levels of trading strategies and break down the optimization barriers between different levels of the trading algorithm.
 
-The optimization for the nested decision execution framework can be implemented with the support of `QlibRL <./rl/overall.html>`_. To know more about how to use the QlibRL, go to API Reference: `RL API <../reference/api.html#rl>`_. 
+The optimization for the nested decision execution framework can be implemented with the support of `QlibRL <./rl/overall.html>`_. To know more about how to use the QlibRL, go to API Reference: `RL API <../reference/api.html#rl>`_.
 
 Example
 =======
@@ -5182,12 +5182,12 @@ In QlibRL, EnvWrapper is a subclass of gym.Env, so it implements all necessary i
 
 - `Simulator`
     The simulator is the core component responsible for the environment simulation. Developers could implement all the logic that is directly related to the environment simulation in the Simulator in any way they like. In QlibRL, there are already two implementations of Simulator for single asset trading: 1) ``SingleAssetOrderExecution``, which is built based on Qlib's backtest toolkits and hence considers a lot of practical trading details but is slow. 2) ``SimpleSingleAssetOrderExecution``, which is built based on a simplified trading simulator, which ignores a lot of details (e.g. trading limitations, rounding) but is quite fast.
-- `State interpreter` 
+- `State interpreter`
     The state interpreter is responsible for "interpret" states in the original format (format provided by the simulator) into states in a format that the policy could understand. For example, transform unstructured raw features into numerical tensors.
-- `Action interpreter` 
+- `Action interpreter`
     The action interpreter is similar to the state interpreter. But instead of states, it interprets actions generated by the policy, from the format provided by the policy to the format that is acceptable to the simulator.
-- `Reward function` 
-    The reward function returns a numerical reward to the policy after each time the policy takes an action. 
+- `Reward function`
+    The reward function returns a numerical reward to the policy after each time the policy takes an action.
 
 EnvWrapper will organically organize these components. Such decomposition allows for better flexibility in development. For example, if the developers want to train multiple types of policies in the same environment, they only need to design one simulator and design different state interpreters/action interpreters/reward functions for different types of policies.
 
@@ -5259,20 +5259,20 @@ Reinforcement Learning in Quantitative Trading
 
 Reinforcement Learning
 ======================
-Different from supervised learning tasks such as classification tasks and regression tasks. Another important paradigm in machine learning is Reinforcement Learning(RL), 
+Different from supervised learning tasks such as classification tasks and regression tasks. Another important paradigm in machine learning is Reinforcement Learning(RL),
 which attempts to optimize an accumulative numerical reward signal by directly interacting with the environment under a few assumptions such as Markov Decision Process(MDP).
 
-As demonstrated in the following figure, an RL system consists of four elements, 1)the agent 2) the environment the agent interacts with 3) the policy that the agent follows to take actions on the environment and 4)the reward signal from the environment to the agent. 
+As demonstrated in the following figure, an RL system consists of four elements, 1)the agent 2) the environment the agent interacts with 3) the policy that the agent follows to take actions on the environment and 4)the reward signal from the environment to the agent.
 In general, the agent can perceive and interpret its environment, take actions and learn through reward, to seek long-term and maximum overall reward to achieve an optimal solution.
 
 .. image:: ../../_static/img/RL_framework.png
    :width: 300
-   :align: center 
+   :align: center
 
-RL attempts to learn to produce actions by trial and error. 
-By sampling actions and then observing which one leads to our desired outcome, a policy is obtained to generate optimal actions. 
-In contrast to supervised learning, RL learns this not from a label but from a time-delayed label called a reward. 
-This scalar value lets us know whether the current outcome is good or bad. 
+RL attempts to learn to produce actions by trial and error.
+By sampling actions and then observing which one leads to our desired outcome, a policy is obtained to generate optimal actions.
+In contrast to supervised learning, RL learns this not from a label but from a time-delayed label called a reward.
+This scalar value lets us know whether the current outcome is good or bad.
 In a word, the target of RL is to take actions to maximize reward.
 
 The Qlib Reinforcement Learning toolkit (QlibRL) is an RL platform for quantitative investment, which provides support to implement the RL algorithms in Qlib.
@@ -5296,14 +5296,14 @@ The order execution task is to execute orders efficiently while considering mult
 
     - Action: The action is the decision made by the RL agent based on the observed state. In order execution, actions can include selecting the order size, price, and timing of execution.
 
-    - Reward: The reward is a scalar signal that indicates the performance of the RL agent's action in the environment. The reward function is designed to encourage actions that lead to efficient and cost-effective order execution. It typically considers multiple objectives, such as maximizing price advantages, minimizing trading costs (including transaction fees and slippage), reducing market impact (the effect of the order on the market price) and maximizing order fullfill rates. 
+    - Reward: The reward is a scalar signal that indicates the performance of the RL agent's action in the environment. The reward function is designed to encourage actions that lead to efficient and cost-effective order execution. It typically considers multiple objectives, such as maximizing price advantages, minimizing trading costs (including transaction fees and slippage), reducing market impact (the effect of the order on the market price) and maximizing order fullfill rates.
 
  - Scenarios
     - Single-asset order execution: Single-asset order execution focuses on the task of executing a single order for a specific asset, such as a stock or a cryptocurrency. The primary objective is to execute the order efficiently while considering factors such as maximizing price advantages, minimizing trading costs, reducing market impact, and achieving a high fullfill rate. The RL agent interacts with the market environment and makes decisions on order size, price, and timing of execution for that particular asset. The goal is to learn an optimal execution strategy for the single asset, maximizing the expected cumulative reward while considering the specific dynamics and characteristics of that asset.
 
     - Multi-asset order execution: Multi-asset order execution expands the order execution task to involve multiple assets or securities. It typically involves executing a portfolio of orders across different assets simultaneously or sequentially. Unlike single-asset order execution, the focus is not only on the execution of individual orders but also on managing the interactions and dependencies between different assets within the portfolio. The RL agent needs to make decisions on the order sizes, prices, and timings for each asset in the portfolio, considering their interdependencies, cash constraints, market conditions, and transaction costs. The goal is to learn an optimal execution strategy that balances the execution efficiency for each asset while considering the overall performance and objectives of the portfolio as a whole.
-   
-The choice of settings and RL algorithm depends on the specific requirements of the task, available data, and desired performance objectives. 
+
+The choice of settings and RL algorithm depends on the specific requirements of the task, available data, and desired performance objectives.
 
 Portfolio Construction
 ----------------------
@@ -5445,12 +5445,12 @@ And the config file for backtesting:
         buy: ["current", "$close"]
         # the volume limits of selling, "current" means that this is a real-time value and will not accumulate over time
         sell: ["current", "$close"]
-    strategies: 
-        30min: 
+    strategies:
+        30min:
             class: TWAPStrategy
             module_path: qlib.contrib.strategy.rule_strategy
             kwargs: {}
-        1day: 
+        1day:
             class: SAOEIntStrategy
             module_path: qlib.rl.order_execution.strategy
             kwargs:
@@ -5466,20 +5466,20 @@ And the config file for backtesting:
                     module_path: qlib.rl.data.pickle_styled
                     kwargs:
                     data_dir: ./data/pickle_dataframe/feature
-            action_interpreter: 
+            action_interpreter:
                 class: CategoricalActionInterpreter
                 module_path: qlib.rl.order_execution.interpreter
-                kwargs: 
+                kwargs:
                 values: 14
                 max_step: 8
-            network: 
+            network:
                 class: Recurrent
                 module_path: qlib.rl.order_execution.network
                 kwargs: {}
-            policy: 
+            policy:
                 class: PPO
                 module_path: qlib.rl.order_execution.policy
-                kwargs: 
+                kwargs:
                     lr: 1.0e-4
                     # Local path to the latest model. The model is generated during training, so please run training first if you want to run backtest with a trained policy. You could also remove this parameter file to run backtest with a randomly initialized policy.
                     weight_file: ./checkpoints/latest.pth
@@ -5500,7 +5500,7 @@ After the training, you can backtest with the following command:
 
 In that case, :class:`~qlib.rl.order_execution.simulator_qlib.SingleAssetOrderExecution` and :class:`~qlib.rl.order_execution.simulator_simple.SingleAssetOrderExecutionSimple` as examples for simulator, :class:`qlib.rl.order_execution.interpreter.FullHistoryStateInterpreter` and :class:`qlib.rl.order_execution.interpreter.CategoricalActionInterpreter` as examples for interpreter, :class:`qlib.rl.order_execution.policy.PPO` as an example for policy, and :class:`qlib.rl.order_execution.reward.PAPenaltyReward` as an example for reward.
 For the single asset order execution task, if developers have already defined their simulator/interpreters/reward function/policy, they could launch the training and backtest pipeline by simply modifying the corresponding settings in the config files.
-The details about the example can be found `here <https://github.com/microsoft/qlib/blob/main/examples/rl/README.md>`_. 
+The details about the example can be found `here <https://github.com/microsoft/qlib/blob/main/examples/rl/README.md>`_.
 
 In the future, we will provide more examples for different scenarios such as RL-based portfolio construction.
 
@@ -8326,7 +8326,7 @@ if __name__ == "__main__":
 FILE: examples/benchmarks/README.md
 ================================================
 # Benchmarks Performance
-This page lists a batch of methods designed for alpha seeking. Each method tries to give scores/predictions for all stocks each day(e.g. forecasting the future excess return of stocks). The scores/predictions of the models will be used as the mined alpha. Investing in stocks with higher scores is expected to yield more profit.  
+This page lists a batch of methods designed for alpha seeking. Each method tries to give scores/predictions for all stocks each day(e.g. forecasting the future excess return of stocks). The scores/predictions of the models will be used as the mined alpha. Investing in stocks with higher scores is expected to yield more profit.
 
 The alpha is evaluated in two ways.
 1. The correlation between the alpha and future return.
@@ -8336,7 +8336,7 @@ The alpha is evaluated in two ways.
 Here are the results of each benchmark model running on Qlib's `Alpha360` and `Alpha158` dataset with China's A shared-stock & CSI300 data respectively. The values of each metric are the mean and std calculated based on 20 runs with different random seeds.
 
 The numbers shown below demonstrate the performance of the entire `workflow` of each model. We will update the `workflow` as well as models in the near future for better results.
-<!-- 
+<!--
 > If you need to reproduce the results below, please use the **v1** dataset: `python scripts/get_data.py qlib_data --target_dir ~/.qlib/qlib_data/cn_data --region cn --version v1`
 >
 > In the new version of qlib, the default dataset is **v2**. Since the data is collected from the YahooFinance API (which is not very stable), the results of *v2* and *v1* may differ -->
@@ -8473,7 +8473,7 @@ Finally, you can send PR for review. ([here is an example](https://github.com/mi
 
 Q: What's the difference between models with name `*.py` and `*_ts.py`?
 
-A: Models with name `*_ts.py` are designed for `TSDatasetH` (`TSDatasetH` will create time-series automatically from tabular data).  Models with name `*.py` are designed for `DatasetH` (`DatasetH` is usually used in tabular data.  But users still can apply time-series models on tabular datasets if the columns has time-series relationships). 
+A: Models with name `*_ts.py` are designed for `TSDatasetH` (`TSDatasetH` will create time-series automatically from tabular data).  Models with name `*.py` are designed for `DatasetH` (`DatasetH` is usually used in tabular data.  But users still can apply time-series models on tabular datasets if the columns has time-series relationships).
 
 
 
@@ -8572,20 +8572,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -8750,8 +8750,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -8766,7 +8766,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -8818,20 +8818,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -8912,20 +8912,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9005,20 +9005,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9081,20 +9081,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9164,20 +9164,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9247,20 +9247,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9362,20 +9362,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9463,20 +9463,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9568,10 +9568,10 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
@@ -9581,7 +9581,7 @@ task:
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9676,10 +9676,10 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
@@ -9689,7 +9689,7 @@ task:
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9775,20 +9775,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9831,8 +9831,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -9847,7 +9847,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 port_analysis_config: &port_analysis_config
     strategy:
         class: TopkDropoutStrategy
@@ -9897,20 +9897,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -9991,20 +9991,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10030,7 +10030,7 @@ We provide an example to demonstrate the effectiveness of the current design.
 
 - We will align existing models to current design.
 
-- The result of `workflow_config_mlp.yaml` is different with the result of [MLP](../README.md#Alpha158-dataset) since GeneralPtNN has a different stopping method compared to previous implementations. Specificly, GeneralPtNN controls training according to epoches, whereas previous methods controlled by max_steps. 
+- The result of `workflow_config_mlp.yaml` is different with the result of [MLP](../README.md#Alpha158-dataset) since GeneralPtNN has a different stopping method compared to previous implementations. Specificly, GeneralPtNN controls training according to epoches, whereas previous methods controlled by max_steps.
 
 
 
@@ -10052,8 +10052,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -10068,7 +10068,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -10122,20 +10122,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10158,8 +10158,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -10174,7 +10174,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -10206,7 +10206,7 @@ task:
             loss: mse
             optimizer: adam
             pt_model_uri: "qlib.contrib.model.pytorch_nn.Net"
-            pt_model_kwargs: 
+            pt_model_kwargs:
                 input_dim: 20
                 layers: [20,]
     dataset:
@@ -10221,20 +10221,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10255,26 +10255,26 @@ data_handler_config: &data_handler_config
     instruments: *market
     infer_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-             "class" : "CSZFillna", 
+             "class" : "CSZFillna",
              "kwargs":{"fields_group": "feature"}
         }
     ]
     learn_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-            "class" : "DropnaProcessor", 
+            "class" : "DropnaProcessor",
             "kwargs":{"fields_group": "feature"}
         },
         "DropnaLabel",
         {
-            "class": "CSZScoreNorm", 
+            "class": "CSZScoreNorm",
             "kwargs": {"fields_group": "label"}
         }
     ]
@@ -10311,7 +10311,7 @@ task:
             weight_decay: 0.0002
             optimizer: adam
             pt_model_uri: "qlib.contrib.model.pytorch_nn.Net"
-            pt_model_kwargs: 
+            pt_model_kwargs:
                 input_dim: 157
     dataset:
         class: DatasetH
@@ -10325,20 +10325,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10379,8 +10379,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -10395,7 +10395,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -10446,20 +10446,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10539,20 +10539,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10658,20 +10658,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10771,20 +10771,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -10887,20 +10887,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11178,20 +11178,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11255,20 +11255,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11347,18 +11347,18 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
           kwargs: {}
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11429,20 +11429,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11513,20 +11513,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11605,20 +11605,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11790,20 +11790,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: True
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11872,20 +11872,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: True
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -11923,7 +11923,7 @@ port_analysis_config: &port_analysis_config
         module_path: qlib.contrib.strategy
         kwargs:
             signal:
-                - <MODEL> 
+                - <MODEL>
                 - <DATASET>
             topk: 50
             n_drop: 5
@@ -11956,20 +11956,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: True
             ann_scaler: 252
         - class: MultiPassPortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12007,8 +12007,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -12023,7 +12023,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -12064,20 +12064,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
               model: <MODEL>
               dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
               ana_long_short: False
               ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
               config: *port_analysis_config
 
 
@@ -12148,20 +12148,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         model: <MODEL>
         dataset: <DATASET>
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         ana_long_short: False
         ann_scaler: 252
     - class: PortAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         config: *port_analysis_config
 
 
@@ -12202,8 +12202,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -12269,20 +12269,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12362,20 +12362,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12413,26 +12413,26 @@ data_handler_config: &data_handler_config
     instruments: *market
     infer_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-             "class" : "CSZFillna", 
+             "class" : "CSZFillna",
              "kwargs":{"fields_group": "feature"}
         }
     ]
     learn_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-            "class" : "DropnaProcessor", 
+            "class" : "DropnaProcessor",
             "kwargs":{"fields_group": "feature"}
         },
         "DropnaLabel",
         {
-            "class": "CSZScoreNorm", 
+            "class": "CSZScoreNorm",
             "kwargs": {"fields_group": "label"}
         }
     ]
@@ -12483,20 +12483,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12517,26 +12517,26 @@ data_handler_config: &data_handler_config
     instruments: *market
     infer_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-             "class" : "CSZFillna", 
+             "class" : "CSZFillna",
              "kwargs":{"fields_group": "feature"}
         }
     ]
     learn_processors: [
         {
-            "class" : "DropCol", 
+            "class" : "DropCol",
             "kwargs":{"col_list": ["VWAP0"]}
         },
         {
-            "class" : "DropnaProcessor", 
+            "class" : "DropnaProcessor",
             "kwargs":{"fields_group": "feature"}
         },
         "DropnaLabel",
         {
-            "class": "CSZScoreNorm", 
+            "class": "CSZScoreNorm",
             "kwargs": {"fields_group": "label"}
         }
     ]
@@ -12587,20 +12587,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12678,20 +12678,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12769,20 +12769,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12887,20 +12887,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -12910,7 +12910,7 @@ task:
 FILE: examples/benchmarks/SFM/README.md
 ================================================
 # State-Frequency-Memory
-- State Frequency Memory (SFM) is a novel recurrent network that uses Discrete Fourier Transform to decompose the hidden states of memory cells and capture the multi-frequency trading patterns from past market data to make stock price predictions. 
+- State Frequency Memory (SFM) is a novel recurrent network that uses Discrete Fourier Transform to decompose the hidden states of memory cells and capture the multi-frequency trading patterns from past market data to make stock price predictions.
 - Paper: Stock Price Prediction via Discovering Multi-Frequency Trading Patterns. [http://www.eecs.ucf.edu/~gqi/publications/kdd2017_stock.pdf.](http://www.eecs.ucf.edu/~gqi/publications/kdd2017_stock.pdf)
 
 
@@ -13002,20 +13002,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13107,20 +13107,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13194,20 +13194,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13250,8 +13250,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -13319,20 +13319,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13414,20 +13414,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13437,12 +13437,12 @@ FILE: examples/benchmarks/TCTS/README.md
 ================================================
 # Temporally Correlated Task Scheduling for Sequence Learning
 ### Background
-Sequence learning has attracted much research attention from the machine learning community in recent years. In many applications, a sequence learning task is usually associated with multiple temporally correlated auxiliary tasks, which are different in terms of how much input information to use or which future step to predict. In stock trend forecasting, as demonstrated in Figure1, one can predict the price of a stock in different future days (e.g., tomorrow, the day after tomorrow). In this paper, we propose a framework to make use of those temporally correlated tasks to help each other. 
+Sequence learning has attracted much research attention from the machine learning community in recent years. In many applications, a sequence learning task is usually associated with multiple temporally correlated auxiliary tasks, which are different in terms of how much input information to use or which future step to predict. In stock trend forecasting, as demonstrated in Figure1, one can predict the price of a stock in different future days (e.g., tomorrow, the day after tomorrow). In this paper, we propose a framework to make use of those temporally correlated tasks to help each other.
 
 ### Method
 Given that there are usually multiple temporally correlated tasks, the key challenge lies in which tasks to use and when to use them in the training process. This work introduces a learnable task scheduler for sequence learning, which adaptively selects temporally correlated tasks during the training process. The scheduler accesses the model status and the current training data (e.g., in the current minibatch) and selects the best auxiliary task to help the training of the main task. The scheduler and the model for the main task are jointly trained through bi-level optimization: the scheduler is trained to maximize the validation performance of the model, and the model is trained to minimize the training loss guided by the scheduler. The process is demonstrated in Figure2.
 
-<p align="center"> 
+<p align="center">
 <img src="workflow.png"/>
 </p>
 
@@ -13452,7 +13452,7 @@ At step <img src="https://latex.codecogs.com/png.latex?s" title="s" />, with tra
 Due to different data versions and different Qlib versions, the original data and data preprocessing methods of the experimental settings in the paper are different from those experimental settings in the existing Qlib version. Therefore, we provide two versions of the code according to the two kinds of settings, 1) the [code](https://github.com/lwwang1995/tcts) that can be used to reproduce the experimental results and 2) the [code](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_tcts.py) in the current Qlib baseline.
 
 #### Setting1
-* Dataset: We use the historical transaction data for 300 stocks on [CSI300](http://www.csindex.com.cn/en/indices/index-detail/000300) from 01/01/2008 to 08/01/2020. We split the data into training (01/01/2008-12/31/2013), validation (01/01/2014-12/31/2015), and test sets (01/01/2016-08/01/2020) based on the transaction time. 
+* Dataset: We use the historical transaction data for 300 stocks on [CSI300](http://www.csindex.com.cn/en/indices/index-detail/000300) from 01/01/2008 to 08/01/2020. We split the data into training (01/01/2008-12/31/2013), validation (01/01/2014-12/31/2015), and test sets (01/01/2016-08/01/2020) based on the transaction time.
 
 * The main tasks <img src="https://latex.codecogs.com/png.latex?T_k" title="T_k" /> refers to forecasting return of stock <img src="https://latex.codecogs.com/png.latex?i" title="i" /> as following,
 <div align=center>
@@ -13462,7 +13462,7 @@ Due to different data versions and different Qlib versions, the original data an
 * Temporally correlated task sets <img src="https://latex.codecogs.com/png.latex?\mathcal{T}_k&space;=&space;\{T_1,&space;T_2,&space;...&space;,&space;T_k\}" title="\mathcal{T}_k = \{T_1, T_2, ... , T_k\}" />, in this paper, <img src="https://latex.codecogs.com/png.latex?\mathcal{T}_3" title="\mathcal{T}_3" />, <img src="https://latex.codecogs.com/png.latex?\mathcal{T}_5" title="\mathcal{T}_5" /> and <img src="https://latex.codecogs.com/png.latex?\mathcal{T}_{10}" title="\mathcal{T}_{10}" /> are used in <img src="https://latex.codecogs.com/png.latex?T_1" title="T_1" />, <img src="https://latex.codecogs.com/png.latex?T_2" title="T_2" />, and <img src="https://latex.codecogs.com/png.latex?T_3" title="T_3" />.
 
 #### Setting2
-* Dataset: We use the historical transaction data for 300 stocks on [CSI300](http://www.csindex.com.cn/en/indices/index-detail/000300) from 01/01/2008 to 08/01/2020. We split the data into training (01/01/2008-12/31/2014), validation (01/01/2015-12/31/2016), and test sets (01/01/2017-08/01/2020) based on the transaction time. 
+* Dataset: We use the historical transaction data for 300 stocks on [CSI300](http://www.csindex.com.cn/en/indices/index-detail/000300) from 01/01/2008 to 08/01/2020. We split the data into training (01/01/2008-12/31/2014), validation (01/01/2015-12/31/2016), and test sets (01/01/2017-08/01/2020) based on the transaction time.
 
 * The main tasks <img src="https://latex.codecogs.com/png.latex?T_k" title="T_k" /> refers to forecasting return of stock <img src="https://latex.codecogs.com/png.latex?i" title="i" /> as following,
 <div align=center>
@@ -13511,8 +13511,8 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1", 
-            "Ref($close, -3) / Ref($close, -1) - 1", 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1",
+            "Ref($close, -3) / Ref($close, -1) - 1",
             "Ref($close, -4) / Ref($close, -1) - 1"]
 port_analysis_config: &port_analysis_config
     strategy:
@@ -13568,20 +13568,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -13596,7 +13596,7 @@ FILE: examples/benchmarks/TFT/README.md
 **GitHub**: https://github.com/google-research/google-research/tree/master/tft
 
 ## Run the Workflow
-Users can follow the ``workflow_by_code_tft.py`` to run the benchmark. 
+Users can follow the ``workflow_by_code_tft.py`` to run the benchmark.
 
 ### Notes
 1. Please be **aware** that this script can only support `Python 3.6 - 3.7`.
@@ -13993,20 +13993,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -16741,7 +16741,7 @@ FILE: examples/benchmarks/TRA/run.sh
 ================================================
 #!/bin/bash
 
-# we used random seed(1 1000 2000 3000 4000 5000) in our experiments 
+# we used random seed(1 1000 2000 3000 4000 5000) in our experiments
 
 # Directly run from Qlib command `qrun`
 qrun configs/config_alstm.yaml
@@ -16895,17 +16895,17 @@ task:
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         model: <MODEL>
         dataset: <DATASET>
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         ana_long_short: False
         ann_scaler: 252
     - class: PortAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         config: *port_analysis_config
 
 
@@ -17028,12 +17028,12 @@ task:
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         model: <MODEL>
         dataset: <DATASET>
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         ana_long_short: False
         ann_scaler: 252
     - class: PortAnaRecord
@@ -17161,12 +17161,12 @@ task:
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         model: <MODEL>
         dataset: <DATASET>
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs: 
+      kwargs:
         ana_long_short: False
         ann_scaler: 252
     - class: PortAnaRecord
@@ -17224,7 +17224,7 @@ task:
       lamb: 1.0
       rho: 0.99
       freeze_model: False
-      model_init_state: 
+      model_init_state:
   dataset:
     class: MTSDatasetH
     module_path: src/dataset.py
@@ -17360,7 +17360,7 @@ task:
       lamb: 1.0
       rho: 0.99
       freeze_model: False
-      model_init_state: 
+      model_init_state:
   dataset:
     class: MTSDatasetH
     module_path: src/dataset.py
@@ -17428,7 +17428,7 @@ task:
       lamb: 1.0
       rho: 0.99
       freeze_model: False
-      model_init_state: 
+      model_init_state:
   dataset:
     class: MTSDatasetH
     module_path: src/dataset.py
@@ -17564,7 +17564,7 @@ task:
       lamb: 1.0
       rho: 0.99
       freeze_model: False
-      model_init_state: 
+      model_init_state:
   dataset:
     class: MTSDatasetH
     module_path: src/dataset.py
@@ -18488,8 +18488,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -18504,7 +18504,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -18545,20 +18545,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             step_len: 20
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -18629,20 +18629,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -18720,20 +18720,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -18802,20 +18802,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -18980,20 +18980,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -19063,20 +19063,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: True
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -19135,7 +19135,7 @@ clean:
 ================================================
 FILE: examples/benchmarks_dynamic/DDG-DA/requirements.txt
 ================================================
-torch==1.10.0 
+torch==1.10.0
 
 
 
@@ -20117,7 +20117,7 @@ data_handler_config: &data_handler_config
           kwargs:
               fields_group: 'label'
     label: ["Ref($close, -2) / Ref($close, -1) - 1"]
-    
+
 task:
     model:
         class: "HFLGBModel"
@@ -20144,7 +20144,7 @@ task:
                 train: [*start_time, *train_end_time]
                 valid: [*train_end_time, *valid_end_time]
                 test: [*test_start_time, *end_time]
-    record: 
+    record:
         - class: "SignalRecord"
           module_path: "qlib.workflow.record_temp"
           kwargs: {}
@@ -20473,7 +20473,7 @@ This workflow is an example for nested decision execution in backtesting. Qlib s
 
 ## Weekly Portfolio Generation and Daily Order Execution
 
-This workflow provides an example that uses a DropoutTopkStrategy (a strategy based on the daily frequency Lightgbm model) in weekly frequency for portfolio generation and uses SBBStrategyEMA (a rule-based strategy that uses EMA for decision-making) to execute orders in daily frequency. 
+This workflow provides an example that uses a DropoutTopkStrategy (a strategy based on the daily frequency Lightgbm model) in weekly frequency for portfolio generation and uses SBBStrategyEMA (a rule-based strategy that uses EMA for decision-making) to execute orders in daily frequency.
 
 ### Usage
 
@@ -20489,7 +20489,7 @@ Start collecting data by running the following command:
 
 ## Daily Portfolio Generation and Minutely Order Execution
 
-This workflow also provides a high-frequency example that uses a DropoutTopkStrategy for portfolio generation in daily frequency and uses SBBStrategyEMA to execute orders in minutely frequency. 
+This workflow also provides a high-frequency example that uses a DropoutTopkStrategy for portfolio generation in daily frequency and uses SBBStrategyEMA to execute orders in minutely frequency.
 
 ### Usage
 
@@ -22186,7 +22186,7 @@ Take OPDS as an example, to run the training workflow, run:
 python -m qlib.rl.contrib.train_onpolicy --config_path exp_configs/train_opds.yml --run_backtest
 ```
 
-Metrics, logs, and checkpoints will be stored under `outputs/opds` (configured by `exp_configs/train_opds.yml`). 
+Metrics, logs, and checkpoints will be stored under `outputs/opds` (configured by `exp_configs/train_opds.yml`).
 
 ## Backtest
 
@@ -22203,10 +22203,10 @@ In addition to OPDS and PPO, we also provide TWAP ([Time-weighted average price]
 
 It is worthy to notice that the results of the backtesting process may differ from the results of the testing process used during training.
 This is because different simulators are used to simulate market conditions during training and backtesting.
-In training pipeline, the simplified simulator called `SingleAssetOrderExecutionSimple` is used for efficiency reasons. 
-`SingleAssetOrderExecutionSimple` makes no restriction to trading amounts. 
+In training pipeline, the simplified simulator called `SingleAssetOrderExecutionSimple` is used for efficiency reasons.
+`SingleAssetOrderExecutionSimple` makes no restriction to trading amounts.
 No matter what the amount of the order is, it can be completely executed.
-However, during backtesting, a more realistic simulator called `SingleAssetOrderExecution` is used. 
+However, during backtesting, a more realistic simulator called `SingleAssetOrderExecution` is used.
 It takes into account practical constraints in more real-world scenarios (for example, the trading volume must be a multiple of the smallest trading unit).
 As a result, the amount of an order that is actually executed during backtesting may differ from the amount expected to be executed.
 
@@ -22677,7 +22677,7 @@ test_start_time: !!str &tstart 2021-10-01
 instruments: &ins csi300s19_22
 # qlib related configuration
 qlib_conf:
-    provider_uri: 
+    provider_uri:
         5min: ./data/bin # path to generated qlib bin
     redis_port: 233
 feature_conf:
@@ -22702,7 +22702,7 @@ feature_conf:
                   module_path: qlib.contrib.data.highfreq_processor
                   kwargs:
                     feature_save_dir: ./stat/  #  output path of statistics of features (for feature normalization)
-                    norm_groups: 
+                    norm_groups:
                         price: 8
                         volume: 2
                 inst_processors:
@@ -22755,7 +22755,7 @@ This workflow is an example for `Rolling Process Data`.
 
 ## Background
 
-When rolling train the models, data also needs to be generated in the different rolling windows. When the rolling window moves, the training data will change, and the processor's learnable state (such as standard deviation, mean, etc.) will also change. 
+When rolling train the models, data also needs to be generated in the different rolling windows. When the rolling window moves, the training data will change, and the processor's learnable state (such as standard deviation, mean, etc.) will also change.
 
 In order to avoid regenerating data, this example uses the `DataHandler-based DataLoader` to load the raw features that are not related to the rolling window, and then used Processors to generate processed-features related to the rolling window.
 
@@ -22966,7 +22966,7 @@ If you want to know more details about Quant research, this notebook may be a be
 
 We hope this script could be a tutorial for users who are interested in the details of Quant.
 
-This notebook tries to demonstrate how can we use Qlib to build components step by step. 
+This notebook tries to demonstrate how can we use Qlib to build components step by step.
 """
 
 from pprint import pprint
@@ -23147,7 +23147,7 @@ D.features(
 
 """
 
-## Dataset loading and preprocessing 
+## Dataset loading and preprocessing
 """
 
 """
@@ -23160,7 +23160,7 @@ Some heuristic principles of create features
 """
 ### data loader
 
-It's interface can be found [here](https://github.com/microsoft/qlib/blob/main/qlib/data/dataset/loader.py#L24) 
+It's interface can be found [here](https://github.com/microsoft/qlib/blob/main/qlib/data/dataset/loader.py#L24)
 
 QlibDataLoader is an implementation which load data from Qlib's data source
 """
@@ -23188,7 +23188,7 @@ df.isna().sum()
 df.plot(kind="hist")
 
 """
-Datahander is responsible for data preprocessing and provides data fetching interface 
+Datahander is responsible for data preprocessing and provides data fetching interface
 
 
 """
@@ -23377,7 +23377,7 @@ with R.start(experiment_name=EXP_NAME):
 """
 # Evaluation:
 - Signal-based
-- Portfolio-based: backtest 
+- Portfolio-based: backtest
 """
 
 ###################################
@@ -59115,7 +59115,7 @@ cdef class Mean(Rolling):
     def __init__(self, int window):
         super(Mean, self).__init__(window)
         self.vsum = 0
-        
+
     cdef double update(self, double val):
         self.barv.push_back(val)
         if not isnan(self.barv.front()):
@@ -59172,7 +59172,7 @@ cdef class Slope(Rolling):
         return (N*self.xy_sum - self.x_sum*self.y_sum) / \
             (N*self.x2_sum - self.x_sum*self.x_sum)
 
-    
+
 cdef class Resi(Rolling):
     """1-D array rolling residuals"""
     cdef double i_sum # can be used as i2_sum
@@ -59218,7 +59218,7 @@ cdef class Resi(Rolling):
         interp = y_mean - slope*x_mean
         return val - (slope*self.window + interp)
 
-    
+
 cdef class Rsquare(Rolling):
     """1-D array rolling rsquare"""
     cdef double i_sum
@@ -59266,7 +59266,7 @@ cdef class Rsquare(Rolling):
             sqrt((N*self.x2_sum - self.x_sum*self.x_sum) * (N*self.y2_sum - self.y_sum*self.y_sum))
         return rvalue * rvalue
 
-    
+
 cdef np.ndarray[double, ndim=1] rolling(Rolling r, np.ndarray a):
     cdef int  i
     cdef int  N = len(a)
@@ -84534,12 +84534,12 @@ FILE: scripts/data_collector/baostock_5min/README.md
     # hs300 5min
     python scripts/get_data.py qlib_data --target_dir ~/.qlib/qlib_data/hs300_data_5min --region hs300 --interval 5min
     ```
-    
+
 ### Collector *Baostock high frequency* data to qlib
 > collector *Baostock high frequency* data and *dump* into `qlib` format.
 > If the above ready-made data can't meet users' requirements,  users can follow this section to crawl the latest data and convert it to qlib-data.
   1. download data to csv: `python scripts/data_collector/baostock_5min/collector.py download_data`
-     
+
      This will download the raw data such as date, symbol, open, high, low, close, volume, amount, adjustflag from baostock to a local directory. One file per symbol.
      - parameters:
           - `source_dir`: save the directory
@@ -84553,10 +84553,10 @@ FILE: scripts/data_collector/baostock_5min/README.md
           python collector.py download_data --source_dir ~/.qlib/stock_data/source/hs300_5min_original --start 2022-01-01 --end 2022-01-30 --interval 5min --region HS300
           ```
   2. normalize data: `python scripts/data_collector/baostock_5min/collector.py normalize_data`
-     
+
      This will:
      1. Normalize high, low, close, open price using adjclose.
-     2. Normalize the high, low, close, open price so that the first valid trading date's close price is 1. 
+     2. Normalize the high, low, close, open price so that the first valid trading date's close price is 1.
      - parameters:
           - `source_dir`: csv directory
           - `normalize_dir`: result directory
@@ -84578,9 +84578,9 @@ FILE: scripts/data_collector/baostock_5min/README.md
         python collector.py normalize_data --qlib_data_1d_dir ~/.qlib/qlib_data/cn_data --source_dir ~/.qlib/stock_data/source/hs300_5min_original --normalize_dir ~/.qlib/stock_data/source/hs300_5min_nor --region HS300 --interval 5min
         ```
   3. dump data: `python scripts/dump_bin.py dump_all`
-    
-     This will convert the normalized csv in `feature` directory as numpy array and store the normalized data one file per column and one symbol per directory. 
-    
+
+     This will convert the normalized csv in `feature` directory as numpy array and store the normalized data one file per column and one symbol per directory.
+
      - parameters:
        - `data_path`: stock data path or directory, **normalize result(normalize_dir)**
        - `qlib_dir`: qlib(dump) data director
@@ -84989,7 +84989,7 @@ FILE: scripts/data_collector/br_index/README.md
 
 #### <b>Code Logic</b>
 
-The code does a web scrapping into the B3's [website](https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBOV?language=pt-br), which keeps track of the ibovespa stocks composition on the current day. 
+The code does a web scrapping into the B3's [website](https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBOV?language=pt-br), which keeps track of the ibovespa stocks composition on the current day.
 
 Other approaches, such as `request` and `Beautiful Soup` could have been used. However, the website shows the table with the stocks with some delay, since it uses a script inside of it to obtain such compositions.
 Alternatively, `selenium` was used to download this stocks' composition in order to overcome this problem.
@@ -84998,7 +84998,7 @@ Futhermore, the data downloaded from the selenium script  was preprocessed so it
 
 <hr/>
 
-### Method `get_changes` 
+### Method `get_changes`
 
 No suitable data source that keeps track of ibovespa's history stocks composition has been found. Except from this [repository](https://github.com/igor17400/IBOV-HCI) which provide such information have been used, however it only provides the data from the 1st quarter of 2003 to 3rd quarter of 2021.
 
@@ -87646,7 +87646,7 @@ pip install -r requirements.txt
 
 ### Get Qlib data(`bin file`)
   > `qlib-data` from *YahooFinance*, is the data that has been dumped and can be used directly in `qlib`.
-  > This ready-made qlib-data is not updated regularly. If users want the latest data, please follow [these steps](#collector-yahoofinance-data-to-qlib) download the latest data. 
+  > This ready-made qlib-data is not updated regularly. If users want the latest data, please follow [these steps](#collector-yahoofinance-data-to-qlib) download the latest data.
 
   - get data: `python scripts/get_data.py qlib_data`
   - parameters:
@@ -87673,7 +87673,7 @@ pip install -r requirements.txt
 > collector *YahooFinance* data and *dump* into `qlib` format.
 > If the above ready-made data can't meet users' requirements,  users can follow this section to crawl the latest data and convert it to qlib-data.
   1. download data to csv: `python scripts/data_collector/yahoo/collector.py download_data`
-     
+
      This will download the raw data such as high, low, open, close, adjclose price from yahoo to a local directory. One file per symbol.
 
      - parameters:
@@ -87711,10 +87711,10 @@ pip install -r requirements.txt
           python collector.py download_data --source_dir ~/.qlib/stock_data/source/br_data_1min --delay 1 --interval 1min --region BR
           ```
   2. normalize data: `python scripts/data_collector/yahoo/collector.py normalize_data`
-     
+
      This will:
      1. Normalize high, low, close, open price using adjclose.
-     2. Normalize the high, low, close, open price so that the first valid trading date's close price is 1. 
+     2. Normalize the high, low, close, open price so that the first valid trading date's close price is 1.
 
      - parameters:
           - `source_dir`: csv directory
@@ -87729,13 +87729,13 @@ pip install -r requirements.txt
           - `qlib_data_1d_dir`: qlib directory(1d data)
             ```
             if interval==1min, qlib_data_1d_dir cannot be None, normalize 1min needs to use 1d data;
-        
+
                 qlib_data_1d can be obtained like this:
                     $ python scripts/get_data.py qlib_data --target_dir <qlib_data_1d_dir> --interval 1d
                     $ python scripts/data_collector/yahoo/collector.py update_data_to_bin --qlib_data_1d_dir <qlib_data_1d_dir> --end_date <end_date>
                 or:
                     download 1d data from YahooFinance
-            
+
             ```
       - examples:
         ```bash
@@ -87752,9 +87752,9 @@ pip install -r requirements.txt
         python collector.py normalize_data --qlib_data_1d_dir ~/.qlib/qlib_data/br_data --source_dir ~/.qlib/stock_data/source/br_data_1min --normalize_dir ~/.qlib/stock_data/source/br_1min_nor --region BR --interval 1min
         ```
   3. dump data: `python scripts/dump_bin.py dump_all`
-    
-     This will convert the normalized csv in `feature` directory as numpy array and store the normalized data one file per column and one symbol per directory. 
-    
+
+     This will convert the normalized csv in `feature` directory as numpy array and store the normalized data one file per column and one symbol per directory.
+
      - parameters:
        - `data_path`: stock data path or directory, **normalize result(normalize_dir)**
        - `qlib_dir`: qlib(dump) data director
@@ -87779,7 +87779,7 @@ pip install -r requirements.txt
   > It is recommended that users update the data manually once (--trading_date 2021-05-25) and then set it to update automatically.
   >
   > **NOTE**: Users can't incrementally  update data based on the offline data provided by Qlib(some fields are removed to reduce the data size). Users should use [yahoo collector](https://github.com/microsoft/qlib/tree/main/scripts/data_collector/yahoo#automatic-update-of-daily-frequency-datafrom-yahoo-finance) to download Yahoo data from scratch and then incrementally update it.
-  > 
+  >
 
   * Automatic update of data to the "qlib" directory each trading day(Linux)
       * use *crontab*: `crontab -e`
@@ -93746,11 +93746,11 @@ categories:
       - 'bugfix'
       - 'bug'
   - title: '📚 Documentation'
-    label: 
+    label:
       - 'doc'
       - 'documentation'
   - title: '🧹 Maintenance'
-    label: 
+    label:
       - 'maintenance'
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
@@ -94102,7 +94102,7 @@ jobs:
     - name: Update pip to the latest version
       run: |
         python -m pip install --upgrade pip
-      
+
     - name: Qlib installation test
       run: |
         python -m pip install pyqlib
@@ -94206,7 +94206,7 @@ jobs:
     - name: Check Qlib with mypy
       run: |
         make mypy
-    
+
     - name: Check Qlib ipynb with nbqa
       run: |
         make nbqa
@@ -94319,5 +94319,3 @@ jobs:
         command: |
           cd tests
           python -m pytest . -m "slow" --durations=0
-
-

@@ -20,6 +20,24 @@ artifacts/
 *_output.txt
 
 # Offline bar data (too large for git)
-data/
+/data/
 results/
 artifacts/
+
+# Codex local configuration
+.codex/
+
+# Claude Flow runtime data
+.claude-flow/
+.claude-flow/data/
+.claude-flow/logs/
+
+# Swarm/runtime state
+.swarm/
+.scannerwork/
+logs/tests/full_test_output*.txt
+
+# Environment variables
+.env
+.env.local
+.env.*.local

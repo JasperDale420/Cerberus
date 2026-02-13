@@ -22,9 +22,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         self.uw_client = MagicMock()
 
         # Mock FeaturePipeline (historical fetching is the bottleneck to test)
-        self.feature_pipeline = FeaturePipeline(
-            self.alpaca_client, self.uw_client, self.logger, config={}
-        )
+        self.feature_pipeline = FeaturePipeline(self.alpaca_client, self.uw_client, self.logger, config={})
 
         # Mock UniverseBuilder to return fixed set of 50 symbols
         self.universe_builder = MagicMock(spec=UniverseBuilder)
@@ -56,16 +54,12 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
 
         # self.feature_pipeline.fetch_bars_batch = MagicMock(side_effect=mock_fetch)
         # Also mock single get_historical_bars if used
-        self.alpaca_client.get_historical_bars.return_value = {
-            "bars": [{"c": 100.0, "v": 1000} for _ in range(100)]
-        }
+        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"c": 100.0, "v": 1000} for _ in range(100)]}
 
         start_time = time.perf_counter()
 
         # Provide current regime and time
-        _ = await self.scanner.scan(
-            regime=Regime.BULL, scan_time=datetime.now(timezone.utc)
-        )
+        _ = await self.scanner.scan(regime=Regime.BULL, scan_time=datetime.now(timezone.utc))
 
         duration = time.perf_counter() - start_time
         print(f"\nScanner Benchmark (50 symbols): {duration:.4f}s")
@@ -80,9 +74,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         Measure ExecutionEngine.on_bar() latency.
         Goal: P99 < 10ms (processing only).
         """
-        engine = ExecutionEngine(
-            config={}, logger=self.logger, alpaca_client=self.alpaca_client
-        )
+        engine = ExecutionEngine(config={}, logger=self.logger, alpaca_client=self.alpaca_client)
 
         # Mock dependencies
         engine.market_manager = MagicMock()
@@ -115,9 +107,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         """
         # Setup
         sym = "TEST_CACHE"
-        mock_pipeline = FeaturePipeline(
-            self.alpaca_client, self.uw_client, self.logger, config={}
-        )
+        mock_pipeline = FeaturePipeline(self.alpaca_client, self.uw_client, self.logger, config={})
 
         # T0: Start of session (09:30 ET) ~ 14:30 UTC
         # T1: 15:00 UTC
@@ -128,9 +118,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
 
         # 1. First Call: Should fetch full history
         self.alpaca_client.get_historical_bars.reset_mock()
-        self.alpaca_client.get_historical_bars.return_value = {
-            "bars": [{"t": t1.isoformat(), "c": 100, "v": 1000}]
-        }
+        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"t": t1.isoformat(), "c": 100, "v": 1000}]}
 
         await mock_pipeline.compute_features([sym], as_of=t1)
 
@@ -144,9 +132,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         # 2. Second Call: Should be incremental
         self.alpaca_client.get_historical_bars.reset_mock()
         # Mock return for the increment
-        self.alpaca_client.get_historical_bars.return_value = {
-            "bars": [{"t": t2.isoformat(), "c": 101, "v": 1000}]
-        }
+        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"t": t2.isoformat(), "c": 101, "v": 1000}]}
 
         await mock_pipeline.compute_features([sym], as_of=t2)
 
@@ -162,9 +148,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         # Verify metrics if accessible, or just rely on the call args proving optimization
         if hasattr(mock_pipeline, "last_run_metrics"):
             self.assertGreater(mock_pipeline.last_run_metrics.get("cache_hits", 0), 0)
-            self.assertGreater(
-                mock_pipeline.last_run_metrics.get("incremental_fetches", 0), 0
-            )
+            self.assertGreater(mock_pipeline.last_run_metrics.get("incremental_fetches", 0), 0)
 
 
 if __name__ == "__main__":

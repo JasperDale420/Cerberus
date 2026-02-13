@@ -8,6 +8,7 @@ sys.modules["unusualwhales"] = MagicMock()
 
 from datetime import datetime, timezone  # noqa: E402
 
+from src.data.calculator import FeatureCalculator  # noqa: E402
 from src.data.pipeline import FeaturePipeline  # noqa: E402
 
 
@@ -105,9 +106,7 @@ async def test_compute_features_no_data():
 
     pipeline = FeaturePipeline(mock_alpaca, mock_uw, mock_logger)
 
-    features = await pipeline.compute_features(
-        ["AAPL"], as_of=datetime.now(timezone.utc)
-    )
+    features = await pipeline.compute_features(["AAPL"], as_of=datetime.now(timezone.utc))
 
     assert "AAPL" not in features
     mock_logger.warning.assert_called()
@@ -166,3 +165,62 @@ async def test_compute_features_flow_failure_degrades_to_neutral():
     assert feat.large_sweeps_count == 0
     assert feat.aggressive_flow_share == 0.0
     mock_logger.warning.assert_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_compute_features_skips_symbol_when_technicals_raise():
+    mock_alpaca = MagicMock()
+    mock_uw = MagicMock()
+    mock_logger = MagicMock()
+
+    now = datetime.now(timezone.utc)
+    from datetime import timedelta
+
+    def _bars(base_open: float):
+        out = []
+        for i in range(25):
+            t = now + timedelta(minutes=i)
+            out.append(
+                {
+                    "t": t.isoformat(),
+                    "o": base_open + i,
+                    "h": base_open + i + 1.0,
+                    "l": base_open + i - 1.0,
+                    "c": base_open + i + 0.5,
+                    "v": 1000000,
+                }
+            )
+        return out
+
+    def _get_bars(symbol, _start, _end, timeframe="1Min"):
+        if timeframe == "1Day":
+            return [{"v": 1000000}] * 5
+        if symbol == "BAD":
+            return _bars(50.0)
+        return _bars(100.0)
+
+    mock_alpaca.get_historical_bars.side_effect = _get_bars
+    mock_uw.get_option_flow = AsyncMock(return_value=[])
+
+    pipeline = FeaturePipeline(
+        mock_alpaca,
+        mock_uw,
+        mock_logger,
+        config={"feature_pipeline": {"daily_volume_lookback_days": 5}},
+    )
+
+    real_calc = FeatureCalculator()
+
+    def _compute_technicals_with_failure(bars):
+        first_open = float(bars[0]["o"])
+        if first_open < 75:
+            raise ZeroDivisionError("float division by zero")
+        return real_calc.compute_technicals(bars)
+
+    pipeline.calculator.compute_technicals = _compute_technicals_with_failure  # type: ignore[method-assign]
+
+    features = await pipeline.compute_features(["BAD", "GOOD"], as_of=now)
+
+    assert "GOOD" in features
+    assert "BAD" not in features

@@ -5,7 +5,7 @@ The current system relies on basic OHLCV indicators (RSI, EMA, VWAP) which provi
 ## High-Conviction Projects
 
 ### 1. Order Flow Imbalance (Microstructure Alpha)
-Stop looking at *price* as the lead indicator. Price is the *result* of volume imbalance. 
+Stop looking at *price* as the lead indicator. Price is the *result* of volume imbalance.
 - **Goal**: Implement **Trade Flow Imbalance (TFI)** in the `FeaturePipeline`.
 - **Logic**: Use tick-level data (or high-resolution trades) to categorize volume as aggressive buying (at/above ask) or aggressive selling (at/below bid).
 

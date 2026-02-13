@@ -149,25 +149,12 @@ class ConfigLoader:
                 out: list[str] = []
                 s = str(value)
                 for i, ch in enumerate(s):
-                    if (
-                        ch.isupper()
-                        and i > 0
-                        and (
-                            s[i - 1].islower()
-                            or (i + 1 < len(s) and s[i + 1].islower())
-                        )
-                    ):
+                    if ch.isupper() and i > 0 and (s[i - 1].islower() or (i + 1 < len(s) and s[i + 1].islower())):
                         out.append("_")
                     out.append(ch.lower())
                 return "".join(out)
 
-            camel_keys = sorted(
-                [
-                    k
-                    for k in strategies.keys()
-                    if isinstance(k, str) and any(c.isupper() for c in k)
-                ]
-            )
+            camel_keys = sorted([k for k in strategies.keys() if isinstance(k, str) and any(c.isupper() for c in k)])
             for key in camel_keys:
                 nk = _camel_to_snake(key)
                 if nk == key:
@@ -227,17 +214,13 @@ class ConfigLoader:
                                 current_level[part] = False
                             elif env_value.isdigit():
                                 current_level[part] = int(env_value)
-                            elif env_value.replace(
-                                ".", "", 1
-                            ).isdigit():  # Check for float
+                            elif env_value.replace(".", "", 1).isdigit():  # Check for float
                                 current_level[part] = float(env_value)
                             else:
                                 current_level[part] = env_value
                         break
 
-                    if part not in current_level or not isinstance(
-                        current_level[part], dict
-                    ):
+                    if part not in current_level or not isinstance(current_level[part], dict):
                         # Create nested dict if it doesn't exist or is not a dict
                         current_level[part] = {}
                     current_level = current_level[part]

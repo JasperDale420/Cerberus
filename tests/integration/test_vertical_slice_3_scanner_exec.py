@@ -53,9 +53,7 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
     # 1. Setup Mocks
     mock_alpaca = MagicMock()
     mock_alpaca.trading_client = MagicMock()
-    mock_alpaca.get_account = MagicMock(
-        return_value=MagicMock(equity=100000, currency="USD")
-    )
+    mock_alpaca.get_account = MagicMock(return_value=MagicMock(equity=100000, currency="USD"))
 
     # Mock FeaturePipeline to return a "Gap Up" feature set
     # Gap Up: Prev Close=100, Open=102 (2% Gap)
@@ -103,9 +101,7 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
         last_updated=now,
     )
 
-    wl_sym = WatchlistSymbol(
-        symbol="TEST", score=0.9, strategies=["gap_fill"], features=features
-    )
+    wl_sym = WatchlistSymbol(symbol="TEST", score=0.9, strategies=["gap_fill"], features=features)
 
     scan_result = ScanResult(generated_at=now, regime=Regime.BULL, watchlist=[wl_sym])
     scanner.scan = AsyncMock(return_value=scan_result)  # type: ignore[method-assign]

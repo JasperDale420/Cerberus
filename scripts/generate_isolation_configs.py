@@ -5,6 +5,7 @@ Creates individual config files from the ORB template.
 """
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -91,11 +92,12 @@ STRATEGIES = {
 }
 
 
-def generate_config(strategy_name: str, strategy_config: dict) -> dict:
+def generate_config(strategy_name: str, strategy_config: dict[str, Any]) -> dict[str, Any]:
     """Generate a config for a single strategy isolation test."""
     # Load template
     with open(TEMPLATE_PATH) as f:
-        config = yaml.safe_load(f)
+        loaded = yaml.safe_load(f)
+    config = cast(dict[str, Any], loaded)
 
     # Update database URL
     config["database_url"] = f"sqlite:///backtest_5yr_{strategy_name}.db"
@@ -133,12 +135,8 @@ def main():
         config = generate_config(strategy_name, strategy_config)
 
         with open(output_path, "w") as f:
-            f.write(
-                f"# 5-Year Backtest Config - {strategy_name.upper()} Strategy Isolation\n"
-            )
-            f.write(
-                f"# Purpose: Test {strategy_name} strategy alone on 5 years of data (2020-2024)\n"
-            )
+            f.write(f"# 5-Year Backtest Config - {strategy_name.upper()} Strategy Isolation\n")
+            f.write(f"# Purpose: Test {strategy_name} strategy alone on 5 years of data (2020-2024)\n")
             f.write("#\n")
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
@@ -146,9 +144,7 @@ def main():
 
     print(f"\nGenerated {len(STRATEGIES)} strategy configs.")
     print("\nTo run a backtest:")
-    print(
-        "  python scripts/run_backtest.py --config config/backtest_5yr/config_<strategy>.yaml \\"
-    )
+    print("  python scripts/run_backtest.py --config config/backtest_5yr/config_<strategy>.yaml \\")
     print("      --start-date 2020-01-02 --end-date 2024-12-31 \\")
     print("      --offline-bars data/offline_bars_5yr/ \\")
     print("      --output results/backtest_5yr_<strategy>.json")

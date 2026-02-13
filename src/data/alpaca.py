@@ -46,12 +46,8 @@ class AlpacaClient:
             raise
 
         try:
-            self.trading_client = TradingClient(
-                self.api_key, self.secret_key, paper=self.paper
-            )
-            self.historical_client = StockHistoricalDataClient(
-                self.api_key, self.secret_key
-            )
+            self.trading_client = TradingClient(self.api_key, self.secret_key, paper=self.paper)
+            self.historical_client = StockHistoricalDataClient(self.api_key, self.secret_key)
             self.screener_client = ScreenerClient(self.api_key, self.secret_key)
             self.trading_stream_client: Optional[TradingStream] = None
             # Stream is initialized on demand or separately as it blocks/runs in a loop
@@ -133,9 +129,7 @@ class AlpacaClient:
             )
             raise
 
-    def get_historical_bars(
-        self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"
-    ):
+    def get_historical_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"):
         """
         Fetches historical bars for a symbol via Alpaca historical data client.
         """
@@ -183,9 +177,7 @@ class AlpacaClient:
             )
             raise
 
-    def get_historical_trades(
-        self, symbol: str, start: datetime, end: datetime
-    ) -> list[dict]:
+    def get_historical_trades(self, symbol: str, start: datetime, end: datetime) -> list[dict]:
         """
         Fetches historical trades for a symbol via Alpaca historical data client.
         Required for Trade Flow Imbalance (TFI) calculation.
@@ -289,17 +281,13 @@ class AlpacaClient:
             # Determine feed from env; default to SIP for premium, IEX for free
             feed_str = self._config_loader.get_env("ALPACA_DATA_FEED", "sip").lower()
             feed = DataFeed.SIP if feed_str == "sip" else DataFeed.IEX
-            self.stream_client = StockDataStream(
-                self.api_key, self.secret_key, feed=feed
-            )
+            self.stream_client = StockDataStream(self.api_key, self.secret_key, feed=feed)
             self.logger.info("Stock data stream initialized", feed=feed_str)
         return self.stream_client
 
     def get_trading_stream_client(self) -> TradingStream:
         if not self.trading_stream_client:
-            self.trading_stream_client = TradingStream(
-                self.api_key, self.secret_key, paper=self.paper
-            )
+            self.trading_stream_client = TradingStream(self.api_key, self.secret_key, paper=self.paper)
         return self.trading_stream_client
 
     def _inspect_arity(self, callback: Callable) -> int:
@@ -320,9 +308,7 @@ class AlpacaClient:
         except Exception:
             return -1
 
-    async def _invoke_bar_callback(
-        self, callback: Callable, bar: Bar, symbol: str, arity: int
-    ) -> None:
+    async def _invoke_bar_callback(self, callback: Callable, bar: Bar, symbol: str, arity: int) -> None:
         import asyncio
 
         # Helper for common invocation pattern
@@ -354,9 +340,7 @@ class AlpacaClient:
             try:
                 bar = self._to_bar(data, symbol_override=symbol)
             except Exception as e:
-                self.logger.error(
-                    "Failed to normalize bar", symbol=symbol, error=str(e)
-                )
+                self.logger.error("Failed to normalize bar", symbol=symbol, error=str(e))
                 return
 
             await self._invoke_bar_callback(callback, bar, symbol, arity)
@@ -391,9 +375,7 @@ class AlpacaClient:
                 stream.subscribe_bars(handler, sym)
                 self._subscribed_symbols.add(sym)
             except Exception as e:
-                self.logger.error(
-                    "Failed to subscribe queued symbol", symbol=sym, error=str(e)
-                )
+                self.logger.error("Failed to subscribe queued symbol", symbol=sym, error=str(e))
         self._pending_symbols.clear()
 
     async def _run_stream_with_backoff(
@@ -464,9 +446,7 @@ class AlpacaClient:
         """
         stream = self.get_stream_client()
         self._bar_handler = self._make_bar_handler(callback)
-        await self._run_stream_with_backoff(
-            stream, on_reconnect, pre_run_hook=self._flush_subscriptions
-        )
+        await self._run_stream_with_backoff(stream, on_reconnect, pre_run_hook=self._flush_subscriptions)
 
     async def start_trade_stream(self, callback, on_reconnect=None) -> None:
         """
@@ -496,9 +476,7 @@ class AlpacaClient:
         self._pending_symbols.add(symbol)
         stream = self.get_stream_client()
         if not hasattr(self, "_bar_handler"):
-            self.logger.warning(
-                "Subscribe called before start_stream; queued symbol", symbol=symbol
-            )
+            self.logger.warning("Subscribe called before start_stream; queued symbol", symbol=symbol)
             return
 
         if symbol not in self._subscribed_symbols:
@@ -516,8 +494,6 @@ class AlpacaClient:
         except KeyError:
             # Alpaca SDK can raise KeyError if handler map doesn't contain symbol
             # (e.g., queued subscribes, reconnect races, or churn during warmup).
-            self.logger.warning(
-                "Unsubscribe no-op; symbol not subscribed", symbol=symbol
-            )
+            self.logger.warning("Unsubscribe no-op; symbol not subscribed", symbol=symbol)
         self._subscribed_symbols.discard(symbol)
         self._pending_symbols.discard(symbol)

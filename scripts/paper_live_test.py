@@ -39,11 +39,10 @@ class PaperLiveHarness:
 
         # Logging setup
         self.log_file = self.run_dir / "execution.jsonl"
-        fh = self._setup_logging()
+        self._setup_logging()
 
         self.logger = StructuredLogger("PaperLiveTest", level="INFO")
-        # Ensure our logger also writes to the file
-        self.logger.logger.addHandler(fh)
+        # Root logger handler writes all module logs to the file.
         # Inject run_id into logger via adapter or just Context handling if we had it.
         # Since I modified logger to look for run_id in record, I can use an adapter or filter
         # Or I can just pass run_id in every log.
@@ -52,9 +51,7 @@ class PaperLiveHarness:
         # and for the system logs, I'll let them be.
         # Ideally I should ContextVar it, but for now I'll trust the traceback/correlation logic.
 
-        self.logger.info(
-            "Test Harness Initialized", run_id=self.run_id, scenario=scenario
-        )
+        self.logger.info("Test Harness Initialized", run_id=self.run_id, scenario=scenario)
 
         # Stats
         self.stats = {
@@ -71,10 +68,7 @@ class PaperLiveHarness:
         root = logging.getLogger()
         root.setLevel(logging.INFO)
 
-        # JSON Formatter
-        from src.core.logger import JSONFormatter
-
-        formatter = JSONFormatter()
+        formatter = logging.Formatter("%(message)s")
 
         fh = logging.FileHandler(self.log_file)
         fh.setFormatter(formatter)
@@ -118,9 +112,7 @@ class PaperLiveHarness:
             self.db.init_db()
             # Ideally use real DB for "Traceability".
 
-            self.engine = ExecutionEngine(
-                self.config, self.logger, self.db, self.alpaca
-            )
+            self.engine = ExecutionEngine(self.config, self.logger, self.db, self.alpaca)
             self.engine.scanner = self.scanner
 
         except Exception as e:
@@ -138,12 +130,10 @@ class PaperLiveHarness:
                 import random
 
                 if random.random() < 0.5:
-                    raise Exception(
-                        "Injected Broker Failure: 500 Internal Server Error"
-                    )
+                    raise Exception("Injected Broker Failure: 500 Internal Server Error")
                 return original_submit(*args, **kwargs)
 
-            self.alpaca.trading_client.submit_order = faulty_submit
+            self.alpaca.trading_client.submit_order = faulty_submit  # type: ignore[method-assign]
 
             # Monkeypatch Data Stream? (If we were using it)
         # pass removed
@@ -176,8 +166,12 @@ class PaperLiveHarness:
 
         # Let's try to get a real price from alpaca if possible, else 200.
         try:
-            quote = self.alpaca.trading_client.get_latest_trade(symbol)
-            price = float(quote.price)
+            get_latest_trade = getattr(self.alpaca.trading_client, "get_latest_trade", None)
+            if callable(get_latest_trade):
+                quote = get_latest_trade(symbol)
+                price = float(getattr(quote, "price", 200.0))
+            else:
+                price = 200.0
         except Exception:
             price = 200.0
 
@@ -248,9 +242,7 @@ class PaperLiveHarness:
                 await asyncio.sleep(10)  # Fast loop for test
 
                 # Check health
-                self.logger.info(
-                    "Heartbeat", open_positions=len(self.engine.symbol_states)
-                )
+                self.logger.info("Heartbeat", open_positions=len(self.engine.symbol_states))
 
             except Exception as e:
                 self.logger.error("Loop Exception", error=str(e), exc_info=True)
@@ -288,9 +280,7 @@ class PaperLiveHarness:
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=int, default=5, help="Duration in minutes")
-    parser.add_argument(
-        "--scenario", choices=["happy", "failure", "force_trade"], default="happy"
-    )
+    parser.add_argument("--scenario", choices=["happy", "failure", "force_trade"], default="happy")
     parser.add_argument("--config", default="config/config.yaml")
     args = parser.parse_args()
 

@@ -51,7 +51,7 @@ def test_calculate_gex_flip_point():
 
 
 @pytest.mark.asyncio
-async def test_pipeline_gex_integration(mocker):
+async def test_pipeline_gex_integration():
     # Mocking FeaturePipeline dependencies would be complex,
     # but we can verify the FeatureCalculator method directly suffices for now
     pass

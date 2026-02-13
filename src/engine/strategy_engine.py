@@ -75,9 +75,7 @@ class StrategyRouting:
     strategies_by_regime: Mapping[Regime, List[str]] = field(default_factory=dict)
 
     # New: per-strategy activation policies
-    activation_policies: Mapping[str, StrategyActivationPolicy] = field(
-        default_factory=dict
-    )
+    activation_policies: Mapping[str, StrategyActivationPolicy] = field(default_factory=dict)
 
 
 class StrategyEngine:
@@ -109,9 +107,7 @@ class StrategyEngine:
                 out.append(sig)
         return out
 
-    def _get_active_strategies(
-        self, symbol_state: SymbolState, market_state: MarketState
-    ) -> List[str]:
+    def _get_active_strategies(self, symbol_state: SymbolState, market_state: MarketState) -> List[str]:
         """
         Determines which strategies are active for the current symbol and market state.
 
@@ -154,9 +150,7 @@ class StrategyEngine:
             # --- Hard Stop Enforcement ---
             if name in active:
                 strat = self.strategies_by_name.get(name)
-                hard_stop_fn = (
-                    getattr(strat, "is_past_hard_stop", None) if strat else None
-                )
+                hard_stop_fn = getattr(strat, "is_past_hard_stop", None) if strat else None
                 if callable(hard_stop_fn):
                     # Use last known price bar time if available, otherwise current wall clock is risky in backtest
                     # Better to pass current_time explicitly to _get_active_strategies
@@ -185,11 +179,7 @@ class StrategyEngine:
 
         try:
             sig = strat.on_bar(symbol, bar, symbol_state, market_state)
-            if (
-                sig is not None
-                and hasattr(sig, "feature_snapshot")
-                and not sig.feature_snapshot
-            ):
+            if sig is not None and hasattr(sig, "feature_snapshot") and not sig.feature_snapshot:
                 # Inject feature snapshot from metadata if available
                 # Note: symbol_state.meta["features"] is usually a SymbolFeatures object
                 # We can store it as is or a dict snapshot.

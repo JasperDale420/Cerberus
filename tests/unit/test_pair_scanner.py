@@ -9,9 +9,7 @@ from src.scanner.pair_scanner import PairScanner
 
 @pytest.fixture
 def pair_scanner():
-    cfg = PairTradingConfig(
-        enabled=True, min_correlation=0.5, max_eg_pvalue=0.1, min_half_life=0
-    )
+    cfg = PairTradingConfig(enabled=True, min_correlation=0.5, max_eg_pvalue=0.1, min_half_life=0)
     logger = StructuredLogger("test")
     return PairScanner(cfg, logger)
 
@@ -33,14 +31,11 @@ def test_find_pairs_cointegrated(pair_scanner):
     print(f"Manual coint pvalue (1,2): {pval}")
 
     pairs = pair_scanner.find_pairs(df)
-    print(
-        f"Pairs found: {[(p['symbol_a'], p['symbol_b'], p['pvalue']) for p in pairs]}"
-    )
+    print(f"Pairs found: {[(p['symbol_a'], p['symbol_b'], p['pvalue']) for p in pairs]}")
 
     assert len(pairs) >= 1
     found = any(
-        (p["symbol_a"] == "SYM1" and p["symbol_b"] == "SYM2")
-        or (p["symbol_a"] == "SYM2" and p["symbol_b"] == "SYM1")
+        (p["symbol_a"] == "SYM1" and p["symbol_b"] == "SYM2") or (p["symbol_a"] == "SYM2" and p["symbol_b"] == "SYM1")
         for p in pairs
     )
     assert found

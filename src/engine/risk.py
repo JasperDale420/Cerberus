@@ -20,26 +20,18 @@ class RiskManager:
 
         # Load risk config using Pydantic
         # Prefer nested "risk" key, but support flat config for backward compat if needed
-        risk_data = (
-            config.get("risk") if isinstance(config.get("risk"), dict) else config
-        )
+        risk_data = config.get("risk") if isinstance(config.get("risk"), dict) else config
 
         # Strategies config is often at root level in legacy configs, we might need to map it
         # However, new standard should be under risk or root.
         # Attempt to conform to model.
         try:
             # If strategies are at root, we might want to inject them into risk_data if not present
-            if (
-                isinstance(risk_data, dict)
-                and "strategies" not in risk_data
-                and "strategies" in config
-            ):
+            if isinstance(risk_data, dict) and "strategies" not in risk_data and "strategies" in config:
                 risk_data = risk_data.copy()
                 risk_data["strategies"] = config["strategies"]
 
-            self.risk_cfg = (
-                RiskConfig(**risk_data) if isinstance(risk_data, dict) else RiskConfig()
-            )
+            self.risk_cfg = RiskConfig(**risk_data) if isinstance(risk_data, dict) else RiskConfig()
         except Exception as e:
             self.logger.error("Invalid Risk Configuration", error=str(e))
             # Fallback to defaults if critical failure, or re-raise?
@@ -73,10 +65,7 @@ class RiskManager:
         self.last_rejection_reason: Optional[str] = None
 
     def _session_date_for(self, as_of: datetime) -> date:
-        tz_name = str(
-            self.raw_config.get("timezone", self.DEFAULT_TIMEZONE)
-            or self.DEFAULT_TIMEZONE
-        )
+        tz_name = str(self.raw_config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE)
         try:
             tz = ZoneInfo(tz_name)
         except Exception:
@@ -136,10 +125,7 @@ class RiskManager:
         return True
 
     def _check_volume_gates(self, signal: Signal) -> bool:
-        if (
-            self.max_trades_per_day > 0
-            and self.daily_entry_count >= self.max_trades_per_day
-        ):
+        if self.max_trades_per_day > 0 and self.daily_entry_count >= self.max_trades_per_day:
             self.last_rejection_reason = "MAX_TRADES_PER_DAY"
             return False
 
@@ -169,11 +155,7 @@ class RiskManager:
             return False
 
         max_strat_pos = self.risk_cfg.max_positions_per_strategy
-        strat_positions = [
-            p
-            for p in current_positions
-            if getattr(p, "strategy", "") == signal.strategy
-        ]
+        strat_positions = [p for p in current_positions if getattr(p, "strategy", "") == signal.strategy]
 
         if len(strat_positions) >= max_strat_pos:
             self.last_rejection_reason = "MAX_STRAT_POSITIONS"
@@ -248,9 +230,7 @@ class RiskManager:
                         self.last_rejection_reason = "REGIME_DISABLED"
                         return 0.0
                     if r_cfg.max_risk_per_trade is not None:
-                        effective_max_risk = min(
-                            effective_max_risk, r_cfg.max_risk_per_trade
-                        )
+                        effective_max_risk = min(effective_max_risk, r_cfg.max_risk_per_trade)
 
         return effective_max_risk
 
@@ -288,9 +268,7 @@ class RiskManager:
         if signal.meta.get("pair_trade"):
             effective_max_risk = self.max_risk_per_trade
             effective_max_risk = self._apply_risk_mode(effective_max_risk)
-            effective_max_risk = self._apply_strategy_limits(
-                effective_max_risk, signal, strat_cfg
-            )
+            effective_max_risk = self._apply_strategy_limits(effective_max_risk, signal, strat_cfg)
             return self._calculate_pair_qty(signal, account_equity)
 
         risk_per_share = abs(signal.entry_price - signal.stop_price)
@@ -300,9 +278,7 @@ class RiskManager:
 
         effective_max_risk = self.max_risk_per_trade
         effective_max_risk = self._apply_risk_mode(effective_max_risk)
-        effective_max_risk = self._apply_strategy_limits(
-            effective_max_risk, signal, strat_cfg
-        )
+        effective_max_risk = self._apply_strategy_limits(effective_max_risk, signal, strat_cfg)
 
         # Apply Tournament-style Rank-based scaling
         rank_mult = self._get_alpha_rank_multiplier(signal, symbol_state)
@@ -345,9 +321,7 @@ class RiskManager:
                     "Signal rejected: Regime risk multiplier is zero",
                     symbol=signal.symbol,
                     strategy=signal.strategy,
-                    regime_tags=getattr(
-                        market_state.regime_snapshot, "regime_tags", {}
-                    ),
+                    regime_tags=getattr(market_state.regime_snapshot, "regime_tags", {}),
                 )
                 return 0
             if regime_mult < 1.0:
@@ -411,9 +385,7 @@ class RiskManager:
         )
         return max(1, qty)
 
-    def _get_alpha_rank_multiplier(
-        self, signal: Signal, symbol_state: Optional[SymbolState] = None
-    ) -> float:
+    def _get_alpha_rank_multiplier(self, signal: Signal, symbol_state: Optional[SymbolState] = None) -> float:
         """
         Fetch alpha_rank from signal or symbol metadata and return corresponding multiplier.
         """
@@ -455,9 +427,7 @@ class RiskManager:
 
         return target_mult
 
-    def _check_notional_limits(
-        self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0
-    ) -> bool:
+    def _check_notional_limits(self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0) -> bool:
         # Calculate effective notional limit: prefer % of equity, fallback to fixed limit
         max_notional_pct = getattr(self.risk_cfg, "max_notional_pct", 0.05)
         if account_equity > 0 and max_notional_pct > 0:
@@ -481,17 +451,13 @@ class RiskManager:
         if self.max_notional_per_symbol > 0:
             existing_notional = 0.0
             if symbol_state.position:
-                existing_notional = float(
-                    symbol_state.position.qty * symbol_state.position.avg_price
-                )
+                existing_notional = float(symbol_state.position.qty * symbol_state.position.avg_price)
             if (existing_notional + notional) > self.max_notional_per_symbol:
                 self.last_rejection_reason = "MAX_SYMBOL_NOTIONAL"
                 return False
         return True
 
-    def _check_risk_exposure(
-        self, risk_per_share: float, qty: int, current_positions: Optional[List[Any]]
-    ) -> bool:
+    def _check_risk_exposure(self, risk_per_share: float, qty: int, current_positions: Optional[List[Any]]) -> bool:
         if self.max_open_risk > 0 and current_positions is not None:
             open_risk = 0.0
             for p in current_positions:
@@ -558,9 +524,7 @@ class RiskManager:
             return []
 
         # Calculate Qty
-        qty = self._calculate_qty(
-            signal, account_equity, strat_cfg, market_state, symbol_state
-        )
+        qty = self._calculate_qty(signal, account_equity, strat_cfg, market_state, symbol_state)
         if qty <= 0:
             self._log_rejection(signal)
             return []
@@ -579,9 +543,7 @@ class RiskManager:
 
         self.daily_order_count += 1
         self.daily_entry_count += 1
-        self.per_strategy_entry_count[signal.strategy] = (
-            self.per_strategy_entry_count.get(signal.strategy, 0) + 1
-        )
+        self.per_strategy_entry_count[signal.strategy] = self.per_strategy_entry_count.get(signal.strategy, 0) + 1
         self.logger.info(
             "Signal approved",
             symbol=intent.symbol,
@@ -611,12 +573,8 @@ class RiskManager:
         self._maybe_rollover(as_of)
         self.current_daily_pnl += pnl
 
-    def record_completed_trade(
-        self, strategy: str, *, as_of: Optional[datetime] = None
-    ) -> None:
+    def record_completed_trade(self, strategy: str, *, as_of: Optional[datetime] = None) -> None:
         """Increment completed-trade counters (not used for entry caps)."""
         self._maybe_rollover(as_of)
         self.daily_completed_trade_count += 1
-        self.per_strategy_completed_trade_count[strategy] = (
-            self.per_strategy_completed_trade_count.get(strategy, 0) + 1
-        )
+        self.per_strategy_completed_trade_count[strategy] = self.per_strategy_completed_trade_count.get(strategy, 0) + 1

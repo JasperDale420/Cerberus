@@ -64,9 +64,7 @@ async def test_scanner_ranking_and_gating():
     scanner = Scanner(mock_universe, mock_pipeline, logger, config=config)
 
     # Run scan
-    result = await scanner.scan(
-        regime=Regime.CHOP, scan_time=datetime.now(timezone.utc)
-    )
+    result = await scanner.scan(regime=Regime.CHOP, scan_time=datetime.now(timezone.utc))
 
     # Verify watchlist
     symbols = [s.symbol for s in result.watchlist]
@@ -95,9 +93,7 @@ async def test_scanner_no_gating_if_not_configured():
 
     scanner = Scanner(mock_universe, mock_pipeline, MagicMock(), config={})
 
-    result = await scanner.scan(
-        regime=Regime.CHOP, scan_time=datetime.now(timezone.utc)
-    )
+    result = await scanner.scan(regime=Regime.CHOP, scan_time=datetime.now(timezone.utc))
 
     # All symbols should pass if no gating
     assert len(result.watchlist) == 3

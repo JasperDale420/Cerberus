@@ -39,9 +39,7 @@ def create_bar(t_str: str, o, h, low_px, c):
     et = pytz.timezone("US/Eastern")
     dt_et = et.localize(datetime.strptime(f"2023-10-27 {t_str}", "%Y-%m-%d %H:%M:%S"))
     dt_utc = dt_et.astimezone(timezone.utc)
-    return Bar(
-        symbol="TEST", time=dt_utc, open=o, high=h, low=low_px, close=c, volume=1000
-    )
+    return Bar(symbol="TEST", time=dt_utc, open=o, high=h, low=low_px, close=c, volume=1000)
 
 
 @pytest.mark.unit

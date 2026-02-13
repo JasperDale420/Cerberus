@@ -25,9 +25,7 @@ class CerberusScheduler:
         hour, minute = map(int, schedule_time.split(":"))
 
         # Add job to run Mon-Fri
-        trigger = CronTrigger(
-            day_of_week="mon-fri", hour=hour, minute=minute, timezone=self.tz
-        )
+        trigger = CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=self.tz)
 
         self.scheduler.add_job(
             self._run_daily_session,
@@ -73,9 +71,7 @@ class CerberusScheduler:
             if result.returncode == 0:
                 logger.info("Daily session completed successfully.")
             else:
-                logger.error(
-                    f"Daily session failed with exit code {result.returncode}."
-                )
+                logger.error(f"Daily session failed with exit code {result.returncode}.")
         except Exception as e:
             logger.error(f"Failed to launch subprocess: {e}")
 
@@ -97,9 +93,7 @@ class CerberusScheduler:
             if result.returncode == 0:
                 logger.info("Weekly analysis completed successfully.")
             else:
-                logger.error(
-                    f"Weekly analysis failed with exit code {result.returncode}."
-                )
+                logger.error(f"Weekly analysis failed with exit code {result.returncode}.")
         except Exception as e:
             logger.error(f"Failed to launch weekly analysis subprocess: {e}")
 

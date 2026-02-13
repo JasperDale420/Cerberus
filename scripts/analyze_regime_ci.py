@@ -63,7 +63,12 @@ class RegimeBucket:
 
 def load_trades(path: str) -> List[Dict[str, Any]]:
     with open(path) as f:
-        return json.load(f).get("engine_trades", [])
+        data = json.load(f)
+    if isinstance(data, dict):
+        trades = data.get("engine_trades", [])
+        if isinstance(trades, list):
+            return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
 def analyze(trades: List[Dict]) -> Dict[Tuple[str, str, str], RegimeBucket]:
@@ -98,9 +103,7 @@ def report(buckets: Dict) -> None:
         bs = by_strat[strat]
         total = sum(b.total_trades for b in bs) // 4
         pnl = sum(b.total_pnl for b in bs) // 4
-        print(
-            f"\n{'─' * 80}\n{strat.upper()} | {total:,} trades | ${pnl:,.0f} PnL\n{'─' * 80}"
-        )
+        print(f"\n{'─' * 80}\n{strat.upper()} | {total:,} trades | ${pnl:,.0f} PnL\n{'─' * 80}")
 
         for axis in ["session", "trend", "vol", "risk"]:
             axis_bs = sorted(
@@ -111,9 +114,7 @@ def report(buckets: Dict) -> None:
             if not axis_bs:
                 continue
             print(f"\n  {axis.upper()}:")
-            print(
-                f"  {'Value':<12} {'N':>6} {'WR':>8} {'95% CI':>20} {'AvgPnL':>12} {'Conf'}"
-            )
+            print(f"  {'Value':<12} {'N':>6} {'WR':>8} {'95% CI':>20} {'AvgPnL':>12} {'Conf'}")
             for b in axis_bs:
                 lo, hi = b.wilson_ci()
                 sig = "★" if lo > 0.20 else ""
@@ -123,14 +124,8 @@ def report(buckets: Dict) -> None:
                 )
 
     # Recommendations
-    print(
-        f"\n{'=' * 100}\nHIGH-CONFIDENCE TARGETS (95% CI lower > 25%, N≥20)\n{'=' * 100}"
-    )
-    good = [
-        (b, b.wilson_ci()[0])
-        for b in buckets.values()
-        if b.total_trades >= 20 and b.wilson_ci()[0] >= 0.25
-    ]
+    print(f"\n{'=' * 100}\nHIGH-CONFIDENCE TARGETS (95% CI lower > 25%, N≥20)\n{'=' * 100}")
+    good = [(b, b.wilson_ci()[0]) for b in buckets.values() if b.total_trades >= 20 and b.wilson_ci()[0] >= 0.25]
     good.sort(key=lambda x: x[1], reverse=True)
 
     if good:
@@ -142,9 +137,7 @@ def report(buckets: Dict) -> None:
                 f"{b.total_trades:>6} {b.win_rate * 100:>7.1f}% {lo * 100:>7.1f}%"
             )
     else:
-        print(
-            "\nNo regime targets meet threshold. Consider longer backtest or lower threshold."
-        )
+        print("\nNo regime targets meet threshold. Consider longer backtest or lower threshold.")
 
     print("\n★ = CI lower bound > 20% (statistically significant edge)")
 

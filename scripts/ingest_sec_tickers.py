@@ -4,6 +4,7 @@ Script to ingest SEC tickers from https://www.sec.gov/files/company_tickers.json
 and store them in the database.
 Propagates CIK mapping for fundamental data fetching.
 """
+
 import json
 import os
 import sys
@@ -66,9 +67,7 @@ def ingest_sec_tickers():
                     session.commit()
                     logger.info("Processed batch", count=count)
             except Exception as e:
-                logger.error(
-                    "Failed to merge item", cik=cik, ticker=ticker, error=str(e)
-                )
+                logger.error("Failed to merge item", cik=cik, ticker=ticker, error=str(e))
                 session.rollback()
                 # Continue or break?
 

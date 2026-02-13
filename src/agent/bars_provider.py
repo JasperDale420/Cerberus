@@ -10,9 +10,7 @@ from src.core.domain import Bar
 
 
 class BarsProvider(Protocol):
-    def get_bars(
-        self, symbol: str, start: datetime, end: datetime, timeframe: str
-    ) -> List[Bar]:
+    def get_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> List[Bar]:
         """
         Return bars for `symbol` in [start, end], inclusive, in ascending time order.
         """
@@ -31,9 +29,7 @@ class JsonlBarsProvider:
 
     bars_dir: Path
 
-    def get_bars(
-        self, symbol: str, start: datetime, end: datetime, timeframe: str
-    ) -> List[Bar]:
+    def get_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> List[Bar]:
         sym = str(symbol).strip().upper()
         tf = str(timeframe).strip()
         p = self.bars_dir / f"{sym}_{tf}.jsonl"

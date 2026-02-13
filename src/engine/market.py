@@ -28,9 +28,7 @@ class MarketStateManager:
         self.on_error = on_error or (lambda x: None)
 
         self.state = MarketState(time=self.clock(), regime=Regime.CHOP)
-        regime_cfg = (
-            config.get("regime") if isinstance(config.get("regime"), dict) else {}
-        ) or {}
+        regime_cfg = (config.get("regime") if isinstance(config.get("regime"), dict) else {}) or {}
         tz = str(config.get("timezone", "America/New_York") or "America/New_York")
         idx_sym = str(config.get("index_symbol", "SPY") or "SPY")
         vol_sym = regime_cfg.get("vol_symbol")
@@ -64,25 +62,15 @@ class MarketStateManager:
         self.state.time = bar_time or self.clock()
         self.state.index_symbol = str(idx_sym)
         self.state.index_price = float(getattr(bar, "close", 0.0) or 0.0)
-        self.state.index_return = float(
-            getattr(self.market_context, "last_cum_ret", 0.0) or 0.0
-        )
-        self.state.realized_vol = float(
-            getattr(self.market_context, "last_vol", 0.0) or 0.0
-        )
+        self.state.index_return = float(getattr(self.market_context, "last_cum_ret", 0.0) or 0.0)
+        self.state.realized_vol = float(getattr(self.market_context, "last_vol", 0.0) or 0.0)
 
         # Expose regime metrics for strategy gating
         try:
             meta = self.state.meta if isinstance(self.state.meta, dict) else {}
             meta = dict(meta)
-            meta["trend_score"] = float(
-                getattr(self.market_context, "last_trend_score", 0.0) or 0.0
-            )
-            meta["regime_tags"] = (
-                snapshot.regime_tags
-                if snapshot is not None
-                else meta.get("regime_tags")
-            )
+            meta["trend_score"] = float(getattr(self.market_context, "last_trend_score", 0.0) or 0.0)
+            meta["regime_tags"] = snapshot.regime_tags if snapshot is not None else meta.get("regime_tags")
             self.state.meta = meta
         except Exception:
             pass
@@ -98,9 +86,7 @@ class MarketStateManager:
                         index_symbol=self.state.index_symbol,
                         index_price=float(getattr(bar, "close", 0.0) or 0.0),
                         cum_ret=getattr(self.market_context, "last_cum_ret", None),
-                        trend_score=getattr(
-                            self.market_context, "last_trend_score", None
-                        ),
+                        trend_score=getattr(self.market_context, "last_trend_score", None),
                         vol=getattr(self.market_context, "last_vol", None),
                     )
                 ),
@@ -119,9 +105,7 @@ class MarketStateManager:
 
         try:
             self.state.risk_mode = (
-                RiskMode.OFF
-                if m_str == "off"
-                else RiskMode.REDUCED if m_str == "reduced" else RiskMode.NORMAL
+                RiskMode.OFF if m_str == "off" else RiskMode.REDUCED if m_str == "reduced" else RiskMode.NORMAL
             )
         except Exception:
             pass

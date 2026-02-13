@@ -65,9 +65,7 @@ class GridSearchOptimizer(BaseOptimizer):
                         best_params = params
                         best_metrics = metrics
             except Exception as e:
-                self.logger.warning(
-                    "Optimization combo failed", params=params, error=str(e)
-                )
+                self.logger.warning("Optimization combo failed", params=params, error=str(e))
 
         if best_params:
             self.logger.info(

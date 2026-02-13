@@ -105,9 +105,7 @@ def test_propose_code_changes(mock_stats, tmp_path):
     mock_llm = MagicMock()
     mock_llm.complete.return_value = mock_code
 
-    agent = Agent(
-        logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm
-    )
+    agent = Agent(logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm)
 
     # Run
     # We need to patch os.makedirs and open inside the method, OR just let it write to a temp dir if we can control it.
@@ -189,15 +187,10 @@ def test_propose_code_changes_can_emit_scanner_profile_proposal(mock_stats, tmp_
     # Mock LLM response
     mock_llm = MagicMock()
     mock_llm.complete.return_value = (
-        "{"
-        '"strategy_code":"class VWAPReversionStrategyV2: pass\\n",'
-        '"scanner_profiles_code":"# scanner profiles v2\\n"'
-        "}"
+        '{"strategy_code":"class VWAPReversionStrategyV2: pass\\n","scanner_profiles_code":"# scanner profiles v2\\n"}'
     )
 
-    agent = Agent(
-        logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm
-    )
+    agent = Agent(logger, config_loader, stage3_evaluator=stage3_eval, llm_client=mock_llm)
 
     strat_file = tmp_path / "vwap_reversion.py"
     strat_file.write_text("class VWAPReversionStrategy: pass")

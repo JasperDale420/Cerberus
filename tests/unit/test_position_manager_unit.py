@@ -22,9 +22,7 @@ def _bar(symbol: str, t: datetime, *, o: float, h: float, low: float, c: float) 
 
 
 @pytest.mark.unit
-def test_position_manager_prioritizes_target_when_stop_and_target_hit_same_bar() -> (
-    None
-):
+def test_position_manager_prioritizes_target_when_stop_and_target_hit_same_bar() -> None:
     """M3 fix: When both stop and target trigger on same bar, target wins (trader-friendly)."""
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     pos = Position(
@@ -184,9 +182,7 @@ def test_position_manager_on_fill_opens_position_from_pending_entry_context() ->
 
 
 @pytest.mark.unit
-def test_position_manager_on_fill_closes_position_and_returns_closed_trade_info() -> (
-    None
-):
+def test_position_manager_on_fill_closes_position_and_returns_closed_trade_info() -> None:
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     state = SymbolState(
         symbol="AAPL",
