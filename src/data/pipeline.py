@@ -6,6 +6,7 @@ import pytz  # type: ignore
 
 from src.core.domain import SymbolFeatures
 from src.core.logger import StructuredLogger
+from src.core.type_utils import safe_float
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
 from src.data.calculator import FeatureCalculator
@@ -71,7 +72,17 @@ class FeaturePipeline:
 
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
-        return [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+        closes: List[float] = []
+        for bar in bars_data:
+            if hasattr(bar, "c"):
+                raw = bar.c
+            elif isinstance(bar, dict):
+                raw = bar.get("c", 0)
+            else:
+                raw = 0
+            close = safe_float(raw)
+            closes.append(float(close) if close is not None else 0.0)
+        return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
         start, end = self._calculate_fetch_window(as_of)

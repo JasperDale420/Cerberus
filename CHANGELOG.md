@@ -4,7 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed trading window checks that span midnight and added structured logging for time window errors (2026-02-13).
+- Restored runtime strategy registry helper and market session scheduling helpers used by stream-mode unit tests (2026-02-13).
+- Handled missing close values when extracting bars in the feature pipeline (2026-02-13).
+
 ### Added
+
+- Added unit tests covering overnight trading windows (2026-02-13).
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
@@ -131,7 +139,6 @@ All notable changes to this project will be documented in this file.
   - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
   - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
 
-### Added
 
 - **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
   - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
@@ -147,7 +154,6 @@ All notable changes to this project will be documented in this file.
   - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
   - Setup guide: `docs/screener_snapshot_setup.md`
 
-### Added
 
 - **Config: pydantic-settings for runtime env vars** (2026-02-09)
   - Created `src/core/settings.py` with `Settings(BaseSettings)` for Alpaca credentials
@@ -155,7 +161,6 @@ All notable changes to this project will be documented in this file.
   - Supports both `ALPACA_*` and `APCA_*` naming conventions via resolved properties
   - Added `pydantic-settings>=2.0` dependency
 
-### Added
 
 - **Alpha Overhaul Phase 4: Order Flow & Microstructure**:
   - `Trade Flow Imbalance (TFI)`: High-fidelity microstructure edge using Tick Test (Lee-Ready).
@@ -245,7 +250,6 @@ All notable changes to this project will be documented in this file.
   - Before: 97% of trades occurred in premarket despite config filters
   - After: 0% premarket trades, proper RTH-only execution
 
-### Added
 
 - **Backtest Session VWAP Injection** (`src/backtest/runner.py`):
   - Added `_vwap_state` tracking dict for cumulative TPV/volume per symbol per session
@@ -292,7 +296,6 @@ All notable changes to this project will be documented in this file.
   - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
   - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
 
-### Added
 
 - **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
   - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
@@ -362,7 +365,6 @@ All notable changes to this project will be documented in this file.
 - **M6 Logic Audit**: Added optional est_exit_commission parameter to update_unrealized_pnl() for more accurate net PnL (subtracts estimated exit costs)
 - **L5 Logic Audit**: Added Pydantic field_validators to RiskConfig for bounds checking: max_daily_loss (0-$100k), max_risk_per_trade (0-$10k), max_open_positions (0-100), risk_mode (normal/reduced/off). ([#a4dd8f0](https://github.com/JasperDale420/Cerberus/commit/a4dd8f0))
 
-### Added
 
 - **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
   - Added `exc_info=True` to 16 critical ERROR-level logs for full stack traces in production debugging
@@ -371,7 +373,6 @@ All notable changes to this project will be documented in this file.
   - Improved production debugging capability, observability, and error categorization for operational monitoring
   - Commits: `5eb2db6`, `b7b7788`, `61fcd7b`
 
-### Added
 
 - **Repository Hygiene (PR #1)**: Added project identity files for open-source readiness
   - LICENSE file (MIT License) for legal clarity
