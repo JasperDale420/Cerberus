@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
+  - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
+  - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
+  - Gateway bar stream now always starts when `data_backend=gateway`, independent of order executor.
+  - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
+  - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
+  - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
+
 ### Added
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
@@ -42,7 +52,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
-    - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
+  - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
   - Tightened startup validation test precision:
     - Gateway required-field test now uses explicit empty URL value for deterministic assertions
     - Added a focused unit test confirming custom gateway URL only flags missing gateway key
