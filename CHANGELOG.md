@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Time window checks now fail closed with structured logging and handle overnight windows (2026-02-13).
+
 ### Added
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).

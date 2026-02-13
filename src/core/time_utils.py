@@ -9,8 +9,12 @@ from datetime import datetime, time, timezone
 
 import pytz  # type: ignore
 
+from src.core.errors import ErrorCode
+from src.core.logger import StructuredLogger
+
 # Cache timezone object for performance
 _EASTERN_TZ = pytz.timezone("US/Eastern")
+_logger = StructuredLogger("core.time_utils")
 
 
 def get_eastern_timezone() -> pytz.tzinfo.BaseTzInfo:
@@ -76,10 +80,20 @@ def in_trading_window(dt: datetime, start: time, end: time, convert_to_eastern: 
             t = get_eastern_time_of_day(dt)
         else:
             t = dt.time()
-        return start <= t <= end
-    except Exception:
-        # Fail open - better to allow trading than halt on timezone errors
-        return True
+        if start <= end:
+            return start <= t <= end
+        return t >= start or t <= end
+    except Exception as exc:
+        _logger.error(
+            f"Time window check failed ({start}-{end})",
+            error_code=ErrorCode.TIME_WINDOW_CHECK_FAILED.value,
+            start=str(start),
+            end=str(end),
+            dt=dt.isoformat() if isinstance(dt, datetime) else str(dt),
+            error=str(exc),
+            exc_info=True,
+        )
+        return False
 
 
 def parse_time_string(time_str: str) -> time:
@@ -129,8 +143,17 @@ def in_time_window_str(dt: datetime, start_str: str, end_str: str, convert_to_ea
         start = parse_time_string(start_str)
         end = parse_time_string(end_str)
         return in_trading_window(dt, start, end, convert_to_eastern)
-    except Exception:
-        return True
+    except Exception as exc:
+        _logger.error(
+            f"Time window parse failed ({start_str}-{end_str})",
+            error_code=ErrorCode.TIME_WINDOW_PARSE_FAILED.value,
+            start_str=start_str,
+            end_str=end_str,
+            dt=dt.isoformat() if isinstance(dt, datetime) else str(dt),
+            error=str(exc),
+            exc_info=True,
+        )
+        return False
 
 
 # Standard US equity market hours (Eastern time)
