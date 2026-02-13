@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 from src.core.domain import SymbolFeatures
@@ -148,3 +149,66 @@ def test_ranking_with_constant_values():
     assert len(ranked) == 2
     assert ranked[0].alpha_score == 0.0
     assert ranked[1].alpha_score == 0.0
+
+
+def test_ranking_ignores_non_finite_values():
+    engine = RankingEngine()
+    s1 = SymbolFeatures(
+        symbol="S1",
+        price=100.0,
+        atr_pct=0.02,
+        avg_volume=1000000,
+        intraday_range_pct=0.01,
+        gap_pct=0.0,
+        ema20_slope=0.0,
+        ema_trend_strength=0.0,
+        distance_from_vwap=0.0,
+        premarket_volume=0.0,
+        adx=20.0,
+        distance_from_ema20=0.0,
+        prior_day_high=105.0,
+        prior_day_low=95.0,
+        bb_upper=110.0,
+        bb_lower=90.0,
+        price_zscore=0.0,
+        flow_zscore=0.0,
+        call_put_ratio=1.0,
+        large_sweeps_count=0,
+        aggressive_flow_share=0.0,
+        last_updated=datetime.now(timezone.utc),
+        relative_strength=float("nan"),
+        ma_dist_50=float("inf"),
+        ma_dist_200=float("-inf"),
+    )
+
+    s2 = SymbolFeatures(
+        symbol="S2",
+        price=100.0,
+        atr_pct=0.02,
+        avg_volume=1000000,
+        intraday_range_pct=0.01,
+        gap_pct=0.0,
+        ema20_slope=0.0,
+        ema_trend_strength=0.0,
+        distance_from_vwap=0.0,
+        premarket_volume=0.0,
+        adx=20.0,
+        distance_from_ema20=0.0,
+        prior_day_high=105.0,
+        prior_day_low=95.0,
+        bb_upper=110.0,
+        bb_lower=90.0,
+        price_zscore=0.0,
+        flow_zscore=0.0,
+        call_put_ratio=1.0,
+        large_sweeps_count=0,
+        aggressive_flow_share=0.0,
+        last_updated=datetime.now(timezone.utc),
+        relative_strength=0.1,
+        ma_dist_50=0.1,
+        ma_dist_200=0.1,
+    )
+
+    ranked = engine.rank_symbols([s1, s2])
+    assert len(ranked) == 2
+    assert all(math.isfinite(sym.alpha_score) for sym in ranked)

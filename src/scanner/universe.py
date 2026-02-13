@@ -102,12 +102,24 @@ class UniverseBuilder:
     def _dedupe_preserve_order(self, symbols: List[str]) -> List[str]:
         seen = set()
         out: List[str] = []
+        invalid_count = 0
         for s in symbols:
-            sym = str(s).strip().upper()
-            if not sym or sym in seen:
+            if not isinstance(s, str):
+                invalid_count += 1
+                continue
+            sym = s.strip().upper()
+            if not sym:
+                invalid_count += 1
+                continue
+            if sym in seen:
                 continue
             seen.add(sym)
             out.append(sym)
+        if invalid_count:
+            self.logger.warning(
+                "Universe symbols contained invalid entries",
+                invalid_count=invalid_count,
+            )
         return out
 
     def _load_symbol_file(self, path: str) -> List[str]:
@@ -195,7 +207,7 @@ class UniverseBuilder:
         else:
             explicit = cast(List[str], universe_config)
 
-        explicit_added = [str(s).upper() for s in explicit if s]
+        explicit_added = [s for s in explicit if isinstance(s, str)]
         universe.extend(explicit_added)
 
         static_added: List[str] = []
@@ -216,7 +228,7 @@ class UniverseBuilder:
                 candidates = prev_vol_cfg.get("candidates")
                 cand_list: List[str] = []
                 if isinstance(candidates, list) and candidates:
-                    cand_list = [str(x).upper() for x in candidates if x]
+                    cand_list = [str(x).upper() for x in candidates if isinstance(x, str) and x.strip()]
                 else:
                     cand_list = list(universe)
 

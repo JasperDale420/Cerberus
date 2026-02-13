@@ -22,11 +22,24 @@ class RankingEngine:
         if not symbols:
             return []
 
+        def _sanitize_factor(name: str, values: np.ndarray) -> np.ndarray:
+            non_finite = ~np.isfinite(values)
+            if np.any(non_finite):
+                self.logger.warning(
+                    "Ranking factor contained non-finite values",
+                    factor=name,
+                    bad_count=int(np.sum(non_finite)),
+                )
+                values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+            return values
+
         # 1. Extract raw factors
         factors = {
-            "ma_dist_200": np.array([s.ma_dist_200 for s in symbols]),
-            "ma_dist_50": np.array([s.ma_dist_50 for s in symbols]),
-            "relative_strength": np.array([s.relative_strength for s in symbols]),
+            "ma_dist_200": _sanitize_factor("ma_dist_200", np.array([s.ma_dist_200 for s in symbols], dtype=float)),
+            "ma_dist_50": _sanitize_factor("ma_dist_50", np.array([s.ma_dist_50 for s in symbols], dtype=float)),
+            "relative_strength": _sanitize_factor(
+                "relative_strength", np.array([s.relative_strength for s in symbols], dtype=float)
+            ),
         }
 
         # 2. Compute Z-Scores cross-sectionally

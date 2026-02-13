@@ -18,6 +18,11 @@ All notable changes to this project will be documented in this file.
   - `.claude/` helpers, settings, and skill definitions
   - `.claude-flow/` agent/task state files
   - `.swarm/` runtime state files
+
+### Fixed
+
+- Universe builder now skips invalid symbol entries and logs how many were ignored (2026-02-13).
+- Ranking engine now sanitizes non-finite factor values before scoring to avoid NaN scores (2026-02-13).
   - `CLAUDE.md` and `vectors.db` local support artifacts
 
 - **Data-Gateway/Heber Phase 1 Completion** (2026-02-10):

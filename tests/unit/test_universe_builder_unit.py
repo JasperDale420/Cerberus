@@ -128,3 +128,10 @@ def test_universe_builder_uses_gateway_client_for_dynamic_volume_selection() -> 
         )
 
     assert builder.build_universe() == ["AAPL", "TSLA"]
+
+
+@pytest.mark.unit
+def test_universe_builder_skips_invalid_symbol_entries() -> None:
+    cfg: Dict[str, Any] = {"universe": {"symbols": ["aapl", None, "", "   ", 123, "msft", "AAPL"]}}
+    builder = UniverseBuilder(_DummyConfigLoader(cfg), _logger(), config=cfg)
+    assert builder.build_universe() == ["AAPL", "MSFT"]
