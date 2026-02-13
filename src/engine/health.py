@@ -40,8 +40,14 @@ class HealthMonitor:
         """Increments error count for a module."""
         try:
             self.error_counts[module] = int(self.error_counts.get(module, 0)) + 1
-        except Exception:
-            pass
+        except Exception as exc:
+            self.error_counts[module] = 1
+            self.logger.warning(
+                "HealthMonitor error counter reset",
+                module=module,
+                error=str(exc),
+                exc_info=True,
+            )
 
     def check_and_log(self, now: Optional[datetime] = None) -> None:
         """Logs health metrics if the interval has passed."""
