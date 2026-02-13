@@ -97,3 +97,22 @@ def test_validate_flow(validator, valid_features):
 
     valid_features.extra["flow_raw_count"] = -1
     assert validator.validate_flow(valid_features) is False
+
+
+@pytest.mark.unit
+def test_validate_technicals_rejects_non_finite_values(validator, valid_features):
+    valid_features.price = float("nan")
+    assert validator.validate_technicals(valid_features) is False
+    assert validator.logger.warning.call_count >= 1
+
+    validator.logger.reset_mock()
+    valid_features.price = 150.0
+    valid_features.avg_volume = float("inf")
+    assert validator.validate_technicals(valid_features) is False
+    assert validator.logger.warning.call_count >= 1
+
+    validator.logger.reset_mock()
+    valid_features.avg_volume = 1000000.0
+    valid_features.atr_pct = float("nan")
+    assert validator.validate_technicals(valid_features) is False
+    assert validator.logger.warning.call_count >= 1

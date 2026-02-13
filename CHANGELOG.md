@@ -47,6 +47,10 @@ All notable changes to this project will be documented in this file.
     - Gateway required-field test now uses explicit empty URL value for deterministic assertions
     - Added a focused unit test confirming custom gateway URL only flags missing gateway key
 
+### Fixed
+
+- Scanner technical validation now rejects non-finite price/volume/ATR inputs with warnings.
+
 ### Documentation
 
 - Added integration planning docs for Cerberus migration to Data-Gateway + Heber:

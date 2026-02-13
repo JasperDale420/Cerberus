@@ -27,11 +27,23 @@ class DataValidator:
         Validates technical indicators and basic price/volume data.
         """
         try:
+
+            def _is_finite_number(value: object) -> bool:
+                return isinstance(value, (int, float)) and math.isfinite(value)
+
             # Basic sanity checks
             if not features:
                 return False
 
             # Price validity
+            if not _is_finite_number(features.price):
+                if self.logger:
+                    self.logger.warning(
+                        "Non-finite price",
+                        symbol=getattr(features, "symbol", "UNKNOWN"),
+                        price=getattr(features, "price", None),
+                    )
+                return False
             if features.price <= 0:
                 if self.logger:
                     self.logger.warning("Invalid price", symbol=features.symbol, price=features.price)
@@ -41,10 +53,26 @@ class DataValidator:
             if features.price < min_price or features.price > max_price:
                 return False
 
+            if not _is_finite_number(features.avg_volume):
+                if self.logger:
+                    self.logger.warning(
+                        "Non-finite average volume",
+                        symbol=getattr(features, "symbol", "UNKNOWN"),
+                        avg_volume=getattr(features, "avg_volume", None),
+                    )
+                return False
             if features.avg_volume < min_volume:
                 return False
 
             # Volatility checks (ATR)
+            if not _is_finite_number(features.atr_pct):
+                if self.logger:
+                    self.logger.warning(
+                        "Non-finite ATR percent",
+                        symbol=getattr(features, "symbol", "UNKNOWN"),
+                        atr_pct=getattr(features, "atr_pct", None),
+                    )
+                return False
             if features.atr_pct < min_atr_pct or features.atr_pct > max_atr_pct:
                 return False
 
@@ -56,6 +84,7 @@ class DataValidator:
                     "Technical validation failed",
                     symbol=getattr(features, "symbol", "UNKNOWN"),
                     error=str(e),
+                    exc_info=True,
                 )
             return False
 
@@ -105,5 +134,6 @@ class DataValidator:
                     "Flow validation failed",
                     symbol=getattr(features, "symbol", "UNKNOWN"),
                     error=str(e),
+                    exc_info=True,
                 )
             return False
