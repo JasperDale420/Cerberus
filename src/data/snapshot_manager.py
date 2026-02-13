@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-import subprocess
 from typing import Any
 
 from src.core.domain import SymbolFeatures
