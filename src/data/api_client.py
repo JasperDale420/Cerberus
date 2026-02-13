@@ -83,7 +83,7 @@ class CentralApiClient:
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.client.request(method, path, params=params, json=json)
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            except httpx.TransportError as exc:
                 if attempt >= max_attempts:
                     raise
                 delay = self._get_retry_delay_seconds(attempt)

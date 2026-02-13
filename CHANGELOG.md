@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Gateway bars transport retry hardening** (2026-02-12):
+  - Added contract regression test `test_gateway_remote_protocol_error_retries_then_succeeds` in `tests/contract/test_central_api_client_contract.py`.
+  - Updated `src/data/api_client.py` retry handling to retry all `httpx.TransportError` failures (including `RemoteProtocolError`) for Alpaca bars requests before surfacing an error.
+
 - **Gateway+Heber live-integration kickoff hardening** (2026-02-12):
   - Added runtime execution guard validation in `src/core/settings.py`:
     - `validate_runtime_execution_requirements(order_executor, mode)`
