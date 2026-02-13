@@ -1,5 +1,6 @@
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 import pytz  # type: ignore
@@ -150,7 +151,7 @@ def _make_symbol_state(orb_high: float, orb_low: float) -> SymbolState:
     )
 
 
-def _fills_from_signal(signal, exit_price: float, exit_time: datetime):
+def _fills_from_signal(signal, exit_price: float, exit_time: datetime) -> list[dict[str, Any]]:
     if signal is None:
         return []
     qty = 1000.0
@@ -245,7 +246,7 @@ def test_orb_min_or_range_pct_improves_micro_backtest_pnl():
     low_fills_base = _fills_from_signal(low_signal_base, low_signal_base.stop_price, low_exit_time)
     low_signal_filtered = filtered_strategy.on_bar("TEST", low_range_bar, low_range_state, market_state)
     assert low_signal_filtered is None
-    low_fills_filtered = []
+    low_fills_filtered: list[dict[str, Any]] = []
 
     # Healthy-range breakout (expected win, retained by filter)
     high_range_state = _make_symbol_state(orb_high=101.0, orb_low=99.0)

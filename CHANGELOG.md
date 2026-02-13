@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 - Improved time parsing errors for invalid trading window configs (2026-02-13).
+- Stabilized gateway bar normalization and snapshot persistence typing (2026-02-13).
 
 ### Added
 
