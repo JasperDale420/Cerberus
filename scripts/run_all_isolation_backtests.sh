@@ -33,26 +33,26 @@ for strategy in "${STRATEGIES[@]}"; do
     else
         CONFIG="$CONFIG_DIR/config_${strategy}.yaml"
     fi
-    
+
     OUTPUT="$RESULTS_DIR/backtest_5yr_${strategy}.json"
     LOG="$RESULTS_DIR/backtest_5yr_${strategy}.log"
-    
+
     if [ -f "$OUTPUT" ]; then
         echo "[$strategy] Skipping - already exists: $OUTPUT"
         continue
     fi
-    
+
     echo "[$strategy] Starting backtest..."
     echo "  Config: $CONFIG"
     echo "  Output: $OUTPUT"
-    
+
     time python scripts/run_backtest.py \
         --config "$CONFIG" \
         --start-date "$START_DATE" \
         --end-date "$END_DATE" \
         --offline-bars "$DATA_DIR" \
         --output "$OUTPUT" 2>&1 | tee "$LOG"
-    
+
     echo "[$strategy] Complete"
     echo ""
 done

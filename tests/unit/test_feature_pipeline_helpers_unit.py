@@ -28,9 +28,7 @@ async def test_feature_pipeline_requires_as_of_for_determinism() -> None:
 @pytest.mark.asyncio
 async def test_feature_pipeline_computes_true_gap_and_premarket_volume() -> None:
     class _Alpaca:
-        def get_historical_bars(
-            self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"
-        ):
+        def get_historical_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"):
             assert symbol == "AAPL"
             assert timeframe == "1Min"
             # Bars cover premarket + session open in UTC (US/Eastern is UTC-5 in Jan).
@@ -92,25 +90,19 @@ async def test_feature_pipeline_computes_true_gap_and_premarket_volume() -> None
 
 
 @pytest.mark.unit
-def test_feature_pipeline_fetch_avg_daily_volume_uses_last_window_and_handles_shapes() -> (
-    None
-):
+def test_feature_pipeline_fetch_avg_daily_volume_uses_last_window_and_handles_shapes() -> None:
     alpaca = MagicMock()
     uw = MagicMock()
     fp = FeaturePipeline(alpaca, uw, _logger("test_fp_avg_volume"))
 
     end = datetime(2025, 1, 10, tzinfo=timezone.utc)
-    alpaca.get_historical_bars.return_value = {
-        "bars": [{"v": 10}, {"v": 20}, {"volume": 30}, {"v": None}, {"v": 40}]
-    }
+    alpaca.get_historical_bars.return_value = {"bars": [{"v": 10}, {"v": 20}, {"volume": 30}, {"v": None}, {"v": 40}]}
     avg = fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=3)
     # last 3 valid volumes: 20, 30, 40 (None skipped) => average 30
     assert avg == pytest.approx(30.0)
 
     alpaca.get_historical_bars.return_value = [{"v": 1}, {"v": 2}, {"v": 3}]
-    assert fp.fetcher.fetch_avg_daily_volume(
-        "AAPL", end, lookback_days=2
-    ) == pytest.approx(2.5)
+    assert fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=2) == pytest.approx(2.5)
 
     alpaca.get_historical_bars.side_effect = RuntimeError("fail")
     assert fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=2) is None

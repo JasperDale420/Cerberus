@@ -171,12 +171,8 @@ class MarketContextService:
             self.trend_history.append(trend)
             self.vol_regime_history.append(vol)
 
-            smoothed_trend = self._smooth_axis(
-                self.trend_history, self._TrendRegime.FLAT
-            )
-            smoothed_vol = self._smooth_axis(
-                self.vol_regime_history, self._VolRegime.NORMAL
-            )
+            smoothed_trend = self._smooth_axis(self.trend_history, self._TrendRegime.FLAT)
+            smoothed_vol = self._smooth_axis(self.vol_regime_history, self._VolRegime.NORMAL)
 
             # Compute confidence (simple: agreement ratio)
             confidence = {
@@ -255,9 +251,7 @@ class MarketContextService:
         trend_strength = abs(cum_ret) / vol
         return cum_ret, trend_strength, vol
 
-    def _classify_trend(
-        self, cum_ret: float, trend_strength: float, flat_thresh: float = 1.0
-    ) -> "TrendRegime":
+    def _classify_trend(self, cum_ret: float, trend_strength: float, flat_thresh: float = 1.0) -> "TrendRegime":
         """UP/DOWN/FLAT based on trend_strength threshold."""
         if trend_strength < flat_thresh:
             return self._TrendRegime.FLAT

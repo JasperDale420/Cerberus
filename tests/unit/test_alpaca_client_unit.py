@@ -63,9 +63,7 @@ def test_get_historical_bars_uses_alpaca_historical_client(monkeypatch) -> None:
 
     monkeypatch.setattr(alpaca_mod, "TradingClient", MagicMock())
     hist = MagicMock()
-    monkeypatch.setattr(
-        alpaca_mod, "StockHistoricalDataClient", MagicMock(return_value=hist)
-    )
+    monkeypatch.setattr(alpaca_mod, "StockHistoricalDataClient", MagicMock(return_value=hist))
 
     c = AlpacaClient(cfg, logger)
     bar = MagicMock()

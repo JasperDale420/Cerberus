@@ -18,9 +18,7 @@ def _get_kwargs() -> dict[str, Any]:
     return _kwargs
 
 
-def _parse_response(
-    *, client: UnusualWhalesClient, response: httpx.Response
-) -> MarketHolidays | str | None:
+def _parse_response(*, client: UnusualWhalesClient, response: httpx.Response) -> MarketHolidays | str | None:
     response_json = response.json()
     if response_json.get("data") is not None:
         response_json = response_json["data"]
@@ -37,9 +35,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: UnusualWhalesClient, response: httpx.Response
-) -> Response[MarketHolidays | str]:
+def _build_response(*, client: UnusualWhalesClient, response: httpx.Response) -> Response[MarketHolidays | str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,

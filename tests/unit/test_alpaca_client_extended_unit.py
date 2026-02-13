@@ -67,15 +67,11 @@ def test_alpaca_client_get_historical_bars_timeframe_mapping_and_shape(
     fake_hist = _FakeHistoricalClient()
 
     monkeypatch.setattr(alpaca_mod, "TradingClient", _FakeTradingClient)
-    monkeypatch.setattr(
-        alpaca_mod, "StockHistoricalDataClient", lambda *_a, **_k: fake_hist
-    )
+    monkeypatch.setattr(alpaca_mod, "StockHistoricalDataClient", lambda *_a, **_k: fake_hist)
     monkeypatch.setattr(alpaca_mod, "StockDataStream", _FakeStream)
     monkeypatch.setattr(alpaca_mod, "TradingStream", object)
     monkeypatch.setattr(alpaca_mod, "StockBarsRequest", _FakeBarsRequest)
-    monkeypatch.setattr(
-        alpaca_mod, "TimeFrame", SimpleNamespace(Minute="Minute", Day="Day")
-    )
+    monkeypatch.setattr(alpaca_mod, "TimeFrame", SimpleNamespace(Minute="Minute", Day="Day"))
 
     logger = StructuredLogger("test_alpaca_historical", level="INFO")
     client = AlpacaClient(_DummyConfigLoader(), logger)  # type: ignore
@@ -86,9 +82,7 @@ def test_alpaca_client_get_historical_bars_timeframe_mapping_and_shape(
         [SimpleNamespace(timestamp=t, open=1, high=2, low=0.5, close=1.5, volume=10)],
     )
     out = client.get_historical_bars("AAPL", t, t, timeframe="1Min")
-    assert out == {
-        "bars": [{"t": t, "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10.0}]
-    }
+    assert out == {"bars": [{"t": t, "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10.0}]}
 
     with pytest.raises(ValueError, match="Unsupported timeframe"):
         client.get_historical_bars("AAPL", t, t, timeframe="5Min")
@@ -101,13 +95,9 @@ def test_alpaca_client_subscribe_and_unsubscribe_queues_then_subscribes(
     fake_hist = _FakeHistoricalClient()
 
     monkeypatch.setattr(alpaca_mod, "TradingClient", _FakeTradingClient)
-    monkeypatch.setattr(
-        alpaca_mod, "StockHistoricalDataClient", lambda *_a, **_k: fake_hist
-    )
+    monkeypatch.setattr(alpaca_mod, "StockHistoricalDataClient", lambda *_a, **_k: fake_hist)
     monkeypatch.setattr(alpaca_mod, "StockBarsRequest", _FakeBarsRequest)
-    monkeypatch.setattr(
-        alpaca_mod, "TimeFrame", SimpleNamespace(Minute="Minute", Day="Day")
-    )
+    monkeypatch.setattr(alpaca_mod, "TimeFrame", SimpleNamespace(Minute="Minute", Day="Day"))
 
     stream = _FakeStream()
     monkeypatch.setattr(alpaca_mod, "StockDataStream", lambda *_a, **_k: stream)

@@ -151,9 +151,7 @@ class TestVolumeImpactSlippage:
         # Order 2000 shares, bar volume 10000 -> ratio = 0.2
         # effective_bps = 10 * (1 + 0.2 * 5) = 10 * 2 = 20 bps
         # Buy at 100 -> 100 * 1.002 = 100.20
-        result = executor._apply_slippage(
-            "buy", 100.0, order_qty=2000, bar_volume=10000
-        )
+        result = executor._apply_slippage("buy", 100.0, order_qty=2000, bar_volume=10000)
 
         assert result == pytest.approx(100.20, rel=1e-6)
 

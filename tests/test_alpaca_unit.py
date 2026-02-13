@@ -245,9 +245,7 @@ async def test_start_stream_runs_backoff_loop(client):
     # We want to break the loop or run once.
 
     # We can mock _run_stream_with_backoff to verified it is called
-    with patch.object(
-        client, "_run_stream_with_backoff", new_callable=AsyncMock
-    ) as mock_run:
+    with patch.object(client, "_run_stream_with_backoff", new_callable=AsyncMock) as mock_run:
         cb = MagicMock()
         await client.start_stream(cb)
 

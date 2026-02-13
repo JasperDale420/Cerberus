@@ -15,12 +15,8 @@ from src.core.config import ConfigLoader
 @pytest.mark.unit
 def test_stage1_reduce_risk_can_reach_zero_floor(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text(yaml.safe_dump({"agent": {"stage1": {}}}))
-    (tmp_path / "risk.yaml").write_text(
-        yaml.safe_dump({"risk": {"max_risk_per_trade": 1.0}})
-    )
-    (tmp_path / "strategies.yaml").write_text(
-        yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}})
-    )
+    (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 1.0}}))
+    (tmp_path / "strategies.yaml").write_text(yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}}))
 
     logger = MagicMock()
     loader = ConfigLoader(config_dir=str(tmp_path))
@@ -53,12 +49,8 @@ def test_stage1_reduce_risk_can_reach_zero_floor(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_stage1_reduce_risk_can_reach_zero_floor_per_regime(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text(yaml.safe_dump({"agent": {"stage1": {}}}))
-    (tmp_path / "risk.yaml").write_text(
-        yaml.safe_dump({"risk": {"max_risk_per_trade": 1.0}})
-    )
-    (tmp_path / "strategies.yaml").write_text(
-        yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}})
-    )
+    (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 1.0}}))
+    (tmp_path / "strategies.yaml").write_text(yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}}))
 
     logger = MagicMock()
     loader = ConfigLoader(config_dir=str(tmp_path))

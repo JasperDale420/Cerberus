@@ -51,16 +51,10 @@ class ExecutionEngine:
         self.db = db
         self.alpaca_client = alpaca_client
         self.run_id = run_id
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
         self.risk_manager = RiskManager(config, logger)
-        self.order_executor = (
-            OrderExecutor(alpaca_client, logger, db, clock=self.clock)
-            if alpaca_client
-            else None
-        )
+        self.order_executor = OrderExecutor(alpaca_client, logger, db, clock=self.clock) if alpaca_client else None
         self.scanner: Optional[Scanner] = None  # Injected later or via init
 
         self.strategies: Dict[str, BaseStrategy] = {}
@@ -77,9 +71,7 @@ class ExecutionEngine:
         self._last_regime: Optional[Regime] = None  # M1 fix: Track regime changes
         self._last_cache_clear_date: Optional[str] = None  # M1 fix: Track daily clears
         self._reconcile_interval_sec = 0  # set from config.health
-        self.market_manager = MarketStateManager(
-            config, logger, db, self.clock, on_error=self._inc_error
-        )
+        self.market_manager = MarketStateManager(config, logger, db, self.clock, on_error=self._inc_error)
 
         # For backward compatibility (tests accessing engine.market_state)
         # We wrap the manager's state property.
@@ -203,11 +195,7 @@ class ExecutionEngine:
     def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set]:
         """Collect required indicator periods from enabled strategies."""
         strategies = list(getattr(state, "allowed_strategies", []) or [])
-        strat_cfgs = (
-            self.config.get("strategies")
-            if isinstance(self.config.get("strategies"), dict)
-            else {}
-        )
+        strat_cfgs = self.config.get("strategies") if isinstance(self.config.get("strategies"), dict) else {}
 
         periods: Dict[str, set[int]] = {
             "ema": set(),
@@ -232,9 +220,7 @@ class ExecutionEngine:
 
         return periods
 
-    def _update_ema_indicators(
-        self, state: SymbolState, close: float, periods: set
-    ) -> None:
+    def _update_ema_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update EMA indicators for given periods."""
         from src.core.indicators import RollingEMA
 
@@ -249,9 +235,7 @@ class ExecutionEngine:
             state.indicators[f"ema_close:{p}:prev"] = prev
             state.indicators[f"ema_close:{p}"] = val
 
-    def _update_rsi_indicators(
-        self, state: SymbolState, close: float, periods: set
-    ) -> None:
+    def _update_rsi_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update RSI indicators for given periods."""
         from src.core.indicators import RollingRSI
 
@@ -266,9 +250,7 @@ class ExecutionEngine:
             state.indicators[f"rsi:{p}:prev"] = prev
             state.indicators[f"rsi:{p}"] = rsi_val
 
-    def _update_vol_sma_indicators(
-        self, state: SymbolState, volume: float, periods: set
-    ) -> None:
+    def _update_vol_sma_indicators(self, state: SymbolState, volume: float, periods: set) -> None:
         """Update volume SMA indicators for given periods."""
         from src.core.indicators import RollingSMA
 
@@ -283,9 +265,7 @@ class ExecutionEngine:
             state.indicators[f"sma_vol:{p}:prev"] = prev
             state.indicators[f"sma_vol:{p}"] = val
 
-    def _update_bb_indicators(
-        self, state: SymbolState, close: float, periods: set
-    ) -> None:
+    def _update_bb_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update Bollinger Band indicators for given periods."""
         from src.core.indicators import RollingStd
 
@@ -320,9 +300,7 @@ class ExecutionEngine:
         self._flatten_reset_local_state()
 
         # Handle confirmation failures
-        self._flatten_handle_result(
-            mismatch_mode, confirmed, open_positions, open_orders, reason
-        )
+        self._flatten_handle_result(mismatch_mode, confirmed, open_positions, open_orders, reason)
 
     def _flatten_cancel_orders(self, reason: str) -> None:
         """Cancel all open orders (best-effort)."""
@@ -330,9 +308,7 @@ class ExecutionEngine:
         try:
             self.alpaca_client.trading_client.cancel_orders()
         except Exception as e:
-            self.logger.error(
-                "Cancel orders failed", reason=reason, error=str(e), exc_info=True
-            )
+            self.logger.error("Cancel orders failed", reason=reason, error=str(e), exc_info=True)
 
     def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
         """Close all positions (best-effort)."""
@@ -361,23 +337,17 @@ class ExecutionEngine:
             open_positions = list(self.alpaca_client.trading_client.get_all_positions())
             positions_confirmed = True
         except Exception as e:
-            self.logger.warning(
-                "Failed to fetch broker positions after flatten", error=str(e)
-            )
+            self.logger.warning("Failed to fetch broker positions after flatten", error=str(e))
 
         try:
             from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
 
-            resp = self.alpaca_client.trading_client.get_orders(
-                GetOrdersRequest(status=QueryOrderStatus.OPEN)
-            )
+            resp = self.alpaca_client.trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
             open_orders = resp if isinstance(resp, list) else []
             orders_confirmed = True
         except Exception as e:
-            self.logger.warning(
-                "Failed to fetch broker orders after flatten", error=str(e)
-            )
+            self.logger.warning("Failed to fetch broker orders after flatten", error=str(e))
 
         return open_positions, open_orders, (positions_confirmed and orders_confirmed)
 
@@ -413,9 +383,7 @@ class ExecutionEngine:
                 mismatch_mode=mismatch_mode,
             )
             if mismatch_mode in ("halt", "stop", "raise"):
-                raise RuntimeError(
-                    "Flatten incomplete: broker still reports positions/orders"
-                )
+                raise RuntimeError("Flatten incomplete: broker still reports positions/orders")
         else:
             self.logger.info("Flatten complete", reason=reason)
 
@@ -437,14 +405,10 @@ class ExecutionEngine:
         This updates routing and risk controls deterministically without requiring a process restart.
         """
         self.config = config
-        self.max_churn_per_scan = config.get(
-            "max_churn_per_scan", self.max_churn_per_scan
-        )
+        self.max_churn_per_scan = config.get("max_churn_per_scan", self.max_churn_per_scan)
         self.health.update_config(config)
         # RiskManager already has raw_config; update individual fields instead
-        risk_cfg = (
-            config.get("risk") if isinstance(config.get("risk"), dict) else None
-        ) or {}
+        risk_cfg = (config.get("risk") if isinstance(config.get("risk"), dict) else None) or {}
         self.risk_manager.max_daily_loss = float(
             risk_cfg.get(
                 "max_daily_loss",
@@ -469,19 +433,11 @@ class ExecutionEngine:
                 config.get("max_trades_per_day", self.risk_manager.max_trades_per_day),
             )
         )
-        self._set_risk_mode(
-            str(
-                risk_cfg.get(
-                    "risk_mode", config.get("risk_mode", self.risk_manager.risk_mode)
-                )
-            )
-        )
+        self._set_risk_mode(str(risk_cfg.get("risk_mode", config.get("risk_mode", self.risk_manager.risk_mode))))
         self.risk_manager.max_notional_per_symbol = float(
             risk_cfg.get(
                 "max_notional_per_symbol",
-                config.get(
-                    "max_notional_per_symbol", self.risk_manager.max_notional_per_symbol
-                ),
+                config.get("max_notional_per_symbol", self.risk_manager.max_notional_per_symbol),
             )
         )
 
@@ -496,9 +452,7 @@ class ExecutionEngine:
                 try:
                     strat.update_params(s_cfg)
                 except Exception as e:
-                    self.logger.error(
-                        "Failed to update strategy params", strategy=name, error=str(e)
-                    )
+                    self.logger.error("Failed to update strategy params", strategy=name, error=str(e))
 
         self._refresh_strategy_engine()
 
@@ -514,15 +468,9 @@ class ExecutionEngine:
 
         routing = StrategyRouting(
             strategies_by_regime={
-                Regime.BULL: self._get_regime_strategies(
-                    "bull", routing_cfg, strategies_cfg
-                ),
-                Regime.BEAR: self._get_regime_strategies(
-                    "bear", routing_cfg, strategies_cfg
-                ),
-                Regime.CHOP: self._get_regime_strategies(
-                    "chop", routing_cfg, strategies_cfg
-                ),
+                Regime.BULL: self._get_regime_strategies("bull", routing_cfg, strategies_cfg),
+                Regime.BEAR: self._get_regime_strategies("bear", routing_cfg, strategies_cfg),
+                Regime.CHOP: self._get_regime_strategies("chop", routing_cfg, strategies_cfg),
             },
             activation_policies=activation_policies,
         )
@@ -546,16 +494,9 @@ class ExecutionEngine:
         else:
             names = sorted(self.strategies.keys())
 
-        return [
-            n
-            for n in names
-            if n in self.strategies
-            and self._is_strategy_enabled(n, regime_key, strategies_cfg)
-        ]
+        return [n for n in names if n in self.strategies and self._is_strategy_enabled(n, regime_key, strategies_cfg)]
 
-    def _is_strategy_enabled(
-        self, name: str, regime_key: str, strategies_cfg: Dict[str, Any]
-    ) -> bool:
+    def _is_strategy_enabled(self, name: str, regime_key: str, strategies_cfg: Dict[str, Any]) -> bool:
         """Check if a strategy is enabled for a given regime."""
         s_cfg = strategies_cfg.get(name) if isinstance(strategies_cfg, dict) else None
         if not isinstance(s_cfg, dict):
@@ -630,11 +571,7 @@ class ExecutionEngine:
 
         try:
             _bind = getattr(self.logger, "bind", None)
-            log = (
-                _bind(symbol=symbol, run_id=self.run_id)
-                if callable(_bind)
-                else self.logger
-            )
+            log = _bind(symbol=symbol, run_id=self.run_id) if callable(_bind) else self.logger
 
             # Helper: Update State
             state = self._update_symbol_state(symbol, bar, bar_time)
@@ -675,19 +612,13 @@ class ExecutionEngine:
             from src.core.errors import ErrorCode
 
             _bind = getattr(self.logger, "bind", None)
-            log = (
-                _bind(symbol=symbol, run_id=self.run_id)
-                if callable(_bind)
-                else self.logger
-            )
+            log = _bind(symbol=symbol, run_id=self.run_id) if callable(_bind) else self.logger
             log.error(
                 "Bar processing failed",
                 error_code=ErrorCode.ENGINE_ON_BAR_FAILED.value,
                 symbol=symbol,
                 bar_time=str(bar_time or self.clock()),
-                regime=getattr(
-                    self.market_state.regime, "value", str(self.market_state.regime)
-                ),
+                regime=getattr(self.market_state.regime, "value", str(self.market_state.regime)),
                 error=str(e),
                 consecutive_errors=self.consecutive_on_bar_errors,
                 run_id=self.run_id,
@@ -795,16 +726,8 @@ class ExecutionEngine:
             regime_tags = snapshot.regime_tags if snapshot else {}
             self.logger.info(
                 "Market regime changed, clearing feature cache",
-                old_regime=(
-                    self._last_regime.value
-                    if hasattr(self._last_regime, "value")
-                    else str(self._last_regime)
-                ),
-                new_regime=(
-                    current_regime.value
-                    if hasattr(current_regime, "value")
-                    else str(current_regime)
-                ),
+                old_regime=(self._last_regime.value if hasattr(self._last_regime, "value") else str(self._last_regime)),
+                new_regime=(current_regime.value if hasattr(current_regime, "value") else str(current_regime)),
                 regime_tags=regime_tags,
             )
             self._clear_all_features()
@@ -854,9 +777,7 @@ class ExecutionEngine:
         except Exception:
             self._inc_error("execution")
 
-    def _run_strategies(
-        self, symbol: str, bar: Any, state: SymbolState, log: Any
-    ) -> None:
+    def _run_strategies(self, symbol: str, bar: Any, state: SymbolState, log: Any) -> None:
         # Run Strategies via StrategyEngine (PRD 6.4)
         if self.strategy_engine is None:
             self._refresh_strategy_engine()
@@ -902,9 +823,7 @@ class ExecutionEngine:
             decision = self.position_manager.on_bar(
                 state,
                 self.market_state,
-                broker_managed_exits=bool(
-                    getattr(self.order_executor, "broker_managed_exits", False)
-                ),
+                broker_managed_exits=bool(getattr(self.order_executor, "broker_managed_exits", False)),
             )
             if decision.intent is not None:
                 e_bind = getattr(log, "bind", None)
@@ -934,9 +853,7 @@ class ExecutionEngine:
                 "PositionManager exit failed",
                 error_code=ErrorCode.POSITION_EXIT_FAILED.value,
                 symbol=symbol,
-                regime=getattr(
-                    self.market_state.regime, "value", str(self.market_state.regime)
-                ),
+                regime=getattr(self.market_state.regime, "value", str(self.market_state.regime)),
                 error=str(e),
                 exc_info=True,
             )
@@ -960,9 +877,7 @@ class ExecutionEngine:
         # 1. Risk Check
         import time
 
-        active_positions = [
-            s.position for s in self.symbol_states.values() if s.position is not None
-        ]
+        active_positions = [s.position for s in self.symbol_states.values() if s.position is not None]
 
         start_risk = time.perf_counter()
         try:
@@ -1035,9 +950,7 @@ class ExecutionEngine:
 
         rejection_reason = None
         if not intents:
-            rejection_reason = (
-                self.risk_manager.last_rejection_reason or "RISK_REJECTED"
-            )
+            rejection_reason = self.risk_manager.last_rejection_reason or "RISK_REJECTED"
 
         ok = self.db.write(
             "signal",
@@ -1054,9 +967,7 @@ class ExecutionEngine:
                     rejection_reason=rejection_reason,
                     meta_json=self._sanitize_features_snapshot(signal.meta),
                     feature_snapshot_json=(
-                        self._sanitize_features_snapshot(
-                            asdict(signal.feature_snapshot)
-                        )
+                        self._sanitize_features_snapshot(asdict(signal.feature_snapshot))
                         if signal.feature_snapshot
                         else None
                     ),
@@ -1087,9 +998,7 @@ class ExecutionEngine:
         trailing_pct = adv_exits.get("trailing_stop", {}).get("trail_pct", 0.02)
 
         # Calculate regime-aware stop multiplier
-        regime_stop_mult = self._get_regime_stop_multiplier(
-            signal.regime_tags, adv_exits
-        )
+        regime_stop_mult = self._get_regime_stop_multiplier(signal.regime_tags, adv_exits)
 
         # Prepare features payload
         features_payload = state.meta.get("features_snapshot")
@@ -1103,8 +1012,7 @@ class ExecutionEngine:
             "stop_price": signal.stop_price,
             "target_price": signal.target_price,
             "qty": intent0.qty,
-            "open_risk": abs(signal.entry_price - signal.stop_price)
-            * float(intent0.qty),
+            "open_risk": abs(signal.entry_price - signal.stop_price) * float(intent0.qty),
             "features": (
                 {
                     **(features_payload or {}),
@@ -1145,9 +1053,7 @@ class ExecutionEngine:
 
         return adv_exits
 
-    def _get_regime_stop_multiplier(
-        self, regime_tags: Optional[Dict[str, str]], adv_exits: Dict[str, Any]
-    ) -> float:
+    def _get_regime_stop_multiplier(self, regime_tags: Optional[Dict[str, str]], adv_exits: Dict[str, Any]) -> float:
         """Calculate stop width multiplier based on volatility regime."""
         if not regime_tags or not adv_exits.get("regime_aware_stops", False):
             return 1.0
@@ -1162,9 +1068,7 @@ class ExecutionEngine:
 
         return float(multipliers.get(vol_regime, 1.0))
 
-    def _execute_signal_intents(
-        self, signal: Signal, intents: List[Any], log: Any, risk_latency: float
-    ) -> None:
+    def _execute_signal_intents(self, signal: Signal, intents: List[Any], log: Any, risk_latency: float) -> None:
         """Execute order intents for a signal."""
         if not self.order_executor:
             self.logger.warning(
@@ -1204,9 +1108,7 @@ class ExecutionEngine:
         except Exception:
             pass
 
-        threshold = int(
-            self.config.get("db_trading_halt_buffer_len", max(1, buf_max // 2 or 1))
-        )
+        threshold = int(self.config.get("db_trading_halt_buffer_len", max(1, buf_max // 2 or 1)))
 
         if self.db.last_db_write_error and buf_len >= threshold:
             self._set_risk_mode("off")
@@ -1221,9 +1123,7 @@ class ExecutionEngine:
 
         return False
 
-    def _submit_single_intent(
-        self, intent: Any, log: Any, risk_latency: float, perf_counter: Any
-    ) -> None:
+    def _submit_single_intent(self, intent: Any, log: Any, risk_latency: float, perf_counter: Any) -> None:
         """Submit a single order intent."""
         assert self.order_executor is not None
         try:
@@ -1288,9 +1188,7 @@ class ExecutionEngine:
         if decision.closed_trade is not None:
             self._handle_closed_trade(decision.closed_trade)
 
-    def _normalize_fill_correlation_id(
-        self, fill: Dict[str, Any], symbol: str, fill_ts: Any
-    ) -> Dict[str, Any]:
+    def _normalize_fill_correlation_id(self, fill: Dict[str, Any], symbol: str, fill_ts: Any) -> Dict[str, Any]:
         """Normalize correlation ID with fallbacks."""
         corr = str(fill.get("correlation_id") or "")
         corr_id = corr
@@ -1303,28 +1201,20 @@ class ExecutionEngine:
                 import hashlib
 
                 seed = f"{symbol}|{fill.get('side', '')}|{fill_ts}"
-                corr_id = (
-                    "fill-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-                )
+                corr_id = "fill-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
         fill = dict(fill)
         fill["correlation_id"] = corr_id
         return fill
 
-    def _process_fill_with_position_manager(
-        self, state: SymbolState, fill: Dict[str, Any]
-    ) -> Optional[Any]:
+    def _process_fill_with_position_manager(self, state: SymbolState, fill: Dict[str, Any]) -> Optional[Any]:
         """Process fill through PositionManager."""
         try:
             return self.position_manager.on_fill(
                 state,
                 self.market_state,
                 fill,
-                risk_cfg=(
-                    self.config.get("risk")
-                    if isinstance(self.config.get("risk"), dict)
-                    else None
-                ),
+                risk_cfg=(self.config.get("risk") if isinstance(self.config.get("risk"), dict) else None),
             )
         except Exception as e:
             self._inc_error("execution")
@@ -1351,9 +1241,7 @@ class ExecutionEngine:
             self._persist_closed_trade(closed)
 
         try:
-            self.risk_manager.record_completed_trade(
-                closed.strategy, as_of=closed.exit_time
-            )
+            self.risk_manager.record_completed_trade(closed.strategy, as_of=closed.exit_time)
         except Exception:
             pass
 
@@ -1434,9 +1322,7 @@ class ExecutionEngine:
         if self.db:
             self.db.write("fill", _write_fill)
 
-    def _log_position_decision(
-        self, decision: Any, state: SymbolState, fill: Dict[str, Any]
-    ) -> None:
+    def _log_position_decision(self, decision: Any, state: SymbolState, fill: Dict[str, Any]) -> None:
         if decision.event == "opened":
             self.logger.info("Position opened", position=state.position)
         elif decision.event == "increased":
@@ -1452,9 +1338,7 @@ class ExecutionEngine:
                 "Position closed",
                 pnl=decision.realized_pnl_delta,
                 strategy=(
-                    decision.closed_trade.strategy
-                    if decision.closed_trade is not None
-                    else fill.get("strategy")
+                    decision.closed_trade.strategy if decision.closed_trade is not None else fill.get("strategy")
                 ),
             )
 
@@ -1573,9 +1457,7 @@ class ExecutionEngine:
             return
 
         try:
-            results = await self.scanner.scan(
-                regime=self.market_state.regime, scan_time=self.market_state.time
-            )
+            results = await self.scanner.scan(regime=self.market_state.regime, scan_time=self.market_state.time)
         except Exception as e:
             self.error_counts["scanner"] += 1
             from src.core.errors import ErrorCode
@@ -1583,9 +1465,7 @@ class ExecutionEngine:
             self.logger.error(
                 "Scanner scan failed; retaining existing watchlist",
                 error_code=ErrorCode.SCANNER_SCAN_FAILED.value,
-                regime=getattr(
-                    self.market_state.regime, "value", str(self.market_state.regime)
-                ),
+                regime=getattr(self.market_state.regime, "value", str(self.market_state.regime)),
                 scan_time=str(self.market_state.time),
                 error=str(e),
                 run_id=self.run_id,
@@ -1634,19 +1514,13 @@ class ExecutionEngine:
         existing_non_index = set(self.symbol_states.keys())
         existing_non_index.discard(index_symbol)
 
-        final_adds, final_removes = self._calculate_scan_churn(
-            scan_results, existing_non_index, index_symbol
-        )
+        final_adds, final_removes = self._calculate_scan_churn(scan_results, existing_non_index, index_symbol)
 
         new_target_map = {res.symbol: res for res in scan_results}
 
-        self._apply_scan_diff(
-            final_adds, final_removes, new_target_map, scan_results, existing_non_index
-        )
+        self._apply_scan_diff(final_adds, final_removes, new_target_map, scan_results, existing_non_index)
 
-    def _normalize_scan_results(
-        self, scan_result: ScanResult | List[WatchlistSymbol]
-    ) -> List[Any]:
+    def _normalize_scan_results(self, scan_result: ScanResult | List[WatchlistSymbol]) -> List[Any]:
         scan_results: List[Any]
         if isinstance(scan_result, ScanResult):
             scan_results = list(scan_result.watchlist)
@@ -1656,9 +1530,7 @@ class ExecutionEngine:
         index_symbol = str(self.config.get("index_symbol", "SPY") or "")
 
         # PRD 1.1: keep total WS subscriptions within Alpaca's practical ~30 ticker limit.
-        has_index_in_scan = any(
-            getattr(res, "symbol", None) == index_symbol for res in scan_results
-        )
+        has_index_in_scan = any(getattr(res, "symbol", None) == index_symbol for res in scan_results)
         reserve_for_index = 0 if has_index_in_scan else (1 if index_symbol else 0)
         hard_cap = max(0, 30 - reserve_for_index)
         if len(scan_results) > hard_cap:
@@ -1682,11 +1554,7 @@ class ExecutionEngine:
         desired_set = set(desired_symbols)
 
         # 1. Identify Candidates for Add/Remove (deterministic ordering)
-        to_add = [
-            s
-            for s in desired_symbols
-            if s not in existing_non_index and s != index_symbol
-        ]
+        to_add = [s for s in desired_symbols if s not in existing_non_index and s != index_symbol]
         to_remove = sorted([s for s in existing_non_index if s not in desired_set])
 
         # 2/3. Throttle churn as a single total budget per scan interval (deterministic).
@@ -1715,17 +1583,13 @@ class ExecutionEngine:
     ) -> None:
         self._process_scan_removals(final_removes)
         self._process_scan_additions(final_adds, new_target_map)
-        self._update_retained_strategies(
-            scan_results, existing_non_index, new_target_map
-        )
+        self._update_retained_strategies(scan_results, existing_non_index, new_target_map)
 
     def _process_scan_removals(self, final_removes: List[str]) -> None:
         """Remove symbols from active trading set."""
         for sym in final_removes:
             if self.symbol_states[sym].position:
-                self.logger.info(
-                    "Retaining symbol with position outside scan", symbol=sym
-                )
+                self.logger.info("Retaining symbol with position outside scan", symbol=sym)
                 continue
 
             # Best-effort: cancel open orders before removing
@@ -1781,9 +1645,7 @@ class ExecutionEngine:
         self.db.write("collect_pending_cancel", _collect)
         return broker_ids
 
-    def _process_scan_additions(
-        self, final_adds: List[str], new_target_map: Dict[str, Any]
-    ) -> None:
+    def _process_scan_additions(self, final_adds: List[str], new_target_map: Dict[str, Any]) -> None:
         """Add new symbols from scan to active trading set."""
         for sym in final_adds:
             scanned_sym = new_target_map[sym]
@@ -1810,9 +1672,7 @@ class ExecutionEngine:
     def _build_scan_meta(self, scanned_sym: Any) -> Dict[str, Any]:
         """Build symbol metadata from scan result."""
         features = scanned_sym.features
-        features_snapshot = (
-            self._sanitize_features_snapshot(asdict(features)) if features else {}
-        )
+        features_snapshot = self._sanitize_features_snapshot(asdict(features)) if features else {}
 
         meta: Dict[str, Any] = {
             "added_at": str(self.market_state.time),
@@ -1901,40 +1761,26 @@ class ExecutionEngine:
         for sym in [s for s in desired_symbols if s in existing_non_index]:
             scanned_sym = new_target_map[sym]
             if sym in self.symbol_states:
-                self.symbol_states[sym].allowed_strategies = list(
-                    scanned_sym.strategies
-                )
+                self.symbol_states[sym].allowed_strategies = list(scanned_sym.strategies)
                 if scanned_sym.features:
                     features = scanned_sym.features
                     # Update metadata for retained symbols
-                    self.symbol_states[sym].meta["flow_bias"] = float(
-                        getattr(features, "flow_bias", 0.0)
-                    )
-                    self.symbol_states[sym].meta["dof_score"] = float(
-                        getattr(features, "dof_score", 0.0)
-                    )
+                    self.symbol_states[sym].meta["flow_bias"] = float(getattr(features, "flow_bias", 0.0))
+                    self.symbol_states[sym].meta["dof_score"] = float(getattr(features, "dof_score", 0.0))
                     self.symbol_states[sym].meta["relative_strength"] = float(
                         getattr(features, "relative_strength", 0.0)
                     )
-                    self.symbol_states[sym].meta["orb_high"] = float(
-                        getattr(features, "orb_high", 0.0)
-                    )
-                    self.symbol_states[sym].meta["orb_low"] = float(
-                        getattr(features, "orb_low", 0.0)
-                    )
-                    self.symbol_states[sym].meta["premarket_volume"] = (
-                        features.premarket_volume
-                    )
+                    self.symbol_states[sym].meta["orb_high"] = float(getattr(features, "orb_high", 0.0))
+                    self.symbol_states[sym].meta["orb_low"] = float(getattr(features, "orb_low", 0.0))
+                    self.symbol_states[sym].meta["premarket_volume"] = features.premarket_volume
                     # Update ATR
                     if hasattr(features, "atr") and features.atr is not None:
                         self.symbol_states[sym].meta["atr"] = float(features.atr)
                     elif "atr" in (features.extra or {}):
-                        self.symbol_states[sym].meta["atr"] = float(
-                            features.extra.get("atr") or 0.0
-                        )
+                        self.symbol_states[sym].meta["atr"] = float(features.extra.get("atr") or 0.0)
 
-                    self.symbol_states[sym].meta["features_snapshot"] = (
-                        self._sanitize_features_snapshot(asdict(features))
+                    self.symbol_states[sym].meta["features_snapshot"] = self._sanitize_features_snapshot(
+                        asdict(features)
                     )
 
     async def reconcile_broker_state(self) -> None:
@@ -1975,9 +1821,7 @@ class ExecutionEngine:
         from alpaca.trading.enums import QueryOrderStatus
         from alpaca.trading.requests import GetOrdersRequest
 
-        def _get_orders_list(
-            status: QueryOrderStatus, limit: Optional[int] = None
-        ) -> List[Any]:
+        def _get_orders_list(status: QueryOrderStatus, limit: Optional[int] = None) -> List[Any]:
             req = GetOrdersRequest(status=status, limit=limit)
             resp = trading_client.get_orders(req)
             return resp if isinstance(resp, list) else []
@@ -2000,17 +1844,13 @@ class ExecutionEngine:
         # Best-effort: also fetch recently closed orders
         closed_orders: List[Any] = []
         try:
-            closed_orders = await asyncio.to_thread(
-                _get_orders_list, QueryOrderStatus.CLOSED, 200
-            )
+            closed_orders = await asyncio.to_thread(_get_orders_list, QueryOrderStatus.CLOSED, 200)
         except Exception:
             closed_orders = []
 
         return account, positions, orders, closed_orders
 
-    def _reconcile_positions(
-        self, positions: Any, broker_position_symbols: set[str]
-    ) -> None:
+    def _reconcile_positions(self, positions: Any, broker_position_symbols: set[str]) -> None:
         """Reconcile local positions with broker state."""
         if not positions:
             positions = []
@@ -2040,9 +1880,7 @@ class ExecutionEngine:
         """Check if position reconciliation should be skipped."""
         # H1 fix: Skip if recently updated by fill
         if state.position:
-            time_since_update = (
-                datetime.now(timezone.utc) - state.position.last_updated
-            ).total_seconds()
+            time_since_update = (datetime.now(timezone.utc) - state.position.last_updated).total_seconds()
             if time_since_update < 2.0:
                 self.logger.debug(
                     "Skipping position reconciliation, recently updated",
@@ -2067,15 +1905,8 @@ class ExecutionEngine:
         sym = str(getattr(broker_pos, "symbol", ""))
         side_raw = getattr(broker_pos, "side", "")
         side = Side.LONG if str(side_raw).lower() == "long" else Side.SHORT
-        qty = float(
-            getattr(broker_pos, "qty", getattr(broker_pos, "quantity", 0.0)) or 0.0
-        )
-        avg_price = float(
-            getattr(
-                broker_pos, "avg_entry_price", getattr(broker_pos, "avg_price", 0.0)
-            )
-            or 0.0
-        )
+        qty = float(getattr(broker_pos, "qty", getattr(broker_pos, "quantity", 0.0)) or 0.0)
+        avg_price = float(getattr(broker_pos, "avg_entry_price", getattr(broker_pos, "avg_price", 0.0)) or 0.0)
 
         # Preserve existing position data where available
         existing = state.position
@@ -2128,9 +1959,7 @@ class ExecutionEngine:
             symbols_cleared=len(self.symbol_states),
         )
 
-    def _reconcile_orders(
-        self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
-    ) -> None:
+    def _reconcile_orders(self, orders: Any, closed_orders: Any, broker_order_ids: set[str]) -> None:
         """Reconcile local order state with broker orders."""
         if not orders:
             orders = []
@@ -2149,9 +1978,7 @@ class ExecutionEngine:
         if self.db and closed_orders:
             self._synthesize_missed_fills(closed_orders)
 
-    def _sync_open_orders_to_state(
-        self, orders: List[Any], broker_order_ids: set[str]
-    ) -> None:
+    def _sync_open_orders_to_state(self, orders: List[Any], broker_order_ids: set[str]) -> None:
         """Sync broker open orders into symbol state."""
         for o in orders:
             try:
@@ -2198,9 +2025,7 @@ class ExecutionEngine:
             except Exception as e:
                 self.logger.warning("Stale-order cancel failed", error=str(e))
 
-    def _reconcile_db_orders(
-        self, orders: Any, closed_orders: Any, broker_order_ids: set[str]
-    ) -> None:
+    def _reconcile_db_orders(self, orders: Any, closed_orders: Any, broker_order_ids: set[str]) -> None:
         """Reconcile DB order records with broker state."""
         if not self.db:
             return
@@ -2220,9 +2045,7 @@ class ExecutionEngine:
         except Exception as e:
             self.logger.warning("DB reconcile failed", error=str(e))
 
-    def _update_open_order_statuses(
-        self, session: Session, orders: List[Any], now: datetime
-    ) -> None:
+    def _update_open_order_statuses(self, session: Session, orders: List[Any], now: datetime) -> None:
         """Update DB statuses for orders still open at broker."""
         for o in orders:
             oid = str(getattr(o, "id", ""))
@@ -2230,18 +2053,11 @@ class ExecutionEngine:
             if not oid:
                 continue
 
-            row = (
-                session.query(DbOrder)
-                .filter(DbOrder.broker_order_id == oid)
-                .order_by(DbOrder.id.desc())
-                .first()
-            )
+            row = session.query(DbOrder).filter(DbOrder.broker_order_id == oid).order_by(DbOrder.id.desc()).first()
             if row:
                 self._apply_reconcile_status(row, status_val, now)
 
-    def _update_closed_order_statuses(
-        self, session: Session, closed_orders: List[Any], now: datetime
-    ) -> None:
+    def _update_closed_order_statuses(self, session: Session, closed_orders: List[Any], now: datetime) -> None:
         """Update DB statuses for recently closed orders."""
         for o in closed_orders:
             oid = str(getattr(o, "id", "") or "")
@@ -2249,18 +2065,11 @@ class ExecutionEngine:
             if not oid or not status_val:
                 continue
 
-            row = (
-                session.query(DbOrder)
-                .filter(DbOrder.broker_order_id == oid)
-                .order_by(DbOrder.id.desc())
-                .first()
-            )
+            row = session.query(DbOrder).filter(DbOrder.broker_order_id == oid).order_by(DbOrder.id.desc()).first()
             if row:
                 self._apply_reconcile_status(row, status_val, now)
 
-    def _mark_stale_orders_cancelled(
-        self, session: Session, broker_order_ids: set[str], now: datetime
-    ) -> None:
+    def _mark_stale_orders_cancelled(self, session: Session, broker_order_ids: set[str], now: datetime) -> None:
         """Mark DB orders as cancelled if broker no longer has them."""
         stale = (
             session.query(DbOrder)
@@ -2282,9 +2091,7 @@ class ExecutionEngine:
                 )
                 row.meta_json = meta
 
-    def _apply_reconcile_status(
-        self, row: DbOrder, status_val: str, now: datetime
-    ) -> None:
+    def _apply_reconcile_status(self, row: DbOrder, status_val: str, now: datetime) -> None:
         """Apply reconciliation status update to an order row."""
         row.status = status_val
         row.time_last_update = now
@@ -2326,9 +2133,7 @@ class ExecutionEngine:
 
         order_id: Optional[int] = None
         if self.db:
-            order_id = self._get_reconciled_order_id(
-                broker_id, corr, sym, side_val, filled_qty, o, fill_ts
-            )
+            order_id = self._get_reconciled_order_id(broker_id, corr, sym, side_val, filled_qty, o, fill_ts)
 
         if order_id is None:
             return
@@ -2342,9 +2147,7 @@ class ExecutionEngine:
         )
 
         if self.db:
-            self._persist_synthesized_fill(
-                order_id, fill_ts, filled_avg_price, filled_qty
-            )
+            self._persist_synthesized_fill(order_id, fill_ts, filled_avg_price, filled_qty)
 
     def _get_reconciled_order_id(
         self,
@@ -2361,10 +2164,7 @@ class ExecutionEngine:
         def _ensure_order_and_check(session: Session) -> None:
             nonlocal order_id
             row = (
-                session.query(DbOrder)
-                .filter(DbOrder.broker_order_id == broker_id)
-                .order_by(DbOrder.id.desc())
-                .first()
+                session.query(DbOrder).filter(DbOrder.broker_order_id == broker_id).order_by(DbOrder.id.desc()).first()
             )
             if row is None:
                 session.add(
@@ -2394,12 +2194,7 @@ class ExecutionEngine:
                 return
 
             # If any fill exists, don't synthesize another aggregate fill.
-            existing = (
-                session.query(DbFill)
-                .filter(DbFill.order_id == int(row.id))
-                .order_by(DbFill.id.desc())
-                .first()
-            )
+            existing = session.query(DbFill).filter(DbFill.order_id == int(row.id)).order_by(DbFill.id.desc()).first()
             if existing is None:
                 order_id = int(row.id)
 

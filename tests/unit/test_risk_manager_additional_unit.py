@@ -111,9 +111,7 @@ def test_risk_manager_rejects_trade_and_order_caps() -> None:
 
 @pytest.mark.unit
 def test_risk_manager_rejects_max_trades_per_strategy() -> None:
-    rm = RiskManager(
-        {"risk": {"max_trades_per_strategy": 2}}, _logger("test_strat_trade_cap")
-    )
+    rm = RiskManager({"risk": {"max_trades_per_strategy": 2}}, _logger("test_strat_trade_cap"))
     rm.per_strategy_entry_count["s"] = 2
     out = rm.apply(
         _mk_signal(strategy="s"),

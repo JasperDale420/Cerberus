@@ -75,9 +75,7 @@ class TestFillValidation:
         assert decision.event == "ignored"
         assert symbol_state.position is None
 
-    def test_negative_price_rejected(
-        self, position_manager, symbol_state, market_state
-    ):
+    def test_negative_price_rejected(self, position_manager, symbol_state, market_state):
         """Fill with negative price should be ignored."""
         fill = {
             "symbol": "AAPL",
@@ -167,9 +165,7 @@ class TestFillValidation:
         assert decision.event == "ignored"
         assert symbol_state.position is None
 
-    def test_uppercase_side_accepted(
-        self, position_manager, symbol_state, market_state
-    ):
+    def test_uppercase_side_accepted(self, position_manager, symbol_state, market_state):
         """Fill with uppercase side should be accepted (normalized to lowercase)."""
         fill = {
             "symbol": "AAPL",

@@ -28,9 +28,7 @@ from src.data.alpaca import AlpacaClient
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Download historical bars from Alpaca for offline backtesting"
-    )
+    parser = argparse.ArgumentParser(description="Download historical bars from Alpaca for offline backtesting")
     parser.add_argument(
         "--symbols",
         type=str,
@@ -209,9 +207,7 @@ def download_bars(
             bars_raw = bars_raw["bars"]
 
         if not isinstance(bars_raw, list):
-            logger.warning(
-                "Unexpected bars format", symbol=symbol, type=str(type(bars_raw))
-            )
+            logger.warning("Unexpected bars format", symbol=symbol, type=str(type(bars_raw)))
             return []
 
         result = []
@@ -230,9 +226,7 @@ def download_bars(
             else:
                 result.append(
                     {
-                        "t": _to_iso(
-                            getattr(b, "t", None) or getattr(b, "timestamp", None)
-                        ),
+                        "t": _to_iso(getattr(b, "t", None) or getattr(b, "timestamp", None)),
                         "o": float(getattr(b, "o", 0) or getattr(b, "open", 0) or 0),
                         "h": float(getattr(b, "h", 0) or getattr(b, "high", 0) or 0),
                         "l": float(getattr(b, "l", 0) or getattr(b, "low", 0) or 0),
@@ -273,15 +267,11 @@ def main() -> None:
         print("Error: No symbols to download")
         sys.exit(1)
 
-    print(
-        f"Downloading bars for {len(symbols)} symbols: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}"
-    )
+    print(f"Downloading bars for {len(symbols)} symbols: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
 
     # Parse dates
     start = datetime.fromisoformat(args.start).replace(tzinfo=timezone.utc)
-    end = datetime.fromisoformat(args.end).replace(
-        hour=23, minute=59, second=59, tzinfo=timezone.utc
-    )
+    end = datetime.fromisoformat(args.end).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
 
     print(f"Date range: {start.date()} to {end.date()}")
     print(f"Timeframe: {args.timeframe}")

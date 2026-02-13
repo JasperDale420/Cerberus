@@ -61,10 +61,7 @@ def test_backtest_runner_flattens_on_session_boundary_even_without_16_00_bar(
 
     # Should flatten on SESSION_END at the day boundary and again at BACKTEST_END.
     assert r.mock_executor.cancel_all_orders.call_count >= 2
-    close_calls = [
-        c.kwargs.get("reason")
-        for c in r.mock_executor.close_all_positions.call_args_list
-    ]
+    close_calls = [c.kwargs.get("reason") for c in r.mock_executor.close_all_positions.call_args_list]
     assert "SESSION_END" in close_calls
 
 

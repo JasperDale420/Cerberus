@@ -59,9 +59,7 @@ class GapFillStrategy(BaseStrategy):
             trend_score_f = None
 
         # Optional: if trend is too strong, skip (configurable via weak_trend_max_score)
-        if trend_score_f is not None and trend_score_f >= float(
-            self.weak_trend_max_score
-        ):
+        if trend_score_f is not None and trend_score_f >= float(self.weak_trend_max_score):
             # Strong trend - less optimal for gap fill, but don't hard block
             pass
 
@@ -100,9 +98,7 @@ class GapFillStrategy(BaseStrategy):
         if isinstance(bt, datetime) and bt.tzinfo is None:
             bt = bt.replace(tzinfo=timezone.utc)
         bt_et = time_utils.to_eastern_time(bt)
-        session_open_et = time_utils.get_eastern_timezone().localize(
-            datetime.combine(bt_et.date(), time_type(9, 30))
-        )
+        session_open_et = time_utils.get_eastern_timezone().localize(datetime.combine(bt_et.date(), time_type(9, 30)))
         cutoff_et = session_open_et + timedelta(minutes=self.or_time_minutes)
 
         # Build opening range.

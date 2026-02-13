@@ -89,21 +89,15 @@ class SpotGEXExposuresPer1Min:
         if charm_per_one_percent_move_oi is not UNSET:
             field_dict["charm_per_one_percent_move_oi"] = charm_per_one_percent_move_oi
         if charm_per_one_percent_move_vol is not UNSET:
-            field_dict["charm_per_one_percent_move_vol"] = (
-                charm_per_one_percent_move_vol
-            )
+            field_dict["charm_per_one_percent_move_vol"] = charm_per_one_percent_move_vol
         if delta_per_one_percent_move_oi is not UNSET:
             field_dict["delta_per_one_percent_move_oi"] = delta_per_one_percent_move_oi
         if delta_per_one_percent_move_vol is not UNSET:
-            field_dict["delta_per_one_percent_move_vol"] = (
-                delta_per_one_percent_move_vol
-            )
+            field_dict["delta_per_one_percent_move_vol"] = delta_per_one_percent_move_vol
         if gamma_per_one_percent_move_oi is not UNSET:
             field_dict["gamma_per_one_percent_move_oi"] = gamma_per_one_percent_move_oi
         if gamma_per_one_percent_move_vol is not UNSET:
-            field_dict["gamma_per_one_percent_move_vol"] = (
-                gamma_per_one_percent_move_vol
-            )
+            field_dict["gamma_per_one_percent_move_vol"] = gamma_per_one_percent_move_vol
         if price is not UNSET:
             field_dict["price"] = price
         if time is not UNSET:
@@ -111,9 +105,7 @@ class SpotGEXExposuresPer1Min:
         if vanna_per_one_percent_move_oi is not UNSET:
             field_dict["vanna_per_one_percent_move_oi"] = vanna_per_one_percent_move_oi
         if vanna_per_one_percent_move_vol is not UNSET:
-            field_dict["vanna_per_one_percent_move_vol"] = (
-                vanna_per_one_percent_move_vol
-            )
+            field_dict["vanna_per_one_percent_move_vol"] = vanna_per_one_percent_move_vol
 
         return field_dict
 

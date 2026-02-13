@@ -25,4 +25,3 @@ if [[ "$RUN_ONCE" == "true" ]]; then
 fi
 
 exec "$PYTHON_BIN" "${ARGS[@]}"
-

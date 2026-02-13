@@ -11,9 +11,7 @@ from src.core.domain import Regime
 from src.core.logger import StructuredLogger
 
 
-def _bar_row(
-    t: datetime, *, o: float, h: float, low: float, c: float, v: float = 0.0
-) -> Dict[str, Any]:
+def _bar_row(t: datetime, *, o: float, h: float, low: float, c: float, v: float = 0.0) -> Dict[str, Any]:
     return {"t": t.isoformat(), "o": o, "h": h, "l": low, "c": c, "v": v}
 
 
@@ -24,16 +22,12 @@ class _FakeAlpacaClient:
     def set_bars(self, symbol: str, rows: List[Dict[str, Any]]) -> None:
         self._bars_by_symbol[str(symbol).upper()] = list(rows)
 
-    def get_historical_bars(
-        self, symbol: str, *_args: Any, **_kwargs: Any
-    ) -> Dict[str, Any]:
+    def get_historical_bars(self, symbol: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         return {"bars": list(self._bars_by_symbol.get(str(symbol).upper(), []))}
 
 
 class _DummyConfigLoader:
-    def load_config(
-        self, _path: Optional[str] = None
-    ) -> Dict[str, Any]:  # pragma: no cover
+    def load_config(self, _path: Optional[str] = None) -> Dict[str, Any]:  # pragma: no cover
         return {}
 
 
@@ -53,9 +47,7 @@ def test_stage3_evaluate_code_stop_priority(monkeypatch) -> None:
     logger = StructuredLogger("test_stage3_eval", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage3": {"backtest": {"symbols": ["AAPL"], "window_days": 1}}}}
-    ev = stage3_mod.DeterministicStage3Evaluator(
-        cfg, _DummyConfigLoader(), logger, clock=lambda: now
-    )
+    ev = stage3_mod.DeterministicStage3Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
     assert isinstance(ev.alpaca, _FakeAlpacaClient)
     ev.alpaca.set_bars(

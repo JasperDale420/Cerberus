@@ -22,4 +22,3 @@ if [[ "$INJECT_SIGNAL" == "true" ]]; then
 fi
 
 exec "$PYTHON_BIN" "${ARGS[@]}"
-

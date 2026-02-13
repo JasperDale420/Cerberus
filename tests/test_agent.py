@@ -91,9 +91,7 @@ def test_analyze_performance_z_score(mock_llm_cls):
         total_pnl_r=-1.25,
     )
 
-    actions = agent.analyze_performance(
-        [good_stats, low_data_stats, bad_stats, noisy_stats]
-    )
+    actions = agent.analyze_performance([good_stats, low_data_stats, bad_stats, noisy_stats])
 
     # Assertions
     assert len(actions) == 1

@@ -61,9 +61,7 @@ def test_apply_rejects_when_stop_price_invalid() -> None:
 @pytest.mark.unit
 def test_apply_rejects_when_notional_exceeds_limit() -> None:
     logger = MagicMock()
-    rm = RiskManager(
-        {"max_risk_per_trade": 50.0, "max_notional_per_order": 10.0}, logger
-    )
+    rm = RiskManager({"max_risk_per_trade": 50.0, "max_notional_per_order": 10.0}, logger)
 
     intents = rm.apply(
         _signal(entry_price=100.0, stop_price=99.0),
@@ -77,9 +75,7 @@ def test_apply_rejects_when_notional_exceeds_limit() -> None:
 @pytest.mark.unit
 def test_apply_respects_size_hint_but_caps_to_risk_limit() -> None:
     logger = MagicMock()
-    rm = RiskManager(
-        {"max_risk_per_trade": 50.0, "max_notional_per_order": 1_000_000.0}, logger
-    )
+    rm = RiskManager({"max_risk_per_trade": 50.0, "max_notional_per_order": 1_000_000.0}, logger)
 
     # risk_per_share = 1 => qty_limit = 50, size_hint is higher => cap at 50
     intents = rm.apply(

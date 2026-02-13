@@ -68,7 +68,7 @@ risk:
   time_in_force: "day"
   risk_mode: "normal"
   slippage_bps: 2.0
-  
+
   advanced_exits:
     enabled: true
     trailing_stop:
@@ -78,7 +78,7 @@ risk:
     partial_exits:
       enabled: false
     regime_aware_stops: true
-  
+
   # Alpha Ranking Tournament Gating
   alpha_rank_multipliers:
     1: 1.5
