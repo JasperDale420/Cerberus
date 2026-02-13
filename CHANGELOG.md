@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Time window checks now fail closed with structured logging and handle overnight windows (2026-02-13).
+- Restored runtime stream/session helpers and strategy registry entries for test parity (2026-02-13).
 
 ### Added
 

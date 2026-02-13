@@ -3,7 +3,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from datetime import date as date_type
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
@@ -20,6 +20,86 @@ from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
+
+_MARKET_OPEN_LOCAL = time(9, 30)
+_MARKET_CLOSE_LOCAL = time(16, 0)
+
+
+def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
+    """Return True when Alpaca data stream should be used."""
+    executor = str(order_executor).strip().lower()
+    backend = str(data_backend).strip().lower()
+    if backend == "gateway" and executor == "noop":
+        return False
+    return True
+
+
+def _should_initialize_alpaca_client(order_executor: str, data_backend: str, failover_to_legacy: bool) -> bool:
+    """Return True when Alpaca client is needed for data or execution."""
+    executor = str(order_executor).strip().lower()
+    backend = str(data_backend).strip().lower()
+    if backend == "legacy":
+        return True
+    if backend == "dual":
+        return failover_to_legacy or executor == "alpaca"
+    return executor == "alpaca" or failover_to_legacy
+
+
+def _is_regular_market_session_local(now: datetime) -> bool:
+    """Return True if the provided local datetime is within RTH."""
+    if now.tzinfo is None:
+        raise ValueError("Timezone-aware datetime required for session checks")
+    if now.weekday() >= 5:
+        return False
+    now_time = now.timetz().replace(tzinfo=None)
+    return _MARKET_OPEN_LOCAL <= now_time <= _MARKET_CLOSE_LOCAL
+
+
+def _next_market_open_local(now: datetime) -> datetime:
+    """Return the next market open in the local timezone."""
+    if now.tzinfo is None:
+        raise ValueError("Timezone-aware datetime required for session checks")
+
+    candidate_date = now.date()
+    now_time = now.timetz().replace(tzinfo=None)
+    if now.weekday() < 5 and now_time < _MARKET_OPEN_LOCAL:
+        return datetime.combine(candidate_date, _MARKET_OPEN_LOCAL, tzinfo=now.tzinfo)
+
+    candidate_date = candidate_date + timedelta(days=1)
+    while candidate_date.weekday() >= 5:
+        candidate_date = candidate_date + timedelta(days=1)
+    return datetime.combine(candidate_date, _MARKET_OPEN_LOCAL, tzinfo=now.tzinfo)
+
+
+def _build_strategy_registry() -> dict[str, type]:
+    """Build the canonical strategy registry for runtime execution."""
+    from src.strategies.failed_breakout import FailedBreakoutStrategy
+    from src.strategies.flow_momentum import FlowMomentumStrategy
+    from src.strategies.fusion_v1 import FusionStrategyV1
+    from src.strategies.gap_fill import GapFillStrategy
+    from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
+    from src.strategies.momentum_continuation import MomentumContinuationStrategy
+    from src.strategies.orb import ORBStrategy
+    from src.strategies.pair_trading import PairTradingStrategy
+    from src.strategies.trend_pullback import TrendPullbackStrategy
+    from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
+    from src.strategies.vwap_reversion import VWAPReversionStrategy
+    from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
+
+    return {
+        "vwap_reversion": VWAPReversionStrategy,
+        "orb": ORBStrategy,
+        "vwap_trend_rider": VWAPTrendRiderStrategy,
+        "index_mean_reversion": IndexMeanReversionStrategy,
+        "flow_momentum": FlowMomentumStrategy,
+        "gap_fill": GapFillStrategy,
+        "vix_spike_fade": VixSpikeFadeStrategy,
+        "momentum_continuation": MomentumContinuationStrategy,
+        "fusion_v1": FusionStrategyV1,
+        "pair_trading": PairTradingStrategy,
+        "trend_pullback": TrendPullbackStrategy,
+        "failed_breakout": FailedBreakoutStrategy,
+    }
 
 
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
@@ -266,9 +346,7 @@ async def async_main():
     engine.scanner = scanner  # Inject scanner
     if args.order_executor == "gateway":
         if not runtime_settings.use_gateway_data:
-            raise ValueError(
-                "Gateway order executor requires CERBERUS_DATA_BACKEND=gateway|dual"
-            )
+            raise ValueError("Gateway order executor requires CERBERUS_DATA_BACKEND=gateway|dual")
         from src.engine.orders import GatewayOrderExecutor
 
         engine.order_executor = GatewayOrderExecutor(
@@ -282,34 +360,10 @@ async def async_main():
 
         engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore
     elif args.order_executor == "alpaca" and runtime_settings.use_gateway_data:
-        raise ValueError(
-            "Direct Alpaca order executor is blocked while CERBERUS_DATA_BACKEND uses gateway."
-        )
+        raise ValueError("Direct Alpaca order executor is blocked while CERBERUS_DATA_BACKEND uses gateway.")
 
     # Register Strategies (config-driven, deterministic; PRD plug-and-play intent)
-    from src.strategies.flow_momentum import FlowMomentumStrategy
-    from src.strategies.fusion_v1 import FusionStrategyV1
-    from src.strategies.gap_fill import GapFillStrategy
-    from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
-    from src.strategies.momentum_continuation import MomentumContinuationStrategy
-    from src.strategies.orb import ORBStrategy
-    from src.strategies.pair_trading import PairTradingStrategy
-    from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
-    from src.strategies.vwap_reversion import VWAPReversionStrategy
-    from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
-
-    strategy_registry = {
-        "vwap_reversion": VWAPReversionStrategy,
-        "orb": ORBStrategy,
-        "vwap_trend_rider": VWAPTrendRiderStrategy,
-        "index_mean_reversion": IndexMeanReversionStrategy,
-        "flow_momentum": FlowMomentumStrategy,
-        "gap_fill": GapFillStrategy,
-        "vix_spike_fade": VixSpikeFadeStrategy,
-        "momentum_continuation": MomentumContinuationStrategy,
-        "fusion_v1": FusionStrategyV1,
-        "pair_trading": PairTradingStrategy,
-    }
+    strategy_registry = _build_strategy_registry()
 
     strategies_cfg = config.get("strategies", {})
     if not isinstance(strategies_cfg, dict):
