@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     apca_api_secret_key: str | None = Field(default=None)
     alpaca_base_url: str | None = Field(default=None)
     apca_api_base_url: str | None = Field(default=None)
-    alpaca_paper: bool = Field(default=False)
+    alpaca_paper: bool = Field(default=True)
 
     # Data/Storage backend routing
     cerberus_data_backend: Literal["legacy", "gateway", "dual"] = Field(
-        default="legacy",
+        default="gateway",
         validation_alias=AliasChoices("CERBERUS_DATA_BACKEND"),
     )
     cerberus_storage_backend: Literal["sqlite", "heber", "dual"] = Field(

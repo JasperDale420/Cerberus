@@ -210,3 +210,11 @@ def test_use_heber_storage_property() -> None:
     assert sqlite.use_heber_storage is False
     assert heber.use_heber_storage is True
     assert dual.use_heber_storage is True
+
+
+def test_runtime_defaults_prefer_gateway_and_paper_mode() -> None:
+    """Runtime defaults should prefer gateway mode and paper trading."""
+    settings = Settings()
+
+    assert settings.cerberus_data_backend == "gateway"
+    assert settings.alpaca_paper is True

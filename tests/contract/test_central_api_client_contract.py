@@ -244,6 +244,52 @@ def test_get_alpaca_movers_contract_calls_expected_path() -> None:
 
 
 @pytest.mark.contract
+def test_submit_alpaca_order_contract_calls_expected_path_and_params() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["url"] = str(request.url)
+        seen["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={"success": True, "data": {"id": "broker-123", "symbol": "AAPL"}},
+        )
+
+    cfg = MagicMock()
+    cfg.get_env.side_effect = (
+        lambda key, default=None: "http://central.test"
+        if key in {"CERBERUS_GATEWAY_URL", "DATA_INGESTION_URL", "CENTRAL_LLM_API_URL"}
+        else default
+    )
+    logger = MagicMock()
+
+    c = CentralApiClient(cfg, logger)
+    c.client = _make_client(handler)
+
+    out = c.submit_alpaca_order(
+        symbol="AAPL",
+        side="buy",
+        qty=10.0,
+        order_type="limit",
+        time_in_force="day",
+        limit_price=199.5,
+        client_order_id="corr-1",
+    )
+
+    assert seen["method"] == "POST"
+    assert seen["url"].startswith("http://central.test/api/v1/alpaca/orders")
+    assert seen["query"]["symbol"] == "AAPL"
+    assert seen["query"]["side"] == "buy"
+    assert seen["query"]["qty"] == "10.0"
+    assert seen["query"]["order_type"] == "limit"
+    assert seen["query"]["time_in_force"] == "day"
+    assert seen["query"]["limit_price"] == "199.5"
+    assert seen["query"]["client_order_id"] == "corr-1"
+    assert out["id"] == "broker-123"
+
+
+@pytest.mark.contract
 @pytest.mark.parametrize(
     "method_name,args",
     [
@@ -253,6 +299,10 @@ def test_get_alpaca_movers_contract_calls_expected_path() -> None:
         ("get_uw_gex", ("SPY",)),
         ("get_alpaca_most_actives", (10,)),
         ("get_alpaca_movers", (10,)),
+        (
+            "submit_alpaca_order",
+            tuple(),
+        ),
         ("chat_completion", ("m", [{"role": "user", "content": "x"}])),
     ],
 )
@@ -273,7 +323,10 @@ def test_central_api_client_raises_on_http_error(method_name: str, args: tuple[A
 
     fn = getattr(c, method_name)
     with pytest.raises(httpx.HTTPError):
-        fn(*args)
+        if method_name == "submit_alpaca_order":
+            fn(symbol="AAPL", side="buy", qty=1.0)
+        else:
+            fn(*args)
 
 
 def _gateway_retry_cfg() -> MagicMock:
