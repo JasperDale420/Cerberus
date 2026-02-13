@@ -14,6 +14,7 @@ from src.core.logger import StructuredLogger
 from src.core.settings import get_settings
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
+from src.data.gateway_stream import GatewayStreamClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
@@ -222,6 +223,7 @@ async def async_main():
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
     central_api_client = CentralApiClient(config_loader, logger)
+    gateway_stream_client = GatewayStreamClient(config_loader, logger)
 
     feature_pipeline = FeaturePipeline(
         alpaca_client,
@@ -347,9 +349,13 @@ async def async_main():
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan
-    logger.info("Starting Alpaca stream...")
+    stream_client = gateway_stream_client if runtime_settings.use_gateway_data else alpaca_client
+    logger.info(
+        "Starting market data stream...",
+        backend="gateway" if runtime_settings.use_gateway_data else "alpaca",
+    )
     stream_task = asyncio.create_task(
-        alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+        stream_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
     )
     trade_stream_task = None
     if args.order_executor == "alpaca":
@@ -359,7 +365,7 @@ async def async_main():
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
     # Ensure index symbol is subscribed for regime detection.
-    alpaca_client.subscribe(config.get("index_symbol", "SPY"))
+    stream_client.subscribe(config.get("index_symbol", "SPY"))
 
     logger.info("Running initial scan...")
     try:
