@@ -4,7 +4,7 @@ services:
     build: .
     image: empire/cerberus:latest
     container_name: cerberus_trader
-    command: python -m src.main --mode paper --order-executor noop
+    command: python -m src.main --mode paper --order-executor gateway
     restart: always
     env_file:
       - .env
