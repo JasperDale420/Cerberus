@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Runtime stream-mode helper utilities for backend selection and market-session scheduling (2026-02-13).
+
+### Changed
+
+- Runtime strategy registry now includes `trend_pullback` and `failed_breakout` defaults (2026-02-13).
+- Market-session helpers now require timezone-aware datetimes (2026-02-13).
+
+### Fixed
+
+### Added
+
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):

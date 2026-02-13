@@ -3,6 +3,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from src.main import (
     _is_regular_market_session_local,
     _next_market_open_local,
@@ -102,3 +104,11 @@ def test_regular_market_session_false_weekend() -> None:
     tz = ZoneInfo("America/New_York")
     now = datetime(2026, 2, 14, 11, 0, tzinfo=tz)  # Saturday
     assert _is_regular_market_session_local(now) is False
+
+
+def test_market_helpers_require_timezone() -> None:
+    naive = datetime(2026, 2, 12, 10, 0)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _is_regular_market_session_local(naive)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _next_market_open_local(naive)
