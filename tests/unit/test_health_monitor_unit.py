@@ -10,7 +10,7 @@ from src.engine.health import HealthMonitor
 def test_record_error_recovers_from_non_int_count() -> None:
     logger = MagicMock()
     monitor = HealthMonitor(config={}, logger=logger, clock=lambda: datetime.now(timezone.utc))
-    monitor.error_counts["execution"] = "bad"
+    monitor.error_counts["execution"] = "bad"  # type: ignore[assignment]
 
     monitor.record_error("execution")
 

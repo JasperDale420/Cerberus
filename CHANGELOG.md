@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Health monitor now resets invalid error counters with warning logs, with unit coverage (2026-02-13).
 - Gap Fill opening-range minimum filter added with micro backtest coverage (2026-02-13).
+- Adjusted health monitor unit test typing for mypy clarity (2026-02-13).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:
