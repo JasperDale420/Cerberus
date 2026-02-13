@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored runtime strategy registry and market session helpers to satisfy startup mode tests (2026-02-13).
+- Feature pipeline close extraction now tolerates null close values (2026-02-13).
+
 ### Added
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
