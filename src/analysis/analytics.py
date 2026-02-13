@@ -35,16 +35,10 @@ class AnalyticsEngine:
             with self.db.get_session() as session:
                 # 1. Fetch Trades for Date
                 # We filter by entry_time or exit_time? Usually exit_time for realized PnL.
-                start_dt = datetime.combine(
-                    target_date, datetime.min.time(), tzinfo=timezone.utc
-                )
-                end_dt = datetime.combine(
-                    target_date, datetime.max.time(), tzinfo=timezone.utc
-                )
+                start_dt = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+                end_dt = datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc)
 
-                stmt = select(DbTrade).where(
-                    DbTrade.exit_time >= start_dt, DbTrade.exit_time <= end_dt
-                )
+                stmt = select(DbTrade).where(DbTrade.exit_time >= start_dt, DbTrade.exit_time <= end_dt)
                 trades = session.execute(stmt).scalars().all()
 
                 if not trades:
@@ -173,27 +167,15 @@ class AnalyticsEngine:
                         regime=row["regime"],
                         net_pnl=float(row["total_pnl"]),  # Mapped to net_pnl
                         n_trades=n_trades,  # Mapped to n_trades
-                        winrate=(
-                            float(row["win_count"] / row["trade_count"])
-                            if row["trade_count"] > 0
-                            else 0.0
-                        ),
+                        winrate=(float(row["win_count"] / row["trade_count"]) if row["trade_count"] > 0 else 0.0),
                         avg_r=avg_r,
-                        median_r=float(
-                            0.0 if pd.isna(row["median_r"]) else row["median_r"]
-                        ),
+                        median_r=float(0.0 if pd.isna(row["median_r"]) else row["median_r"]),
                         std_r=std_r,
                         max_drawdown_r=float(dd_by_group.get(key, 0.0)),
                         max_consecutive_losers=int(losers_by_group.get(key, 0)),
-                        std_dev_pnl=(
-                            float(row["std_dev"])
-                            if not pd.isna(row["std_dev"])
-                            else 0.0
-                        ),
+                        std_dev_pnl=(float(row["std_dev"]) if not pd.isna(row["std_dev"]) else 0.0),
                         z_score=0.0,
-                        pnl_r_total=float(
-                            0.0 if pd.isna(row["pnl_r_total"]) else row["pnl_r_total"]
-                        ),
+                        pnl_r_total=float(0.0 if pd.isna(row["pnl_r_total"]) else row["pnl_r_total"]),
                     )
 
                     # PRD 9.1: z = expectancy / se, where expectancy is avg_r.
@@ -241,9 +223,7 @@ class AnalyticsEngine:
 
         df_local = df.copy()
         if "exit_time" in df_local.columns:
-            df_local["exit_time"] = pd.to_datetime(
-                df_local["exit_time"], utc=True, errors="coerce"
-            )
+            df_local["exit_time"] = pd.to_datetime(df_local["exit_time"], utc=True, errors="coerce")
             df_local["exit_time_local"] = df_local["exit_time"].dt.tz_convert(tz)
             df_local["exit_hour"] = df_local["exit_time_local"].dt.hour
 
@@ -266,17 +246,9 @@ class AnalyticsEngine:
 
         # Summary
         total_trades = int(len(df_local))
-        pnl_total = (
-            float(df_local["pnl"].fillna(0.0).sum()) if "pnl" in df_local else 0.0
-        )
-        pnl_r_total = (
-            float(df_local["pnl_r"].fillna(0.0).sum()) if "pnl_r" in df_local else 0.0
-        )
-        winrate = (
-            float(df_local["win"].mean())
-            if "win" in df_local and total_trades > 0
-            else 0.0
-        )
+        pnl_total = float(df_local["pnl"].fillna(0.0).sum()) if "pnl" in df_local else 0.0
+        pnl_r_total = float(df_local["pnl_r"].fillna(0.0).sum()) if "pnl_r" in df_local else 0.0
+        winrate = float(df_local["win"].mean()) if "win" in df_local and total_trades > 0 else 0.0
         lines.append("## Summary\n")
         lines.append(f"- Trades: {total_trades}\n")
         lines.append(f"- Net PnL: {pnl_total:.2f}\n")
@@ -331,21 +303,13 @@ class AnalyticsEngine:
                 .reset_index()
                 .sort_values("exit_hour", ascending=True)
             )
-            lines.append(
-                _md_table(by_hour, ["exit_hour", "n_trades", "net_pnl", "total_r"])
-            )
+            lines.append(_md_table(by_hour, ["exit_hour", "n_trades", "net_pnl", "total_r"]))
 
         # Scanner score deciles
-        if (
-            "scanner_score" in df_local.columns
-            and df_local["scanner_score"].notna().any()
-        ):
+        if "scanner_score" in df_local.columns and df_local["scanner_score"].notna().any():
             lines.append("\n## Scanner Score Deciles\n")
             scored = df_local[df_local["scanner_score"].notna()].copy()
-            scored["scanner_decile"] = (
-                pd.qcut(scored["scanner_score"], 10, labels=False, duplicates="drop")
-                + 1
-            )
+            scored["scanner_decile"] = pd.qcut(scored["scanner_score"], 10, labels=False, duplicates="drop") + 1
             dec = (
                 scored.groupby("scanner_decile")
                 .agg(
@@ -357,21 +321,14 @@ class AnalyticsEngine:
                 .reset_index()
                 .sort_values("scanner_decile")
             )
-            lines.append(
-                _md_table(
-                    dec, ["scanner_decile", "n_trades", "net_pnl", "avg_r", "total_r"]
-                )
-            )
+            lines.append(_md_table(dec, ["scanner_decile", "n_trades", "net_pnl", "avg_r", "total_r"]))
 
         # Flow strength deciles (absolute z-score)
         if "flow_zscore" in df_local.columns and df_local["flow_zscore"].notna().any():
             lines.append("\n## Flow Strength Deciles (|flow_zscore|)\n")
             flowed = df_local[df_local["flow_zscore"].notna()].copy()
             flowed["flow_strength"] = flowed["flow_zscore"].abs()
-            flowed["flow_decile"] = (
-                pd.qcut(flowed["flow_strength"], 10, labels=False, duplicates="drop")
-                + 1
-            )
+            flowed["flow_decile"] = pd.qcut(flowed["flow_strength"], 10, labels=False, duplicates="drop") + 1
             fdec = (
                 flowed.groupby("flow_decile")
                 .agg(
@@ -383,11 +340,7 @@ class AnalyticsEngine:
                 .reset_index()
                 .sort_values("flow_decile")
             )
-            lines.append(
-                _md_table(
-                    fdec, ["flow_decile", "n_trades", "net_pnl", "avg_r", "total_r"]
-                )
-            )
+            lines.append(_md_table(fdec, ["flow_decile", "n_trades", "net_pnl", "avg_r", "total_r"]))
 
         out_path.write_text("".join(lines))
         self.logger.info("Daily report written", path=str(out_path))

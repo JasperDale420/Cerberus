@@ -31,22 +31,12 @@ def test_stage2_tune_param_persists_and_is_flattened_into_runtime_config(
         )
     )
     (tmp_path / "strategies.yaml").write_text(
-        yaml.safe_dump(
-            {"strategies": {"vwap_reversion": {"enabled": True, "band_sigma": 2.0}}}
-        )
+        yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True, "band_sigma": 2.0}}})
     )
-    (tmp_path / "risk.yaml").write_text(
-        yaml.safe_dump({"risk": {"max_risk_per_trade": 5.0}})
-    )
-    (tmp_path / "scanner.yaml").write_text(
-        yaml.safe_dump({"scanner": {"max_watchlist_size": 10}})
-    )
-    (tmp_path / "universe.yaml").write_text(
-        yaml.safe_dump({"universe": {"symbols": ["SPY"]}})
-    )
-    (tmp_path / "logging.yaml").write_text(
-        yaml.safe_dump({"logging": {"format": "json"}})
-    )
+    (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 5.0}}))
+    (tmp_path / "scanner.yaml").write_text(yaml.safe_dump({"scanner": {"max_watchlist_size": 10}}))
+    (tmp_path / "universe.yaml").write_text(yaml.safe_dump({"universe": {"symbols": ["SPY"]}}))
+    (tmp_path / "logging.yaml").write_text(yaml.safe_dump({"logging": {"format": "json"}}))
 
     logger = MagicMock()
     loader = ConfigLoader(config_dir=str(tmp_path))

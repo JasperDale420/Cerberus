@@ -31,9 +31,7 @@ class FlowMomentumStrategy(BaseStrategy):
         self.vol_mult = cfg.vol_mult
         self.risk_reward = cfg.risk_reward
 
-    def _validate_flow_direction(
-        self, symbol_state: SymbolState
-    ) -> tuple[bool, float, float]:
+    def _validate_flow_direction(self, symbol_state: SymbolState) -> tuple[bool, float, float]:
         """
         Validate flow zscore and call/put ratio agreement.
 
@@ -130,9 +128,7 @@ class FlowMomentumStrategy(BaseStrategy):
         # Regime gating removed - handled by strategy routing at engine level
 
         # Validate flow direction and agreement
-        is_valid, flow_score, call_put_ratio = self._validate_flow_direction(
-            symbol_state
-        )
+        is_valid, flow_score, call_put_ratio = self._validate_flow_direction(symbol_state)
         if not is_valid:
             return None
 

@@ -26,17 +26,13 @@ class UnusualWhalesClient:
     ):
         self.logger = logger
         self.api_token = str(config_loader.get_env("UW_API_TOKEN", "")).strip()
-        base_url_env = str(
-            config_loader.get_env("UW_BASE_URL", "https://api.unusualwhales.com")
-        ).strip()
+        base_url_env = str(config_loader.get_env("UW_BASE_URL", "https://api.unusualwhales.com")).strip()
         self.base_url = base_url_env or "https://api.unusualwhales.com"
 
         if isinstance(config, dict):
             uw_cfg0 = config.get("unusual_whales")
             if isinstance(uw_cfg0, dict):
-                self.base_url = (
-                    str(uw_cfg0.get("base_url", self.base_url)).strip() or self.base_url
-                )
+                self.base_url = str(uw_cfg0.get("base_url", self.base_url)).strip() or self.base_url
 
         # Prefer merged config if provided; allow env override.
         from_cfg = ""
@@ -45,9 +41,7 @@ class UnusualWhalesClient:
             if isinstance(uw_cfg, dict):
                 from_cfg = str(uw_cfg.get("flow_url_template", "")).strip()
 
-        from_env = str(
-            config_loader.get_env("UNUSUAL_WHALES_FLOW_URL_TEMPLATE", "")
-        ).strip()
+        from_env = str(config_loader.get_env("UNUSUAL_WHALES_FLOW_URL_TEMPLATE", "")).strip()
         self.flow_url_template = from_env or from_cfg
         self._client = client or httpx.AsyncClient(timeout=15.0)
 

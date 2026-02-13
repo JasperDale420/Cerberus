@@ -47,9 +47,7 @@ def run():
     )
 
     result = (
-        df.groupby(["strategy", "regime"])
-        .agg(trade_count=("pnl", "count"), total_pnl=("pnl", "sum"))
-        .reset_index()
+        df.groupby(["strategy", "regime"]).agg(trade_count=("pnl", "count"), total_pnl=("pnl", "sum")).reset_index()
     )
 
     for _, row in result.iterrows():

@@ -50,11 +50,7 @@ def test_bullish_flow_momentum(fm_strategy):
     bars = []
     start_dt = datetime.now() - timedelta(minutes=150)
     for i in range(25):
-        bars.append(
-            Bar(
-                "TEST", start_dt + timedelta(minutes=i * 5), 100, 100.1, 99.9, 100, 1000
-            )
-        )  # Avg Vol ~1000
+        bars.append(Bar("TEST", start_dt + timedelta(minutes=i * 5), 100, 100.1, 99.9, 100, 1000))  # Avg Vol ~1000
 
     # 2. Bullish Momentum Candle
     # High Volume (2000 > 1000 * 1.5)
@@ -107,15 +103,9 @@ def test_bearish_flow_momentum(fm_strategy):
     bars = []
     start_dt = datetime.now() - timedelta(minutes=150)
     for i in range(25):
-        bars.append(
-            Bar(
-                "TEST", start_dt + timedelta(minutes=i * 5), 100, 100.1, 99.9, 100, 1000
-            )
-        )
+        bars.append(Bar("TEST", start_dt + timedelta(minutes=i * 5), 100, 100.1, 99.9, 100, 1000))
 
-    b_mom = Bar(
-        "TEST", start_dt + timedelta(minutes=25 * 5), 100, 100, 98, 98, 2000
-    )  # Red Candle, High Vol
+    b_mom = Bar("TEST", start_dt + timedelta(minutes=25 * 5), 100, 100, 98, 98, 2000)  # Red Candle, High Vol
 
     symbol_state = SymbolState(
         symbol="TEST",

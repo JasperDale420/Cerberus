@@ -91,20 +91,14 @@ class FailedBreakoutStrategy(BaseStrategy):
             symbol_state.indicators["breached_pdl"] = True
 
         # 3. Check for Failure (Fade Setup)
-        signal = self._check_bearish_fade(
-            symbol, bar, symbol_state, market_state, pdh, has_breached_high
-        )
+        signal = self._check_bearish_fade(symbol, bar, symbol_state, market_state, pdh, has_breached_high)
         if signal:
             return signal
 
-        signal = self._check_bullish_fade(
-            symbol, bar, symbol_state, market_state, pdl, has_breached_low
-        )
+        signal = self._check_bullish_fade(symbol, bar, symbol_state, market_state, pdl, has_breached_low)
         return signal
 
-    def _check_bearish_fade(
-        self, symbol, bar, symbol_state, market_state, pdh, has_breached_high
-    ) -> Optional[Signal]:
+    def _check_bearish_fade(self, symbol, bar, symbol_state, market_state, pdh, has_breached_high) -> Optional[Signal]:
         # Regime gating removed - handled by engine
         if not has_breached_high:
             return None
@@ -145,9 +139,7 @@ class FailedBreakoutStrategy(BaseStrategy):
             meta={"pdh": pdh, "type": "fade_high"},
         )
 
-    def _check_bullish_fade(
-        self, symbol, bar, symbol_state, market_state, pdl, has_breached_low
-    ) -> Optional[Signal]:
+    def _check_bullish_fade(self, symbol, bar, symbol_state, market_state, pdl, has_breached_low) -> Optional[Signal]:
         # Regime gating removed - handled by engine
         if not has_breached_low:
             return None

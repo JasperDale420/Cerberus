@@ -118,9 +118,7 @@ def test_on_bar_not_enough_bars(strategy):
 @pytest.mark.unit
 def test_signal_generation_buy(strategy):
     """Test buy signal with RSI oversold confirmation using Wilder smoothing."""
-    market = MarketState(
-        time=datetime(2023, 1, 1, 15, 0, tzinfo=timezone.utc), regime=Regime.CHOP
-    )
+    market = MarketState(time=datetime(2023, 1, 1, 15, 0, tzinfo=timezone.utc), regime=Regime.CHOP)
 
     # Create strong downtrend followed by recovery to trigger RSI oversold->recovery
     # With Wilder smoothing, we need sustained moves to get extreme RSI values
@@ -151,9 +149,7 @@ def test_signal_generation_buy(strategy):
 @pytest.mark.unit
 def test_signal_generation_sell(strategy):
     """Test sell signal with RSI overbought confirmation using Wilder smoothing."""
-    market = MarketState(
-        time=datetime(2023, 1, 1, 15, 0, tzinfo=timezone.utc), regime=Regime.CHOP
-    )
+    market = MarketState(time=datetime(2023, 1, 1, 15, 0, tzinfo=timezone.utc), regime=Regime.CHOP)
 
     # Create strong uptrend followed by pullback to trigger RSI overbought->rollover
     # Start at 100, rally to 110 (sustained up), then pullback to 108

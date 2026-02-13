@@ -20,7 +20,7 @@ artifacts/
 *_output.txt
 
 # Offline bar data (too large for git)
-data/
+/data/
 results/
 artifacts/
 

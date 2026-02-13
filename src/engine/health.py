@@ -69,6 +69,4 @@ class HealthMonitor:
     def update_config(self, config: Dict[str, Any]) -> None:
         """Updates configuration for health monitoring."""
         self.config = config
-        self._health_log_interval_sec = int(
-            config.get("health_log_interval_sec", self._health_log_interval_sec)
-        )
+        self._health_log_interval_sec = int(config.get("health_log_interval_sec", self._health_log_interval_sec))

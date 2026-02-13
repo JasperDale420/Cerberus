@@ -115,9 +115,7 @@ class FusionStrategyV1(BaseStrategy):
         market_state: MarketState,
     ) -> Optional[Signal]:
         """Aligns price, relative strength, and options flow factors."""
-        if not symbol_state.indicators.get(
-            "orb_complete"
-        ) and not symbol_state.meta.get("scanner_bypass"):
+        if not symbol_state.indicators.get("orb_complete") and not symbol_state.meta.get("scanner_bypass"):
             return None
 
         orb_high = symbol_state.indicators.get("orb_high")

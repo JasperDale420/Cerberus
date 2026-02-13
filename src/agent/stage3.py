@@ -64,18 +64,12 @@ class DeterministicStage3Evaluator:
         self.config = config
         self.config_loader = config_loader
         self.logger = logger
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
         self.bars_provider = bars_provider
-        self.alpaca = (
-            AlpacaClient(config_loader, logger) if bars_provider is None else None
-        )
+        self.alpaca = AlpacaClient(config_loader, logger) if bars_provider is None else None
 
     def _bars_window(self, as_of: datetime) -> tuple[datetime, datetime]:
-        agent_cfg = (
-            (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
-        )
+        agent_cfg = (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
         stage3 = (agent_cfg.get("stage3") or {}) if isinstance(agent_cfg, dict) else {}
         backtest = (stage3.get("backtest") or {}) if isinstance(stage3, dict) else {}
         window_days = int(backtest.get("window_days", 30))
@@ -84,9 +78,7 @@ class DeterministicStage3Evaluator:
         return start, end
 
     def _symbols(self) -> List[str]:
-        agent_cfg = (
-            (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
-        )
+        agent_cfg = (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
         stage3 = (agent_cfg.get("stage3") or {}) if isinstance(agent_cfg, dict) else {}
         backtest = (stage3.get("backtest") or {}) if isinstance(stage3, dict) else {}
         symbols = backtest.get("symbols") if isinstance(backtest, dict) else None
@@ -100,9 +92,7 @@ class DeterministicStage3Evaluator:
 
     def _fetch_bars(self, symbol: str, start: datetime, end: datetime) -> List[Bar]:
         if self.bars_provider is not None:
-            return list(
-                self.bars_provider.get_bars(symbol, start, end, timeframe="1Min")
-            )
+            return list(self.bars_provider.get_bars(symbol, start, end, timeframe="1Min"))
         if self.alpaca is None:
             return []
 
@@ -186,9 +176,7 @@ class DeterministicStage3Evaluator:
         start, end = self._bars_window(now)
         symbols = self._symbols()
         if not symbols:
-            self.logger.warning(
-                "Stage 3 evaluator has no symbols; returning empty metrics"
-            )
+            self.logger.warning("Stage 3 evaluator has no symbols; returning empty metrics")
             return Stage3Metrics(expectancy=0.0, max_drawdown_r=0.0, n_trades=0)
 
         mod = self._load_candidate_module(code)
@@ -204,10 +192,7 @@ class DeterministicStage3Evaluator:
         max_workers = min(10, len(symbols))
         if max_workers > 0:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(self._fetch_bars, sym, start, end): sym
-                    for sym in symbols
-                }
+                futures = {executor.submit(self._fetch_bars, sym, start, end): sym for sym in symbols}
                 for future in futures:
                     sym = futures[future]
                     try:
@@ -264,25 +249,15 @@ class DeterministicStage3Evaluator:
                     if rps <= 0:
                         open_trade = None
                     else:
-                        stop_hit = (
-                            (bar.low <= stop) if side == "buy" else (bar.high >= stop)
-                        )
-                        target_hit = (
-                            (bar.high >= target)
-                            if side == "buy"
-                            else (bar.low <= target)
-                        )
+                        stop_hit = (bar.low <= stop) if side == "buy" else (bar.high >= stop)
+                        target_hit = (bar.high >= target) if side == "buy" else (bar.low <= target)
                         exit_px = None
                         if stop_hit:
                             exit_px = stop
                         elif target_hit:
                             exit_px = target
                         if exit_px is not None:
-                            pnl_r = (
-                                ((exit_px - entry) / rps)
-                                if side == "buy"
-                                else ((entry - exit_px) / rps)
-                            )
+                            pnl_r = ((exit_px - entry) / rps) if side == "buy" else ((entry - exit_px) / rps)
                             pnl_r_series.append(float(pnl_r))
                             open_trade = None
 
@@ -310,9 +285,7 @@ class DeterministicStage3Evaluator:
             equity += float(r)
             peak = max(peak, equity)
             max_dd = max(max_dd, peak - equity)
-        return Stage3Metrics(
-            expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n)
-        )
+        return Stage3Metrics(expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n))
 
 
 class Stage3Proposer:
@@ -379,9 +352,7 @@ class Stage3Proposer:
                 "Agent Stage 3 backtest enabled but no offline bars source configured",
                 required_key="agent.stage3.offline_bars_dir",
             )
-            raise ValueError(
-                "Agent Stage 3 backtest requires agent.stage3.offline_bars_dir for offline determinism"
-            )
+            raise ValueError("Agent Stage 3 backtest requires agent.stage3.offline_bars_dir for offline determinism")
 
         if self.llm_client is None:
             self.llm_client = LLMClient(self.config_loader, self.logger)
@@ -459,9 +430,7 @@ Output valid Python code only."""
             if not isinstance(parsed, dict):
                 raise ValueError("stage3_response_not_dict")
             new_code = str(parsed.get("strategy_code", "") or "").strip()
-            new_profiles_code = str(
-                parsed.get("scanner_profiles_code", "") or ""
-            ).strip()
+            new_profiles_code = str(parsed.get("scanner_profiles_code", "") or "").strip()
         except Exception:
             new_code = response.replace("```python", "").replace("```", "").strip()
             new_profiles_code = ""
@@ -474,19 +443,11 @@ Output valid Python code only."""
         if backtest_enabled:
             # Baseline params load
             strategies_cfg = cfg.get("strategies") if isinstance(cfg, dict) else None
-            if isinstance(strategies_cfg, dict) and isinstance(
-                strategies_cfg.get("strategies"), dict
-            ):
+            if isinstance(strategies_cfg, dict) and isinstance(strategies_cfg.get("strategies"), dict):
                 strategies_cfg = strategies_cfg.get("strategies")
-            baseline_params = (
-                (strategies_cfg or {}).get(stats.strategy, {})
-                if isinstance(strategies_cfg, dict)
-                else {}
-            )
+            baseline_params = (strategies_cfg or {}).get(stats.strategy, {}) if isinstance(strategies_cfg, dict) else {}
             if isinstance(baseline_params, dict):
-                baseline_params = {
-                    k: v for k, v in baseline_params.items() if k != "enabled"
-                }
+                baseline_params = {k: v for k, v in baseline_params.items() if k != "enabled"}
             else:
                 baseline_params = {}
 
@@ -499,9 +460,7 @@ Output valid Python code only."""
 
             now = datetime.now(timezone.utc)
 
-            if self.evaluator is not None and not hasattr(
-                self.evaluator, "evaluate_code"
-            ):
+            if self.evaluator is not None and not hasattr(self.evaluator, "evaluate_code"):
                 # Custom evaluator injected
                 out = self.evaluator(stats, source_code, new_code, cfg)
                 baseline_metrics = out.get("baseline_metrics")
@@ -517,14 +476,10 @@ Output valid Python code only."""
                 evaluator_s3 = (
                     self.evaluator
                     if self.evaluator
-                    else DeterministicStage3Evaluator(
-                        cfg, self.config_loader, self.logger, bars_provider=provider
-                    )
+                    else DeterministicStage3Evaluator(cfg, self.config_loader, self.logger, bars_provider=provider)
                 )
 
-                baseline_metrics_obj = evaluator_s2.evaluate(
-                    stats.strategy, regime, dict(baseline_params), as_of=now
-                )
+                baseline_metrics_obj = evaluator_s2.evaluate(stats.strategy, regime, dict(baseline_params), as_of=now)
                 baseline_metrics = {
                     "expectancy": baseline_metrics_obj.expectancy,
                     "max_drawdown_r": baseline_metrics_obj.max_drawdown_r,
@@ -559,11 +514,9 @@ Output valid Python code only."""
 
             gate_passed = (
                 int(candidate_metrics.get("n_trades", 0)) >= int(min_trades)
-                and float(candidate_metrics.get("max_drawdown_r", 0.0))
-                <= float(max_dd_r)
+                and float(candidate_metrics.get("max_drawdown_r", 0.0)) <= float(max_dd_r)
                 and float(candidate_metrics.get("expectancy", 0.0))
-                >= float(baseline_metrics.get("expectancy", 0.0))
-                + float(min_expectancy_delta)
+                >= float(baseline_metrics.get("expectancy", 0.0)) + float(min_expectancy_delta)
             )
 
             if not gate_passed:
@@ -580,9 +533,7 @@ Output valid Python code only."""
                 return []
 
         # Artifact generation
-        proposal_dir = (
-            "src/strategies/proposals" if write_to_src else "artifacts/proposals"
-        )
+        proposal_dir = "src/strategies/proposals" if write_to_src else "artifacts/proposals"
         os.makedirs(proposal_dir, exist_ok=True)
         proposal_filename = f"{stats.strategy}_v2.py"
         proposal_path = os.path.join(proposal_dir, proposal_filename)
@@ -593,9 +544,7 @@ Output valid Python code only."""
         profiles_proposal_path = ""
         profiles_diff_path = ""
         if propose_scanner_profiles and new_profiles_code:
-            profiles_proposal_path = os.path.join(
-                proposal_dir, "scanner_profiles_v2.py"
-            )
+            profiles_proposal_path = os.path.join(proposal_dir, "scanner_profiles_v2.py")
             with open(profiles_proposal_path, "w") as f:
                 f.write(new_profiles_code)
 
@@ -679,12 +628,8 @@ Output valid Python code only."""
                     "proposal_file": proposal_path,
                     "diff_file": diff_path,
                     "summary_file": summary_path,
-                    "scanner_profiles_proposal_file": (
-                        profiles_proposal_path if profiles_proposal_path else None
-                    ),
-                    "scanner_profiles_diff_file": (
-                        profiles_diff_path if profiles_diff_path else None
-                    ),
+                    "scanner_profiles_proposal_file": (profiles_proposal_path if profiles_proposal_path else None),
+                    "scanner_profiles_diff_file": (profiles_diff_path if profiles_diff_path else None),
                 },
                 reason="LLM Stage 3 code proposal",
             )

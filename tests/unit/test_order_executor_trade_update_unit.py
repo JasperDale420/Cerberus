@@ -22,9 +22,7 @@ def test_order_executor_handle_trade_update_normalizes_fill_event() -> None:
     logger = StructuredLogger("test_trade_update", level="INFO")
     alpaca = MagicMock()
     alpaca.trading_client = MagicMock()
-    executor = OrderExecutor(
-        alpaca, logger, db=None, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    executor = OrderExecutor(alpaca, logger, db=None, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
 
     order = SimpleNamespace(
         id="oid-1",
@@ -54,15 +52,11 @@ def test_order_executor_handle_trade_update_normalizes_fill_event() -> None:
 
 
 @pytest.mark.unit
-def test_order_executor_handle_trade_update_falls_back_correlation_id_when_missing() -> (
-    None
-):
+def test_order_executor_handle_trade_update_falls_back_correlation_id_when_missing() -> None:
     logger = StructuredLogger("test_trade_update_fallback", level="INFO")
     alpaca = MagicMock()
     alpaca.trading_client = MagicMock()
-    executor = OrderExecutor(
-        alpaca, logger, db=None, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    executor = OrderExecutor(alpaca, logger, db=None, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
 
     order = SimpleNamespace(
         id="oid-1",

@@ -41,7 +41,7 @@ dev = [
 ]
 
 [tool.ruff]
-extend = "../ruff-base.toml"
+extend = "ruff-base.toml"
 # Exclude a variety of commonly ignored directories.
 
 line-length = 120

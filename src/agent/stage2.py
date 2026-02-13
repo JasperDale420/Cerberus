@@ -58,20 +58,14 @@ class DeterministicStage2Evaluator:
         self.config = config
         self.config_loader = config_loader
         self.logger = logger
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
         self.bars_provider = bars_provider
-        self.alpaca = (
-            AlpacaClient(config_loader, logger) if bars_provider is None else None
-        )
+        self.alpaca = AlpacaClient(config_loader, logger) if bars_provider is None else None
 
     def _fetch_bars(self, symbol: str, start: datetime, end: datetime) -> List[Bar]:
         if self.bars_provider is not None:
-            return list(
-                self.bars_provider.get_bars(symbol, start, end, timeframe="1Min")
-            )
+            return list(self.bars_provider.get_bars(symbol, start, end, timeframe="1Min"))
         if self.alpaca is None:
             return []
 
@@ -103,9 +97,7 @@ class DeterministicStage2Evaluator:
         return out
 
     def _bars_window(self, as_of: datetime) -> tuple[datetime, datetime]:
-        agent_cfg = (
-            (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
-        )
+        agent_cfg = (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}
         stage2 = (agent_cfg.get("stage2") or {}) if isinstance(agent_cfg, dict) else {}
         window_days = int(stage2.get("window_days", 30))
         end = as_of
@@ -114,9 +106,7 @@ class DeterministicStage2Evaluator:
 
     def _symbols(self) -> List[str]:
         stage2 = (
-            ((self.config.get("agent") or {}).get("stage2") or {})
-            if isinstance(self.config.get("agent"), dict)
-            else {}
+            ((self.config.get("agent") or {}).get("stage2") or {}) if isinstance(self.config.get("agent"), dict) else {}
         )
         symbols = stage2.get("symbols") if isinstance(stage2, dict) else None
         if isinstance(symbols, list) and symbols:
@@ -128,9 +118,7 @@ class DeterministicStage2Evaluator:
             return sorted({str(s).upper() for s in uni_symbols if s})
         return []
 
-    def _strategy_instance(
-        self, strategy_name: str, params: Dict[str, Any]
-    ) -> BaseStrategy:
+    def _strategy_instance(self, strategy_name: str, params: Dict[str, Any]) -> BaseStrategy:
         # Minimal deterministic mapping for existing strategies.
         from src.strategies.failed_breakout import FailedBreakoutStrategy
         from src.strategies.flow_momentum import FlowMomentumStrategy
@@ -178,9 +166,7 @@ class DeterministicStage2Evaluator:
             start, end = self._bars_window(now)
         symbols = self._symbols()
         if not symbols:
-            self.logger.warning(
-                "Stage 2 evaluator has no symbols; returning empty metrics"
-            )
+            self.logger.warning("Stage 2 evaluator has no symbols; returning empty metrics")
             return Stage2Metrics(expectancy=0.0, max_drawdown_r=0.0, n_trades=0)
 
         strat = self._strategy_instance(strategy_name, params)
@@ -194,10 +180,7 @@ class DeterministicStage2Evaluator:
         max_workers = min(10, len(symbols))
         if max_workers > 0:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(self._fetch_bars, sym, start, end): sym
-                    for sym in symbols
-                }
+                futures = {executor.submit(self._fetch_bars, sym, start, end): sym for sym in symbols}
                 for future in futures:
                     sym = futures[future]
                     try:
@@ -212,9 +195,7 @@ class DeterministicStage2Evaluator:
 
             state = SymbolState(
                 symbol=sym,
-                bars=__import__("collections").deque(
-                    maxlen=500
-                ),  # Safe dynamic import for deque
+                bars=__import__("collections").deque(maxlen=500),  # Safe dynamic import for deque
                 indicators={},
                 position=None,
                 open_orders={},
@@ -260,14 +241,8 @@ class DeterministicStage2Evaluator:
                     if rps <= 0:
                         open_trade = None
                     else:
-                        stop_hit = (
-                            (bar.low <= stop) if side == "buy" else (bar.high >= stop)
-                        )
-                        target_hit = (
-                            (bar.high >= target)
-                            if side == "buy"
-                            else (bar.low <= target)
-                        )
+                        stop_hit = (bar.low <= stop) if side == "buy" else (bar.high >= stop)
+                        target_hit = (bar.high >= target) if side == "buy" else (bar.low <= target)
 
                         exit_px = None
                         if stop_hit:
@@ -277,21 +252,13 @@ class DeterministicStage2Evaluator:
 
                         # Deterministic max-hold exit if configured.
                         max_hold_sec = open_trade.get("max_hold_seconds")
-                        if (
-                            exit_px is None
-                            and isinstance(max_hold_sec, int)
-                            and max_hold_sec > 0
-                        ):
+                        if exit_px is None and isinstance(max_hold_sec, int) and max_hold_sec > 0:
                             dt = (bar.time - open_trade["entry_time"]).total_seconds()
                             if dt >= max_hold_sec:
                                 exit_px = float(bar.close)
 
                         if exit_px is not None:
-                            pnl_r = (
-                                ((exit_px - entry) / rps)
-                                if side == "buy"
-                                else ((entry - exit_px) / rps)
-                            )
+                            pnl_r = ((exit_px - entry) / rps) if side == "buy" else ((entry - exit_px) / rps)
                             pnl_r_series.append(float(pnl_r))
                             open_trade = None
 
@@ -331,9 +298,7 @@ class DeterministicStage2Evaluator:
             peak = max(peak, equity)
             max_dd = max(max_dd, peak - equity)
 
-        return Stage2Metrics(
-            expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n)
-        )
+        return Stage2Metrics(expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n))
 
 
 class Stage2Tuner:
@@ -381,18 +346,12 @@ class Stage2Tuner:
                 "Agent Stage 2 enabled but no offline bars source configured",
                 required_key="agent.stage2.offline_bars_dir",
             )
-            raise ValueError(
-                "Agent Stage 2 requires agent.stage2.offline_bars_dir for offline determinism"
-            )
+            raise ValueError("Agent Stage 2 requires agent.stage2.offline_bars_dir for offline determinism")
 
         now = as_of or datetime.now(timezone.utc)
 
-        raw_search_space = (
-            stage2.get("search_space") if isinstance(stage2, dict) else None
-        )
-        search_space: Dict[str, Any] = (
-            dict(raw_search_space) if isinstance(raw_search_space, dict) else {}
-        )
+        raw_search_space = stage2.get("search_space") if isinstance(stage2, dict) else None
+        search_space: Dict[str, Any] = dict(raw_search_space) if isinstance(raw_search_space, dict) else {}
         strat_space = search_space.get(stats.strategy, {})
         if not strat_space:
             return []
@@ -468,9 +427,9 @@ class Stage2Tuner:
         # Baseline checks: skip if no improvement
         if float(best_metrics["expectancy"]) <= baseline_expectancy:
             return []
-        if float(best_metrics["max_drawdown_r"]) > baseline_dd and float(
-            best_metrics["max_drawdown_r"]
-        ) > float(max_dd_r):
+        if float(best_metrics["max_drawdown_r"]) > baseline_dd and float(best_metrics["max_drawdown_r"]) > float(
+            max_dd_r
+        ):
             # Only allow DD increase if it's within global limits
             return []
 
@@ -478,16 +437,12 @@ class Stage2Tuner:
         wf_cfg = stage2.get("walk_forward", {})
         if wf_cfg.get("enabled", False):
             step = int(wf_cfg.get("step_days", 7))
-            windows = self.wf_manager.get_windows(
-                now, int(stage2.get("window_days", 30)), step
-            )
+            windows = self.wf_manager.get_windows(now, int(stage2.get("window_days", 30)), step)
 
             wf_results = []
             for start, end in windows:
 
-                def _wf_eval(
-                    params_inner: Dict[str, Any], s=start, e=end
-                ) -> Dict[str, Any]:
+                def _wf_eval(params_inner: Dict[str, Any], s=start, e=end) -> Dict[str, Any]:
                     merged = {**current_config, **params_inner}
                     m = evaluator.evaluate(
                         stats.strategy,

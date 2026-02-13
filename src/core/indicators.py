@@ -223,13 +223,9 @@ class RollingADX:
         else:
             self.smoothed_tr = self.smoothed_tr - (self.smoothed_tr / p) + tr
             if self.smoothed_plus_dm is not None:
-                self.smoothed_plus_dm = (
-                    self.smoothed_plus_dm - (self.smoothed_plus_dm / p) + plus_dm
-                )
+                self.smoothed_plus_dm = self.smoothed_plus_dm - (self.smoothed_plus_dm / p) + plus_dm
             if self.smoothed_minus_dm is not None:
-                self.smoothed_minus_dm = (
-                    self.smoothed_minus_dm - (self.smoothed_minus_dm / p) + minus_dm
-                )
+                self.smoothed_minus_dm = self.smoothed_minus_dm - (self.smoothed_minus_dm / p) + minus_dm
 
         # Calculate +DI and -DI
         if (

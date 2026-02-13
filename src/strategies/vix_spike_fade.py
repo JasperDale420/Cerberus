@@ -40,25 +40,17 @@ class VixSpikeFadeStrategy(BaseStrategy):
         super().__init__(config, logger)
 
         # Allowed symbols (index ETFs only)
-        self.allowed_symbols = {
-            s.upper() for s in config.get("symbols", ["SPY", "QQQ"])
-        }
+        self.allowed_symbols = {s.upper() for s in config.get("symbols", ["SPY", "QQQ"])}
 
         # VIX thresholds
-        self.vix_spike_pct = float(
-            config.get("vix_spike_pct", self.DEFAULT_VIX_SPIKE_PCT)
-        )
+        self.vix_spike_pct = float(config.get("vix_spike_pct", self.DEFAULT_VIX_SPIKE_PCT))
         self.vix_absolute = float(config.get("vix_absolute", self.DEFAULT_VIX_ABSOLUTE))
 
         # Index drop threshold
-        self.index_drop_pct = float(
-            config.get("index_drop_pct", self.DEFAULT_INDEX_DROP_PCT)
-        )
+        self.index_drop_pct = float(config.get("index_drop_pct", self.DEFAULT_INDEX_DROP_PCT))
 
         # Exit parameters
-        self.reversion_target = float(
-            config.get("reversion_target", self.DEFAULT_REVERSION_TARGET)
-        )
+        self.reversion_target = float(config.get("reversion_target", self.DEFAULT_REVERSION_TARGET))
         self.stop_buffer = float(config.get("stop_buffer", self.DEFAULT_STOP_BUFFER))
 
         # Time window (after dust settles)
@@ -105,9 +97,7 @@ class VixSpikeFadeStrategy(BaseStrategy):
         vix_current, vix_open, vix_change_pct = vix_data
 
         # 6. Check VIX spike conditions
-        is_vix_spike = (
-            vix_change_pct >= self.vix_spike_pct or vix_current >= self.vix_absolute
-        )
+        is_vix_spike = vix_change_pct >= self.vix_spike_pct or vix_current >= self.vix_absolute
         if not is_vix_spike:
             return None
 
@@ -161,9 +151,7 @@ class VixSpikeFadeStrategy(BaseStrategy):
             },
         )
 
-    def _get_vix_data(
-        self, market_state: MarketState
-    ) -> Optional[tuple[float, float, float]]:
+    def _get_vix_data(self, market_state: MarketState) -> Optional[tuple[float, float, float]]:
         """
         Extract VIX data from market_state.meta.
 

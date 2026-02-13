@@ -30,13 +30,9 @@ class ErrorMessageStatingThatTheRequestedElementWasNotFoundCausingAnEmptyResultT
     @classmethod
     def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
-        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated = (
-            cls()
-        )
+        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated = cls()
 
-        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated.additional_properties = (
-            d
-        )
+        error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated.additional_properties = d
         return error_message_stating_that_the_requested_element_was_not_found_causing_an_empty_result_to_be_generated
 
     @property

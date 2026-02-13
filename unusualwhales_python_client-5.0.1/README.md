@@ -9,7 +9,7 @@ Thank you @unusualwhales for providing an excellent api!
 import os
 import decimal
 from dotenv import load_dotenv
-from unusualwhales import UnusualWhalesClient, 
+from unusualwhales import UnusualWhalesClient,
 
 from unusualwhales.models import OffLitPriceLevelResults, OffLitPriceLevel
 from unusualwhales.api.stock import get_volume_by_price_level

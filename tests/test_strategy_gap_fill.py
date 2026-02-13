@@ -59,9 +59,7 @@ def test_on_bar_ignored_if_strong_trend(gap_fill):
 @pytest.mark.unit
 def test_on_bar_accepted_if_weak_trend(gap_fill):
     # Weak trend score < 1.0 (default)
-    market = MarketState(
-        time=datetime.now(timezone.utc), regime=Regime.BULL, meta={"trend_score": 0.5}
-    )
+    market = MarketState(time=datetime.now(timezone.utc), regime=Regime.BULL, meta={"trend_score": 0.5})
     state = MagicMock()
     state.bars = []  # No bars
     # Should return None due to empty bars, but pass the trend check logic if bars existed
@@ -126,9 +124,7 @@ def test_on_bar_ignored_if_gap_too_large(gap_fill, mock_market):
 
 @pytest.mark.unit
 def test_signal_short_gap_up(gap_fill):
-    market = MarketState(
-        time=datetime.now(timezone.utc), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL
-    )
+    market = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL)
 
     # Setup Gap Up
 
@@ -149,9 +145,7 @@ def test_signal_short_gap_up(gap_fill):
 
     current_bar = Bar("AAPL", current_dt, 102.5, 102.5, 101.0, 102.0, 500)
 
-    state = SymbolState(
-        "AAPL", deque(vals, maxlen=100), {}, None, {}, [], {"gap_pct": 0.03}
-    )
+    state = SymbolState("AAPL", deque(vals, maxlen=100), {}, None, {}, [], {"gap_pct": 0.03})
     state.bars = deque(vals, maxlen=100)
 
     gap_fill.risk_reward = 1.0
@@ -180,9 +174,7 @@ def test_signal_long_gap_down(gap_fill):
 
     current_bar = Bar("AAPL", current_dt, 97.3, 97.5, 97.2, 97.4, 500)
 
-    state = SymbolState(
-        "AAPL", deque([b1], maxlen=100), {}, None, {}, [], {"gap_pct": -0.03}
-    )
+    state = SymbolState("AAPL", deque([b1], maxlen=100), {}, None, {}, [], {"gap_pct": -0.03})
 
     sig = gap_fill.on_bar("AAPL", current_bar, state, market)
 

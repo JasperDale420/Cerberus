@@ -322,8 +322,6 @@ def test_bug_missing_current_bar(vtr_strategy):
     # We expect NO signal if the bug is present.
 
     # Assert that we DO get a signal (asserting the fix)
-    assert sig is not None, (
-        "Signal should be generated if strategy handles missing current bar correctly"
-    )
+    assert sig is not None, "Signal should be generated if strategy handles missing current bar correctly"
     assert sig.side.value == "buy"
     assert sig.strategy == "vwap_trend_rider"
