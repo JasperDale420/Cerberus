@@ -73,6 +73,24 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CERBERUS_HEBER_DATA_ROOT", "HEBER_DATA_ROOT"),
     )
 
+    # Backfill (Data-Gateway → Heber provisioning)
+    cerberus_backfill_timeout_seconds: float = Field(
+        default=3600.0,
+        validation_alias=AliasChoices("CERBERUS_BACKFILL_TIMEOUT_SECONDS"),
+    )
+    cerberus_backfill_poll_interval_seconds: float = Field(
+        default=10.0,
+        validation_alias=AliasChoices("CERBERUS_BACKFILL_POLL_INTERVAL_SECONDS"),
+    )
+    cerberus_backfill_stall_timeout_seconds: float = Field(
+        default=300.0,
+        validation_alias=AliasChoices("CERBERUS_BACKFILL_STALL_TIMEOUT_SECONDS"),
+    )
+    cerberus_backfill_chunk_days: int = Field(
+        default=90,
+        validation_alias=AliasChoices("CERBERUS_BACKFILL_CHUNK_DAYS"),
+    )
+
     @property
     def resolved_api_key(self) -> str | None:
         """Resolve API key from either naming convention."""

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Backtest Data Provisioning via Data-Gateway + Heber** (2026-02-13):
+  - Added backfill methods to `CentralApiClient`: `request_backfill`, `get_backfill_status`, `wait_for_backfill`, `cancel_backfill` with dual-timeout strategy (hard + stall detection).
+  - Added `BacktestDataProvisioner` orchestrator supporting chunked backfills and Gateway fallback.
+  - Added `--data-source` parameter to `BacktestRunner` (`alpaca`, `gateway`, `heber`).
+  - Added backfill configuration settings to `settings.py` for timeout, poll interval, stall detection, and chunk sizing.
+  - Added 22 unit tests covering backfill methods, provisioner flow, chunking, fallback, and error scenarios.
+
 ### Fixed
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):

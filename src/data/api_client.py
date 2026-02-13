@@ -1,11 +1,19 @@
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, cast
 
 import httpx
 
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
+
+
+class BackfillTimeoutError(Exception):
+    """Raised when a backfill job exceeds the configured timeout."""
+
+
+class BackfillFailedError(Exception):
+    """Raised when a backfill job fails or is cancelled."""
 
 
 class CentralApiClient:
@@ -451,6 +459,233 @@ class CentralApiClient:
             return cast(Dict[str, Any], response.json())
         except httpx.HTTPError as e:
             self.logger.error("Failed to get chat completion from central API", error=str(e))
+            raise
+
+    # ------------------------------------------------------------------
+    # Backfill API — request data from Gateway, poll until Heber ready
+    # ------------------------------------------------------------------
+
+    def request_backfill(
+        self,
+        provider: str,
+        feed: str,
+        start_date: date,
+        end_date: date,
+        symbols: List[str],
+        timeframe: str = "1Day",
+    ) -> Dict[str, Any]:
+        """Submit a backfill job to the Data Gateway.
+
+        Args:
+            provider: Data provider (e.g. "alpaca").
+            feed: Feed name (e.g. "bars").
+            start_date: Start of backfill range.
+            end_date: End of backfill range.
+            symbols: List of symbols to backfill.
+            timeframe: Bar timeframe (e.g. "1Min", "1Day").
+
+        Returns:
+            Backfill job dict with job_id and status.
+        """
+        if not symbols:
+            raise ValueError(
+                "Backfill requires explicit symbols (e.g. ['AAPL', 'MSFT']). "
+                "Wildcard is not supported by the Data Gateway."
+            )
+        payload: Dict[str, Any] = {
+            "provider": provider,
+            "feed": feed,
+            "symbols": symbols,
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "timeframe": timeframe,
+        }
+        try:
+            response = self._request_with_retry(
+                "POST",
+                "/api/v1/backfill",
+                json=payload,
+            )
+            envelope = cast(Dict[str, Any], response.json())
+            job = envelope.get("data", envelope)
+            self.logger.info(
+                "Backfill requested via Data Gateway",
+                job_id=job.get("job_id"),
+                provider=provider,
+                feed=feed,
+                date_range=f"{start_date} to {end_date}",
+                symbol_count=len(symbols),
+            )
+            return cast(Dict[str, Any], job)
+        except httpx.HTTPError as exc:
+            self.logger.error(
+                "Backfill request failed",
+                provider=provider,
+                feed=feed,
+                error=str(exc),
+            )
+            raise
+
+    def get_backfill_status(self, job_id: str) -> Dict[str, Any]:
+        """Get status of a backfill job.
+
+        Args:
+            job_id: ID of the backfill job (e.g. "bf-abc123").
+
+        Returns:
+            Backfill job dict with current status.
+        """
+        try:
+            response = self._request_with_retry(
+                "GET",
+                f"/api/v1/backfill/{job_id}",
+            )
+            envelope = cast(Dict[str, Any], response.json())
+            return cast(Dict[str, Any], envelope.get("data", envelope))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise BackfillFailedError(f"Backfill job not found: {job_id}") from exc
+            raise
+        except httpx.HTTPError as exc:
+            self.logger.error(
+                "Failed to poll backfill status",
+                job_id=job_id,
+                error=str(exc),
+            )
+            raise
+
+    def wait_for_backfill(
+        self,
+        job_id: str,
+        timeout_seconds: float = 3600.0,
+        poll_interval_seconds: float = 10.0,
+        stall_timeout_seconds: float = 300.0,
+        max_consecutive_errors: int = 5,
+    ) -> Dict[str, Any]:
+        """Poll until a backfill job completes, fails, or times out.
+
+        Uses a dual-timeout strategy:
+        - Hard timeout: absolute wall-clock cap.
+        - Stall timeout: fires if records_published stops increasing.
+
+        Args:
+            job_id: ID of the backfill job.
+            timeout_seconds: Maximum wall-clock time to wait.
+            poll_interval_seconds: Time between status checks.
+            stall_timeout_seconds: Max time with no progress before timeout.
+            max_consecutive_errors: Max consecutive poll failures before abort.
+
+        Returns:
+            Final backfill job dict.
+
+        Raises:
+            BackfillTimeoutError: If job hits hard or stall timeout.
+            BackfillFailedError: If job fails or is cancelled.
+        """
+        start = time.monotonic()
+        last_progress_records = 0
+        last_progress_time = start
+        consecutive_errors = 0
+
+        while True:
+            elapsed = time.monotonic() - start
+
+            # Hard timeout
+            if elapsed >= timeout_seconds:
+                raise BackfillTimeoutError(
+                    f"Backfill {job_id} timed out after {elapsed:.0f}s (limit: {timeout_seconds}s)"
+                )
+            # Stall timeout
+            stall_duration = time.monotonic() - last_progress_time
+            if last_progress_records > 0 and stall_duration >= stall_timeout_seconds:
+                raise BackfillTimeoutError(
+                    f"Backfill {job_id} stalled for {stall_duration:.0f}s "
+                    f"at {last_progress_records} records "
+                    f"(stall limit: {stall_timeout_seconds}s)"
+                )
+
+            try:
+                job = self.get_backfill_status(job_id)
+            except (httpx.HTTPError, BackfillFailedError) as exc:
+                consecutive_errors += 1
+                if consecutive_errors >= max_consecutive_errors:
+                    raise BackfillTimeoutError(
+                        f"Backfill {job_id} aborted after {consecutive_errors} consecutive poll failures: {exc}"
+                    ) from exc
+                self.logger.warning(
+                    "Backfill poll error",
+                    job_id=job_id,
+                    error=str(exc),
+                    consecutive_errors=consecutive_errors,
+                )
+                time.sleep(poll_interval_seconds)
+                continue
+
+            consecutive_errors = 0
+            status = job.get("status", "unknown")
+
+            # Terminal states
+            if status == "completed":
+                self.logger.info(
+                    "Backfill completed",
+                    job_id=job_id,
+                    records_published=job.get("records_published"),
+                    elapsed_seconds=elapsed,
+                )
+                return job
+            if status == "failed":
+                errors = job.get("errors", [])
+                error_msg = errors[0] if errors else "Unknown error"
+                raise BackfillFailedError(f"Backfill {job_id} failed: {error_msg}")
+            if status == "cancelled":
+                raise BackfillFailedError(f"Backfill {job_id} was cancelled")
+
+            # Progress tracking
+            current_records = job.get("records_published", 0)
+            if current_records > last_progress_records:
+                delta = current_records - last_progress_records
+                last_progress_records = current_records
+                last_progress_time = time.monotonic()
+                self.logger.info(
+                    "Backfill progress",
+                    job_id=job_id,
+                    records_published=current_records,
+                    delta=delta,
+                    elapsed_seconds=elapsed,
+                )
+            else:
+                self.logger.debug(
+                    "Backfill waiting",
+                    job_id=job_id,
+                    status=status,
+                    records_published=current_records,
+                    stall_seconds=time.monotonic() - last_progress_time,
+                )
+
+            time.sleep(poll_interval_seconds)
+
+    def cancel_backfill(self, job_id: str) -> Dict[str, Any]:
+        """Cancel a running backfill job.
+
+        Args:
+            job_id: ID of the backfill job.
+
+        Returns:
+            Updated backfill job dict.
+        """
+        try:
+            response = self._request_with_retry(
+                "DELETE",
+                f"/api/v1/backfill/{job_id}",
+            )
+            envelope = cast(Dict[str, Any], response.json())
+            return cast(Dict[str, Any], envelope.get("data", envelope))
+        except httpx.HTTPError as exc:
+            self.logger.error(
+                "Failed to cancel backfill",
+                job_id=job_id,
+                error=str(exc),
+            )
             raise
 
     def close(self) -> None:

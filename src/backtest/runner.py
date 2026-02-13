@@ -2,7 +2,7 @@ import asyncio
 from collections import deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from src.agent.bars_provider import JsonlBarsProvider
@@ -63,6 +63,7 @@ class BacktestRunner:
         *,
         offline_bars_dir: Optional[str] = None,
         warmup_days: int = 365,
+        data_source: Literal["alpaca", "gateway", "heber"] = "alpaca",
     ):
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(config_path)
@@ -75,10 +76,38 @@ class BacktestRunner:
         self.offline_bars_dir = str(offline_bars_dir).strip() if offline_bars_dir else ""
         self.offline_provider = JsonlBarsProvider(Path(self.offline_bars_dir)) if self.offline_bars_dir else None
         self.warmup_days = int(warmup_days)
+        self.data_source = data_source
 
-        self.alpaca_client = (
-            None if self.offline_provider is not None else AlpacaClient(self.config_loader, self.logger)
-        )
+        # Initialize data clients based on data_source
+        self.alpaca_client = None
+        self.gateway_client: Optional["CentralApiClient"] = None
+        self.data_provisioner = None
+
+        if self.offline_provider is not None:
+            pass  # Offline mode — no external clients needed
+        elif data_source in ("gateway", "heber"):
+            from src.data.api_client import CentralApiClient
+
+            self.gateway_client = CentralApiClient(self.config_loader, self.logger)
+            if data_source == "heber":
+                from src.core.settings import get_settings
+                from src.data.backtest_data_provisioner import BacktestDataProvisioner
+                from src.data.heber_read_client import HeberReadClient
+
+                settings = get_settings()
+                heber_client = None
+                if settings.cerberus_heber_data_root:
+                    heber_client = HeberReadClient(
+                        data_root=settings.cerberus_heber_data_root,
+                        logger=self.logger,
+                    )
+                self.data_provisioner = BacktestDataProvisioner(
+                    api_client=self.gateway_client,
+                    heber_read_client=heber_client,
+                    logger=self.logger,
+                )
+        else:
+            self.alpaca_client = AlpacaClient(self.config_loader, self.logger)
 
         # Mock Executor
         self.mock_executor = BacktestOrderExecutor(
@@ -249,6 +278,21 @@ class BacktestRunner:
         fetch_start = self.start_date - timedelta(days=self.warmup_days)
         if self.offline_provider is not None:
             return list(self.offline_provider.get_bars(symbol, fetch_start, self.end_date, timeframe=timeframe))
+
+        if self.data_source == "gateway" and self.gateway_client is not None:
+            bars_data = await asyncio.to_thread(
+                self.gateway_client.get_alpaca_bars,
+                symbol,
+                fetch_start,
+                self.end_date,
+                timeframe,
+            )
+            if isinstance(bars_data, dict) and "bars" in bars_data:
+                bars_data = bars_data["bars"]
+            return self._parse_bars(bars_data, symbol)
+
+        # For 'heber' data_source, bars are loaded in bulk via _load_all_bars
+        # and this method is not called individually. For 'alpaca' mode:
         if self.alpaca_client is None:
             return []
 
@@ -384,6 +428,10 @@ class BacktestRunner:
                     self.engine.symbol_states[symbol].meta["scanner_bypass"] = True
 
     async def _load_all_bars(self, timeframe: str) -> Dict[str, List[Bar]]:
+        # Use provisioner for bulk backfill+read in heber mode
+        if self.data_source == "heber" and self.data_provisioner is not None:
+            return await self._load_all_bars_heber(timeframe)
+
         async def _load_one(symbol: str) -> tuple[str, List[Bar]]:
             self.logger.info(
                 "Fetching data",
@@ -397,6 +445,35 @@ class BacktestRunner:
 
         results = await asyncio.gather(*[_load_one(s) for s in self.universe])
         return {sym: bars for sym, bars in results}
+
+    async def _load_all_bars_heber(self, timeframe: str) -> Dict[str, List[Bar]]:
+        """Load all bars via BacktestDataProvisioner (Gateway backfill → Heber read)."""
+        assert self.data_provisioner is not None
+        fetch_start = self.start_date - timedelta(days=self.warmup_days)
+
+        self.logger.info(
+            "Provisioning bar data via Gateway → Heber pipeline",
+            symbols=len(self.universe),
+            start=str(fetch_start.date()),
+            end=str(self.end_date.date()),
+            timeframe=timeframe,
+        )
+
+        raw_bars_by_symbol = await asyncio.to_thread(
+            self.data_provisioner.provision_bars,
+            list(self.universe),
+            fetch_start.date() if isinstance(fetch_start, datetime) else fetch_start,
+            self.end_date.date() if isinstance(self.end_date, datetime) else self.end_date,
+            timeframe,
+        )
+
+        result: Dict[str, List[Bar]] = {}
+        for symbol, bar_dicts in raw_bars_by_symbol.items():
+            parsed = self._parse_bars(bar_dicts, symbol)
+            result[symbol] = parsed
+            self.logger.info("Loaded bars from Heber", symbol=symbol, count=len(parsed))
+
+        return result
 
     def _setup_scanner_replay(self, bars_by_symbol: Dict[str, List[Bar]]) -> None:
         pipeline = BacktestFeaturePipeline(
