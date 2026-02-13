@@ -371,3 +371,22 @@ def test_gateway_timeout_retries_then_succeeds() -> None:
     out = c.get_uw_flow("SPY")
     assert out == {"data": []}
     assert attempts["count"] == 2
+
+
+@pytest.mark.contract
+def test_gateway_remote_protocol_error_retries_then_succeeds() -> None:
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.RemoteProtocolError("server disconnected", request=request)
+        return httpx.Response(200, json={"success": True, "data": {"bars": []}})
+
+    logger = MagicMock()
+    c = CentralApiClient(_gateway_retry_cfg(), logger)
+    c.client = _make_client(handler)
+
+    out = c.get_alpaca_bars("AAPL")
+    assert out == {"bars": []}
+    assert attempts["count"] == 2
