@@ -127,6 +127,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Off-hours scanner sleep fix for Docker idle behavior** (2026-02-12):
+  - Added regular-session guard in `src/main.py` so runtime sleeps before market open and on weekends instead of running scanner cycles continuously.
+  - Preserved existing after-close EOD/flatten behavior and overnight sleep-until-open flow.
+  - Added regression coverage in `tests/unit/test_main_stream_mode_unit.py` for session-window detection.
+
 - **Runtime type-safety backlog reduction (mypy src clean)** (2026-02-12):
   - Eliminated all `mypy src` errors (from 28 to 0) across runtime modules.
   - Added explicit optional/default typing in scanner strategy/profile code and ranking engine.
@@ -141,6 +146,11 @@ All notable changes to this project will be documented in this file.
   - Hardened test typing for settings builders, monkeypatched methods, deque-backed `SymbolState`, and typed mock usage.
   - Added compatibility-safe typing updates to helper tooling under `tools/`.
   - Result: `mypy .` now passes across `399` files.
+
+- **Heber partitioned parquet read compatibility fix** (2026-02-12):
+  - Updated `src/data/heber_read_client.py` to read parquet files via `pyarrow.parquet.ParquetFile(...).read()`.
+  - Prevents partition schema merge conflicts when directory partitions include `feed=...` and the parquet file also contains a dictionary-encoded `feed` column.
+  - Added regression coverage in `tests/unit/test_heber_read_client_unit.py` for partitioned `bars` files with dictionary-encoded `feed`.
 
 - **Type-check tooling compatibility cleanup** (2026-02-12):
   - Updated `pyproject.toml` to remove stale `numpy.typing.mypy` plugin reference.

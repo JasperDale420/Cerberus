@@ -172,7 +172,9 @@ class HeberReadClient:
 
     def _read_parquet_rows(self, dataset: str, parquet_file: Path) -> list[dict[str, Any]]:
         try:
-            table = pq.read_table(parquet_file)
+            # Read the file directly to avoid hive-partition schema merge conflicts
+            # from path segments like feed=bars when the file also contains `feed`.
+            table = pq.ParquetFile(parquet_file).read()
             return list(table.to_pylist())
         except Exception as e:
             self.logger.warning(
