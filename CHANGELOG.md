@@ -63,6 +63,31 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Gateway-first trading execution path** (2026-02-13):
+  - Set gateway-first runtime defaults in `src/core/settings.py`:
+    - `CERBERUS_DATA_BACKEND` default is now `gateway`
+    - `ALPACA_PAPER` default is now `true`
+  - Updated main runtime order routing in `src/main.py`:
+    - `--order-executor` now defaults to `gateway`
+    - Added `gateway` executor option alongside `alpaca` and `noop`
+    - Blocked direct `alpaca` order execution when gateway data mode is active
+  - Added gateway trading adapters in `src/data/api_client.py`:
+    - `submit_alpaca_order`
+    - `get_alpaca_orders`
+    - `cancel_alpaca_order`
+  - Added `GatewayOrderExecutor` in `src/engine/orders.py` to route submissions/cancels through Data-Gateway.
+  - Updated defaults/docs:
+    - `.env.example` now sets `CERBERUS_DATA_BACKEND=gateway`
+    - `docs/environment-variables.md` defaults updated for `CERBERUS_DATA_BACKEND` and `ALPACA_PAPER`
+  - Added coverage:
+    - `tests/unit/test_gateway_order_executor_unit.py`
+    - `tests/contract/test_central_api_client_contract.py` order-submit contract
+    - `tests/unit/test_startup_validation_unit.py` gateway/paper defaults assertion
+  - Added gateway live-stream ingestion path:
+    - New `src/data/gateway_stream.py` WebSocket client for `ws://.../ws` auth + `stock_bars` subscriptions.
+    - Updated `src/main.py` to stream bars via Data-Gateway when `CERBERUS_DATA_BACKEND=gateway|dual`, while retaining Alpaca stream for legacy mode.
+    - Added unit coverage in `tests/unit/test_gateway_stream_client_unit.py`.
+
 - **Central API retry classification for gateway integration** (2026-02-11):
   - Added status-aware retry policy in `src/data/api_client.py`:
     - no retry for `401/403`
