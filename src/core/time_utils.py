@@ -99,11 +99,19 @@ def parse_time_string(time_str: str) -> time:
         >>> parse_time_string("09:30")
         datetime.time(9, 30)
     """
-    parts = time_str.split(":")
+    raw = str(time_str).strip()
+    parts = raw.split(":")
     if len(parts) != 2:
         raise ValueError(f"Invalid time format: {time_str}. Expected HH:MM")
 
-    hour, minute = int(parts[0]), int(parts[1])
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"Invalid time format: {time_str}. Expected HH:MM") from exc
+
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(f"Invalid time value: {time_str}. Hour must be 0-23 and minute 0-59")
+
     return time(hour, minute)
 
 
