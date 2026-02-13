@@ -128,9 +128,8 @@ class Settings(BaseSettings):
         """
         errors: list[str] = []
 
-        # Gateway mode validation
         if self.use_gateway_data:
-            if not self.cerberus_gateway_url or self.cerberus_gateway_url == "http://localhost:8080":
+            if not self.cerberus_gateway_url:
                 errors.append("CERBERUS_GATEWAY_URL must be set when using gateway or dual data backend mode")
             if not self.cerberus_gateway_key:
                 errors.append("CERBERUS_GATEWAY_KEY must be set when using gateway or dual data backend mode")

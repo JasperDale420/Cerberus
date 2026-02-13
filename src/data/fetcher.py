@@ -38,6 +38,7 @@ class DataFetcher:
         self.use_gateway_data = runtime.use_gateway_data
         self.use_heber_storage = runtime.use_heber_storage
         self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
+        self.asset_class = runtime.cerberus_asset_class
         self.enable_dual_compare = bool(runtime.cerberus_data_backend == "dual")
         self.heber_client: Optional[HeberReadClient] = None
         if self.use_heber_storage and runtime.cerberus_heber_data_root:
@@ -130,13 +131,17 @@ class DataFetcher:
 
         if self.use_gateway_data and self.central_api_client is not None:
             try:
-                bars = self.central_api_client.get_alpaca_bars(sym, start, end, timeframe)
+                if self.asset_class == "crypto":
+                    bars = self.central_api_client.get_crypto_bars(sym, start, end, timeframe)
+                else:
+                    bars = self.central_api_client.get_alpaca_bars(sym, start, end, timeframe)
+
                 if self.enable_dual_compare:
                     self._compare_bars_with_legacy(sym, start, end, timeframe, bars)
                 return bars
             except Exception as e:
                 self.logger.warning(
-                    "Gateway bars fetch failed",
+                    f"Gateway bars fetch failed ({self.asset_class})",
                     symbol=sym,
                     timeframe=timeframe,
                     error=str(e),
@@ -350,12 +355,21 @@ class DataFetcher:
 
             if self.use_gateway_data and self.central_api_client is not None:
                 try:
-                    trades = await asyncio.to_thread(
-                        self.central_api_client.get_alpaca_trades,
-                        sym,
-                        start,
-                        end,
-                    )
+                    if self.asset_class == "crypto":
+                        trades = await asyncio.to_thread(
+                            self.central_api_client.get_crypto_trades,
+                            sym,
+                            start,
+                            end,
+                        )
+                    else:
+                        trades = await asyncio.to_thread(
+                            self.central_api_client.get_alpaca_trades,
+                            sym,
+                            start,
+                            end,
+                        )
+
                     if self.enable_dual_compare:
                         await self._compare_trades_with_legacy(sym, start, end, trades)
                 except Exception as e:
