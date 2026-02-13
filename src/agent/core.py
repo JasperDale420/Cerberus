@@ -418,16 +418,16 @@ class Agent:
         Generate weekly analysis report using LLM.
         """
         import json
-        import os
         from pathlib import Path
+
+        from src.agent.approval import get_stage3_approval
 
         cfg = self.config_loader.load_config(self.config_path_or_dir)
         agent_cfg = cfg.get("agent", {}) if isinstance(cfg, dict) else {}
         stage3 = agent_cfg.get("stage3", {}) if isinstance(agent_cfg, dict) else {}
 
         enabled = bool(stage3.get("enabled", False))
-        env_key = str(stage3.get("approval_env_var", "CERBERUS_STAGE3_APPROVED"))
-        approved = str(os.getenv(env_key, "")).strip().lower() in ("1", "true", "yes")
+        approved, env_key = get_stage3_approval(stage3)
 
         if not enabled:
             self.logger.info("Agent Stage 3 (weekly analysis) disabled")

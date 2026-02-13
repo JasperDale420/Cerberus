@@ -13,6 +13,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Dict, List, Optional, Type, TypedDict, cast
 
+from src.agent.approval import get_stage3_approval
 from src.agent.bars_provider import BarsProvider, JsonlBarsProvider
 from src.agent.llm import LLMClient
 from src.agent.models import ActionType, AgentAction, StrategyDailyStats
@@ -316,12 +317,7 @@ class Stage3Proposer:
         agent_cfg = (cfg.get("agent") or {}) if isinstance(cfg, dict) else {}
         stage3 = (agent_cfg.get("stage3") or {}) if isinstance(agent_cfg, dict) else {}
         enabled = bool(stage3.get("enabled", False))
-        env_key = str(stage3.get("approval_env_var", "CERBERUS_STAGE3_APPROVED"))
-        approved = str(os.getenv(env_key, "")).strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        approved, env_key = get_stage3_approval(stage3)
         write_to_src = bool(stage3.get("write_to_src", False))
         propose_scanner_profiles = bool(stage3.get("propose_scanner_profiles", False))
         backtest = (stage3.get("backtest") or {}) if isinstance(stage3, dict) else {}
