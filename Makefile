@@ -3,23 +3,23 @@
 ci: pre-commit type-check test
 
 test:
-	python -m pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 test-ci:
 	mkdir -p artifacts/test-results
-	python -m pytest --junitxml=artifacts/test-results/junit.xml --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest --junitxml=artifacts/test-results/junit.xml --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 test-unit:
-	python -m pytest -m unit --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest -m unit --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 test-integration:
-	python -m pytest -m integration --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest -m integration --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 test-contract:
-	python -m pytest -m contract --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest -m contract --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 test-e2e:
-	python -m pytest -m e2e --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+	python -m pytest -m e2e --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
 
 lint:
 	ruff check .

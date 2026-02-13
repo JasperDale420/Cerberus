@@ -31,25 +31,17 @@ class UniverseBuilder:
         offline_bars_provider: Optional["JsonlBarsProvider"] = None,
     ):
         # Respect caller-provided config (preferred), otherwise load from the same path used by the app.
-        self.config = (
-            config
-            if isinstance(config, dict)
-            else config_loader.load_config(config_path_or_dir)
-        )
+        self.config = config if isinstance(config, dict) else config_loader.load_config(config_path_or_dir)
         self.logger = logger
         self.alpaca_client = alpaca_client
         self.central_api_client = central_api_client
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
         self.offline_bars_provider = offline_bars_provider
         runtime = get_settings()
         self.use_gateway_data = runtime.use_gateway_data
         self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
 
-    def _get_historical_bars(
-        self, symbol: str, start: datetime, end: datetime, timeframe: str
-    ) -> Any:
+    def _get_historical_bars(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> Any:
         """Fetch historical bars using selected backend, with optional failover."""
         if self.use_gateway_data and self.central_api_client is not None:
             try:
@@ -71,9 +63,7 @@ class UniverseBuilder:
                     raise
         if self.alpaca_client is None:
             return []
-        return self.alpaca_client.get_historical_bars(
-            symbol, start, end, timeframe=timeframe
-        )
+        return self.alpaca_client.get_historical_bars(symbol, start, end, timeframe=timeframe)
 
     def _get_screener_most_actives(self, top: int) -> List[str]:
         """Fetch most actives from selected backend with fallback."""
@@ -136,9 +126,7 @@ class UniverseBuilder:
                 lines.append(token.upper())
         return lines
 
-    def _get_symbol_volume(
-        self, symbol: str, start: datetime, end: datetime
-    ) -> Optional[float]:
+    def _get_symbol_volume(self, symbol: str, start: datetime, end: datetime) -> Optional[float]:
         """Get last bar volume for symbol from Alpaca or offline provider."""
         # Try Alpaca first
         if self.alpaca_client is not None or self.central_api_client is not None:
@@ -165,11 +153,7 @@ class UniverseBuilder:
         if self.offline_bars_provider is not None:
             try:
                 # Try daily bars first
-                bars = list(
-                    self.offline_bars_provider.get_bars(
-                        symbol, start, end, timeframe="1Day"
-                    )
-                )
+                bars = list(self.offline_bars_provider.get_bars(symbol, start, end, timeframe="1Day"))
                 if bars:
                     b = bars[-1]
                     v = getattr(b, "volume", None)
@@ -177,11 +161,7 @@ class UniverseBuilder:
                         return float(v)
 
                 # Fallback: aggregate volume from 1Min bars
-                bars_1min = list(
-                    self.offline_bars_provider.get_bars(
-                        symbol, start, end, timeframe="1Min"
-                    )
-                )
+                bars_1min = list(self.offline_bars_provider.get_bars(symbol, start, end, timeframe="1Min"))
                 if bars_1min:
                     total_vol = sum(getattr(b, "volume", 0) or 0 for b in bars_1min)
                     if total_vol > 0:
@@ -209,15 +189,9 @@ class UniverseBuilder:
         if isinstance(universe_config, dict):
             explicit = cast(List[str], universe_config.get("symbols", []))
             static_files = (
-                cast(List[str], universe_config.get("static_files", []))
-                if universe_config.get("static_files")
-                else []
+                cast(List[str], universe_config.get("static_files", [])) if universe_config.get("static_files") else []
             )
-            dyn_cfg = (
-                cast(Dict[str, Any], universe_config.get("dynamic", {}))
-                if universe_config.get("dynamic")
-                else {}
-            )
+            dyn_cfg = cast(Dict[str, Any], universe_config.get("dynamic", {})) if universe_config.get("dynamic") else {}
         else:
             explicit = cast(List[str], universe_config)
 
@@ -230,19 +204,13 @@ class UniverseBuilder:
         universe.extend(static_added)
 
         # Dynamic: previous day top volume among candidates (deterministic).
-        prev_vol_cfg = (
-            dyn_cfg.get("previous_day_top_volume")
-            if isinstance(dyn_cfg, dict)
-            else None
-        )
+        prev_vol_cfg = dyn_cfg.get("previous_day_top_volume") if isinstance(dyn_cfg, dict) else None
         has_data_source = (
-            self.alpaca_client is not None or self.offline_bars_provider is not None
+            self.alpaca_client is not None
+            or self.central_api_client is not None
+            or self.offline_bars_provider is not None
         )
-        if (
-            isinstance(prev_vol_cfg, dict)
-            and bool(prev_vol_cfg.get("enabled", False))
-            and has_data_source
-        ):
+        if isinstance(prev_vol_cfg, dict) and bool(prev_vol_cfg.get("enabled", False)) and has_data_source:
             top_n = int(prev_vol_cfg.get("top_n", 0))
             if top_n > 0:
                 candidates = prev_vol_cfg.get("candidates")
@@ -266,10 +234,7 @@ class UniverseBuilder:
                 if max_workers > 0:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
                         futures = {
-                            executor.submit(
-                                self._get_symbol_volume, sym, start, end
-                            ): sym
-                            for sym in sorted_candidates
+                            executor.submit(self._get_symbol_volume, sym, start, end): sym for sym in sorted_candidates
                         }
                         for future in as_completed(futures):
                             sym = futures[future]
@@ -351,9 +316,7 @@ class UniverseBuilder:
 
         if not universe:
             self.logger.error("Universe is empty; refusing to proceed")
-            raise ValueError(
-                "Universe is empty; check config/universe.yaml and static files"
-            )
+            raise ValueError("Universe is empty; check config/universe.yaml and static files")
 
         return universe
 

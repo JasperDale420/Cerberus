@@ -51,8 +51,10 @@ def engine():
     alpaca = MagicMock()
 
     eng = ExecutionEngine(config, logger, db, alpaca)
-    eng.account = MagicMock()
-    eng.account.equity = 100000.0
+    eng.account = MagicMock()  # type: ignore[assignment]
+    cast_account = eng.account if eng.account is not None else MagicMock()
+    cast_account.equity = 100000.0
+    eng.account = cast_account  # type: ignore[assignment]
     return eng
 
 
@@ -86,12 +88,8 @@ async def test_pair_signal_sizing(engine):
         generated_at=scan_time,
         regime=Regime.CHOP,
         watchlist=[
-            WatchlistSymbol(
-                symbol=s1, score=2.5, strategies=["pair_trading"], features=feat1
-            ),
-            WatchlistSymbol(
-                symbol=s2, score=2.5, strategies=["pair_trading"], features=feat2
-            ),
+            WatchlistSymbol(symbol=s1, score=2.5, strategies=["pair_trading"], features=feat1),
+            WatchlistSymbol(symbol=s2, score=2.5, strategies=["pair_trading"], features=feat2),
         ],
     )
 

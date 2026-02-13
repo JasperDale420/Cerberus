@@ -34,9 +34,7 @@ class DataValidator:
             # Price validity
             if features.price <= 0:
                 if self.logger:
-                    self.logger.warning(
-                        "Invalid price", symbol=features.symbol, price=features.price
-                    )
+                    self.logger.warning("Invalid price", symbol=features.symbol, price=features.price)
                 return False
 
             # Filter criteria

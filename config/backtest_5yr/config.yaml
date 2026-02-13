@@ -41,7 +41,7 @@ strategies:
       liquidity: [good]
       risk: [risk_on, neutral, risk_off]  # All risk regimes
       min_confidence: 0.0  # No confidence filter
-  
+
   # All other strategies disabled
   vwap_reversion:
     enabled: false

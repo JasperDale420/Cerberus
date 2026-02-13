@@ -39,13 +39,9 @@ class MomentumContinuationStrategy(BaseStrategy):
         super().__init__(config, logger)
 
         # Breakout parameters
-        self.breakout_lookback = int(
-            config.get("breakout_lookback", self.DEFAULT_BREAKOUT_LOOKBACK)
-        )
+        self.breakout_lookback = int(config.get("breakout_lookback", self.DEFAULT_BREAKOUT_LOOKBACK))
         self.vol_mult = float(config.get("vol_mult", self.DEFAULT_VOL_MULT))
-        self.close_position_threshold = float(
-            config.get("close_position", self.DEFAULT_CLOSE_POSITION)
-        )
+        self.close_position_threshold = float(config.get("close_position", self.DEFAULT_CLOSE_POSITION))
         self.risk_reward = float(config.get("risk_reward", self.DEFAULT_RISK_REWARD))
 
         # EMA for trend confirmation
@@ -150,16 +146,12 @@ class MomentumContinuationStrategy(BaseStrategy):
         # BULLISH BREAKOUT - regime gating removed
         if is_uptrend:
             if bar.close > high_level and self._is_strong_close(bar, OrderSide.BUY):
-                signal = self._create_long_signal(
-                    symbol, bar, market_state, high_level, ema_fast, ema_slow, avg_vol
-                )
+                signal = self._create_long_signal(symbol, bar, market_state, high_level, ema_fast, ema_slow, avg_vol)
 
         # BEARISH BREAKOUT - regime gating removed
         if is_downtrend:
             if bar.close < low_level and self._is_strong_close(bar, OrderSide.SELL):
-                signal = self._create_short_signal(
-                    symbol, bar, market_state, low_level, ema_fast, ema_slow, avg_vol
-                )
+                signal = self._create_short_signal(symbol, bar, market_state, low_level, ema_fast, ema_slow, avg_vol)
 
         if signal:
             self._traded_symbols_today.add(symbol)
@@ -167,9 +159,7 @@ class MomentumContinuationStrategy(BaseStrategy):
 
         return signal
 
-    def _get_emas(
-        self, bars: List[Bar], symbol_state: SymbolState
-    ) -> tuple[Optional[float], Optional[float]]:
+    def _get_emas(self, bars: List[Bar], symbol_state: SymbolState) -> tuple[Optional[float], Optional[float]]:
         """Get EMAs from cache or compute."""
         ema_fast = symbol_state.indicators.get(f"ema_close:{self.ema_fast}")
         ema_slow = symbol_state.indicators.get(f"ema_close:{self.ema_slow}")
@@ -183,9 +173,7 @@ class MomentumContinuationStrategy(BaseStrategy):
             FeatureCalculator.calculate_ema(closes, self.ema_slow),
         )
 
-    def _get_breakout_levels(
-        self, bars: List[Bar], current_bar: Bar
-    ) -> tuple[Optional[float], Optional[float]]:
+    def _get_breakout_levels(self, bars: List[Bar], current_bar: Bar) -> tuple[Optional[float], Optional[float]]:
         """
         Get N-day high and low levels for breakout detection.
 

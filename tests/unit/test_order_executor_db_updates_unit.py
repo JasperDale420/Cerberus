@@ -53,9 +53,7 @@ def test_order_executor_persists_failed_order_on_submit_exception(
     alpaca.trading_client = MagicMock()
     alpaca.trading_client.submit_order.side_effect = RuntimeError("no route")
 
-    ex = OrderExecutor(
-        alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    ex = OrderExecutor(alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
     with pytest.raises(RuntimeError, match="no route"):
         ex.submit(_intent())
 
@@ -67,10 +65,7 @@ def test_order_executor_persists_failed_order_on_submit_exception(
         assert rows[0].meta_json["correlation_id"] == "corr-1"
         assert "error" in rows[0].meta_json
         assert "broker_error_payload" in rows[0].meta_json
-        assert (
-            rows[0].meta_json["broker_error_payload"]["exception_type"]
-            == "RuntimeError"
-        )
+        assert rows[0].meta_json["broker_error_payload"]["exception_type"] == "RuntimeError"
 
 
 @pytest.mark.unit
@@ -97,9 +92,7 @@ def test_order_executor_persists_broker_response_payload_with_truncation(
     alpaca.trading_client = MagicMock()
     alpaca.trading_client.submit_order.side_effect = _BrokerError("teapot")
 
-    ex = OrderExecutor(
-        alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    ex = OrderExecutor(alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
     with pytest.raises(_BrokerError, match="teapot"):
         ex.submit(_intent())
 
@@ -143,9 +136,7 @@ def test_order_executor_trade_update_updates_existing_db_row(tmp_path: Path) -> 
 
     alpaca = MagicMock()
     alpaca.trading_client = MagicMock()
-    ex = OrderExecutor(
-        alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    ex = OrderExecutor(alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
 
     order = SimpleNamespace(
         id="oid-1",
@@ -175,9 +166,7 @@ def test_order_executor_trade_update_updates_existing_db_row(tmp_path: Path) -> 
         assert row is not None
         assert row.status == "filled"
         assert row.meta_json is not None
-        assert (
-            row.meta_json.get("reconciled") is not True
-        )  # trade update writes broker_status fields
+        assert row.meta_json.get("reconciled") is not True  # trade update writes broker_status fields
 
 
 @pytest.mark.unit
@@ -186,9 +175,7 @@ def test_order_executor_trade_update_upserts_when_missing_row(tmp_path: Path) ->
     logger = StructuredLogger("TestOrderUpsert", level="INFO")
     alpaca = MagicMock()
     alpaca.trading_client = MagicMock()
-    ex = OrderExecutor(
-        alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    ex = OrderExecutor(alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
 
     order = SimpleNamespace(
         id="oid-2",
@@ -246,9 +233,7 @@ def test_order_executor_trade_update_inherits_correlation_id_from_parent_order(
 
     alpaca = MagicMock()
     alpaca.trading_client = MagicMock()
-    ex = OrderExecutor(
-        alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc)
-    )
+    ex = OrderExecutor(alpaca, logger, db=db, clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc))
 
     # Simulate a bracket/OTO child order update without client_order_id.
     order = SimpleNamespace(
@@ -275,11 +260,7 @@ def test_order_executor_trade_update_inherits_correlation_id_from_parent_order(
     assert out["parent_broker_order_id"] == "oid-parent"
 
     with db.get_session() as session:
-        row = (
-            session.query(DbOrder)
-            .filter(DbOrder.broker_order_id == "oid-child")
-            .first()
-        )
+        row = session.query(DbOrder).filter(DbOrder.broker_order_id == "oid-child").first()
         assert row is not None
         assert row.correlation_id == "corr-parent"
         assert row.meta_json is not None

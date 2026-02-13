@@ -81,16 +81,10 @@ class TrendPullbackStrategy(BaseStrategy):
             )
         return None
 
-    def _get_or_compute_emas(
-        self, bars: list[Bar], symbol_state: SymbolState
-    ) -> tuple[float | None, float | None]:
+    def _get_or_compute_emas(self, bars: list[Bar], symbol_state: SymbolState) -> tuple[float | None, float | None]:
         """Get EMAs from indicators dict or compute using FeatureCalculator."""
-        current_fast = symbol_state.indicators.get(
-            f"ema_close:{int(self.ema_fast_len)}"
-        )
-        current_slow = symbol_state.indicators.get(
-            f"ema_close:{int(self.ema_slow_len)}"
-        )
+        current_fast = symbol_state.indicators.get(f"ema_close:{int(self.ema_fast_len)}")
+        current_slow = symbol_state.indicators.get(f"ema_close:{int(self.ema_slow_len)}")
 
         if current_fast is not None and current_slow is not None:
             return current_fast, current_slow
@@ -102,9 +96,7 @@ class TrendPullbackStrategy(BaseStrategy):
             FeatureCalculator.calculate_ema(closes, int(self.ema_slow_len)),
         )
 
-    def _get_or_compute_rsi(
-        self, bars: list[Bar], symbol_state: SymbolState
-    ) -> tuple[float | None, float | None]:
+    def _get_or_compute_rsi(self, bars: list[Bar], symbol_state: SymbolState) -> tuple[float | None, float | None]:
         """
         Returns (current_rsi, prev_rsi) from indicators dict or computed.
         """

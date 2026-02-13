@@ -54,9 +54,7 @@ def test_on_bar_resets_error_count_on_success():
 @pytest.mark.unit
 def test_on_bar_increments_error_count_on_failure():
     logger = _MockLogger()
-    engine = ExecutionEngine(
-        config={"max_consecutive_errors": 5, "index_symbol": "SPY"}, logger=logger
-    )
+    engine = ExecutionEngine(config={"max_consecutive_errors": 5, "index_symbol": "SPY"}, logger=logger)
 
     # Manipulate internal state to cause a crash inside on_bar
     # e.g. break symbol_states to cause KeyError or similar
@@ -97,7 +95,6 @@ def test_on_bar_crashes_after_threshold():
 
     # Verify we logged critical error before crashing
     assert any(
-        log_entry[0] == "ERROR"
-        and "Max consecutive execution errors exceeded" in log_entry[1]
+        log_entry[0] == "ERROR" and "Max consecutive execution errors exceeded" in log_entry[1]
         for log_entry in logger.logs
     )

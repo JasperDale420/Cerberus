@@ -197,9 +197,7 @@ class TrendPullbackProfile(ScannerProfile):
 
         # Reward proximity to EMA20 (closer is better for pullback entry, up to a point)
         # Ideally we want it sitting ON the EMA20.
-        dist_score = (
-            1.0 - (abs(features.distance_from_ema20) / self.max_dist_ema20)
-        ) * 20.0
+        dist_score = (1.0 - (abs(features.distance_from_ema20) / self.max_dist_ema20)) * 20.0
         score += max(0.0, dist_score)
 
         return min(max(score, 0.0), 100.0)
@@ -309,7 +307,11 @@ class VixSpikeFadeProfile(ScannerProfile):
     Only activates when VIX spikes or market shows elevated fear.
     """
 
-    def __init__(self, allowed_symbols: list = None, min_drop_pct: float = 0.015):
+    def __init__(
+        self,
+        allowed_symbols: list[str] | None = None,
+        min_drop_pct: float = 0.015,
+    ):
         self.allowed_symbols = allowed_symbols or ["SPY", "QQQ"]
         self.min_drop_pct = min_drop_pct
 

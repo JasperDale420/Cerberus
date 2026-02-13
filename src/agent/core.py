@@ -53,9 +53,7 @@ class Agent:
         self.llm_client: LLMClient | None = llm_client
 
         # Helpers
-        self.stage2_tuner = Stage2Tuner(
-            logger, config_loader, config_path_or_dir, evaluator=stage2_evaluator
-        )
+        self.stage2_tuner = Stage2Tuner(logger, config_loader, config_path_or_dir, evaluator=stage2_evaluator)
         self.stage3_proposer = Stage3Proposer(
             logger,
             config_loader,
@@ -166,9 +164,7 @@ class Agent:
 
         return actions
 
-    def _load_recent_stats(
-        self, db: DatabaseDatabase, as_of: Optional[datetime] = None
-    ) -> List[StrategyDailyStats]:
+    def _load_recent_stats(self, db: DatabaseDatabase, as_of: Optional[datetime] = None) -> List[StrategyDailyStats]:
         window_days, _min_trades, _z_high, _max_dd_r = self._load_stage1_params()
         now = as_of or datetime.now(timezone.utc)
         cutoff = (now - timedelta(days=window_days)).date()
@@ -272,9 +268,7 @@ class Agent:
             return "chop"
         return val
 
-    def _persist_actions(
-        self, db: DatabaseDatabase, actions: List[AgentAction]
-    ) -> None:
+    def _persist_actions(self, db: DatabaseDatabase, actions: List[AgentAction]) -> None:
         for action in actions:
 
             def _write_action(session: Any, a: AgentAction = action) -> None:
@@ -315,17 +309,13 @@ class Agent:
             as_of=as_of,
         )
 
-    def propose_code_changes(
-        self, stats: StrategyDailyStats, strategy_file_path: str
-    ) -> List[AgentAction]:
+    def propose_code_changes(self, stats: StrategyDailyStats, strategy_file_path: str) -> List[AgentAction]:
         """
         Stage 3: Generates a new strategy variant based on performance and source code.
         """
         return self.stage3_proposer.propose_code_changes(stats, strategy_file_path)
 
-    def run_cycle_with_db(
-        self, db: Any, as_of: Optional[datetime] = None
-    ) -> List[AgentAction]:
+    def run_cycle_with_db(self, db: Any, as_of: Optional[datetime] = None) -> List[AgentAction]:
         """
         Run full agent cycle: load stats, analyze, persist actions, apply config changes.
 
@@ -340,9 +330,7 @@ class Agent:
 
         # Stage 2: Parameter Tuning (PRD 9.2)
         # Only tune strategies that weren't disabled by Stage 1
-        disabled_strategies = {
-            a.strategy for a in actions if a.action_type == ActionType.DISABLE_STRATEGY
-        }
+        disabled_strategies = {a.strategy for a in actions if a.action_type == ActionType.DISABLE_STRATEGY}
 
         cfg = self.config_loader.load_config(self.config_path_or_dir)
         strategies_cfg = cfg.get("strategies", {})
@@ -356,11 +344,7 @@ class Agent:
             # Get current strategy config for tuning
             current_config = strategies_cfg.get(stats.strategy, {})
             if isinstance(current_config, dict):
-                current_config = {
-                    k: v
-                    for k, v in current_config.items()
-                    if k not in ("enabled", "activation")
-                }
+                current_config = {k: v for k, v in current_config.items() if k not in ("enabled", "activation")}
             else:
                 current_config = {}
 
@@ -372,9 +356,7 @@ class Agent:
             self.apply_actions(actions)
         return actions
 
-    def run_weekly_analysis(
-        self, db: Any, as_of: Optional[datetime] = None
-    ) -> List[AgentAction]:
+    def run_weekly_analysis(self, db: Any, as_of: Optional[datetime] = None) -> List[AgentAction]:
         """
         Run weekly analysis cycle (Stage 3).
 
@@ -412,9 +394,7 @@ class Agent:
                         "entry_time": getattr(t, "entry_time", None),
                         "exit_time": getattr(t, "exit_time", None),
                         "features_json": getattr(t, "features_json", {}),
-                        "regime_tags_entry_json": getattr(
-                            t, "regime_tags_entry_json", {}
-                        ),
+                        "regime_tags_entry_json": getattr(t, "regime_tags_entry_json", {}),
                     }
                 )
 
@@ -433,9 +413,7 @@ class Agent:
 
         return actions
 
-    def _generate_weekly_report(
-        self, trades: List[Dict[str, Any]], as_of: datetime
-    ) -> List[AgentAction]:
+    def _generate_weekly_report(self, trades: List[Dict[str, Any]], as_of: datetime) -> List[AgentAction]:
         """
         Generate weekly analysis report using LLM.
         """
@@ -527,9 +505,7 @@ Provide your analysis as a JSON object."""
             # Fall back to basic report
             report_data = {
                 "executive_summary": f"Analyzed {len(trades)} trades this week.",
-                "strategy_analysis": [
-                    {"strategy": k, **v} for k, v in stats_by_strategy.items()
-                ],
+                "strategy_analysis": [{"strategy": k, **v} for k, v in stats_by_strategy.items()],
                 "feature_recommendations": [],
                 "model_recommendations": [],
                 "risk_recommendations": [],
@@ -575,7 +551,9 @@ Provide your analysis as a JSON object."""
 |----------|--------|----------|-------|-----------|
 """
         for strat, s in stats_by_strategy.items():
-            md_content += f"| {strat} | {s['n_trades']} | {s['winrate']:.1%} | {s['avg_r']:.2f}R | ${s['total_pnl']:.2f} |\n"
+            md_content += (
+                f"| {strat} | {s['n_trades']} | {s['winrate']:.1%} | {s['avg_r']:.2f}R | ${s['total_pnl']:.2f} |\n"
+            )
 
         md_content += f"""
 ## Feature Recommendations
@@ -647,9 +625,7 @@ Provide your analysis as a JSON object."""
                         data[action.strategy]["metadata"] = {}
 
                     data[action.strategy]["params"].update(new_params)
-                    data[action.strategy]["metadata"]["last_optimized"] = (
-                        action.timestamp.strftime("%Y-%m-%d")
-                    )
+                    data[action.strategy]["metadata"]["last_optimized"] = action.timestamp.strftime("%Y-%m-%d")
                     data[action.strategy]["metadata"]["window_days"] = window_days
 
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -691,12 +667,8 @@ Provide your analysis as a JSON object."""
                     current_risk = float(target_cfg.get("max_risk_per_trade", 50.0))
                     new_risk = current_risk / 2.0
                     # Floor at 0 when below epsilon
-                    target_cfg["max_risk_per_trade"] = (
-                        0.0 if new_risk < 0.1 else new_risk
-                    )
-                    target_cfg["risk_reduced_at"] = action.timestamp.strftime(
-                        "%Y-%m-%d"
-                    )
+                    target_cfg["max_risk_per_trade"] = 0.0 if new_risk < 0.1 else new_risk
+                    target_cfg["risk_reduced_at"] = action.timestamp.strftime("%Y-%m-%d")
                     target_cfg["risk_reduced_reason"] = action.reason
 
                 path.parent.mkdir(parents=True, exist_ok=True)

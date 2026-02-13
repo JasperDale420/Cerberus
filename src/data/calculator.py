@@ -76,9 +76,7 @@ class FeatureCalculator:
         return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
-    def calculate_relative_strength(
-        symbol_closes: List[float], benchmark_closes: List[float]
-    ) -> float:
+    def calculate_relative_strength(symbol_closes: List[float], benchmark_closes: List[float]) -> float:
         """
         Calculate Relative Strength (Price Performance) vs Benchmark.
         Returns the difference in returns over the provided window.
@@ -86,8 +84,19 @@ class FeatureCalculator:
         if not symbol_closes or not benchmark_closes:
             return 0.0
 
-        sym_ret = (symbol_closes[-1] / symbol_closes[0]) - 1.0
-        bench_ret = (benchmark_closes[-1] / benchmark_closes[0]) - 1.0
+        try:
+            sym_start = float(symbol_closes[0])
+            sym_end = float(symbol_closes[-1])
+            bench_start = float(benchmark_closes[0])
+            bench_end = float(benchmark_closes[-1])
+        except (TypeError, ValueError):
+            return 0.0
+
+        if sym_start <= 0 or bench_start <= 0:
+            return 0.0
+
+        sym_ret = (sym_end / sym_start) - 1.0
+        bench_ret = (bench_end / bench_start) - 1.0
 
         return sym_ret - bench_ret
 
@@ -104,9 +113,7 @@ class FeatureCalculator:
             return None
 
         # Single-pass extraction using zip instead of 7 list comprehensions
-        timestamps, opens, highs, lows, closes, volumes, vwaps = (
-            list(x) for x in zip(*rows, strict=True)
-        )
+        timestamps, opens, highs, lows, closes, volumes, vwaps = (list(x) for x in zip(*rows, strict=True))
 
         price = float(closes[-1])
         volume = float(volumes[-1])
@@ -124,13 +131,9 @@ class FeatureCalculator:
 
         atr, atr_pct = self._compute_atr(closes, highs, lows, price)
         ema20_slope, distance_from_ema20 = self._compute_ema_metrics(closes, price)
-        _, distance_from_vwap = self._compute_vwap(
-            vwaps, timestamps, highs, lows, closes, volumes, price
-        )
+        _, distance_from_vwap = self._compute_vwap(vwaps, timestamps, highs, lows, closes, volumes, price)
         adx_val = self._compute_adx(highs, lows, closes)
-        prior_day_high, prior_day_low = self._compute_prior_day_high_low(
-            timestamps, highs, lows
-        )
+        prior_day_high, prior_day_low = self._compute_prior_day_high_low(timestamps, highs, lows)
         bb_upper, bb_lower, price_zscore = self._compute_bollinger(closes, price)
         premarket_vol = self._compute_premarket_volume(timestamps, volumes)
         orb_high, orb_low = self._compute_opening_range(timestamps, highs, lows)
@@ -190,9 +193,7 @@ class FeatureCalculator:
 
             if ts_et.date() == latest_date_et:
                 # Check if within the opening range
-                market_open_dt = _ET_TZ.localize(
-                    datetime.combine(latest_date_et, market_open_time)
-                )
+                market_open_dt = _ET_TZ.localize(datetime.combine(latest_date_et, market_open_time))
                 orb_end_dt = market_open_dt + timedelta(minutes=orb_duration_minutes)
 
                 if market_open_dt <= ts_et <= orb_end_dt:
@@ -241,36 +242,11 @@ class FeatureCalculator:
                 continue
 
             # 2. Parse OHLCV (handle full names or shorthand)
-            o = self._to_float(
-                bd.get("open")
-                or bd.get("o")
-                or getattr(b, "open", None)
-                or getattr(b, "o", None)
-            )
-            h = self._to_float(
-                bd.get("high")
-                or bd.get("h")
-                or getattr(b, "high", None)
-                or getattr(b, "h", None)
-            )
-            low_val = self._to_float(
-                bd.get("low")
-                or bd.get("l")
-                or getattr(b, "low", None)
-                or getattr(b, "l", None)
-            )
-            c = self._to_float(
-                bd.get("close")
-                or bd.get("c")
-                or getattr(b, "close", None)
-                or getattr(b, "c", None)
-            )
-            v = self._to_float(
-                bd.get("volume")
-                or bd.get("v")
-                or getattr(b, "volume", None)
-                or getattr(b, "v", None)
-            )
+            o = self._to_float(bd.get("open") or bd.get("o") or getattr(b, "open", None) or getattr(b, "o", None))
+            h = self._to_float(bd.get("high") or bd.get("h") or getattr(b, "high", None) or getattr(b, "h", None))
+            low_val = self._to_float(bd.get("low") or bd.get("l") or getattr(b, "low", None) or getattr(b, "l", None))
+            c = self._to_float(bd.get("close") or bd.get("c") or getattr(b, "close", None) or getattr(b, "c", None))
+            v = self._to_float(bd.get("volume") or bd.get("v") or getattr(b, "volume", None) or getattr(b, "v", None))
             vwap = self._to_float(bd.get("vwap") or getattr(b, "vwap", None))
 
             if o is None or h is None or low_val is None or c is None or v is None:
@@ -295,9 +271,7 @@ class FeatureCalculator:
         atr_pct = (atr_value / price) if price > 0 else 0.0
         return atr_value, atr_pct
 
-    def _compute_ema_metrics(
-        self, closes: List[float], price: float
-    ) -> Tuple[float, float]:
+    def _compute_ema_metrics(self, closes: List[float], price: float) -> Tuple[float, float]:
         ema20 = RollingEMA.from_period(20)
         for c in closes:
             ema20.update(float(c))
@@ -331,9 +305,7 @@ class FeatureCalculator:
         if vwap_val <= 0.0:
             num = 0.0
             den = 0.0
-            for ts, h, low_val, c, vol in zip(
-                timestamps, highs, lows, closes, volumes, strict=True
-            ):
+            for ts, h, low_val, c, vol in zip(timestamps, highs, lows, closes, volumes, strict=True):
                 if ts.astimezone(_ET_TZ).date() != latest_date_et:
                     continue
                 v = float(vol)
@@ -347,9 +319,7 @@ class FeatureCalculator:
         distance_from_vwap = ((price - vwap_val) / vwap_val) if vwap_val > 0 else 0.0
         return vwap_val, distance_from_vwap
 
-    def _compute_adx(
-        self, highs: List[float], lows: List[float], closes: List[float]
-    ) -> float:
+    def _compute_adx(self, highs: List[float], lows: List[float], closes: List[float]) -> float:
         """Compute ADX using RollingADX incremental indicator."""
         if len(closes) < 3:
             return 0.0
@@ -383,9 +353,7 @@ class FeatureCalculator:
             prior_day_low = float(by_date[last_full][1])
         return prior_day_high, prior_day_low
 
-    def _compute_bollinger(
-        self, closes: List[float], price: float
-    ) -> Tuple[float, float, float]:
+    def _compute_bollinger(self, closes: List[float], price: float) -> Tuple[float, float, float]:
         bb_upper = 0.0
         bb_lower = 0.0
         price_zscore = 0.0
@@ -400,9 +368,7 @@ class FeatureCalculator:
             price_zscore = float((price - mean) / stdev)
         return bb_upper, bb_lower, price_zscore
 
-    def _compute_premarket_volume(
-        self, timestamps: List[datetime], volumes: List[float]
-    ) -> float:
+    def _compute_premarket_volume(self, timestamps: List[datetime], volumes: List[float]) -> float:
         premarket_vol = 0.0
         market_open = time(9, 30)
         latest_date_et = timestamps[-1].astimezone(_ET_TZ).date()
@@ -415,9 +381,7 @@ class FeatureCalculator:
                 premarket_vol += float(vol)
         return premarket_vol
 
-    def _process_single_flow_trade(
-        self, trade: Any
-    ) -> Tuple[float, float, int, int, int, float, float]:
+    def _process_single_flow_trade(self, trade: Any) -> Tuple[float, float, int, int, int, float, float]:
         t = trade if isinstance(trade, dict) else trade.__dict__
 
         size = float(t.get("size", 0))
@@ -446,9 +410,7 @@ class FeatureCalculator:
 
         return call_vol, put_vol, call_n, put_n, sweep_count, aggressive_qty, size
 
-    def compute_flow_metrics(
-        self, flow_data: List[Any]
-    ) -> Tuple[float, float, int, float, float]:
+    def compute_flow_metrics(self, flow_data: List[Any]) -> Tuple[float, float, int, float, float]:
         """
         Computes options flow metrics.
         Returns (call_put_ratio, flow_zscore, sweep_count, aggressive_flow_share, flow_bias)
@@ -483,13 +445,9 @@ class FeatureCalculator:
         denom = call_vol_total + put_vol_total
         flow_bias = ((call_vol_total - put_vol_total) / denom) if denom > 0 else 0.0
 
-        aggressive_flow_share = (
-            (aggressive_qty_total / total_qty_total) if total_qty_total > 0 else 0.0
-        )
+        aggressive_flow_share = (aggressive_qty_total / total_qty_total) if total_qty_total > 0 else 0.0
         n_total = int(call_n_total + put_n_total)
-        flow_zscore = (
-            ((call_n_total - put_n_total) / math.sqrt(n_total)) if n_total > 0 else 0.0
-        )
+        flow_zscore = ((call_n_total - put_n_total) / math.sqrt(n_total)) if n_total > 0 else 0.0
         return (
             call_put_ratio,
             flow_zscore,
@@ -593,9 +551,7 @@ class FeatureCalculator:
 
         return (buy_vol - sell_vol) / total_vol
 
-    def calculate_gex_metrics(
-        self, exposure_data: List[Dict[str, Any]], spot_price: float
-    ) -> Tuple[float, float]:
+    def calculate_gex_metrics(self, exposure_data: List[Dict[str, Any]], spot_price: float) -> Tuple[float, float]:
         """
         Calculates Net Gamma Exposure (GEX) and distance to GEX Flip.
         Net GEX = (Sum of Call Gamma - Sum of Put Gamma) * Multiplier
@@ -646,9 +602,7 @@ class FeatureCalculator:
                 flip_strike = s1 if abs(v1) < abs(v2) else s2
                 break
 
-        dist_to_flip = (
-            (flip_strike - spot_price) / spot_price if spot_price > 0 else 0.0
-        )
+        dist_to_flip = (flip_strike - spot_price) / spot_price if spot_price > 0 else 0.0
 
         return total_net_gex, dist_to_flip
 
@@ -664,9 +618,7 @@ class FeatureCalculator:
             w.append(w_k)
         return w
 
-    def apply_frac_diff(
-        self, series: List[float], d: float, threshold: float = 1e-5
-    ) -> float:
+    def apply_frac_diff(self, series: List[float], d: float, threshold: float = 1e-5) -> float:
         """
         Applies Fractional Differentiation (Fixed-width window) to a series.
         Preserves memory while achieving stationarity.
@@ -699,9 +651,24 @@ class FeatureCalculator:
         if len(series) < 50:  # Need sufficient data for R/S analysis
             return 0.5
 
-        # Log returns
-        rets = [math.log(series[i] / series[i - 1]) for i in range(1, len(series))]
+        # Log returns (skip non-positive prices to avoid invalid math/zero division).
+        rets: List[float] = []
+        for i in range(1, len(series)):
+            try:
+                prev = float(series[i - 1])
+                curr = float(series[i])
+            except (TypeError, ValueError):
+                continue
+            if prev <= 0.0 or curr <= 0.0:
+                continue
+            try:
+                rets.append(math.log(curr / prev))
+            except (ValueError, ZeroDivisionError):
+                continue
+
         n = len(rets)
+        if n < 2:
+            return 0.5
 
         # We use a single window for simplicity in this implementation,
         # but full R/S would use multiple window sizes.

@@ -30,9 +30,7 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(
-    *, client: UnusualWhalesClient, response: httpx.Response
-) -> ErrorMessage | SPIKEValue | str | None:
+def _parse_response(*, client: UnusualWhalesClient, response: httpx.Response) -> ErrorMessage | SPIKEValue | str | None:
     response_json = response.json()
     if response_json.get("data") is not None:
         response_json = response_json["data"]

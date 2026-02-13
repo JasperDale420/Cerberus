@@ -73,21 +73,13 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             bars.append(bar)
 
         # Prefer cached EMAs and volume SMA from engine; fall back to deterministic local computation.
-        current_fast = symbol_state.indicators.get(
-            f"ema_close:{int(self.ema_fast_len)}"
-        )
-        current_slow = symbol_state.indicators.get(
-            f"ema_close:{int(self.ema_slow_len)}"
-        )
+        current_fast = symbol_state.indicators.get(f"ema_close:{int(self.ema_fast_len)}")
+        current_slow = symbol_state.indicators.get(f"ema_close:{int(self.ema_slow_len)}")
         if current_fast is None or current_slow is None:
             # Fallback to centralized calculator
             closes = [float(b.close) for b in bars]
-            current_fast = FeatureCalculator.calculate_ema(
-                closes, int(self.ema_fast_len)
-            )
-            current_slow = FeatureCalculator.calculate_ema(
-                closes, int(self.ema_slow_len)
-            )
+            current_fast = FeatureCalculator.calculate_ema(closes, int(self.ema_fast_len))
+            current_slow = FeatureCalculator.calculate_ema(closes, int(self.ema_slow_len))
 
         if current_fast is None or current_slow is None:
             return None
@@ -145,17 +137,13 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             prev_close = float(bars[-2].close) if len(bars) >= 2 else float(bar.close)
 
             # Did we cross UP?
-            cross_up = (prev_close < prev_vwap_f) and (
-                float(bar.close) > current_vwap_f
-            )
+            cross_up = (prev_close < prev_vwap_f) and (float(bar.close) > current_vwap_f)
 
             if cross_up:
                 # Check Volume
                 if current_vol > (avg_vol_f * float(self.vol_mult)):
                     # ENTRY LONG
-                    stop_loss = min(
-                        [b.low for b in bars[-3:]]
-                    )  # Recent swing low match
+                    stop_loss = min([b.low for b in bars[-3:]])  # Recent swing low match
                     if stop_loss >= bar.close:
                         stop_loss = bar.close * 0.995  # fallback
 
@@ -174,9 +162,7 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                             "ema_slow": float(current_slow),
                             "vwap": float(current_vwap_f),
                             "trigger": "pullback_bounce",
-                            "vol_mult": (
-                                (current_vol / avg_vol_f) if avg_vol_f else None
-                            ),
+                            "vol_mult": ((current_vol / avg_vol_f) if avg_vol_f else None),
                             "trend_score": float(trend_score_f),
                         },
                     )
@@ -186,9 +172,7 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             prev_close = float(bars[-2].close) if len(bars) >= 2 else float(bar.close)
 
             # Did we cross DOWN?
-            cross_down = (prev_close > prev_vwap_f) and (
-                float(bar.close) < current_vwap_f
-            )
+            cross_down = (prev_close > prev_vwap_f) and (float(bar.close) < current_vwap_f)
 
             if cross_down:
                 # Check Volume
@@ -213,9 +197,7 @@ class VWAPTrendRiderStrategy(BaseStrategy):
                             "ema_slow": float(current_slow),
                             "vwap": float(current_vwap_f),
                             "trigger": "pullback_bounce",
-                            "vol_mult": (
-                                (current_vol / avg_vol_f) if avg_vol_f else None
-                            ),
+                            "vol_mult": ((current_vol / avg_vol_f) if avg_vol_f else None),
                             "trend_score": float(trend_score_f),
                         },
                     )

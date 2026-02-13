@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from src.core.settings import Settings, validate_startup_settings
+from src.core.settings import Settings, validate_runtime_execution_requirements, validate_startup_settings
 
 
-def build_settings(**overrides: object) -> Settings:
+def build_settings(**overrides: Any) -> Settings:
     """Create runtime settings using environment aliases used in production."""
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "CERBERUS_DATA_BACKEND": "legacy",
         "CERBERUS_STORAGE_BACKEND": "sqlite",
         "CERBERUS_FAILOVER_TO_LEGACY": True,
@@ -188,6 +189,53 @@ def test_validate_startup_settings_raises_on_invalid_config() -> None:
 
         with pytest.raises(ValueError, match="Startup configuration validation failed"):
             validate_startup_settings()
+
+
+def test_runtime_execution_requires_alpaca_creds_for_alpaca_executor_even_in_gateway_mode() -> None:
+    """Alpaca order execution should always require Alpaca credentials."""
+    with patch("src.core.settings.get_settings") as mock_get_settings:
+        mock_get_settings.return_value = build_settings(
+            CERBERUS_DATA_BACKEND="gateway",
+            CERBERUS_GATEWAY_URL="http://gateway.example.com",
+            CERBERUS_GATEWAY_KEY="valid_gateway_key",
+            alpaca_api_key="",
+            alpaca_secret_key="",
+            apca_api_key_id="",
+            apca_api_secret_key="",
+        )
+
+        with pytest.raises(ValueError, match="Order executor validation failed"):
+            validate_runtime_execution_requirements(order_executor="alpaca", mode="paper")
+
+
+def test_runtime_execution_allows_noop_without_alpaca_creds() -> None:
+    """Noop order execution should not require Alpaca credentials."""
+    with patch("src.core.settings.get_settings") as mock_get_settings:
+        mock_get_settings.return_value = build_settings(
+            CERBERUS_DATA_BACKEND="gateway",
+            CERBERUS_GATEWAY_URL="http://gateway.example.com",
+            CERBERUS_GATEWAY_KEY="valid_gateway_key",
+            alpaca_api_key="",
+            alpaca_secret_key="",
+            apca_api_key_id="",
+            apca_api_secret_key="",
+        )
+
+        validate_runtime_execution_requirements(order_executor="noop", mode="paper")
+
+
+def test_runtime_execution_accepts_apca_alias_credentials() -> None:
+    """Alpaca executor should accept APCA_* alias credentials."""
+    with patch("src.core.settings.get_settings") as mock_get_settings:
+        mock_get_settings.return_value = build_settings(
+            CERBERUS_DATA_BACKEND="gateway",
+            CERBERUS_GATEWAY_URL="http://gateway.example.com",
+            CERBERUS_GATEWAY_KEY="valid_gateway_key",
+            apca_api_key_id="key_id",  # pragma: allowlist secret
+            apca_api_secret_key="dummy_value",  # pragma: allowlist secret
+        )
+
+        validate_runtime_execution_requirements(order_executor="alpaca", mode="live")
 
 
 def test_use_gateway_data_property() -> None:

@@ -65,9 +65,7 @@ class BaseStrategy(ABC):
 
         return False
 
-    def _require_min_bars(
-        self, symbol_state: SymbolState, min_count: int, log: bool = True
-    ) -> bool:
+    def _require_min_bars(self, symbol_state: SymbolState, min_count: int, log: bool = True) -> bool:
         """
         Check if symbol_state has minimum required bars for analysis.
 

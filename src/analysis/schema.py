@@ -34,9 +34,7 @@ class Trade(Base):
     pnl_r: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     mae_r: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     mfe_r: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    holding_period_seconds: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    holding_period_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     features_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     correlation_id: Mapped[str] = mapped_column(String, index=True)
 
@@ -63,9 +61,7 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     correlation_id: Mapped[str] = mapped_column(String, index=True)
-    trade_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("trades.id"), nullable=True
-    )
+    trade_id: Mapped[Optional[int]] = mapped_column(ForeignKey("trades.id"), nullable=True)
     symbol: Mapped[str] = mapped_column(String)
     side: Mapped[str] = mapped_column(String)  # buy/sell
     qty: Mapped[float] = mapped_column(Float)
@@ -106,18 +102,10 @@ class RegimeHistory(Base):
     # PRD Regime Upgrade Patch §7.1: Multi-axis regime fields
     model_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     trend: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # UP/DOWN/FLAT
-    vol_regime: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # LOW/NORMAL/HIGH/SHOCK
-    liquidity: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # GOOD/THIN/STRESSED
-    risk: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # RISK_ON/NEUTRAL/RISK_OFF
-    session: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # OPENING/MIDDAY/POWER_HOUR/CLOSE
+    vol_regime: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # LOW/NORMAL/HIGH/SHOCK
+    liquidity: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # GOOD/THIN/STRESSED
+    risk: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # RISK_ON/NEUTRAL/RISK_OFF
+    session: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # OPENING/MIDDAY/POWER_HOUR/CLOSE
     vol_of_vol: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     liquidity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -151,9 +139,7 @@ class StrategyStatsDaily(Base):
     max_drawdown_r: Mapped[float] = mapped_column(Float, default=0.0)
     max_consecutive_losers: Mapped[int] = mapped_column(Integer, default=0)
     pnl_r_total: Mapped[float] = mapped_column(Float, default=0.0)
-    net_pnl: Mapped[float] = mapped_column(
-        Float, default=0.0
-    )  # Added for dollar aggregation
+    net_pnl: Mapped[float] = mapped_column(Float, default=0.0)  # Added for dollar aggregation
     std_dev_pnl: Mapped[float] = mapped_column(Float, default=0.0)
     z_score: Mapped[float] = mapped_column(Float, default=0.0)
 

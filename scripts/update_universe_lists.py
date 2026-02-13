@@ -37,21 +37,13 @@ def _normalize_symbol(sym: str) -> str:
     return s
 
 
-def _extract_symbols_from_tables(
-    tables: Iterable[pd.DataFrame], column_candidates: List[str]
-) -> List[str]:
+def _extract_symbols_from_tables(tables: Iterable[pd.DataFrame], column_candidates: List[str]) -> List[str]:
     for t in tables:
         cols = [str(c) for c in t.columns]
         for c in column_candidates:
             if c in cols:
                 syms = [_normalize_symbol(x) for x in t[c].tolist()]
-                out = [
-                    s
-                    for s in syms
-                    if s
-                    and s.isascii()
-                    and s.replace(".", "").replace("-", "").isalnum()
-                ]
+                out = [s for s in syms if s and s.isascii() and s.replace(".", "").replace("-", "").isalnum()]
                 if out:
                     return out
     raise RuntimeError(f"Could not find a symbol column in tables: {column_candidates}")

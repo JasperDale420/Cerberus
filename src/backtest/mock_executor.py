@@ -68,9 +68,7 @@ class BacktestOrderExecutor:
         # Partial fill configuration
         self._partial_fill_mode: str = "none"  # none|fixed|volume_aware
         self._partial_fill_pct: float = 1.0  # for fixed mode
-        self._partial_fill_rate: float = (
-            0.1  # for volume_aware: capture 10% of bar volume
-        )
+        self._partial_fill_rate: float = 0.1  # for volume_aware: capture 10% of bar volume
         # Slippage configuration
         self._slippage_mode: str = "fixed"  # fixed|volume_impact
         self._slippage_impact_mult: float = 5.0  # multiplier for volume impact
@@ -82,49 +80,35 @@ class BacktestOrderExecutor:
     def set_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> None:
         self._risk_cfg = dict(risk_cfg) if isinstance(risk_cfg, dict) else {}
         # Bracket exit mode from risk config
-        self._bracket_exit_mode = str(
-            self._risk_cfg.get("bracket_exit_mode", "stop_first")
-        ).lower()
+        self._bracket_exit_mode = str(self._risk_cfg.get("bracket_exit_mode", "stop_first")).lower()
 
     def set_backtest_config(self, backtest_cfg: Optional[Dict[str, Any]]) -> None:
         """Configure backtest-specific realism settings."""
-        self._backtest_cfg = (
-            dict(backtest_cfg) if isinstance(backtest_cfg, dict) else {}
-        )
+        self._backtest_cfg = dict(backtest_cfg) if isinstance(backtest_cfg, dict) else {}
 
         # Partial fill mode: none|fixed|volume_aware
-        self._partial_fill_mode = str(
-            self._backtest_cfg.get("partial_fill_mode", "none")
-        ).lower()
+        self._partial_fill_mode = str(self._backtest_cfg.get("partial_fill_mode", "none")).lower()
 
         # Fixed partial fill percentage (for mode=fixed)
         try:
-            self._partial_fill_pct = float(
-                self._backtest_cfg.get("partial_fill_pct", 1.0)
-            )
+            self._partial_fill_pct = float(self._backtest_cfg.get("partial_fill_pct", 1.0))
             self._partial_fill_pct = max(0.1, min(1.0, self._partial_fill_pct))
         except (TypeError, ValueError):
             self._partial_fill_pct = 1.0
 
         # Volume-aware fill rate (for mode=volume_aware)
         try:
-            self._partial_fill_rate = float(
-                self._backtest_cfg.get("partial_fill_rate", 0.1)
-            )
+            self._partial_fill_rate = float(self._backtest_cfg.get("partial_fill_rate", 0.1))
             self._partial_fill_rate = max(0.01, min(1.0, self._partial_fill_rate))
         except (TypeError, ValueError):
             self._partial_fill_rate = 0.1
 
         # Slippage mode: fixed|volume_impact
-        self._slippage_mode = str(
-            self._backtest_cfg.get("slippage_mode", "fixed")
-        ).lower()
+        self._slippage_mode = str(self._backtest_cfg.get("slippage_mode", "fixed")).lower()
 
         # Volume impact multiplier (for slippage_mode=volume_impact)
         try:
-            self._slippage_impact_mult = float(
-                self._backtest_cfg.get("slippage_impact_mult", 5.0)
-            )
+            self._slippage_impact_mult = float(self._backtest_cfg.get("slippage_impact_mult", 5.0))
         except (TypeError, ValueError):
             self._slippage_impact_mult = 5.0
 
@@ -132,9 +116,7 @@ class BacktestOrderExecutor:
         self._spread_mode = str(self._backtest_cfg.get("spread_mode", "fixed")).lower()
 
         # Daily equity reset: start each day fresh with initial_cash
-        self._daily_equity_reset = bool(
-            self._backtest_cfg.get("daily_equity_reset", False)
-        )
+        self._daily_equity_reset = bool(self._backtest_cfg.get("daily_equity_reset", False))
 
         # Check if advanced exits are enabled (from risk config)
         # If so, disable broker_managed_exits to let PositionManager handle exits
@@ -187,9 +169,7 @@ class BacktestOrderExecutor:
             side=intent.side.value,
             qty=float(intent.qty),
             order_type=intent.order_type.value,
-            limit_price=(
-                float(intent.limit_price) if intent.limit_price is not None else None
-            ),
+            limit_price=(float(intent.limit_price) if intent.limit_price is not None else None),
             correlation_id=intent.correlation_id,
             strategy=intent.strategy,
         )
@@ -319,9 +299,7 @@ class BacktestOrderExecutor:
             }
         )
 
-    def _update_cash_and_positions(
-        self, *, symbol: str, side: str, qty: float, price: float
-    ) -> None:
+    def _update_cash_and_positions(self, *, symbol: str, side: str, qty: float, price: float) -> None:
         qty_f = float(qty)
         px = float(price)
         commission = self._commission_for(qty_f)
@@ -343,9 +321,7 @@ class BacktestOrderExecutor:
         # If closing (reducing size) or flipping, avg_price doesn't mathematically change
         # for the remaining portion until the flip occurs, but here we simplify:
         # If we flip from short to long or long to short, or start from 0, reset avg_price.
-        is_same_dir_increase = (prev_qty > 0 and new_qty > prev_qty) or (
-            prev_qty < 0 and new_qty < prev_qty
-        )
+        is_same_dir_increase = (prev_qty > 0 and new_qty > prev_qty) or (prev_qty < 0 and new_qty < prev_qty)
 
         if math.isclose(prev_qty, 0.0, abs_tol=1e-9):
             pos["avg_price"] = px
@@ -362,9 +338,7 @@ class BacktestOrderExecutor:
         else:
             pos["qty"] = new_qty
 
-    def _maybe_fill_price_for_order(
-        self, intent: OrderIntent, bar: Bar
-    ) -> Optional[float]:
+    def _maybe_fill_price_for_order(self, intent: OrderIntent, bar: Bar) -> Optional[float]:
         """
         Deterministic fill model:
         - MARKET: fill at bar.open
@@ -393,9 +367,7 @@ class BacktestOrderExecutor:
             return float(max(float(bar.open), limit_f))
         return None
 
-    def fill_pending_for_bar(
-        self, engine: ExecutionEngine, symbol: str, bar: Bar
-    ) -> None:
+    def fill_pending_for_bar(self, engine: ExecutionEngine, symbol: str, bar: Bar) -> None:
         """
         Attempt fills for pending orders for `symbol` using this bar's OHLC.
         Fills only occur on bars strictly after the order was submitted.
@@ -527,9 +499,7 @@ class BacktestOrderExecutor:
             correlation_id=o.intent.correlation_id,
         )
 
-    def maybe_trigger_bracket_exit(
-        self, engine: ExecutionEngine, symbol: str, bar: Bar
-    ) -> None:
+    def maybe_trigger_bracket_exit(self, engine: ExecutionEngine, symbol: str, bar: Bar) -> None:
         """
         Simulate broker-managed stop/target exits using intrabar extremes.
         """
@@ -554,9 +524,7 @@ class BacktestOrderExecutor:
             return
 
         # Portfolio model first.
-        self._update_cash_and_positions(
-            symbol=symbol, side=exit_side.value, qty=qty, price=exit_px
-        )
+        self._update_cash_and_positions(symbol=symbol, side=exit_side.value, qty=qty, price=exit_px)
 
         # Engine fill to update position/risk/trades.
         engine.on_fill(
@@ -630,9 +598,7 @@ class BacktestOrderExecutor:
 
         return hit_stop, hit_target
 
-    def _calculate_gap_aware_exit(
-        self, pos: Any, open_px: float, price: float, is_stop: bool
-    ) -> float:
+    def _calculate_gap_aware_exit(self, pos: Any, open_px: float, price: float, is_stop: bool) -> float:
         """Calculate exit price accounting for gaps past stop/target."""
         is_long = pos.side == Side.LONG
 
@@ -649,17 +615,13 @@ class BacktestOrderExecutor:
             else:
                 return min(open_px, price)
 
-    def _calculate_bracket_exit(
-        self, pos: Any, bar: Bar
-    ) -> tuple[Optional[float], str]:
+    def _calculate_bracket_exit(self, pos: Any, bar: Bar) -> tuple[Optional[float], str]:
         stop_price = getattr(pos, "stop_price", None)
         target_price = getattr(pos, "target_price", None)
         if stop_price is None and target_price is None:
             return None, ""
 
-        hit_stop, hit_target = self._check_bracket_hits(
-            pos, bar, stop_price, target_price
-        )
+        hit_stop, hit_target = self._check_bracket_hits(pos, bar, stop_price, target_price)
         if not (hit_stop or hit_target):
             return None, ""
 
@@ -716,13 +678,9 @@ class BacktestOrderExecutor:
 
             exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
             qty = float(pos.qty)
-            px = self._apply_slippage(
-                exit_side.value, self._apply_spread(exit_side.value, mark)
-            )
+            px = self._apply_slippage(exit_side.value, self._apply_spread(exit_side.value, mark))
 
-            self._update_cash_and_positions(
-                symbol=sym, side=exit_side.value, qty=qty, price=px
-            )
+            self._update_cash_and_positions(symbol=sym, side=exit_side.value, qty=qty, price=px)
             engine.on_fill(
                 {
                     "symbol": sym,

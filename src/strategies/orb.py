@@ -127,10 +127,7 @@ class ORBStrategy(BaseStrategy):
             return None
         if self.min_flow_zscore > 0 and abs(flow_zscore) < self.min_flow_zscore:
             return None
-        if (
-            self.min_premarket_volume > 0
-            and premarket_volume < self.min_premarket_volume
-        ):
+        if self.min_premarket_volume > 0 and premarket_volume < self.min_premarket_volume:
             return None
 
         orb_high = symbol_state.indicators.get("orb_high")

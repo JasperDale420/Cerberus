@@ -10,9 +10,7 @@ from src.core.logger import StructuredLogger
 
 
 class _DummyConfigLoader(ConfigLoader):
-    def load_config(
-        self, _path: Optional[str] = None
-    ) -> Dict[str, Any]:  # pragma: no cover
+    def load_config(self, _path: Optional[str] = None) -> Dict[str, Any]:  # pragma: no cover
         return {}
 
 
@@ -20,9 +18,7 @@ class _FakeCentralApiClient:
     def __init__(self, _config_loader: ConfigLoader, _logger: StructuredLogger):
         self.calls: List[Dict[str, Any]] = []
 
-    def chat_completion(
-        self, model: str, messages: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def chat_completion(self, model: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         self.calls.append({"model": model, "messages": messages})
         return {"choices": [{"message": {"content": "ok"}}]}
 

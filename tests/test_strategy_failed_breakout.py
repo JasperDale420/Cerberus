@@ -55,21 +55,15 @@ def test_bearish_fade(fb_strategy):
 
     # Prior Day: High 105, Low 95
     bars.append(Bar("TEST", yesterday_start, 100, 105, 100, 102, 1000))
-    bars.append(
-        Bar("TEST", yesterday_start + timedelta(hours=1), 102, 102, 95, 98, 1000)
-    )
+    bars.append(Bar("TEST", yesterday_start + timedelta(hours=1), 102, 102, 95, 98, 1000))
 
     # Current Day:
 
     # 2. Breakout: Push above 105 (e.g. 106)
-    b1 = Bar(
-        "TEST", today_start, 104, 106, 104, 105.5, 1000
-    )  # Open 104, High 106, Close 105.5
+    b1 = Bar("TEST", today_start, 104, 106, 104, 105.5, 1000)  # Open 104, High 106, Close 105.5
 
     # 3. Failure: Close < 105
-    b2 = Bar(
-        "TEST", today_start + timedelta(minutes=5), 105.5, 105.8, 104, 104.5, 1000
-    )  # Close 104.5
+    b2 = Bar("TEST", today_start + timedelta(minutes=5), 105.5, 105.8, 104, 104.5, 1000)  # Close 104.5
 
     symbol_state = SymbolState(
         symbol="TEST",
