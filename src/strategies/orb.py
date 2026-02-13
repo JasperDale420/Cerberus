@@ -37,6 +37,7 @@ class ORBStrategy(BaseStrategy):
         self.min_gap_pct = cfg.min_gap_pct
         self.min_flow_zscore = cfg.min_flow_zscore
         self.min_premarket_volume = cfg.min_premarket_volume
+        self.min_or_range_pct = cfg.min_or_range_pct
         # P2 fix: ATR-based buffer for stop placement
         self.stop_buffer_atr_mult = cfg.stop_buffer_atr_mult
 
@@ -135,6 +136,15 @@ class ORBStrategy(BaseStrategy):
 
         if not orb_high or not orb_low:
             return None
+        orb_high = float(orb_high)
+        orb_low = float(orb_low)
+
+        if self.min_or_range_pct > 0:
+            if orb_low <= 0:
+                return None
+            orb_range_pct = (orb_high - orb_low) / orb_low
+            if orb_range_pct < self.min_or_range_pct:
+                return None
 
         # === QLIB-INSPIRED CONFIRMATIONS ===
 

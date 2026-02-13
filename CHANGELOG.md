@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
+- ORB minimum opening-range percent filter with micro backtest guard (2026-02-13).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:
