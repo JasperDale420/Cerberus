@@ -130,3 +130,27 @@ def test_vwap_profile():
     # Fail Volume
     f3 = create_features("C", price=15.0, volume=500)
     assert profile.filter(f3) is False
+
+
+@pytest.mark.unit
+def test_scanner_validation_defaults_on_bad_config_values():
+    mock_universe = MagicMock()
+    mock_pipeline = MagicMock()
+    mock_logger = MagicMock()
+    config = {
+        "scanner": {
+            "min_price": "nope",
+            "max_price": None,
+            "min_volume": "bad",
+            "min_atr_pct": "n/a",
+            "max_atr_pct": "n/a",
+        }
+    }
+    scanner = Scanner(mock_universe, mock_pipeline, mock_logger, config=config)
+    features_map = {"AAPL": create_features("AAPL", price=100.0, volume=100000.0)}
+
+    survivors, filtered = scanner._apply_data_validation(features_map)
+
+    assert "AAPL" in survivors
+    assert filtered == 0
+    assert mock_logger.warning.call_count >= 1

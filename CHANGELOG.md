@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Scanner technical validation now rejects non-finite price/volume/ATR inputs with warnings.
+- Scanner config validation falls back to defaults when numeric filters are invalid.
 
 ### Documentation
 

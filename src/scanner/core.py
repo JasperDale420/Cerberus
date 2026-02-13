@@ -307,12 +307,28 @@ class Scanner:
         scanner_cfg = (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
 
         # Extract filter params
+        def _coerce_float(key: str, default: float) -> float:
+            raw = scanner_cfg.get(key, default)
+            try:
+                if raw is None:
+                    raise TypeError
+                return float(raw)
+            except (TypeError, ValueError):
+                if self.logger:
+                    self.logger.warning(
+                        "Invalid scanner config value; using default",
+                        key=key,
+                        value=raw,
+                        default=default,
+                    )
+                return float(default)
+
         params = {
-            "min_price": float(scanner_cfg.get("min_price", 0.0)),
-            "max_price": float(scanner_cfg.get("max_price", float("inf"))),
-            "min_volume": float(scanner_cfg.get("min_volume", 0.0)),
-            "min_atr_pct": float(scanner_cfg.get("min_atr_pct", 0.0)),
-            "max_atr_pct": float(scanner_cfg.get("max_atr_pct", float("inf"))),
+            "min_price": _coerce_float("min_price", 0.0),
+            "max_price": _coerce_float("max_price", float("inf")),
+            "min_volume": _coerce_float("min_volume", 0.0),
+            "min_atr_pct": _coerce_float("min_atr_pct", 0.0),
+            "max_atr_pct": _coerce_float("max_atr_pct", float("inf")),
         }
 
         for symbol, features in features_map.items():
