@@ -63,6 +63,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Deduplicated Stage 3 approval checks into shared helper used by weekly report and proposals.
+
 - **Gateway-first trading execution path** (2026-02-13):
   - Set gateway-first runtime defaults in `src/core/settings.py`:
     - `CERBERUS_DATA_BACKEND` default is now `gateway`
