@@ -5,7 +5,7 @@ from datetime import datetime
 import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from pytz import timezone
+from pytz import UnknownTimeZoneError, timezone
 
 logger = structlog.get_logger("CerberusScheduler")
 
@@ -14,7 +14,28 @@ class CerberusScheduler:
     def __init__(self, config: dict):
         self.config = config
         self.scheduler = BlockingScheduler()
-        self.tz = timezone(config.get("timezone", "America/New_York"))
+        self.tz = self._load_timezone(config.get("timezone", "America/New_York"))
+
+    @staticmethod
+    def _load_timezone(tz_name: str):
+        try:
+            return timezone(tz_name)
+        except UnknownTimeZoneError as exc:
+            logger.error("Invalid timezone in scheduler config", timezone=tz_name, error=str(exc))
+            raise ValueError(f"Invalid timezone: {tz_name}") from exc
+
+    @staticmethod
+    def _parse_schedule_time(schedule_time: str) -> tuple[int, int]:
+        try:
+            parsed = datetime.strptime(schedule_time, "%H:%M")
+        except ValueError as exc:
+            logger.error(
+                "Invalid schedule_time format",
+                schedule_time=schedule_time,
+                error=str(exc),
+            )
+            raise ValueError("Invalid schedule_time format (expected HH:MM)") from exc
+        return parsed.hour, parsed.minute
 
     def start(self):
         """
@@ -22,7 +43,7 @@ class CerberusScheduler:
         """
         # Parse schedule time from config or default to 09:25 ET
         schedule_time = self.config.get("schedule_time", "09:25")
-        hour, minute = map(int, schedule_time.split(":"))
+        hour, minute = self._parse_schedule_time(schedule_time)
 
         # Add job to run Mon-Fri
         trigger = CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=self.tz)
@@ -40,7 +61,10 @@ class CerberusScheduler:
             self.add_weekly_analysis_job()
 
         logger.info(
-            f"Scheduler started. Next run scheduled for: {trigger.get_next_fire_time(None, datetime.now(self.tz))}"
+            "Scheduler started.",
+            next_run=str(trigger.get_next_fire_time(None, datetime.now(self.tz))),
+            schedule_time=schedule_time,
+            timezone=str(self.tz),
         )
 
         try:
@@ -71,9 +95,9 @@ class CerberusScheduler:
             if result.returncode == 0:
                 logger.info("Daily session completed successfully.")
             else:
-                logger.error(f"Daily session failed with exit code {result.returncode}.")
+                logger.error("Daily session failed", exit_code=result.returncode)
         except Exception as e:
-            logger.error(f"Failed to launch subprocess: {e}")
+            logger.error("Failed to launch subprocess", error=str(e), exc_info=True)
 
     def _run_weekly_analysis(self):
         """
@@ -93,9 +117,9 @@ class CerberusScheduler:
             if result.returncode == 0:
                 logger.info("Weekly analysis completed successfully.")
             else:
-                logger.error(f"Weekly analysis failed with exit code {result.returncode}.")
+                logger.error("Weekly analysis failed", exit_code=result.returncode)
         except Exception as e:
-            logger.error(f"Failed to launch weekly analysis subprocess: {e}")
+            logger.error("Failed to launch weekly analysis subprocess", error=str(e), exc_info=True)
 
     def add_weekly_analysis_job(self):
         """
@@ -113,5 +137,7 @@ class CerberusScheduler:
         )
 
         logger.info(
-            f"Weekly analysis job scheduled. Next run: {trigger.get_next_fire_time(None, datetime.now(self.tz))}"
+            "Weekly analysis job scheduled.",
+            next_run=str(trigger.get_next_fire_time(None, datetime.now(self.tz))),
+            timezone=str(self.tz),
         )

@@ -1,6 +1,7 @@
 import sys
 from unittest.mock import patch
 
+import pytest
 from apscheduler.triggers.cron import CronTrigger
 
 from src.scheduler import CerberusScheduler
@@ -39,6 +40,26 @@ def test_add_job_correctly():
             # but we can rely on integration verification if this is too fragile.
             # But let's at least check the repr or configured fields if accessible.
             pass
+
+
+def test_scheduler_invalid_schedule_time_logs_and_raises():
+    config = {"timezone": "America/New_York", "schedule_time": "9-30"}
+    scheduler = CerberusScheduler(config)
+
+    with patch("src.scheduler.logger") as mock_logger:
+        with patch.object(scheduler.scheduler, "start"):
+            with pytest.raises(ValueError, match="Invalid schedule_time"):
+                scheduler.start()
+
+        mock_logger.error.assert_called_once()
+
+
+def test_scheduler_invalid_timezone_logs_and_raises():
+    with patch("src.scheduler.logger") as mock_logger:
+        with pytest.raises(ValueError, match="Invalid timezone"):
+            CerberusScheduler({"timezone": "Bad/Timezone", "schedule_time": "09:25"})
+
+        mock_logger.error.assert_called_once()
 
 
 @patch("subprocess.run")

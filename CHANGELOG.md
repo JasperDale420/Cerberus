@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+### Fixed
+
+- Scheduler: Validate timezone and schedule_time with structured error logs (2026-02-13).
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
