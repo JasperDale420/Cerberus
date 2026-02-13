@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - Gap-Fill: Added `min_or_range_pct` filter to skip tight opening ranges (2026-02-13).
 ### Fixed
 
+- Gateway stream: tolerate `None` OHLCV values when normalizing bars (2026-02-13).
+- Type checks: fixed `api_client`, `alpaca`, `pipeline`, and CI tooling typing issues so `mypy .` passes (2026-02-13).
 - Pipeline: Handle None close values in feature close extraction (2026-02-13).
 - Main: Restore stream-mode helpers and runtime strategy registry entries (2026-02-13).
 - Scheduler: Validate timezone and schedule_time with structured error logs (2026-02-13).

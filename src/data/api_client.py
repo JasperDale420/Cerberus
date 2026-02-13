@@ -34,6 +34,8 @@ class CentralApiClient:
             timeout=timeout,
             headers=headers,
         )
+        self.gateway_max_retries: int = 1
+        self.gateway_retry_backoff_seconds: float = 0.25
         try:
             self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
         except ValueError:
@@ -66,7 +68,7 @@ class CentralApiClient:
                     return max(0.0, float(retry_after))
                 except ValueError:
                     pass
-        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+        return float(self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1)))
 
     def _request_with_retry(
         self,

@@ -76,6 +76,26 @@ def test_normalize_bar_from_gateway_payload() -> None:
     assert bar.time == datetime(2026, 2, 13, 14, 32, tzinfo=timezone.utc)
 
 
+def test_normalize_bar_from_gateway_payload_handles_none_numeric_fields() -> None:
+    client = GatewayStreamClient(_cfg(), MagicMock())
+    bar = client._normalize_bar_from_data(
+        {
+            "S": "SPY",
+            "t": "2026-02-13T14:32:00Z",
+            "o": None,
+            "h": None,
+            "l": None,
+            "c": None,
+            "v": None,
+        }
+    )
+    assert bar.open == 0.0
+    assert bar.high == 0.0
+    assert bar.low == 0.0
+    assert bar.close == 0.0
+    assert bar.volume == 0.0
+
+
 @pytest.mark.asyncio
 async def test_handle_message_invokes_callback_with_symbol_and_bar() -> None:
     client = GatewayStreamClient(_cfg(), MagicMock())
@@ -92,4 +112,3 @@ async def test_handle_message_invokes_callback_with_symbol_and_bar() -> None:
     symbol, bar = callback.call_args.args
     assert symbol == "QQQ"
     assert bar.symbol == "QQQ"
-
