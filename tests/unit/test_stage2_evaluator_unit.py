@@ -27,9 +27,7 @@ def _bar(
 
 @dataclass
 class _DummyConfigLoader:
-    def load_config(
-        self, _path: Optional[str] = None
-    ) -> Dict[str, Any]:  # pragma: no cover
+    def load_config(self, _path: Optional[str] = None) -> Dict[str, Any]:  # pragma: no cover
         return {}
 
 
@@ -40,9 +38,7 @@ class _FakeAlpacaClient:
     def set_bars(self, symbol: str, rows: List[Dict[str, Any]]) -> None:
         self._bars_by_symbol[str(symbol).upper()] = list(rows)
 
-    def get_historical_bars(
-        self, symbol: str, *_args: Any, **_kwargs: Any
-    ) -> Dict[str, Any]:
+    def get_historical_bars(self, symbol: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         return {"bars": list(self._bars_by_symbol.get(str(symbol).upper(), []))}
 
 
@@ -53,9 +49,7 @@ class _OneShotStrategy(BaseStrategy):
         super().__init__(config, logger)
         self._fired: set[str] = set()
 
-    def on_bar(
-        self, symbol: str, bar: Bar, *_args: Any, **_kwargs: Any
-    ) -> Optional[Signal]:
+    def on_bar(self, symbol: str, bar: Bar, *_args: Any, **_kwargs: Any) -> Optional[Signal]:
         if symbol in self._fired:
             return None
         self._fired.add(symbol)
@@ -113,9 +107,7 @@ def test_stage2_evaluate_stop_priority_when_both_hit(monkeypatch) -> None:
     logger = StructuredLogger("test_stage2_eval_stop_priority", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage2": {"symbols": ["AAPL"], "window_days": 1}}}
-    ev = stage2_mod.DeterministicStage2Evaluator(
-        cfg, _DummyConfigLoader(), logger, clock=lambda: now
-    )
+    ev = stage2_mod.DeterministicStage2Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
     assert isinstance(ev.alpaca, _FakeAlpacaClient)
     ev.alpaca.set_bars(
@@ -123,23 +115,15 @@ def test_stage2_evaluate_stop_priority_when_both_hit(monkeypatch) -> None:
         [
             _bar("AAPL", now, o=100.0, h=100.0, low=100.0, c=100.0),
             # Next bar: stop (99) and target (102) both crossed; stop must win.
-            _bar(
-                "AAPL", now + timedelta(minutes=1), o=100.0, h=103.0, low=98.0, c=101.0
-            ),
-            _bar(
-                "AAPL", now + timedelta(minutes=2), o=101.0, h=101.0, low=101.0, c=101.0
-            ),
+            _bar("AAPL", now + timedelta(minutes=1), o=100.0, h=103.0, low=98.0, c=101.0),
+            _bar("AAPL", now + timedelta(minutes=2), o=101.0, h=101.0, low=101.0, c=101.0),
         ],
     )
-    monkeypatch.setattr(
-        ev, "_strategy_instance", lambda *_args, **_kwargs: _OneShotStrategy({}, logger)
-    )
+    monkeypatch.setattr(ev, "_strategy_instance", lambda *_args, **_kwargs: _OneShotStrategy({}, logger))
 
     m = ev.evaluate("unit_test_strategy", regime=Regime.CHOP, params={}, as_of=now)
     assert m.n_trades == 1
-    assert m.expectancy == pytest.approx(
-        -1.0
-    )  # stopped at 99 after entering at 100 with 1R risk
+    assert m.expectancy == pytest.approx(-1.0)  # stopped at 99 after entering at 100 with 1R risk
     assert m.max_drawdown_r == pytest.approx(1.0)
 
 
@@ -149,27 +133,19 @@ def test_stage2_evaluate_max_hold_exits_at_close(monkeypatch) -> None:
     logger = StructuredLogger("test_stage2_eval_max_hold", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage2": {"symbols": ["AAPL"], "window_days": 1}}}
-    ev = stage2_mod.DeterministicStage2Evaluator(
-        cfg, _DummyConfigLoader(), logger, clock=lambda: now
-    )
+    ev = stage2_mod.DeterministicStage2Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
     assert isinstance(ev.alpaca, _FakeAlpacaClient)
     ev.alpaca.set_bars(
         "AAPL",
         [
             _bar("AAPL", now, o=100.0, h=100.0, low=100.0, c=100.0),
-            _bar(
-                "AAPL", now + timedelta(seconds=1), o=100.0, h=100.5, low=99.5, c=100.0
-            ),
+            _bar("AAPL", now + timedelta(seconds=1), o=100.0, h=100.5, low=99.5, c=100.0),
             # After >= 6 seconds, max-hold should exit at close (101.0).
-            _bar(
-                "AAPL", now + timedelta(seconds=10), o=100.0, h=101.0, low=99.5, c=101.0
-            ),
+            _bar("AAPL", now + timedelta(seconds=10), o=100.0, h=101.0, low=99.5, c=101.0),
         ],
     )
-    monkeypatch.setattr(
-        ev, "_strategy_instance", lambda *_args, **_kwargs: _OneShotStrategy({}, logger)
-    )
+    monkeypatch.setattr(ev, "_strategy_instance", lambda *_args, **_kwargs: _OneShotStrategy({}, logger))
 
     m = ev.evaluate(
         "unit_test_strategy",

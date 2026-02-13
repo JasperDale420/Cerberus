@@ -52,9 +52,7 @@ def get_eastern_time_of_day(dt: datetime) -> time:
     return et_dt.time()
 
 
-def in_trading_window(
-    dt: datetime, start: time, end: time, convert_to_eastern: bool = True
-) -> bool:
+def in_trading_window(dt: datetime, start: time, end: time, convert_to_eastern: bool = True) -> bool:
     """
     Check if a datetime falls within a trading time window.
 
@@ -109,9 +107,7 @@ def parse_time_string(time_str: str) -> time:
     return time(hour, minute)
 
 
-def in_time_window_str(
-    dt: datetime, start_str: str, end_str: str, convert_to_eastern: bool = True
-) -> bool:
+def in_time_window_str(dt: datetime, start_str: str, end_str: str, convert_to_eastern: bool = True) -> bool:
     """
     Convenience function to check time window using string times.
 

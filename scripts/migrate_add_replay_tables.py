@@ -44,9 +44,7 @@ def migrate():
 
     # Check which tables already exist
     with db.engine.connect() as conn:
-        inspector_result = conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table'")
-        )
+        inspector_result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
         existing_tables = {row[0] for row in inspector_result}
 
     tables_to_create = []
@@ -81,11 +79,7 @@ def migrate():
     # Verify
     with db.engine.connect() as conn:
         for table in tables_to_create:
-            result = conn.execute(
-                text(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
-                )
-            )
+            result = conn.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"))
             if result.fetchone():
                 logger.info(f"✓ Table '{table}' created successfully")
             else:

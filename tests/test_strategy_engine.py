@@ -33,9 +33,7 @@ def mock_strategy():
 
 @pytest.fixture
 def engine(mock_logger, mock_strategy):
-    routing = StrategyRouting(
-        strategies_by_regime={Regime.CHOP: ["strat1"], Regime.BULL: ["strat2"]}
-    )
+    routing = StrategyRouting(strategies_by_regime={Regime.CHOP: ["strat1"], Regime.BULL: ["strat2"]})
     strategies = {"strat1": mock_strategy, "strat2": mock_strategy}
     return StrategyEngine(strategies, routing, mock_logger)
 
@@ -72,13 +70,9 @@ def test_on_bar_runs_active_strategies(engine, mock_strategy):
 @pytest.mark.unit
 def test_safe_run_strategy_missing(engine, mock_logger):
     # Strategy name 'missing' not in map
-    res = engine._safe_run_strategy(
-        "missing", "AAPL", MagicMock(), MagicMock(), MagicMock()
-    )
+    res = engine._safe_run_strategy("missing", "AAPL", MagicMock(), MagicMock(), MagicMock())
     assert res is None
-    mock_logger.warning.assert_called_with(
-        "Strategy missing from registry", strategy="missing"
-    )
+    mock_logger.warning.assert_called_with("Strategy missing from registry", strategy="missing")
 
 
 @pytest.mark.unit
@@ -122,9 +116,7 @@ def test_safe_run_strategy_exception_callback_error(engine, mock_strategy, mock_
 @pytest.mark.unit
 def test_on_bar_multiple_signals(engine, mock_strategy):
     # Setup strat1 and strat2 both allowed and both in regime (hack routing)
-    engine.routing = StrategyRouting(
-        strategies_by_regime={Regime.CHOP: ["strat1", "strat2"]}
-    )
+    engine.routing = StrategyRouting(strategies_by_regime={Regime.CHOP: ["strat1", "strat2"]})
 
     symbol_state = MagicMock()
     symbol_state.allowed_strategies = ["strat1", "strat2"]
@@ -138,9 +130,7 @@ def test_on_bar_multiple_signals(engine, mock_strategy):
 
 
 @pytest.mark.unit
-def test_activation_policy_allows_strategy_when_snapshot_matches(
-    mock_logger, mock_strategy
-):
+def test_activation_policy_allows_strategy_when_snapshot_matches(mock_logger, mock_strategy):
     policy = StrategyActivationPolicy(
         session=(SessionRegime.OPENING,),
         trend=(TrendRegime.UP,),
@@ -176,17 +166,13 @@ def test_activation_policy_allows_strategy_when_snapshot_matches(
             "session": 1.0,
         },
     )
-    market_state = MarketState(
-        time=MagicMock(), regime=Regime.CHOP, regime_snapshot=snap
-    )
+    market_state = MarketState(time=MagicMock(), regime=Regime.CHOP, regime_snapshot=snap)
 
     assert engine._get_active_strategies(symbol_state, market_state) == ["strat1"]
 
 
 @pytest.mark.unit
-def test_activation_policy_falls_back_to_legacy_when_no_snapshot(
-    mock_logger, mock_strategy
-):
+def test_activation_policy_falls_back_to_legacy_when_no_snapshot(mock_logger, mock_strategy):
     policy = StrategyActivationPolicy(trend=(TrendRegime.UP,))
     routing = StrategyRouting(
         strategies_by_regime={Regime.BULL: ["strat1"]},
@@ -196,8 +182,6 @@ def test_activation_policy_falls_back_to_legacy_when_no_snapshot(
 
     symbol_state = MagicMock()
     symbol_state.allowed_strategies = ["strat1"]
-    market_state = MarketState(
-        time=MagicMock(), regime=Regime.BULL, regime_snapshot=None
-    )
+    market_state = MarketState(time=MagicMock(), regime=Regime.BULL, regime_snapshot=None)
 
     assert engine._get_active_strategies(symbol_state, market_state) == ["strat1"]

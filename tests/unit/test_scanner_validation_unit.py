@@ -42,26 +42,14 @@ def test_validate_technicals_basic():
 def test_validate_technicals_min_price():
     validator = DataValidator()
     # default min_price is 0
-    assert (
-        validator.validate_technicals(create_features(price=10.0), min_price=20.0)
-        is False
-    )
-    assert (
-        validator.validate_technicals(create_features(price=25.0), min_price=20.0)
-        is True
-    )
+    assert validator.validate_technicals(create_features(price=10.0), min_price=20.0) is False
+    assert validator.validate_technicals(create_features(price=25.0), min_price=20.0) is True
 
 
 def test_validate_technicals_volume():
     validator = DataValidator()
-    assert (
-        validator.validate_technicals(create_features(volume=500), min_volume=1000)
-        is False
-    )
-    assert (
-        validator.validate_technicals(create_features(volume=1500), min_volume=1000)
-        is True
-    )
+    assert validator.validate_technicals(create_features(volume=500), min_volume=1000) is False
+    assert validator.validate_technicals(create_features(volume=1500), min_volume=1000) is True
 
 
 def test_validate_technicals_bad_data():
@@ -74,22 +62,11 @@ def test_validate_technicals_bad_data():
 def test_validate_technicals_atr_filter():
     validator = DataValidator()
     # Min ATR
-    assert (
-        validator.validate_technicals(create_features(atr_pct=1.0), min_atr_pct=2.0)
-        is False
-    )
+    assert validator.validate_technicals(create_features(atr_pct=1.0), min_atr_pct=2.0) is False
     # Max ATR
-    assert (
-        validator.validate_technicals(create_features(atr_pct=10.0), max_atr_pct=5.0)
-        is False
-    )
+    assert validator.validate_technicals(create_features(atr_pct=10.0), max_atr_pct=5.0) is False
     # Good
-    assert (
-        validator.validate_technicals(
-            create_features(atr_pct=3.0), min_atr_pct=2.0, max_atr_pct=5.0
-        )
-        is True
-    )
+    assert validator.validate_technicals(create_features(atr_pct=3.0), min_atr_pct=2.0, max_atr_pct=5.0) is True
 
 
 def test_validate_flow_placeholders():

@@ -81,9 +81,7 @@ def test_short_mean_reversion(imr_strategy):
 
     # 2. Spike Up (Bar 6)
     # Spike to 105. StdDev will increase, but deviation likely massive > 2 sigma.
-    b_spike = Bar(
-        "SPY", start_dt + timedelta(minutes=6 * 5), 100.0, 105.0, 100.0, 105.0, 5000
-    )
+    b_spike = Bar("SPY", start_dt + timedelta(minutes=6 * 5), 100.0, 105.0, 100.0, 105.0, 5000)
 
     # Run strategy on spike bar
     symbol_state = SymbolState(

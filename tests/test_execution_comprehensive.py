@@ -132,9 +132,7 @@ async def test_reconcile_broker_state_runs(execution_engine, mock_alpaca):
     # execution_engine._fetch_broker_data calls asyncio.to_thread on mocks.
     # Let's mock _fetch_broker_data directly to avoid complexity.
 
-    with patch.object(
-        execution_engine, "_fetch_broker_data", new_callable=AsyncMock
-    ) as mock_fetch:
+    with patch.object(execution_engine, "_fetch_broker_data", new_callable=AsyncMock) as mock_fetch:
         mock_fetch.return_value = (mock_acct, mock_positions, mock_orders, mock_closed)
 
         await execution_engine.reconcile_broker_state()
@@ -157,9 +155,7 @@ def test_flatten_all_calls_alpaca(execution_engine, mock_alpaca):
 
     # Verify calls
     mock_alpaca.trading_client.cancel_orders.assert_called_once()
-    mock_alpaca.trading_client.close_all_positions.assert_called_once_with(
-        cancel_orders=True
-    )
+    mock_alpaca.trading_client.close_all_positions.assert_called_once_with(cancel_orders=True)
 
 
 @pytest.mark.unit

@@ -19,16 +19,10 @@ def test_deep_merge_merges_nested_dicts() -> None:
 
 
 @pytest.mark.unit
-def test_load_config_loads_yaml_suite_and_applies_env_overrides(
-    tmp_path: Path, monkeypatch
-) -> None:
-    (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump({"risk": {"max_daily_loss": 1}})
-    )
+def test_load_config_loads_yaml_suite_and_applies_env_overrides(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({"risk": {"max_daily_loss": 1}}))
     (tmp_path / "scanner.yaml").write_text(yaml.safe_dump({"scanner": {"top_n": 10}}))
-    (tmp_path / "risk.yaml").write_text(
-        yaml.safe_dump({"risk": {"max_risk_per_trade": 5}})
-    )
+    (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 5}}))
 
     monkeypatch.setenv("APP_RISK_MAX_DAILY_LOSS", "2")
     monkeypatch.setenv("APP_SCANNER_TOP_N", "20")
@@ -46,15 +40,9 @@ def test_load_config_loads_yaml_suite_and_applies_env_overrides(
 
 @pytest.mark.unit
 def test_load_config_supports_json_suite(tmp_path: Path) -> None:
-    (tmp_path / "config.json").write_text(
-        json.dumps({"risk": {"max_daily_loss": 3}}, sort_keys=True)
-    )
-    (tmp_path / "risk.json").write_text(
-        json.dumps({"risk": {"max_risk_per_trade": 7}}, sort_keys=True)
-    )
-    (tmp_path / "scanner.json").write_text(
-        json.dumps({"scanner": {"top_n": 11}}, sort_keys=True)
-    )
+    (tmp_path / "config.json").write_text(json.dumps({"risk": {"max_daily_loss": 3}}, sort_keys=True))
+    (tmp_path / "risk.json").write_text(json.dumps({"risk": {"max_risk_per_trade": 7}}, sort_keys=True))
+    (tmp_path / "scanner.json").write_text(json.dumps({"scanner": {"top_n": 11}}, sort_keys=True))
 
     loader = ConfigLoader(config_dir=str(tmp_path))
     cfg = loader.load_config()
@@ -81,12 +69,8 @@ def test_get_env_returns_default_when_provided(monkeypatch) -> None:
 @pytest.mark.unit
 def test_strategies_auto_overrides_accept_camelcase_keys(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text(yaml.safe_dump({}))
-    (tmp_path / "strategies.yaml").write_text(
-        yaml.safe_dump({"strategies": {"vwap_reversion": {"band_sigma": 2.0}}})
-    )
-    (tmp_path / "strategies.auto.yaml").write_text(
-        yaml.safe_dump({"VWAPReversion": {"params": {"band_sigma": 1.5}}})
-    )
+    (tmp_path / "strategies.yaml").write_text(yaml.safe_dump({"strategies": {"vwap_reversion": {"band_sigma": 2.0}}}))
+    (tmp_path / "strategies.auto.yaml").write_text(yaml.safe_dump({"VWAPReversion": {"params": {"band_sigma": 1.5}}}))
 
     loader = ConfigLoader(config_dir=str(tmp_path))
     cfg = loader.load_config()

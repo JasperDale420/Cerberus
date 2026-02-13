@@ -75,9 +75,7 @@ def test_execution_engine_routing_excludes_disabled_strategy_regime_pair() -> No
     strat = _S({}, _logger("test_exec_disabled_routing_strat"))
     engine.register_strategy(strat)
 
-    engine.market_state = MarketState(
-        time=now, regime=Regime.BULL, risk_mode=RiskMode.NORMAL
-    )
+    engine.market_state = MarketState(time=now, regime=Regime.BULL, risk_mode=RiskMode.NORMAL)
 
     engine.symbol_states["AAPL"] = SymbolState(
         symbol="AAPL",
@@ -182,9 +180,7 @@ def test_execution_engine_update_config_syncs_risk_mode_and_limits() -> None:
         alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
-    engine.market_state = MarketState(
-        time=engine.clock(), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL
-    )
+    engine.market_state = MarketState(time=engine.clock(), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL)
 
     engine.update_config(
         {

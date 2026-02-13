@@ -22,9 +22,7 @@ class _DbStub:
 
 
 @pytest.mark.unit
-def test_analytics_write_daily_report_includes_breakdowns(
-    tmp_path, monkeypatch
-) -> None:
+def test_analytics_write_daily_report_includes_breakdowns(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     logger = StructuredLogger("test_daily_report", level="INFO")
     db = _DbStub(config={"timezone": "UTC"})
@@ -63,9 +61,7 @@ def test_analytics_write_daily_report_includes_breakdowns(
 
 
 @pytest.mark.unit
-def test_daily_aggregation_computes_drawdown_losers_and_z_score(
-    tmp_path, monkeypatch
-) -> None:
+def test_daily_aggregation_computes_drawdown_losers_and_z_score(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     db = MagicMock()
     db.config = {"timezone": "UTC"}

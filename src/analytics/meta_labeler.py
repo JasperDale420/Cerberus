@@ -32,11 +32,7 @@ class MetaLabeler:
             return True
 
         # If features are effectively neutral/empty, do not block the trade.
-        if (
-            features.hurst_exponent <= 0.0
-            and abs(features.tfi) < 1e-12
-            and abs(features.net_gex) < 1e-12
-        ):
+        if features.hurst_exponent <= 0.0 and abs(features.tfi) < 1e-12 and abs(features.net_gex) < 1e-12:
             return True
 
         # Heuristic 1: Hurst Exponent (Trend Persistence)

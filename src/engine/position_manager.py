@@ -198,9 +198,7 @@ class PositionManager:
 
         # Case 1: No existing position - open new position
         if symbol_state.position is None:
-            return self._open_new_position(
-                symbol_state, market_state, fill, fill_data, cfg
-            )
+            return self._open_new_position(symbol_state, market_state, fill, fill_data, cfg)
 
         pos = symbol_state.position
         is_same_side = (pos.side == Side.LONG and fill_data["side"] == "buy") or (
@@ -212,9 +210,7 @@ class PositionManager:
             return self._increase_position(symbol_state, fill_data)
 
         # Case 3: Opposite side fill - reduce or close position
-        return self._reduce_or_close_position(
-            symbol_state, market_state, fill_data, cfg
-        )
+        return self._reduce_or_close_position(symbol_state, market_state, fill_data, cfg)
 
     def _extract_fill_data(
         self,
@@ -233,9 +229,7 @@ class PositionManager:
             "strategy": fill.get("strategy", "unknown"),
         }
 
-    def _extract_risk_config(
-        self, risk_cfg: Optional[Dict[str, Any]]
-    ) -> Dict[str, float]:
+    def _extract_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> Dict[str, float]:
         """Extract and normalize risk configuration."""
         cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
         return {
@@ -258,9 +252,9 @@ class PositionManager:
             if isinstance(entry_ctx, dict) and entry_ctx.get("entry_time")
             else fill.get("timestamp")
         )
-        strategy = (
-            entry_ctx.get("strategy") if isinstance(entry_ctx, dict) else None
-        ) or fill.get("strategy", "unknown")
+        strategy = (entry_ctx.get("strategy") if isinstance(entry_ctx, dict) else None) or fill.get(
+            "strategy", "unknown"
+        )
 
         return entry_ctx, entry_time, strategy
 
@@ -277,9 +271,7 @@ class PositionManager:
         slippage_bps = cfg["slippage_bps"]
 
         if cps > 0.0 or min_c > 0.0:
-            pos.commission = float(pos.commission or 0.0) + float(
-                max(min_c, cps * float(qty))
-            )
+            pos.commission = float(pos.commission or 0.0) + float(max(min_c, cps * float(qty)))
         if slippage_bps > 0.0:
             pos.slippage_estimate = float(pos.slippage_estimate or 0.0) + float(
                 (slippage_bps / 10000.0) * float(qty) * float(price)
@@ -295,30 +287,14 @@ class PositionManager:
     ) -> FillDecision:
         """Open a new position from a fill."""
         side = Side.LONG if fill_data["side"] == "buy" else Side.SHORT
-        entry_ctx, entry_time, strategy = self._get_entry_context(
-            symbol_state, fill_data["correlation_id"], fill
-        )
+        entry_ctx, entry_time, strategy = self._get_entry_context(symbol_state, fill_data["correlation_id"], fill)
 
         # Extract advanced exit config from entry context
-        trailing_enabled = (
-            bool(entry_ctx.get("trailing_stop_enabled"))
-            if isinstance(entry_ctx, dict)
-            else False
-        )
-        trailing_pct = (
-            safe_float(entry_ctx.get("trailing_stop_pct"))
-            if isinstance(entry_ctx, dict)
-            else None
-        )
-        initial_stop = (
-            safe_float(entry_ctx.get("stop_price"))
-            if isinstance(entry_ctx, dict)
-            else None
-        )
+        trailing_enabled = bool(entry_ctx.get("trailing_stop_enabled")) if isinstance(entry_ctx, dict) else False
+        trailing_pct = safe_float(entry_ctx.get("trailing_stop_pct")) if isinstance(entry_ctx, dict) else None
+        initial_stop = safe_float(entry_ctx.get("stop_price")) if isinstance(entry_ctx, dict) else None
         regime_multiplier = (
-            safe_float(entry_ctx.get("regime_stop_multiplier"))
-            if isinstance(entry_ctx, dict)
-            else 1.0
+            safe_float(entry_ctx.get("regime_stop_multiplier")) if isinstance(entry_ctx, dict) else 1.0
         ) or 1.0
 
         symbol_state.position = Position(
@@ -331,34 +307,16 @@ class PositionManager:
             strategy=str(strategy),
             entry_time=entry_time,
             correlation_id=fill_data["correlation_id"],
-            regime_tags_at_entry=(
-                market_state.regime_snapshot.regime_tags
-                if market_state.regime_snapshot
-                else {}
-            ),
-            open_risk=(
-                safe_float(entry_ctx.get("open_risk"))
-                if isinstance(entry_ctx, dict)
-                else None
-            ),
+            regime_tags_at_entry=(market_state.regime_snapshot.regime_tags if market_state.regime_snapshot else {}),
+            open_risk=(safe_float(entry_ctx.get("open_risk")) if isinstance(entry_ctx, dict) else None),
             stop_price=initial_stop,
-            target_price=(
-                safe_float(entry_ctx.get("target_price"))
-                if isinstance(entry_ctx, dict)
-                else None
-            ),
-            entry_features=(
-                entry_ctx.get("features") if isinstance(entry_ctx, dict) else None
-            ),
+            target_price=(safe_float(entry_ctx.get("target_price")) if isinstance(entry_ctx, dict) else None),
+            entry_features=(entry_ctx.get("features") if isinstance(entry_ctx, dict) else None),
             mae_r=0.0,
             mfe_r=0.0,
             commission=0.0,
             slippage_estimate=0.0,
-            max_hold_seconds=(
-                safe_int(entry_ctx.get("max_hold_seconds"))
-                if isinstance(entry_ctx, dict)
-                else None
-            ),
+            max_hold_seconds=(safe_int(entry_ctx.get("max_hold_seconds")) if isinstance(entry_ctx, dict) else None),
             # Advanced exit fields
             trailing_stop_enabled=trailing_enabled,
             trailing_stop_pct=trailing_pct,
@@ -369,9 +327,7 @@ class PositionManager:
             regime_stop_multiplier=regime_multiplier,
         )
 
-        self._apply_costs_to_position(
-            symbol_state.position, fill_data["qty"], fill_data["price"], cfg
-        )
+        self._apply_costs_to_position(symbol_state.position, fill_data["qty"], fill_data["price"], cfg)
 
         try:
             self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
@@ -389,9 +345,7 @@ class PositionManager:
             closed_trade=None,
         )
 
-    def _increase_position(
-        self, symbol_state: SymbolState, fill_data: Dict[str, Any]
-    ) -> FillDecision:
+    def _increase_position(self, symbol_state: SymbolState, fill_data: Dict[str, Any]) -> FillDecision:
         """Increase an existing position with a same-side fill."""
         pos = symbol_state.position
         assert pos is not None, "Position must exist for increase"
@@ -422,9 +376,7 @@ class PositionManager:
             closed_trade=None,
         )
 
-    def _calculate_pnl(
-        self, pos: Position, fill_price: float, close_qty: float
-    ) -> float:
+    def _calculate_pnl(self, pos: Position, fill_price: float, close_qty: float) -> float:
         """Calculate realized PnL for a position reduction."""
         if pos.side == Side.LONG:
             return (fill_price - float(pos.avg_price)) * float(close_qty)
@@ -451,17 +403,9 @@ class PositionManager:
 
         # Multi-axis regime tags
         regime_tags_at_entry = pos.regime_tags_at_entry or {}
-        regime_tags_at_exit = (
-            market_state.regime_snapshot.regime_tags
-            if market_state.regime_snapshot
-            else {}
-        )
+        regime_tags_at_exit = market_state.regime_snapshot.regime_tags if market_state.regime_snapshot else {}
 
-        pnl_net = (
-            float(pnl)
-            - float(pos.commission or 0.0)
-            - float(pos.slippage_estimate or 0.0)
-        )
+        pnl_net = float(pnl) - float(pos.commission or 0.0) - float(pos.slippage_estimate or 0.0)
 
         # H2 fix: Safe R-multiple calculation
         pnl_r = None
@@ -537,9 +481,7 @@ class PositionManager:
             )
 
         # Position fully closed
-        closed = self._build_closed_trade_info(
-            pos, fill_data, market_state, pnl, close_qty
-        )
+        closed = self._build_closed_trade_info(pos, fill_data, market_state, pnl, close_qty)
         symbol_state.position = None
         return FillDecision(
             event="closed",
@@ -615,14 +557,10 @@ class PositionManager:
                 return
 
             if pos.side == Side.LONG:
-                adverse_r = abs(
-                    min(0.0, (last_bar.low - pos.avg_price) / risk_per_share)
-                )
+                adverse_r = abs(min(0.0, (last_bar.low - pos.avg_price) / risk_per_share))
                 favorable_r = max(0.0, (last_bar.high - pos.avg_price) / risk_per_share)
             else:
-                adverse_r = abs(
-                    min(0.0, (pos.avg_price - last_bar.high) / risk_per_share)
-                )
+                adverse_r = abs(min(0.0, (pos.avg_price - last_bar.high) / risk_per_share))
                 favorable_r = max(0.0, (pos.avg_price - last_bar.low) / risk_per_share)
             pos.mae_r = max(pos.mae_r, adverse_r)
             pos.mfe_r = max(pos.mfe_r, favorable_r)
@@ -687,9 +625,7 @@ class PositionManager:
         except Exception:
             _logger.debug("Trailing stop update failed", exc_info=True)
 
-    def _check_partial_exit(
-        self, pos: Position, last_bar: Any
-    ) -> Optional[ExitDecision]:
+    def _check_partial_exit(self, pos: Position, last_bar: Any) -> Optional[ExitDecision]:
         """
         Check if partial profit target was hit.
 
@@ -723,18 +659,14 @@ class PositionManager:
             if profit_r >= 1.0:
                 partial_qty = math.floor(pos.qty * 0.5)  # Exit 50%
                 if partial_qty > 0:
-                    return self._create_partial_exit_intent(
-                        pos, partial_qty, "PARTIAL_1R"
-                    )
+                    return self._create_partial_exit_intent(pos, partial_qty, "PARTIAL_1R")
 
         except Exception:
             _logger.debug("Partial exit check failed", exc_info=True)
 
         return None
 
-    def _create_partial_exit_intent(
-        self, pos: Position, exit_qty: float, reason: str
-    ) -> ExitDecision:
+    def _create_partial_exit_intent(self, pos: Position, exit_qty: float, reason: str) -> ExitDecision:
         """Create an exit intent for partial position exit."""
         exit_side = OrderSide.SELL if pos.side == Side.LONG else OrderSide.BUY
         intent = OrderIntent(
@@ -752,16 +684,10 @@ class PositionManager:
         )
         return ExitDecision(intent=intent, reason=reason)
 
-    def _check_max_hold_exit(
-        self, pos: Position, market_state: MarketState
-    ) -> Optional[ExitDecision]:
+    def _check_max_hold_exit(self, pos: Position, market_state: MarketState) -> Optional[ExitDecision]:
         """Check if position exceeds max hold time."""
         try:
-            if (
-                pos.max_hold_seconds is None
-                or pos.entry_time is None
-                or market_state.time is None
-            ):
+            if pos.max_hold_seconds is None or pos.entry_time is None or market_state.time is None:
                 return None
             held = (market_state.time - pos.entry_time).total_seconds()
             if held < float(pos.max_hold_seconds):

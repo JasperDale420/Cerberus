@@ -29,9 +29,7 @@ def create_bar(close, volume=100, t: datetime = MARKET_TIME):
 @pytest.mark.unit
 def test_vwap_reversion_signal_long():
     logger = StructuredLogger("test")
-    strategy = VWAPReversionStrategy(
-        {"band_sigma": 2.0, "confirmation": "none"}, logger
-    )
+    strategy = VWAPReversionStrategy({"band_sigma": 2.0, "confirmation": "none"}, logger)
 
     # Setup state
     symbol = "AAPL"
@@ -51,9 +49,7 @@ def test_vwap_reversion_signal_long():
     # Mean=100, Std=0 (approx), so any drop might trigger if std was non-zero.
     # Let's make the history have some variance so bands are valid.
 
-    bars = deque(
-        [create_bar(100 + (i % 2) * 2) for i in range(20)]
-    )  # 100, 102, 100, 102...
+    bars = deque([create_bar(100 + (i % 2) * 2) for i in range(20)])  # 100, 102, 100, 102...
     # Mean approx 101, Std approx 1.
     # Lower band approx 101 - 2*1 = 99.
 
@@ -99,14 +95,10 @@ def test_vwap_reversion_no_signal_wrong_regime():
 @pytest.mark.unit
 def test_vwap_reversion_signal_short():
     logger = StructuredLogger("test")
-    strategy = VWAPReversionStrategy(
-        {"band_sigma": 2.0, "confirmation": "none"}, logger
-    )
+    strategy = VWAPReversionStrategy({"band_sigma": 2.0, "confirmation": "none"}, logger)
 
     # Setup state with variance
-    bars = deque(
-        [create_bar(100 + (i % 2) * 2) for i in range(20)]
-    )  # 100, 102... Mean~101, Std~1
+    bars = deque([create_bar(100 + (i % 2) * 2) for i in range(20)])  # 100, 102... Mean~101, Std~1
     symbol_state = SymbolState(
         symbol="AAPL",
         bars=bars,

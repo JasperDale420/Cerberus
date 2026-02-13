@@ -1,7 +1,7 @@
 # Audit #1: Logic Audit
 
-**Date**: 2025-12-29  
-**Auditor**: Automated Comprehensive Audit  
+**Date**: 2025-12-29
+**Auditor**: Automated Comprehensive Audit
 **Status**: ✅ PASSED (with minor findings)
 
 ## Executive Summary
@@ -51,8 +51,8 @@ Core logic reviewed:
 ### ⚠️ Minor Findings (Low Priority)
 
 #### L1: Potential Race Condition in Max Hold Check
-**File**: `position_manager.py:590-607`  
-**Severity**: Low  
+**File**: `position_manager.py:590-607`
+**Severity**: Low
 **Description**: `_check_max_hold_exit` compares `entry_time` to `market_state.time`. If entry_time has no timezone info and market_state.time does, subtraction may fail silently.
 
 ```python
@@ -62,8 +62,8 @@ held = (market_state.time - pos.entry_time).total_seconds()
 **Status**: Currently handled by try/except with debug logging.
 
 #### L2: Session Bar Fallback Logic
-**File**: `vwap_reversion.py:116-119`  
-**Severity**: Low  
+**File**: `vwap_reversion.py:116-119`
+**Severity**: Low
 **Description**: Falls back to last 20 bars if insufficient session bars, which could include prior session data for std calculation.
 
 ```python
@@ -74,8 +74,8 @@ if len(session_bars) < 5:
 **Status**: Documented as explicit fallback behavior. No action needed for trading safety—produces conservative signals.
 
 #### L3: ATR Calculation Edge Case
-**File**: `orb.py:84-98`  
-**Severity**: Low  
+**File**: `orb.py:84-98`
+**Severity**: Low
 **Description**: If bars list has exactly 2 bars, the loop `for i in range(1, min(len(bars), period + 1))` accesses `bars[-i-1]` which works but is at the boundary.
 
 **Status**: Safe—returns 0.0 if len(bars) < 2.

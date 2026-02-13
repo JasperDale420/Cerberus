@@ -69,9 +69,7 @@ def verify_architecture():
         alpaca = AlpacaClient(config_loader, logger)  # Mock or real is fine for init
         uw_client = UnusualWhalesClient(config_loader, logger)
         pipeline = FeaturePipeline(alpaca, uw_client, logger, config=config)
-        universe = UniverseBuilder(
-            config_loader, logger, config=config, alpaca_client=alpaca
-        )
+        universe = UniverseBuilder(config_loader, logger, config=config, alpaca_client=alpaca)
 
         _ = Scanner(universe, pipeline, logger, config=config)
         print("[PASS] Scanner instantiated")

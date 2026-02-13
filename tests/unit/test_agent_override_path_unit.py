@@ -17,9 +17,7 @@ def test_agent_writes_strategies_auto_next_to_active_config_suite(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "config.yaml").write_text(yaml.safe_dump({}))
-    (tmp_path / "strategies.yaml").write_text(
-        yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}})
-    )
+    (tmp_path / "strategies.yaml").write_text(yaml.safe_dump({"strategies": {"vwap_reversion": {"enabled": True}}}))
 
     logger = MagicMock()
     loader = ConfigLoader(config_dir=str(tmp_path))

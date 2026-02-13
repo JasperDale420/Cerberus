@@ -1,7 +1,7 @@
 # Audit #5: Performance Audit
 
-**Date**: 2025-12-29  
-**Auditor**: Automated Comprehensive Audit  
+**Date**: 2025-12-29
+**Auditor**: Automated Comprehensive Audit
 **Status**: ✅ PASSED (optimizations in place)
 
 ## Executive Summary
@@ -50,7 +50,7 @@ on_bar() → _update_symbol_state() → _run_strategies() → _manage_positions(
 #### 1. Incremental Indicator Calculation
 Rolling indicator classes update in O(1) per bar:
 - `RollingEMA.update(value)` - exponential moving average
-- `RollingRSI.update(close)` - relative strength index  
+- `RollingRSI.update(close)` - relative strength index
 - `RollingSMA.update(value)` - simple moving average
 - `RollingStd.update(value)` - standard deviation
 
@@ -79,17 +79,17 @@ if self.consecutive_on_bar_errors >= self.max_consecutive_errors:
 ### ⚠️ Observations (Not Issues)
 
 #### O1: No Explicit Caching Decorators
-**Observation**: No `@lru_cache` or `@cache` decorators found.  
+**Observation**: No `@lru_cache` or `@cache` decorators found.
 **Assessment**: Intentional—trading system needs fresh data each bar, not cached results.
 
 #### O2: Import Inside Hot Path
-**Location**: Lines 231, 248, 265, 282  
-**Pattern**: `from src.core.indicators import RollingEMA` inside methods  
+**Location**: Lines 231, 248, 265, 282
+**Pattern**: `from src.core.indicators import RollingEMA` inside methods
 **Assessment**: Python caches imports; negligible overhead. Could micro-optimize by moving to module level.
 
 #### O3: Feature Sanitization Recursion
-**Location**: `_sanitize_features_snapshot()` (lines 151-168)  
-**Pattern**: Recursive dict/list traversal for JSON serialization  
+**Location**: `_sanitize_features_snapshot()` (lines 151-168)
+**Pattern**: Recursive dict/list traversal for JSON serialization
 **Assessment**: Only called before DB writes, not in hot path.
 
 ## Database Write Performance

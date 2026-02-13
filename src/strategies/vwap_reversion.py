@@ -37,13 +37,9 @@ class VWAPReversionStrategy(BaseStrategy):
 
     def _in_time_window(self, dt: datetime) -> bool:
         """Check if datetime is within configured trading window."""
-        return time_utils.in_time_window_str(
-            dt, self.time_window_start, self.time_window_end
-        )
+        return time_utils.in_time_window_str(dt, self.time_window_start, self.time_window_end)
 
-    def _confirm_reversal(
-        self, closes: np.ndarray, side: OrderSide
-    ) -> tuple[bool, dict]:
+    def _confirm_reversal(self, closes: np.ndarray, side: OrderSide) -> tuple[bool, dict]:
         """Check if RSI confirms the reversal signal."""
         if self.confirmation == "none":
             return True, {"confirmation": "none"}
@@ -171,11 +167,7 @@ class VWAPReversionStrategy(BaseStrategy):
         # 2. Trend alignment - mean reversion works best in flat/choppy markets
         regime_trend = None
         if market_state.regime_snapshot:
-            regime_trend = (
-                market_state.regime_snapshot.trend.value
-                if market_state.regime_snapshot.trend
-                else None
-            )
+            regime_trend = market_state.regime_snapshot.trend.value if market_state.regime_snapshot.trend else None
 
         # Skip strong trends - mean reversion is risky
         # (Soft filter - still allow but log for analysis)

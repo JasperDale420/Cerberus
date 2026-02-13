@@ -101,9 +101,7 @@ class OrderExecutor:
         self.alpaca_client = alpaca_client
         self.logger = logger
         self.db = db
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
     def configure_advanced_exits(self, risk_cfg: dict) -> None:
         """
@@ -203,9 +201,7 @@ class OrderExecutor:
                 if isinstance(intent.meta, dict):
                     created_at = intent.meta.get("created_at")
                 placed = (
-                    datetime.fromisoformat(created_at)
-                    if isinstance(created_at, str) and created_at
-                    else self.clock()
+                    datetime.fromisoformat(created_at) if isinstance(created_at, str) and created_at else self.clock()
                 )
                 self.db.write(
                     "order",
@@ -315,9 +311,7 @@ class OrderExecutor:
             from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
 
-            resp = self.alpaca_client.trading_client.get_orders(
-                GetOrdersRequest(status=QueryOrderStatus.OPEN)
-            )
+            resp = self.alpaca_client.trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
             orders = resp if isinstance(resp, list) else []
             for o in orders:
                 if getattr(o, "symbol", "") == symbol:
@@ -350,11 +344,7 @@ class OrderExecutor:
             broker_order_id = str(getattr(order, "id", "") or "")
             symbol = str(getattr(order, "symbol", "") or "")
             client_order_id = str(getattr(order, "client_order_id", "") or "")
-            parent_broker_order_id = str(
-                getattr(order, "parent_order_id", "")
-                or getattr(order, "parent_id", "")
-                or ""
-            )
+            parent_broker_order_id = str(getattr(order, "parent_order_id", "") or getattr(order, "parent_id", "") or "")
             side_raw = getattr(order, "side", None)
             side = getattr(side_raw, "value", None) or str(side_raw or "")
             status_raw = getattr(order, "status", None)
@@ -396,13 +386,9 @@ class OrderExecutor:
                         .first()
                     )
                     if parent is not None:
-                        correlation_id = (
-                            str(parent.correlation_id or "") or correlation_id
-                        )
+                        correlation_id = str(parent.correlation_id or "") or correlation_id
                         pmeta = parent.meta_json or {}
-                        strategy_name = (
-                            str(pmeta.get("strategy", "") or "") or strategy_name
-                        )
+                        strategy_name = str(pmeta.get("strategy", "") or "") or strategy_name
 
                 row = (
                     session.query(DbOrder)
@@ -412,12 +398,10 @@ class OrderExecutor:
                 )
                 if row is None:
                     corr_to_use = correlation_id or correlation_id_fallback
-                    inferred_type = getattr(
-                        getattr(order, "type", None), "value", None
-                    ) or str(getattr(order, "type", "") or "")
-                    inferred_qty = float(
-                        getattr(order, "qty", getattr(order, "quantity", 0.0)) or 0.0
+                    inferred_type = getattr(getattr(order, "type", None), "value", None) or str(
+                        getattr(order, "type", "") or ""
                     )
+                    inferred_qty = float(getattr(order, "qty", getattr(order, "quantity", 0.0)) or 0.0)
                     inferred_limit = getattr(order, "limit_price", None)
                     placed = getattr(order, "created_at", None) or now
 
@@ -428,11 +412,7 @@ class OrderExecutor:
                             side=side or "unknown",
                             qty=inferred_qty,
                             type=inferred_type or "unknown",
-                            limit_price=(
-                                float(inferred_limit)
-                                if inferred_limit is not None
-                                else None
-                            ),
+                            limit_price=(float(inferred_limit) if inferred_limit is not None else None),
                             status=status or "unknown",
                             time_placed=placed,
                             time_last_update=ts or now,
@@ -440,8 +420,7 @@ class OrderExecutor:
                             meta_json={
                                 "broker_order_id": broker_order_id,
                                 "client_order_id": client_order_id,
-                                "parent_broker_order_id": parent_broker_order_id
-                                or None,
+                                "parent_broker_order_id": parent_broker_order_id or None,
                                 "recovered_from_trade_stream": True,
                             },
                         )
@@ -460,8 +439,7 @@ class OrderExecutor:
                         "last_trade_event": event,
                         "broker_status": status,
                         "trade_update_ts": str(ts or now),
-                        "parent_broker_order_id": parent_broker_order_id
-                        or meta.get("parent_broker_order_id"),
+                        "parent_broker_order_id": parent_broker_order_id or meta.get("parent_broker_order_id"),
                     }
                 )
                 row.meta_json = meta
@@ -512,9 +490,7 @@ class NoopOrderExecutor:
     ):
         self.logger = logger
         self.db = db
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
         self.broker_managed_exits: bool = False
 
     def submit(self, intent: OrderIntent) -> dict[str, Any]:
@@ -540,11 +516,7 @@ class NoopOrderExecutor:
                         side=intent.side.value,
                         qty=float(intent.qty),
                         type=intent.order_type.value,
-                        limit_price=(
-                            float(intent.limit_price)
-                            if intent.limit_price is not None
-                            else None
-                        ),
+                        limit_price=(float(intent.limit_price) if intent.limit_price is not None else None),
                         status="simulated",
                         time_placed=now,
                         time_last_update=now,
@@ -564,9 +536,7 @@ class NoopOrderExecutor:
         return {"id": broker_order_id, "status": "simulated"}
 
     def cancel_by_broker_order_id(self, broker_order_id: str) -> None:
-        self.logger.info(
-            "Noop order cancel requested", broker_order_id=str(broker_order_id)
-        )
+        self.logger.info("Noop order cancel requested", broker_order_id=str(broker_order_id))
 
     def cancel_all_for_symbol(self, symbol: str) -> None:
         self.logger.info("Noop cancel-all for symbol requested", symbol=str(symbol))

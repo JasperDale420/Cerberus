@@ -814,7 +814,7 @@ FILE: README.md
 ================================================
 <h4 align="center">
   <img src="docs/_static/logo.png" alt="RA-Agent logo" style="width:70%; ">
-  
+
   <a href="https://rdagent.azurewebsites.net" target="_blank">🖥️ Live Demo</a> |
   <a href="https://rdagent.azurewebsites.net/factor_loop" target="_blank">🎥 Demo Video</a> <a href="https://www.youtube.com/watch?v=JJ4JYO3HscM&list=PLALmKB0_N3_i52fhUmPQiL4jsO354uopR" target="_blank">▶️YouTube</a>   |
   <a href="https://rdagent.readthedocs.io/en/latest/index.html" target="_blank">📖 Documentation</a> |
@@ -838,16 +838,16 @@ FILE: README.md
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Chat](https://img.shields.io/badge/chat-discord-blue)](https://discord.gg/ybQ97B6Jjy)
 [![Documentation Status](https://readthedocs.org/projects/rdagent/badge/?version=latest)](https://rdagent.readthedocs.io/en/latest/?badge=latest)
-[![Readthedocs Preview](https://github.com/microsoft/RD-Agent/actions/workflows/readthedocs-preview.yml/badge.svg)](https://github.com/microsoft/RD-Agent/actions/workflows/readthedocs-preview.yml) <!-- this badge is too long, please place it in the last one to make it pretty --> 
+[![Readthedocs Preview](https://github.com/microsoft/RD-Agent/actions/workflows/readthedocs-preview.yml/badge.svg)](https://github.com/microsoft/RD-Agent/actions/workflows/readthedocs-preview.yml) <!-- this badge is too long, please place it in the last one to make it pretty -->
 [![arXiv](https://img.shields.io/badge/arXiv-2505.14738-00ff00.svg)](https://arxiv.org/abs/2505.14738)
 
 
 # 📰 News
 | 🗞️ News        | 📝 Description                 |
 | --            | ------      |
-| NeurIPS 2025 Acceptance | We are thrilled to announce that our paper [R&D-Agent-Quant](https://arxiv.org/abs/2505.15155) has been accepted to NeurIPS 2025 | 
-| [Technical Report Release](#overall-technical-report) | Overall framework description and results on MLE-bench | 
-| [R&D-Agent-Quant Release](#deep-application-in-diverse-scenarios) | Apply R&D-Agent to quant trading | 
+| NeurIPS 2025 Acceptance | We are thrilled to announce that our paper [R&D-Agent-Quant](https://arxiv.org/abs/2505.15155) has been accepted to NeurIPS 2025 |
+| [Technical Report Release](#overall-technical-report) | Overall framework description and results on MLE-bench |
+| [R&D-Agent-Quant Release](#deep-application-in-diverse-scenarios) | Apply R&D-Agent to quant trading |
 | MLE-Bench Results Released | R&D-Agent currently leads as the [top-performing machine learning engineering agent](#-the-best-machine-learning-engineering-agent) on MLE-bench |
 | Support LiteLLM Backend | We now fully support **[LiteLLM](https://github.com/BerriAI/litellm)** as our default backend for integration with multiple LLM providers. |
 | General Data Science Agent | [Data Science Agent](https://rdagent.readthedocs.io/en/latest/scens/data_science.html) |
@@ -902,7 +902,7 @@ https://github.com/user-attachments/assets/3eccbecb-34a4-4c81-bce4-d3f8862f7305
       <img src="docs/_static/scen.png" alt="Our focused scenario" style="width:80%; ">
 </div>
 
-R&D-Agent aims to automate the most critical and valuable aspects of the industrial R&D process, and we begin with focusing on the data-driven scenarios to streamline the development of models and data. 
+R&D-Agent aims to automate the most critical and valuable aspects of the industrial R&D process, and we begin with focusing on the data-driven scenarios to streamline the development of models and data.
 Methodologically, we have identified a framework with two key components: 'R' for proposing new ideas and 'D' for implementing them.
 We believe that the automatic evolution of R&D will lead to solutions of significant industrial value.
 
@@ -915,7 +915,7 @@ R&D is a very general scenario. The advent of R&D-Agent can be your
 - 🤖 **Kaggle Agent:** Auto Model Tuning and Feature Engineering([🎥Demo Video Coming Soon...]()) and implementing them to achieve more in competitions.
 - ...
 
-You can click the links above to view the demo. We're continuously adding more methods and scenarios to the project to enhance your R&D processes and boost productivity. 
+You can click the links above to view the demo. We're continuously adding more methods and scenarios to the project to enhance your R&D processes and boost productivity.
 
 Additionally, you can take a closer look at the examples in our **[🖥️ Live Demo](https://rdagent.azurewebsites.net/)**.
 
@@ -992,7 +992,7 @@ More details can be found in the [development setup](https://rdagent.readthedocs
   ```bash
   cat << EOF  > .env
   # Set to any model supported by LiteLLM.
-  CHAT_MODEL=gpt-4o 
+  CHAT_MODEL=gpt-4o
   EMBEDDING_MODEL=text-embedding-3-small
   # Configure unified API base
   OPENAI_API_BASE=<your_unified_api_base>
@@ -1017,9 +1017,9 @@ More details can be found in the [development setup](https://rdagent.readthedocs
   cat << EOF  > .env
   # Set to any model supported by LiteLLM.
   # Configure separate API bases for chat and embedding
-  
+
   # CHAT MODEL:
-  CHAT_MODEL=gpt-4o 
+  CHAT_MODEL=gpt-4o
   OPENAI_API_BASE=<your_chat_api_base>
   OPENAI_API_KEY=<replace_with_your_openai_api_key>
 
@@ -1037,7 +1037,7 @@ More details can be found in the [development setup](https://rdagent.readthedocs
   ```bash
   cat << EOF  > .env
   # CHAT MODEL: Using DeepSeek Official API
-  CHAT_MODEL=deepseek/deepseek-chat 
+  CHAT_MODEL=deepseek/deepseek-chat
   DEEPSEEK_API_KEY=<replace_with_your_deepseek_api_key>
 
   # EMBEDDING MODEL: Using SiliconFlow for embedding since deepseek has no embedding model.
@@ -1052,7 +1052,7 @@ More details can be found in the [development setup](https://rdagent.readthedocs
   REASONING_THINK_RM=True
   ```
 
-  You can also use a deprecated backend if you only use `OpenAI API` or `Azure OpenAI` directly. For this deprecated setting and more configuration information, please refer to the [documentation](https://rdagent.readthedocs.io/en/latest/installation_and_configuration.html). 
+  You can also use a deprecated backend if you only use `OpenAI API` or `Azure OpenAI` directly. For this deprecated setting and more configuration information, please refer to the [documentation](https://rdagent.readthedocs.io/en/latest/installation_and_configuration.html).
 
 
 
@@ -1158,7 +1158,7 @@ The **[🖥️ Live Demo](https://rdagent.azurewebsites.net/)** is implemented b
   ```
 
 - About the `data_science` parameter: If you want to see the logs of the data science scenario, set the `data_science` parameter to `True`; otherwise set it to `False`.
- 
+
 - Although port 19899 is not commonly used, but before you run this demo, you need to check if port 19899 is occupied. If it is, please change it to another port that is not occupied.
 
   You can check if a port is occupied by running the following command.
@@ -1184,8 +1184,8 @@ In this project, we are aiming to build an Agent to automate Data-Driven R\&D th
 
 ## 📈 Scenarios/Demos
 
-In the two key areas of data-driven scenarios, model implementation and data building, our system aims to serve two main roles: 🦾Copilot and 🤖Agent. 
-- The 🦾Copilot follows human instructions to automate repetitive tasks. 
+In the two key areas of data-driven scenarios, model implementation and data building, our system aims to serve two main roles: 🦾Copilot and 🤖Agent.
+- The 🦾Copilot follows human instructions to automate repetitive tasks.
 - The 🤖Agent, being more autonomous, actively proposes ideas for better results in the future.
 
 The supported scenarios are listed below:
@@ -1230,13 +1230,13 @@ More documents can be found in the **[📖 readthedocs](https://rdagent.readthed
 - [R&D-Agent: An LLM-Agent Framework Towards Autonomous Data Science](https://arxiv.org/abs/2505.14738)
 ```BibTeX
 @misc{yang2025rdagentllmagentframeworkautonomous,
-      title={R&D-Agent: An LLM-Agent Framework Towards Autonomous Data Science}, 
+      title={R&D-Agent: An LLM-Agent Framework Towards Autonomous Data Science},
       author={Xu Yang and Xiao Yang and Shikai Fang and Yifei Zhang and Jian Wang and Bowen Xian and Qizheng Li and Jingyuan Li and Minrui Xu and Yuante Li and Haoran Pan and Yuge Zhang and Weiqing Liu and Yelong Shen and Weizhu Chen and Jiang Bian},
       year={2025},
       eprint={2505.14738},
       archivePrefix={arXiv},
       primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2505.14738}, 
+      url={https://arxiv.org/abs/2505.14738},
 }
 ```
 ![image](https://github.com/user-attachments/assets/28b0488d-a546-4fef-8dc5-563ed64a9b4d)
@@ -1283,13 +1283,13 @@ For more detail, please refer to our **[🖥️ Live Demo page](https://rdagent.
 - [R&D-Agent-Quant: A Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization](https://arxiv.org/abs/2505.15155)
 ```BibTeX
 @misc{li2025rdagentquantmultiagentframeworkdatacentric,
-      title={R&D-Agent-Quant: A Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization}, 
+      title={R&D-Agent-Quant: A Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization},
       author={Yuante Li and Xu Yang and Xiao Yang and Minrui Xu and Xisen Wang and Weiqing Liu and Jiang Bian},
       year={2025},
       eprint={2505.15155},
       archivePrefix={arXiv},
       primaryClass={q-fin.CP},
-      url={https://arxiv.org/abs/2505.15155}, 
+      url={https://arxiv.org/abs/2505.15155},
 }
 ```
 ![image](https://github.com/user-attachments/assets/3186f67a-c2f8-4b6b-8bb9-a9b959c13866)
@@ -1878,7 +1878,7 @@ Instead, please report them to the Microsoft Security Response Center (MSRC) at 
 
 If you prefer to submit without logging in, send email to [secure@microsoft.com](mailto:secure@microsoft.com).  If possible, encrypt your message with our PGP key; please download it from the [Microsoft Security Response Center PGP Key page](https://aka.ms/security.md/msrc/pgp).
 
-You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Additional information can be found at [microsoft.com/msrc](https://www.microsoft.com/msrc). 
+You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Additional information can be found at [microsoft.com/msrc](https://www.microsoft.com/msrc).
 
 Please include the requested information listed below (as much as you can provide) to help us better understand the nature and scope of the possible issue:
 
@@ -1921,17 +1921,17 @@ FILE: SUPPORT.md
 
 # Support
 
-## How to file issues and get help  
+## How to file issues and get help
 
-This project uses GitHub Issues to track bugs and feature requests. Please search the existing 
-issues before filing new issues to avoid duplicates.  For new issues, file your bug or 
+This project uses GitHub Issues to track bugs and feature requests. Please search the existing
+issues before filing new issues to avoid duplicates.  For new issues, file your bug or
 feature request as a new Issue.
 
-For help and questions about using this project, please **REPO MAINTAINER: INSERT INSTRUCTIONS HERE 
+For help and questions about using this project, please **REPO MAINTAINER: INSERT INSTRUCTIONS HERE
 FOR HOW TO ENGAGE REPO OWNERS OR COMMUNITY FOR HELP. COULD BE A STACK OVERFLOW TAG OR OTHER
 CHANNEL. WHERE WILL YOU HELP PEOPLE?**.
 
-## Microsoft Support Policy  
+## Microsoft Support Policy
 
 Support for this **PROJECT or PRODUCT** is limited to the resources listed above.
 
@@ -2041,7 +2041,7 @@ EMBEDDING_MODEL="litellm_proxy/BAAI/bge-large-en-v1.5"
 # ==========================================
 
 # ==========================================
-# Other Configuration 
+# Other Configuration
 # ==========================================
 # CHAT_AZURE_API_BASE=<for_Azure_user>
 # CHAT_AZURE_API_VERSION=<for_Azure_user>
@@ -2075,11 +2075,11 @@ build:
   # So we added the `git fetch --tags --unshallow || true` command to fetch the full tag record.
   # Adding this command overrides the default command, so we copied it over to make sure the build was successful.
   commands:
-    - python -mvirtualenv $READTHEDOCS_VIRTUALENV_PATH 
-    - python -m pip install --upgrade --no-cache-dir pip setuptools 
-    - python -m pip install --upgrade --no-cache-dir sphinx 
-    - python -m pip install --exists-action=w --no-cache-dir -r requirements/docs.txt 
-    - python -m pip install --upgrade --upgrade-strategy only-if-needed --no-cache-dir . 
+    - python -mvirtualenv $READTHEDOCS_VIRTUALENV_PATH
+    - python -m pip install --upgrade --no-cache-dir pip setuptools
+    - python -m pip install --upgrade --no-cache-dir sphinx
+    - python -m pip install --exists-action=w --no-cache-dir -r requirements/docs.txt
+    - python -m pip install --upgrade --upgrade-strategy only-if-needed --no-cache-dir .
     - git fetch --tags --unshallow || true
     - mkdir -p $READTHEDOCS_OUTPUT/html/
     - python -m sphinx -T -b html -d _build/doctrees -D language=en ./docs $READTHEDOCS_OUTPUT/html
@@ -2392,7 +2392,7 @@ Option 1: Unified API base for both models
    .. code-block:: Properties
 
       # Set to any model supported by LiteLLM.
-      CHAT_MODEL=gpt-4o 
+      CHAT_MODEL=gpt-4o
       EMBEDDING_MODEL=text-embedding-3-small
       # Configure unified API base
       # The backend api_key fully follows the convention of litellm.
@@ -2405,9 +2405,9 @@ Option 2: Separate API bases for Chat and Embedding models
    .. code-block:: Properties
 
       # Set to any model supported by LiteLLM.
-      
+
       # CHAT MODEL:
-      CHAT_MODEL=gpt-4o 
+      CHAT_MODEL=gpt-4o
       OPENAI_API_BASE=<your_chat_api_base>
       OPENAI_API_KEY=<replace_with_your_openai_api_key>
 
@@ -2426,7 +2426,7 @@ Many users encounter configuration errors when setting up DeepSeek. Here's a com
    .. code-block:: Properties
 
       # CHAT MODEL: Using DeepSeek Official API
-      CHAT_MODEL=deepseek/deepseek-chat 
+      CHAT_MODEL=deepseek/deepseek-chat
       DEEPSEEK_API_KEY=<replace_with_your_deepseek_api_key>
 
       # EMBEDDING MODEL: Using SiliconFlow for embedding since DeepSeek has no embedding model.
@@ -2452,7 +2452,7 @@ Optional parameters (required if your embedding model is provided by a different
 **Note:** If you are using an embedding model from a provider different from the chat model, remember to add the `litellm_proxy/` prefix to the `EMBEDDING_MODEL` name.
 
 
-The `CHAT_MODEL` and `EMBEDDING_MODEL` parameters will be passed into LiteLLM's completion function. 
+The `CHAT_MODEL` and `EMBEDDING_MODEL` parameters will be passed into LiteLLM's completion function.
 
 Therefore, when utilizing models provided by different providers, first review the interface configuration of LiteLLM. The model names must match those allowed by LiteLLM.
 
@@ -2467,9 +2467,9 @@ For example, if you are using a DeepSeek model, you need to set as follows:
       DEEPSEEK_API_KEY=<replace_with_your_deepseek_api_key>
 
 Besides, when you are using reasoning models, the response might include the thought process. For this case, you need to set the following environment variable:
-   
+
    .. code-block:: Properties
-      
+
       REASONING_THINK_RM=True
 
 For more details on LiteLLM requirements, refer to the `official LiteLLM documentation <https://docs.litellm.ai/docs>`_.
@@ -2484,12 +2484,12 @@ If you're using Azure OpenAI, below is a working example using the Python SDK, f
 
       from litellm import completion
       import os
-      
+
       # Set Azure OpenAI environment variables
       os.environ["AZURE_API_KEY"] = "<your_azure_api_key>"
       os.environ["AZURE_API_BASE"] = "<your_azure_api_base>"
       os.environ["AZURE_API_VERSION"] = "<version>"
-      
+
       # Make a request to your Azure deployment
       response = completion(
         "azure/<your_deployment_name>",
@@ -2506,7 +2506,7 @@ To align with the Python SDK example above, you can configure the `CHAT_MODEL` b
       AZURE_API_BASE=https://<your_azure_base>.openai.azure.com/
       AZURE_API_KEY=<your_azure_api_key>
       AZURE_API_VERSION=<version>
-      
+
       # EMBEDDING MODEL: Using SiliconFlow via litellm_proxy
       EMBEDDING_MODEL=litellm_proxy/BAAI/bge-large-en-v1.5
       LITELLM_PROXY_API_KEY=<your_siliconflow_api_key>
@@ -2615,7 +2615,7 @@ The following environment variables are standard configuration options for the u
 Use Azure Token Provider
 ------------------------
 
-If you are using the Azure token provider, you need to set the `CHAT_USE_AZURE_TOKEN_PROVIDER` and `EMBEDDING_USE_AZURE_TOKEN_PROVIDER` environment variable to `True`. then 
+If you are using the Azure token provider, you need to set the `CHAT_USE_AZURE_TOKEN_PROVIDER` and `EMBEDDING_USE_AZURE_TOKEN_PROVIDER` environment variable to `True`. then
 use the environment variables provided in the `Azure Configuration section <installation_and_configuration.html#azure-openai>`_.
 
 
@@ -2724,7 +2724,7 @@ However, this feature is not enabled by default for other scripts. We recommend 
       .. code-block:: sh
 
           export $(grep -v '^#' .env | xargs)
-    
+
     - If you want to change the default environment variables, you can refer to the above configuration and edith the `.env` file.
 
 
@@ -2745,7 +2745,7 @@ In modern industry, research and development (R&D) is crucial for the enhancemen
    :alt: Our focused scenario
 
 
-Our RDAgent is designed to automate the most critical industrial R&D processes, focusing first on data-driven scenarios, to greatly boost the development productivity of models and data. 
+Our RDAgent is designed to automate the most critical industrial R&D processes, focusing first on data-driven scenarios, to greatly boost the development productivity of models and data.
 
 Methodologically, we propose an autonomous agent framework that consists of two key parts: (R)esearch stands for actively exploring by proposing new ideas, and (D)evelopment stands for realizing these ideas. The effectiveness of these two components will ultimately get feedbacks through practice, and both research and development capabilities can continuously learn and grow in the process.
 
@@ -2843,8 +2843,8 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 Trademarks
 ==========
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
-trademarks or logos is subject to and must follow 
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
@@ -3498,14 +3498,14 @@ The supported scenarios are listed below:
       - Data Building
     * - 💹 Finance
       - :ref:`🥇The First Data-Centric Quant Multi-Agent Framework <quant_agent_fin>`
-      - :ref:`🤖Iteratively Proposing Ideas & Evolving <model_agent_fin>`  
-        
-        :ref:`🦾Auto reports reading & implementation <data_copilot_fin>`  
-        
+      - :ref:`🤖Iteratively Proposing Ideas & Evolving <model_agent_fin>`
+
+        :ref:`🦾Auto reports reading & implementation <data_copilot_fin>`
+
         :ref:`🤖Iteratively Proposing Ideas & Evolving <data_agent_fin>`
     * - 🏭 General
-      - :ref:`🦾Auto paper reading & implementation <model_copilot_general>`  
-        
+      - :ref:`🦾Auto paper reading & implementation <model_copilot_general>`
+
       - :ref:`🤖 Data Science <data_science_agent>`
 
 
@@ -3539,10 +3539,10 @@ Finance Data Agent
 
 📖 Background
 ~~~~~~~~~~~~~~
-In the dynamic world of quantitative trading, **factors** serve as the strategic tools that enable traders to exploit market inefficiencies. 
+In the dynamic world of quantitative trading, **factors** serve as the strategic tools that enable traders to exploit market inefficiencies.
 These factors—ranging from simple metrics like price-to-earnings ratios to complex models like discounted cash flows—are the key to predicting stock prices with a high degree of accuracy.
 
-By leveraging these factors, quantitative traders can develop sophisticated strategies that not only identify market patterns but also significantly enhance trading efficiency and precision. 
+By leveraging these factors, quantitative traders can develop sophisticated strategies that not only identify market patterns but also significantly enhance trading efficiency and precision.
 The ability to systematically analyze and apply these factors is what separates ordinary trading from truly strategic market outmaneuvering.
 And this is where the **Finance Model Agent** comes into play.
 
@@ -3561,9 +3561,9 @@ And this is where the **Finance Model Agent** comes into play.
 
 🌟 Introduction
 ~~~~~~~~~~~~~~~~
-In this scenario, our agent illustrates the iterative process of hypothesis generation, knowledge construction, and decision-making. 
+In this scenario, our agent illustrates the iterative process of hypothesis generation, knowledge construction, and decision-making.
 
-It highlights how financial factors evolve through continuous feedback and refinement. 
+It highlights how financial factors evolve through continuous feedback and refinement.
 
 Here's an enhanced outline of the steps:
 
@@ -3631,7 +3631,7 @@ You can try our demo by running the following command:
         conda activate rdagent
 
 - 📦 Install the RDAgent
-  
+
   - You can install the RDAgent package from PyPI:
 
     .. code-block:: sh
@@ -3639,9 +3639,9 @@ You can try our demo by running the following command:
         pip install rdagent
 
 - 🚀 Run the Application
-    
+
   - You can directly run the application by using the following command:
-    
+
     .. code-block:: sh
 
         rdagent fin_factor
@@ -3650,7 +3650,7 @@ You can try our demo by running the following command:
 🛠️ Usage of modules
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. _Env Config: 
+.. _Env Config:
 
 - **Env Config**
 
@@ -3683,13 +3683,13 @@ Finance Data Copilot
 
 📖 Background
 ~~~~~~~~~~~~~~
-**Research reports** are treasure troves of insights, often unveiling potential **factors** that can drive successful quantitative trading strategies. 
+**Research reports** are treasure troves of insights, often unveiling potential **factors** that can drive successful quantitative trading strategies.
 Yet, with the sheer volume of reports available, extracting the most valuable insights efficiently becomes a daunting task.
 
-Furthermore, rather than hastily replicating factors from a report, it's essential to delve into the underlying logic of their construction. 
+Furthermore, rather than hastily replicating factors from a report, it's essential to delve into the underlying logic of their construction.
 Does the factor capture the essential market dynamics? How unique is it compared to the factors already in your library?
 
-Therefore, there is an urgent need for a systematic approach to design a framework that can effectively manage this process. 
+Therefore, there is an urgent need for a systematic approach to design a framework that can effectively manage this process.
 And this is where the **Finance Data Copilot** steps in.
 
 
@@ -3708,7 +3708,7 @@ And this is where the **Finance Data Copilot** steps in.
 
 🌟 Introduction
 ~~~~~~~~~~~~~~~~
-In this scenario, RDAgent demonstrates the process of extracting factors from financial research reports, implementing these factors, and analyzing their performance through Qlib backtesting. 
+In this scenario, RDAgent demonstrates the process of extracting factors from financial research reports, implementing these factors, and analyzing their performance through Qlib backtesting.
 This process continually expands and refines the factor library.
 
 Here's an enhanced outline of the steps:
@@ -3719,7 +3719,7 @@ Here's an enhanced outline of the steps:
 
 **Step 2 : Factor Creation ✨**
 
-- Based on the hypothesis and financial reports, divide the tasks. 
+- Based on the hypothesis and financial reports, divide the tasks.
 - Each task involves developing, defining, and implementing a new financial factor, including its name, description, formulation, and variables.
 
 **Step 3 : Factor Implementation 👨‍💻**
@@ -3762,11 +3762,11 @@ Please refer to the installation part in :doc:`../installation_and_configuration
 You can try our demo by running the following command:
 
 - 🐍 Create a Conda Environment
-    
+
   - Create a new conda environment with Python (3.10 and 3.11 are well tested in our CI):
-    
+
     .. code-block:: sh
-    
+
         conda create -n rdagent python=3.10
 
   - Activate the environment:
@@ -3776,7 +3776,7 @@ You can try our demo by running the following command:
         conda activate rdagent
 
 - 📦 Install the RDAgent
-  
+
   - You can install the RDAgent package from PyPI:
 
     .. code-block:: sh
@@ -3784,7 +3784,7 @@ You can try our demo by running the following command:
         pip install rdagent
 
 - 🚀 Run the Application
-    
+
   - Download the financial reports you wish to extract factors from and store them in your preferred folder.
 
   - Specifically, you can follow this example, or use your own method:
@@ -3819,7 +3819,7 @@ You can try our demo by running the following command:
 🛠️ Usage of modules
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. _Env Config: 
+.. _Env Config:
 
 - **Env Config**
 
@@ -3920,19 +3920,19 @@ By leveraging the **Data Science** Agent, researchers and developers can acceler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   - A data science competition dataset usually consists of two parts: ``competition dataset`` and ``evaluation dataset``. (We provide `a sample <https://github.com/microsoft/RD-Agent/tree/main/rdagent/scenarios/data_science/example>`_ of a customized dataset named: `arf-12-hours-prediction-task as a reference`.)
-    
+
     - The ``competition dataset`` contains **training data**, **test data**, **description files**, **formatted submission files**, **data sampling codes**.
-    
+
     - The ``evaluation dataset`` contains **standard answer file**, **data checking codes**, and **Code for calculation of scores**.
 
   - We use the ``arf-12-hours-prediction-task`` data as a sample to introduce the preparation workflow for the competition dataset.
-  
+
     - Create a ``ds_data/source_data/arf-12-hours-prediction-task`` folder, which will be used to store your raw dataset.
 
       - The raw files for the competition ``arf-12-hours-prediction-task`` have two files: ``ARF_12h.csv`` and ``X.npz``.
-    
+
     - Create a ``ds_data/source_data/arf-12-hours-prediction-task/prepare.py`` file that splits your raw data into **training data**, **test data**, **formatted submission file**, and **standard answer file**. (You will need to write a script based on your raw data.)
-      
+
       - The following shows the preprocessing code for the raw data of ``arf-12-hours-prediction-task``.
 
       .. literalinclude:: ../../rdagent/scenarios/data_science/example/source_data/arf-12-hours-prediction-task/prepare.py
@@ -4101,7 +4101,7 @@ By leveraging the **Data Science** Agent, researchers and developers can acceler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   - 🌏 You can directly run the application by using the following command:
-    
+
     .. code-block:: sh
 
         rdagent data_science --competition <Competition ID>
@@ -4255,7 +4255,7 @@ By utilizing the **Kaggle Agent**, data scientists can craft innovative solution
 - Prepare datasets for competitions that are not supported by **MLE-Bench**.
 
   - As a subset of data science, we can follow the format and steps of data science dataset to prepare kaggle dataset. Below we will describe the workflow for preparing a kaggle dataset using the competition ``playground-series-s4e9`` as an example.
-  
+
     - Create a ``ds_data/source_data/playground-series-s4e9`` folder, which will be used to store your raw dataset.
 
       - The raw files for the competition ``playground-series-s4e9`` have two files: ``train.csv``, ``test.csv``, ``sample_submission.csv``, and there are two ways to get the raw data:
@@ -4473,7 +4473,7 @@ Add or update the following variables in **.env** (examples shown):
 
 By default:
 
-* **Debug loop**: 1 hour (``DS_DEBUG_TIMEOUT=3600`` seconds)  
+* **Debug loop**: 1 hour (``DS_DEBUG_TIMEOUT=3600`` seconds)
 * **Full run**  : 3 hours (``DS_FULL_TIMEOUT=10800`` seconds)
 
 Override either value in **.env**:
@@ -4487,7 +4487,7 @@ Override either value in **.env**:
 - 🚀 **Run the Application**
 
   - You can directly run the application by using the following command:
-    
+
     .. code-block:: sh
 
         dotenv run -- python rdagent/app/finetune/data_science/loop.py --competition <Competition ID>
@@ -4519,10 +4519,10 @@ Override either value in **.env**:
 
 - 🔧 **Set up Environment for MLE-bench**
 
-  - Running R&D-Agent on MLE-bench is designed for full automation. There is no need for manual downloads and data preparation. Simply set the environment variable ``DS_IF_USING_MLE_DATA`` to True.  
+  - Running R&D-Agent on MLE-bench is designed for full automation. There is no need for manual downloads and data preparation. Simply set the environment variable ``DS_IF_USING_MLE_DATA`` to True.
 
-  - At runtime, R&D-Agent will automatically build the Docker image specified at ``rdagent/scenarios/kaggle/docker/mle_bench_docker/Dockerfile``. This image is responsible for downloading the required datasets and grading files for MLE-bench.  
-  
+  - At runtime, R&D-Agent will automatically build the Docker image specified at ``rdagent/scenarios/kaggle/docker/mle_bench_docker/Dockerfile``. This image is responsible for downloading the required datasets and grading files for MLE-bench.
+
   - Note: The first run may take longer than subsequent runs as the Docker image and data are being downloaded and set up for the first time.
 
     .. code-block:: sh
@@ -4533,7 +4533,7 @@ Override either value in **.env**:
 - 🔨 **Configuring the Kaggle API**
 
   - Downloading Kaggle competition data requires the Kaggle API. You can set up the Kaggle API by following these steps:
-  
+
     - Register and login on the `Kaggle <https://www.kaggle.com/>`_ website.
 
     - Click on the avatar (usually in the top right corner of the page) -> ``Settings`` -> ``Create New Token``, A file called ``kaggle.json`` will be downloaded.
@@ -4551,11 +4551,11 @@ Override either value in **.env**:
 
 - 🔩 **Setting the Environment Variables for MLE-bench**
 
-  - In addition to auto-downloading the benchmark data, you must also configure the runtime environment for executing the competition code.  
+  - In addition to auto-downloading the benchmark data, you must also configure the runtime environment for executing the competition code.
   - Use the environment variable ``DS_CODER_COSTEER_ENV_TYPE`` to select the execution mode:
-    
-    • When set to docker (the default), RD-Agent utilizes the official Kaggle Docker image (``gcr.io/kaggle-gpu-images/python:latest``) to ensure that all required packages are available.  
-    • If you prefer to use a custom Docker setup, you can modify the configuration using ``DS_DOCKER_IMAGE`` or ``DS_DOCKERFILE_FOLDER_PATH``.  
+
+    • When set to docker (the default), RD-Agent utilizes the official Kaggle Docker image (``gcr.io/kaggle-gpu-images/python:latest``) to ensure that all required packages are available.
+    • If you prefer to use a custom Docker setup, you can modify the configuration using ``DS_DOCKER_IMAGE`` or ``DS_DOCKERFILE_FOLDER_PATH``.
     • Alternatively, if your competition work only demands basic libraries, you may set ``DS_CODER_COSTEER_ENV_TYPE`` to conda. In this mode, you must create a local conda environment named “kaggle” and pre-install the necessary packages. RD-Agent will execute the competition code within this “kaggle” conda environment.
 
     .. code-block:: sh
@@ -4567,10 +4567,10 @@ Override either value in **.env**:
 
   - **Combine different LLM Models at R&D Stage**
 
-    - You can combine different LLM models at the R&D stage. 
+    - You can combine different LLM models at the R&D stage.
 
     - By default, when you set environment variable ``CHAT_MODEL``, it covers both R&D stages. When customizing the model for the development stage, you can set:
-    
+
     .. code-block:: sh
 
       # This example sets the model to "o3-mini". For some models, the reasoning effort shoule be set to "None".
@@ -4593,11 +4593,11 @@ Finance Model Agent
 
 📖 Background
 ~~~~~~~~~~~~~~
-In the realm of quantitative finance, both factor discovery and model development play crucial roles in driving performance. 
-While much attention is often given to the discovery of new financial factors, the **models** that leverage these factors are equally important. 
+In the realm of quantitative finance, both factor discovery and model development play crucial roles in driving performance.
+While much attention is often given to the discovery of new financial factors, the **models** that leverage these factors are equally important.
 The effectiveness of a quantitative strategy depends not only on the factors used but also on how well these factors are integrated into robust, predictive models.
 
-However, the process of developing and optimizing these models can be labor-intensive and complex, requiring continuous refinement and adaptation to ever-changing market conditions. 
+However, the process of developing and optimizing these models can be labor-intensive and complex, requiring continuous refinement and adaptation to ever-changing market conditions.
 And this is where the **Finance Model Agent** steps in.
 
 
@@ -4676,7 +4676,7 @@ You can try our demo by running the following command:
   - Create a new conda environment with Python (3.10 and 3.11 are well tested in our CI):
 
     .. code-block:: sh
-    
+
         conda create -n rdagent python=3.10
 
   - Activate the environment:
@@ -4686,7 +4686,7 @@ You can try our demo by running the following command:
         conda activate rdagent
 
 - 📦 Install the RDAgent
-    
+
   - You can install the RDAgent package from PyPI:
 
     .. code-block:: sh
@@ -4694,9 +4694,9 @@ You can try our demo by running the following command:
         pip install rdagent
 
 - 🚀 Run the Application
-    
+
   - You can directly run the application by using the following command:
-    
+
     .. code-block:: sh
 
         rdagent fin_model
@@ -4704,7 +4704,7 @@ You can try our demo by running the following command:
 🛠️ Usage of modules
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. _Env Config: 
+.. _Env Config:
 
 - **Env Config**
 
@@ -4749,9 +4749,9 @@ General Model Copilot
 
 📖 Background
 ~~~~~~~~~~~~~~
-In the fast-paced field of artificial intelligence, the number of academic papers published each year is skyrocketing. 
-These papers introduce new models, techniques, and approaches that can significantly advance the state of the art. 
-However, reproducing and implementing these models can be a daunting task, requiring substantial time and expertise. 
+In the fast-paced field of artificial intelligence, the number of academic papers published each year is skyrocketing.
+These papers introduce new models, techniques, and approaches that can significantly advance the state of the art.
+However, reproducing and implementing these models can be a daunting task, requiring substantial time and expertise.
 Researchers often face challenges in extracting the essential details from these papers and converting them into functional code.
 And this is where the **General Model Copilot** steps in.
 
@@ -4802,11 +4802,11 @@ Please refer to the installation part in :doc:`../installation_and_configuration
 You can try our demo by running the following command:
 
 - 🐍 Create a Conda Environment
-  
+
   - Create a new conda environment with Python (3.10 and 3.11 are well tested in our CI):
 
     .. code-block:: sh
-    
+
         conda create -n rdagent python=3.10
 
   - Activate the environment:
@@ -4816,7 +4816,7 @@ You can try our demo by running the following command:
         conda activate rdagent
 
 - 📦 Install the RDAgent
-    
+
   - You can install the RDAgent package from PyPI:
 
     .. code-block:: sh
@@ -4825,15 +4825,15 @@ You can try our demo by running the following command:
 
 
 - 🚀 Run the Application
-    
+
   - Prepare relevant files (in pdf format) by uploading papers to the directory below and copy the path as report_file_path.
-      
+
     .. code-block:: sh
 
         rdagent/scenarios/general_model
-    
+
   - Run the following command in your terminal within the same virtual environment:
-  
+
     .. code-block:: sh
 
         rdagent general_model --report-file-path=<path_to_pdf_file>
@@ -4879,7 +4879,7 @@ Then, you can run the framework by running the following command:
         conda activate rdagent
 
 - 📦 Install the RDAgent
-  
+
   - You can install the RDAgent package from PyPI:
 
     .. code-block:: sh
@@ -4887,9 +4887,9 @@ Then, you can run the framework by running the following command:
         pip install rdagent
 
 - 🚀 Run the Application
-    
+
   - You can directly run the application by using the following command:
-    
+
     .. code-block:: sh
 
         rdagent fin_quant
@@ -4898,7 +4898,7 @@ Then, you can run the framework by running the following command:
 🛠️ Usage of modules
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. _Env Config: 
+.. _Env Config:
 
 - **Env Config**
 
@@ -4920,14 +4920,14 @@ The following environment variables can be set in the `.env` file to customize t
             - **provider_uri**: Specifies the local Qlib data path, set to `~/.qlib/qlib_data/cn_data`.
             - **market**: Configured to `csi300`, representing the CSI 300 index constituents.
             - **benchmark**: Set to `SH000300`, used for backtesting evaluation.
-        
+
         - **Data Handling**:
             - **start_time** and **end_time**: Define the full data range, from `2008-01-01` to `2022-08-01`.
             - **fit_start_time**: The start date for fitting the model, set to `2008-01-01`.
             - **fit_end_time**: The end date for fitting the model, set to `2014-12-31`.
             - **features and labels**: Generated via a nested data loader combining `Alpha158DL` (for engineered features such as `RESI5`, `WVMA5`, `RSQR5`, `KLEN`, etc.) and a `StaticDataLoader` that loads precomputed factor files (`combined_factors_df.parquet`).
             -  **normalization**: The pipeline includes `RobustZScoreNorm` (with clipping) and `Fillna` for inference, and `DropnaLabel` with `CSZScoreNorm` for training.
-        
+
         - **Training Configuration**:
             - **Model**: Uses `GeneralPTNN`, a PyTorch-based neural network model.
             - **Dataset Splits**:
@@ -4945,13 +4945,13 @@ The following environment variables can be set in the `.env` file to customize t
             - **loss**: `mse`
             - **n_jobs**: `20`
             - **GPU**: `0` (uses GPU 0 if available)
-            
+
         - **Backtesting and Evaluation**:
             - **strategy**: `TopkDropoutStrategy`, which selects the top 50 stocks and randomly drops 5 to introduce exploration.
             - **backtest period**: `2017-01-01` to `2020-08-01`
             - **initial capital**: `100,000,000`
             - **cost configuration**: Includes open/close costs, minimum transaction costs, and slippage control.
-            
+
         - **Recording and Analysis**:
             - **SignalRecord**: Logs predicted signals.
             - **SigAnaRecord**: Performs signal analysis without long-short separation.
@@ -5469,16 +5469,16 @@ linting_system_prompt_template: |
   You are a software engineer. You can write code to a high standard and are adept at solving {language} linting problems.
 session_manual_template: |
   There are some problems with the code you provided, please modify the code again according to the instruction and return the errors list you modified.
-  
+
   Instruction:
   {operation}
-  
+
   Your response format should be like this:
-  
+
   ```python
   <modified code>
   ```
-  
+
   ```json
   {{
       "errors": ["<Line Number>:<Error Start Position> <Error Code>", ...]
@@ -5536,7 +5536,7 @@ user_get_files_contain_lint_commands_template: |
   ```
   {file_list}
   ```
-  
+
   Please find all files that may correspond to linting from it.
   Please respond with the following JSON template:
   {{
@@ -6843,7 +6843,7 @@ FILE: rdagent/app/finetune/data_science/tpl/components/coder/data_science/pipeli
 pipeline_coder:
   system: |-
     {% include "rdagent.components.coder.data_science.pipeline.prompts:pipeline_coder.system" %}
-    NOTE: Ensure that base model form `{% include "scenarios.data_science.share:scen.input_path" %}prev_model` is correctly loaded, you are supposed to finetune the base model. 
+    NOTE: Ensure that base model form `{% include "scenarios.data_science.share:scen.input_path" %}prev_model` is correctly loaded, you are supposed to finetune the base model.
 
 
 
@@ -6853,9 +6853,9 @@ FILE: rdagent/app/finetune/data_science/tpl/scenarios/data_science/proposal/exp_
 task_gen:
   system: |-
     {% include "rdagent.scenarios.data_science.proposal.exp_gen.prompts_v2:task_gen.system" %}
-    NOTE: You MUST load base model form `{% include "scenarios.data_science.share:scen.input_path" %}prev_model`. Your main goal is to finetune it. 
+    NOTE: You MUST load base model form `{% include "scenarios.data_science.share:scen.input_path" %}prev_model`. Your main goal is to finetune it.
 
-  
+
 
 
 ================================================
@@ -6966,8 +6966,8 @@ competition_background: |-
   ## QLoRA Fine-Tuning
   You are a world-class machine learning engineer and prompt engineer specializing in parameter-efficient fine-tuning of large language models using **QLoRA**. Your expertise includes 4-bit quantization, low-rank adaptation, and maximizing performance on GPU clusters. You are committed to building accurate, resource-efficient, and robust LLMs.
 
-  - **Fine-Tuning Method**: QLoRA (4-bit quantized LoRA)  
-  - **Training Dataset**:  
+  - **Fine-Tuning Method**: QLoRA (4-bit quantized LoRA)
+  - **Training Dataset**:
     > {{ raw_description }}
 
 
@@ -7123,11 +7123,11 @@ pipeline_coder:
   system: |-
     You are a world-class ML engineer specializing in parameter-efficient LLM fine-tuning with QLoRA.
     Design a single-file `main.py` that:
-      • Loads a pretrained model from `./workspace_input/prev_model`.  
-      • Attaches 4-bit LoRA adapters, runs fine-tuning, evaluates on the validation set.  
-      • Uses `print()` for progress and debug output (no `logging` or progress bars).  
-      • Wraps file reads in `try/except` only to catch missing files—do not suppress other errors.  
-      • Hardcodes all paths and hyperparameters—no CLI parsing.  
+      • Loads a pretrained model from `./workspace_input/prev_model`.
+      • Attaches 4-bit LoRA adapters, runs fine-tuning, evaluates on the validation set.
+      • Uses `print()` for progress and debug output (no `logging` or progress bars).
+      • Wraps file reads in `try/except` only to catch missing files—do not suppress other errors.
+      • Hardcodes all paths and hyperparameters—no CLI parsing.
       • Is directly executable via `python main.py`.
 
     ## Task Description
@@ -7150,13 +7150,13 @@ pipeline_coder:
     1. Ensure that the dataset is loaded strictly from `{% include "scenarios.data_science.share:scen.input_path" %}`, following the exact folder structure described in the **Data Folder Description**, and do not attempt to load data from the current directory (`./`).
     2. You should avoid using logging module to output information in your generated code, and instead use the print() function.
     3. You should be very careful about the try catch block in your code. You may use it to handle missing files in data reading, but you should not use it to handle the errors in your code. Especially use it to bypass the errors in your code. Directly solve the errors in your code instead of using try catch block to bypass them.
-    4. Initialize random seeds and specify device (`cpu`/`cuda`) for reproducibility.  
-    5. Ensure `main.py` runs end-to-end: training → validation → save `./scores.csv`.  
+    4. Initialize random seeds and specify device (`cpu`/`cuda`) for reproducibility.
+    5. Ensure `main.py` runs end-to-end: training → validation → save `./scores.csv`.
     6. Save finetuned adapter to `./models/` directory.
     7. When run the code again, the code will skip finetune process and directly load the finetuned adapter from `./models/` directory.
 
     {% if enable_debug_mode %}
-    Your code will be executed in a debug mode with following command: 
+    Your code will be executed in a debug mode with following command:
     ```bash
     python main.py --debug
     ```
@@ -7199,13 +7199,13 @@ FILE: rdagent/app/finetune/llm/tpl/scenarios/data_science/prompts.yaml
 system: |-
     You are a world-class ML engineer specializing in parameter-efficient LLM fine-tuning with QLoRA.
     Design a single-file `main.py` that:
-      • Loads a pretrained model from `./workspace_input/prev_model`.  
-      • Attaches 4-bit LoRA adapters, runs fine-tuning, evaluates on the validation set.  
-      • Uses `print()` for progress and debug output (no `logging` or progress bars).  
-      • Wraps file reads in `try/except` only to catch missing files—do not suppress other errors.  
-      • Hardcodes all paths and hyperparameters—no CLI parsing.  
+      • Loads a pretrained model from `./workspace_input/prev_model`.
+      • Attaches 4-bit LoRA adapters, runs fine-tuning, evaluates on the validation set.
+      • Uses `print()` for progress and debug output (no `logging` or progress bars).
+      • Wraps file reads in `try/except` only to catch missing files—do not suppress other errors.
+      • Hardcodes all paths and hyperparameters—no CLI parsing.
       • Is directly executable via `python main.py`.
-   
+
 
 
 ================================================
@@ -7213,29 +7213,29 @@ FILE: rdagent/app/finetune/llm/tpl/scenarios/data_science/proposal/exp_gen/promp
 ================================================
 scenario_problem:
   system: |-
-    You are a world-class machine learning and prompt engineer specializing in parameter-efficient fine-tuning of large language models using QLoRA (4-bit quantized LoRA adapters).  
+    You are a world-class machine learning and prompt engineer specializing in parameter-efficient fine-tuning of large language models using QLoRA (4-bit quantized LoRA adapters).
     Each iteration (trace) represents one training run or adapter update. If an iteration’s validation metric exceeds the current best, it becomes the new SOTA adapter; otherwise it is a failed experiment.
     Your task is to analyze the scenario (and SOTA, if given) and identify a concise list of **2–3 Key Challenges** that most critically limit fine-tuning performance.
 
     ### Core Analysis Dimensions
-    1. **Adapter-Model Alignment**  
-       Compare current LoRA adapter configuration against model capacity and task complexity.  
-    2. **Optimization Dynamics**  
-       Identify where training diverges or plateaus (e.g. LR too high/low, quantization noise).  
-    3. **Data-Model Coherence**  
-       Spot mismatches between the dataset’s characteristics and model input preprocessing or sequence length.  
+    1. **Adapter-Model Alignment**
+       Compare current LoRA adapter configuration against model capacity and task complexity.
+    2. **Optimization Dynamics**
+       Identify where training diverges or plateaus (e.g. LR too high/low, quantization noise).
+    3. **Data-Model Coherence**
+       Spot mismatches between the dataset’s characteristics and model input preprocessing or sequence length.
 
     ## Key Challenges / Core Problems
     Categorize each challenge as one of:
-    - **Data-Driven Challenge**  
+    - **Data-Driven Challenge**
       Issues in dataset size, domain mismatch, label noise, sequence length distribution, etc.
-    - **Model-Optimization Challenge**  
+    - **Model-Optimization Challenge**
       LoRA rank selection, quantization artifacts, learning rate schedule, gradient accumulation, etc.
 
     ### For Each Challenge
-    1. Be **specific** and **actionable**.  
-    2. Focus on **methodological** aspects, not trivial bugs.  
-    3. Directly tie to improving the **target metric**.  
+    1. Be **specific** and **actionable**.
+    2. Focus on **methodological** aspects, not trivial bugs.
+    3. Directly tie to improving the **target metric**.
     4. If no SOTA exists, include at least one challenge that guides building a minimal baseline adapter.
 
     {% if task_output_format is not none %}
@@ -7246,49 +7246,49 @@ task_gen:
     You are an expert in LLM fine-tuning with QLoRA. Each iteration applies a specific hypothesis to improve the current adapter (SOTA) or establish an initial adapter.
 
     **Inputs**:
-      - Scenario: base model, task, data path, evaluation metric  
-      - Current SOTA adapter & feedback (if any)  
-      - Proposed Hypothesis  
+      - Scenario: base model, task, data path, evaluation metric
+      - Current SOTA adapter & feedback (if any)
+      - Proposed Hypothesis
       - Failed runs feedback (if any)
 
     **Your task**: Outline a conceptual plan for `main.py` that implements the Proposed Hypothesis.
 
     **Standards**:
-      - Run via `python main.py` with no CLI args; configs are hard-coded.  
-      - No code or pseudo-code—describe each step in plain language.  
-      - Do **not** use progress bars.  
+      - Run via `python main.py` with no CLI args; configs are hard-coded.
+      - No code or pseudo-code—describe each step in plain language.
+      - Do **not** use progress bars.
       - Do **not** infer test indices from sample files.
 
     **Sketch**:
-      1. **Load Data**  
-         - Read train/validation files from the given data path.  
+      1. **Load Data**
+         - Read train/validation files from the given data path.
          - Tokenize or preprocess inputs for the model.
 
-      2. **Initialize Model & Adapter**  
-         - Load the base LLM.  
+      2. **Initialize Model & Adapter**
+         - Load the base LLM.
          - Attach a QLoRA adapter.
 
-      3. **Train with Hypothesis**  
-         - Apply the hypothesis change (e.g., modify learning schedule, adapter config).  
+      3. **Train with Hypothesis**
+         - Apply the hypothesis change (e.g., modify learning schedule, adapter config).
          - Train and validate iteratively.
 
-      4. **Validate & Record**  
-         - Compute the metric on validation set.  
+      4. **Validate & Record**
+         - Compute the metric on validation set.
          - Save results to `scores.csv` (with adapter name and “ensemble”).
 
-      5. **Generate Submission**  
+      5. **Generate Submission**
          - Write `submission.jsonl` or `.csv` matching the competition format exactly.
 
     **Key Reminders for Developer**:
-      - Hard-code all paths; do not rely on sample files for indices.  
-      - Ensure tokenizer and model names match.  
-      - Validate output formats for `scores.csv` and `submission`.  
+      - Hard-code all paths; do not rely on sample files for indices.
+      - Ensure tokenizer and model names match.
+      - Validate output formats for `scores.csv` and `submission`.
       - Handle file I/O robustly (e.g., zipped data).
 
     {% if task_output_format is not none %}
     ## [Partial Response Format 1] Task Output Format:
     {{ task_output_format }}
-    Your final output should strictly adhere to the following JSON format. 
+    Your final output should strictly adhere to the following JSON format.
     {
       "task_design": ---The dict corresponding to task output format---,
     }
@@ -7383,7 +7383,7 @@ FILE: rdagent/app/finetune/share/prompts.yaml
 ================================================
 prev_model_eval:
   system: |-
-    You are a data scientist tasked with evaluating code generation. 
+    You are a data scientist tasked with evaluating code generation.
 
     You will receive the following information:
     - The implemented code
@@ -7402,7 +7402,7 @@ prev_model_eval:
     ```
 
   user: |-
-    ------------ The implemented code ------------ 
+    ------------ The implemented code ------------
     {{code}}
 
 
@@ -9017,7 +9017,7 @@ context7_enhanced_query_template: |-
   {{context_info}}
   IMPORTANT INSTRUCTIONS:
   1. ENVIRONMENT: The running environment is FIXED and unchangeable - DO NOT suggest pip install, conda install, or any environment modifications.
-  2. DOCUMENTATION SEARCH REQUIREMENTS: 
+  2. DOCUMENTATION SEARCH REQUIREMENTS:
      - Search for official API documentation related to the error
      - Focus on parameter specifications, method signatures, and usage patterns
      - Find compatible alternatives if the original API doesn't exist
@@ -9414,7 +9414,7 @@ FILE: rdagent/components/benchmark/example.json
         },
         "Category": "Fundamentals",
         "Difficulty": "Easy",
-        "gt_code": "import pandas as pd\n\ndata_f = pd.read_hdf('daily_f.h5')\n\ndata = data_f.reset_index()\nwindow_size = 20\n\nnominator=data.groupby('instrument')[['TurnoverRate_30D']].rolling(window=window_size).mean().reset_index(0, drop=True)\n# transfer to series\nnew=nominator['TurnoverRate_30D']\ndata['Turnover_Rate_Factor']=new/data['TradableACapital']\n\n# set the datetime and instrument as index and drop the original index\nresult=pd.DataFrame(data['Turnover_Rate_Factor']).set_index(data_f.index)\n\n# transfer the result to series\nresult=result['Turnover_Rate_Factor']\nresult.to_hdf(\"result.h5\", key=\"data\")" 
+        "gt_code": "import pandas as pd\n\ndata_f = pd.read_hdf('daily_f.h5')\n\ndata = data_f.reset_index()\nwindow_size = 20\n\nnominator=data.groupby('instrument')[['TurnoverRate_30D']].rolling(window=window_size).mean().reset_index(0, drop=True)\n# transfer to series\nnew=nominator['TurnoverRate_30D']\ndata['Turnover_Rate_Factor']=new/data['TradableACapital']\n\n# set the datetime and instrument as index and drop the original index\nresult=pd.DataFrame(data['Turnover_Rate_Factor']).set_index(data_f.index)\n\n# transfer the result to series\nresult=result['Turnover_Rate_Factor']\nresult.to_hdf(\"result.h5\", key=\"data\")"
     },
     "PctTurn20": {
         "description": "A factor representing the percentage change in turnover rate over the past 20 trading days, market-value neutralized.",
@@ -11601,7 +11601,7 @@ ensemble_coder:
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.file_dict["ensemble.py"] }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     {% if queried_former_failed_knowledge|length != 0 %}
@@ -11663,7 +11663,7 @@ ensemble_eval:
     {{ test_code }}
     ```
     You will analyze the execution results based on the test output provided.
-    
+
     {% if workflow_stdout is not none %}
     ### Whole Workflow Consideration
     The ensemble code is part of the whole workflow. The user has executed the entire pipeline and provided additional stdout.
@@ -11684,7 +11684,7 @@ ensemble_eval:
     - Code should have no try-except blocks because they can hide errors.
     - Check whether the code implement the scoring process using the given metric.
     - The stdout includes the local variable values from the ensemble code execution. Check whether the validation score is calculated correctly.
-    
+
     Please respond with your feedback in the following JSON format and order
     ```json
     {
@@ -11694,9 +11694,9 @@ ensemble_eval:
         "final_decision": <true/false>
     }
     ```
-  user: |-    
+  user: |-
     --------- Ensemble test stdout ---------
-    {{ stdout }}   
+    {{ stdout }}
     {% if workflow_stdout is not none %}
     --------- Whole workflow test stdout ---------
     {{ workflow_stdout }}
@@ -11833,14 +11833,14 @@ print_preds_info("{{mn}}", "test", test_preds_dict["{{mn}}"])
 {% endfor %}
 
 for key in val_preds_dict.keys():
-    if val_preds_dict[key] is None: 
+    if val_preds_dict[key] is None:
         print(f"Model {key} validation predictions (val_preds_dict[key]) is None.")
     elif isinstance(val_preds_dict[key], list):
         print(f"Model {key} validation predictions (val_preds_dict[key]) (list type) length: {len(val_preds_dict[key])}")
     else:
         print(f"Model {key} validation predictions (val_preds_dict[key]) shape: {val_preds_dict[key].shape}")
 
-    if test_preds_dict[key] is None: 
+    if test_preds_dict[key] is None:
         print(f"Model {key} test predictions (test_preds_dict[key]) is None.")
     elif isinstance(test_preds_dict[key], list):
         print(f"Model {key} test predictions (test_preds_dict[key]) (list type) length: {len(test_preds_dict[key])}")
@@ -11863,7 +11863,7 @@ def debug_info_print(func):
                     print(f"{k}:\n {printed}")
                 print("="*20 + "Local variable values end" + "="*20)
             return local_trace
-        
+
         sys.settrace(local_trace)
         try:
             return func(*args, **kwargs)
@@ -12176,21 +12176,21 @@ feature_coder:
 
     ## Task Description
     {{ task_desc }}
-    
+
     ## Competition Information for This Task
     {{ competition_info }}
 
     {% if queried_similar_successful_knowledge|length != 0 or queried_former_failed_knowledge|length != 0 %}
     ## Relevant Information for This Task
     {% endif %}
-    
+
     {% if queried_similar_successful_knowledge|length != 0 %}
     --------- Successful Implementations for Similar Models ---------
     ====={% for similar_successful_knowledge in queried_similar_successful_knowledge %} Model {{ loop.index }}:=====
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.file_dict["feature.py"] }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     {% if queried_former_failed_knowledge|length != 0 %}
@@ -12233,7 +12233,7 @@ feature_coder:
         "code": "The Python code as a string."
     }
     {% endif %}
-  
+
   user: |-
     --------- Code Specification ---------
     {{ code_spec }}
@@ -12279,10 +12279,10 @@ feature_eval:
 
     You should evaluate both the feature engineering test results and the overall workflow results. **Approve the code only if both tests pass.**
     {% endif %}
-    
+
     ## Evaluation Criteria
     You will be given the standard output (`stdout`) from the feature engineering test and, if applicable, the workflow test.
-    
+
     Please respond with your feedback in the following JSON format and order
     ```json
     {
@@ -12292,10 +12292,10 @@ feature_eval:
         "final_decision": <true/false>
     }
     ```
-  
+
   user: |-
     --------- Feature engineering test stdout ---------
-    {{ stdout }}   
+    {{ stdout }}
     {% if workflow_stdout is not none %}
     --------- Whole workflow test stdout ---------
     {{ workflow_stdout }}
@@ -12401,7 +12401,7 @@ def debug_info_print(func):
                     print(f"{k}:\n {printed}")
                 print("="*20 + "Local variable values end" + "="*20)
             return local_trace
-        
+
         sys.settrace(local_trace)
         try:
             return func(*args, **kwargs)
@@ -12811,21 +12811,21 @@ model_coder:
 
     ## Task Description
     {{ task_desc }}
-    
+
     ## Competition Information for This Task
     {{ competition_info }}
 
     {% if queried_similar_successful_knowledge|length != 0 or queried_former_failed_knowledge|length != 0 %}
     ## Relevant Information for This Task
     {% endif %}
-    
+
     {% if queried_similar_successful_knowledge|length != 0 %}
     --------- Successful Implementations for Similar Models ---------
     ====={% for similar_successful_knowledge in queried_similar_successful_knowledge %} Model {{ loop.index }}:=====
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.file_dict[similar_successful_knowledge.target_task.name ~ '.py'] }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     {% if queried_former_failed_knowledge|length != 0 %}
@@ -12928,7 +12928,7 @@ model_eval:
 
     You should evaluate both the model building test results and the overall workflow results. **Approve the code only if both tests pass.**
     {% endif %}
-    
+
     ## Evaluation Criteria
     You will be given the standard output (`stdout`) from the model building test and, if applicable, the workflow test.
     [Note] If no stdout for model buidling test is provided, the model failed due to a timeout or out-of-memory error. You should analyze potential optimizations.
@@ -12945,7 +12945,7 @@ model_eval:
 
   user: |-
     --------- Model building test stdout ---------
-    {{ stdout }}   
+    {{ stdout }}
     {% if workflow_stdout is not none %}
     --------- Whole workflow test stdout ---------
     {{ workflow_stdout }}
@@ -12969,7 +12969,7 @@ model_eval_rm:
 
     You should evaluate both the model removal test results and the overall workflow results. **Approve the code only if both tests pass.**
     {% endif %}
-    
+
     ## Evaluation Criteria
     You will be given the standard output (`stdout`) from the model removal test and, if applicable, the workflow test.
 
@@ -12985,7 +12985,7 @@ model_eval_rm:
 
   user: |-
     --------- Model removal test stdout ---------
-    {{ stdout }}   
+    {{ stdout }}
     {% if workflow_stdout is not none %}
     --------- Whole workflow test stdout ---------
     {{ workflow_stdout }}
@@ -13140,7 +13140,7 @@ def debug_info_print(func):
                     print(f"{k}:\n {printed}")
                 print("="*20 + "Local variable values end" + "="*20)
             return local_trace
-        
+
         sys.settrace(local_trace)
         try:
             return func(*args, **kwargs)
@@ -13729,7 +13729,7 @@ pipeline_coder:
 
     # Task Description
     {{ task_desc }}
-    
+
     ## The runtime environment your code will running on
     {{ runtime_environment }}
 
@@ -13740,12 +13740,12 @@ pipeline_coder:
     ## Package Information
     {{ package_info }}
     {% endif %}
-    
+
     ## Hyperparameters Specification
     Follow the hyperparameter choices if they are specified in the task description, unless they are unreasonable or incorrect.
     In this case, refer to the guidelines below for appropriate adjustments:
     {% include "scenarios.data_science.share:spec.hyperparameter" %}
-    
+
     # Specification your code should follow
     {{ spec }}
 
@@ -13760,7 +13760,7 @@ pipeline_coder:
     {% endif %}
 
     # Workflow Overview
-    You must complete the following stages in order. 
+    You must complete the following stages in order.
 
     ## Data Loading
     - Load the dataset strictly from `{% include "scenarios.data_science.share:scen.input_path" %}` as described in the **Data Folder Description**. DO NOT attempt to load data from the current directory (`./`).
@@ -13790,7 +13790,7 @@ pipeline_coder:
       - Linguistic Structure & Style
       - Vocabulary Richness & Redundancy
 
-    3. The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema: 
+    3. The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema:
       === Start of EDA part ===
       {EDA content}
       === End of EDA part ===
@@ -13806,7 +13806,7 @@ pipeline_coder:
 
     {% if enable_debug_mode %}
     ## Debug Mode
-    Your code will be executed in a debug mode with following command: 
+    Your code will be executed in a debug mode with following command:
     ```bash
     python main.py --debug
     ```
@@ -13840,7 +13840,7 @@ pipeline_coder:
     except Exception as e:
         fold_indices = KFold(...).split(train_X, train_y) or other split strategy
     ```
-    You should sample the data after train valid split. When you split the data after sampling, you might get a class with only one sample which might cause the split strategy to fail. 
+    You should sample the data after train valid split. When you split the data after sampling, you might get a class with only one sample which might cause the split strategy to fail.
     Your debug code should run exactly the same as the full run, except for the data sampling and epoch number, to ensure the correctness of the code.
     You should print total time and estimated time in standard output using print function in the following schema:
     === Start of Debug Information ===
@@ -13909,7 +13909,7 @@ pipeline_coder:
 
     # Data Folder Description (All path are relative to the data folder, i.e. "{% include "scenarios.data_science.share:scen.input_path" %}")
     {{ folder_spec }}
-    
+
     {% if latest_code %}
     # Former code
     ```
@@ -13918,22 +13918,22 @@ pipeline_coder:
     {% if latest_code_feedback is not none %}
     ## Feedback to former code
     {{ latest_code_feedback }}
-    
+
     ## Improvement Planning
     Before modifying the code, carefully analyze the feedback and identify no more than three key areas requiring changes. Plan your modifications strategically:
     1. Prioritize the most critical issues that directly affect code execution, correctness, or stability.
     2. Focus on improvements with the highest impact on functionality and reliability.
     3. Preserve existing working components. Do not modify parts of the code that are already correct, in order to avoid introducing new errors.
-    
+
     The previous version of the code contained errors. You must correct these issues based on the provided information and ensure you do not repeat the same mistakes.
-    
+
     {% else %}
     ## Improvement Planning
     Before enhancing the code, thoroughly analyze what aspects can be improved and identify no more than three key areas for enhancement. Plan your improvements strategically:
     1. Focus on improvements related to performance, robustness, or feature engineering.
     2. Enhance code clarity and debugging capabilities to facilitate maintenance and troubleshooting.
     3. Optimize model configuration or validation strategy to improve overall effectiveness.
-    
+
     The previous version of the code is correct. You should improve the code based on the provided task while ensuring that unrelated parts remain unchanged.
     {% endif %}
     {% endif %}
@@ -13948,7 +13948,7 @@ pipeline_eval:
     Your task is to rigorously evaluate the code implementation against the provided scenario and task description, ensuring it meets all requirements, adheres to the specified structure, and executes successfully.
 
     ## Evaluation Aspects
-    
+
     ### Execution Success
     - Goal: Ensure the code executes successfully without any errors.
     - Notes:
@@ -14028,7 +14028,7 @@ pipeline_eval:
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.all_codes }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     ## Output Format
@@ -14088,7 +14088,7 @@ if Path("scores.csv").exists():
 else:
     print("Warning: scores.csv does not exist. MD5 check will be skipped.")
     file_md5 = None
-    
+
 """
 find . | grep -i sample | grep -i submission | grep -v sample_submission.csv | grep -v zip_files  | grep -v 'sample/'
 ./denoising-dirty-documents/sampleSubmission.csv
@@ -14181,7 +14181,7 @@ FILE: rdagent/components/coder/data_science/raw_data_loader/README.md
 1. xxxTask (in exp.py)
     - spec
     - description
-2. 
+2.
 
 ## evaluator
 
@@ -14564,7 +14564,7 @@ spec:
     You are a world-class data scientist and machine learning engineer with deep expertise in statistics, mathematics, and computer science.
     Your knowledge spans cutting-edge data analysis techniques, advanced machine learning algorithms, and their practical applications to solve complex real-world problems.
 
-    Currently, you are working on a Kaggle competition project. 
+    Currently, you are working on a Kaggle competition project.
     This project involves analyzing data and building models to beat other competitors, with the code being generated by large language models.
 
     The runtime environment you are working in includes the following libraries and their respective versions:
@@ -14572,7 +14572,7 @@ spec:
 
     Your overall task is provided below:
     {{ task_desc }}
-    
+
     Your task is to write five specification texts (in markdown format) for the following tasks, based on the competition information provided
     - Data loading (and preprocessing)
     - Feature Engineering
@@ -14580,12 +14580,12 @@ spec:
     - Ensemble
     - The overall workflow
 
-    The specifications for each step should be tailored to the competition information provided. 
-    
+    The specifications for each step should be tailored to the competition information provided.
+
     Your specification should consists two parts:
     1. The function definition in code format, including type annotations and a clear, complete docstring that describes the function's purpose, input parameters, return value, and any relevant exceptions.
     2. Additional information or notes that the coder should consider while implementing the function.
-    
+
     Your specifications should include only the function definition and docstring, without any code implementation or inline comments.
 
     ## Competition Information for This Task
@@ -14663,13 +14663,13 @@ spec:
           - Apply logic for competition-specific features (e.g., text vectorization, image augmentations, categorical encoding).
 
       3. Code Standards:
-        - Avoid using progress bars (e.g., `tqdm`) in the implementation.          
+        - Avoid using progress bars (e.g., `tqdm`) in the implementation.
 
       4. Notes:
         - Align `DT` (data type) definitions with those in the Data Loader specification.
         - GPU and multiprocessing are available and are encouraged to use for accelerating transformations.
         - Only set the DT of variables without inferring the shape of these variables since you don't know the shape of the data.
-      
+
       {% if latest_spec %}
       5. Former Specification:
         {{ latest_spec }}
@@ -14752,7 +14752,7 @@ spec:
             scores = {}
             for model_name, val_pred in val_preds_dict.items():
                 scores[model_name] = calculate_metric(val_label, val_pred)
-            
+
             ...
             some code about ensemble strategy
             ...
@@ -14760,12 +14760,12 @@ spec:
 
             ensemble_score = calculate_metric(val_label, ensemble_val_pred)
             scores["ensemble"] = ensemble_score  # Ensure "ensemble" is explicitly stored
-            
+
             scores_df = pd.DataFrame(scores.items(), columns=["Model", <metric_name>])
             scores_df.to_csv("scores.csv", index=False)
             ```
           - Even if only one model is present, compute the ensemble score and store it under `"ensemble"`.
-        
+
       3. Code Standards:
         - Do not use progress bars (e.g., tqdm) in the code.
 
@@ -14807,14 +14807,14 @@ data_loader_coder:
     {% if queried_similar_successful_knowledge|length != 0 or queried_former_failed_knowledge|length != 0 %}
     ## Relevant Information for This Task
     {% endif %}
-    
+
     {% if queried_similar_successful_knowledge|length != 0 %}
     --------- Successful Implementation Examples for Similar Task ---------
     ====={% for similar_successful_knowledge in queried_similar_successful_knowledge %} Example {{ loop.index }}:=====
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.all_codes }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     {% if queried_former_failed_knowledge|length != 0 %}
@@ -14836,7 +14836,7 @@ data_loader_coder:
     memory = Memory(location='{% include "scenarios.data_science.share:scen.cache_path" %}', verbose=0)
     @memory.cache```
     {% include "scenarios.data_science.share:guidelines.coding" %}
-    
+
     ## Exploratory Data Analysis (EDA) part(Required):
     - Before returning the data, you should always add an EDA part describing the data to help the following steps understand the data better.
     - The EDA part should include but not limited in the following information in plain text:
@@ -14847,7 +14847,7 @@ data_loader_coder:
       - The number of unique values in each column.
       - The distribution of the target variable.
       - Any other information that you think is important for the following steps.
-    - The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema: 
+    - The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema:
       === Start of EDA part ===
       { You EDA output content }
       === End of EDA part ===
@@ -14874,7 +14874,7 @@ data_loader_coder:
 
     --------- Data Folder Description (All path are relative to the data folder, i.e. "{% include "scenarios.data_science.share:scen.input_path" %}") ---------
     {{ folder_spec }}
-    
+
     {% if latest_code %}
     --------- Former code ---------
     {{ latest_code }}
@@ -14883,7 +14883,7 @@ data_loader_coder:
     {{ latest_code_feedback }}
     {% endif %}
     The former code contains errors. You should correct the code based on the provided information, ensuring you do not repeat the same mistakes.
-    {% endif %} 
+    {% endif %}
 
     You should strictly follow the code specifications provided by the specification to implement the function.
 
@@ -14891,7 +14891,7 @@ data_loader_coder:
 data_loader_eval:
   system: |-
     You are a data scientist responsible for evaluating data loader code for a Kaggle-style machine learning competition project.
-    
+
     ## Task Description
     {{ task_desc }}
 
@@ -14916,13 +14916,13 @@ data_loader_eval:
 
     You should evaluate both the data loader test results and the overall workflow execution. **Approve the code only if both tests pass.**
     {% endif %}
-    
+
     ## Evaluation Criteria
     You will be given the standard output (`stdout`) from the data loader test and, if applicable, the workflow test.
 
     ## Exploratory Data Analysis (EDA) Part evaluation
-    - The code has also generated some EDA output to help understand the data better. 
-    - The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema: 
+    - The code has also generated some EDA output to help understand the data better.
+    - The EDA part should be drafted in plain text sending to standard output with command print or other similar functions with no more than ten thousand characters in the following schema:
       === Start of EDA part ===
       { You EDA output content }
       === End of EDA part ===
@@ -14936,7 +14936,7 @@ data_loader_eval:
       - The distribution of the target variable.
       - Any other information that you think is important for the following steps.
     You will be given the EDA output, your job is to check whether the output contains the required and sufficient information. If no EDA output is provided, you should consider it as a failure. Put this evaluation result in the return_checking part.
-    
+
     Your response must follow this structured JSON format:
     ```json
     {
@@ -14949,7 +14949,7 @@ data_loader_eval:
 
   user: |-
     --------- Data loader test stdout ---------
-    {{ stdout }}   
+    {{ stdout }}
     --------- Data loader EDA stdout ---------
     {% if eda_output is not none %}
     {{ eda_output }}
@@ -15035,7 +15035,7 @@ def debug_info_print(func):
                     print(f"{k}:\n {printed}")
                 print("="*20 + "Local variable values end" + "="*20)
             return local_trace
-        
+
         sys.settrace(local_trace)
         try:
             return func(*args, **kwargs)
@@ -15474,16 +15474,16 @@ FILE: rdagent/components/coder/data_science/share/prompts.yaml
 ================================================
 dump_model_coder:
   guideline: |-
-    Your code will be executed in a inference mode with following command: 
+    Your code will be executed in a inference mode with following command:
     ```bash
     python main.py --inference
     ```
     Please dump the model in a "models/" subfolder in the first running, and the script rerun performs inference without needing to retrain the model when running the code again.
-    In inference Mode, the script MUST NOT load any training data. 
+    In inference Mode, the script MUST NOT load any training data.
     If there are parameters generated from the training data that might be needed for inference on test data, please save them in the "models/" subfolder as well.
     If no test set is provided, reserve a portion of the data as your test set and save the generated test files in the models/ subfolder for use in submission and inference.
     Make sure that the required files, like submission.csv and scores.csv, are created without model training step through loading the saved model and test data file directly.
-    
+
 
 dump_model_eval:
   system: |-
@@ -15517,10 +15517,10 @@ dump_model_eval:
     ```
 
   user: |-
-    ------------ The implemented code ------------ 
+    ------------ The implemented code ------------
     {{code}}
 
-    ------------ The stdout from running the code ------------ 
+    ------------ The stdout from running the code ------------
     {{stdout}}
 
     ------------ File opened by the code ------------
@@ -16315,7 +16315,7 @@ workflow_coder:
     {{ similar_successful_knowledge.target_task.get_task_information() }}
     =====Code:=====
     {{ similar_successful_knowledge.implementation.file_dict["main.py"] }}
-    {% endfor %} 
+    {% endfor %}
     {% endif %}
 
     {% if queried_former_failed_knowledge|length != 0 %}
@@ -16347,7 +16347,7 @@ workflow_coder:
         "code": "The Python code as a string."
     }
     {% endif %}
-  
+
   user: |-
     --------- Code Specification ---------
     {{ code_spec }}
@@ -16408,14 +16408,14 @@ workflow_eval:
     1. Executes successfully, correctly organizing components and generating a final submission.
     2. Generates predictions in the correct format, ensuring they align with the **sample submission** structure!
 
-    [Note] 
+    [Note]
     1. The individual components (data loading, feature engineering, model tuning, etc.) have already been evaluated by the user. You should only evaluate and improve the workflow code, unless there are critical issues in the components.
     2. Model performance is NOT a concern in this evaluation—only correct execution and formatting matter.
     3. As long as the execution does not exceed the time limit, ensure that the code uses cross-validation to split the training data and train the model. If cross-validation is not used, mention it in the execution section and set `final_decision` to `false`.
 
     ## Evaluation Criteria
-    You will be given the workflow execution output (`stdout`) to determine correctness.  
-    
+    You will be given the workflow execution output (`stdout`) to determine correctness.
+
     Please respond with your feedback in the following JSON format and order
     ```json
     {
@@ -16425,7 +16425,7 @@ workflow_eval:
         "final_decision": <true/false>
     }
     ```
-  
+
   user: |-
     --------- Workflow test stdout ---------
     {{ stdout }}
@@ -17830,7 +17830,7 @@ evaluator_code_feedback_v1_system: |-
   Notice that your critics are not for user to debug the code. They are sent to the coding agent to correct the code. So don't give any following items for the user to check like "Please check the code line XXX".
 
   You suggestion should not include any code, just some clear and short suggestions. Please point out very critical issues in your response, ignore non-important issues to avoid confusion. If no big issue found in the code, you can response "No critics found".
-  
+
   You should provide the suggestion to each of your critic to help the user improve the code. Please response the critic in the following format. Here is an example structure for the output:
   critic 1: The critic message to critic 1
   critic 2: The critic message to critic 2
@@ -17860,7 +17860,7 @@ evolving_strategy_factor_implementation_v1_system: |-
   1. The user might provide you the correct code to similar factors. Your should learn from these code to write the correct code.
   2. The user might provide you the failed former code and the corresponding feedback to the code. The feedback contains to the execution, the code and the factor value. You should analyze the feedback and try to correct the latest code.
   3. The user might provide you the suggestion to the latest fail code and some similar fail to correct pairs. Each pair contains the fail code with similar error and the corresponding corrected version code. You should learn from these suggestion to write the correct code.
-  
+
   Your must write your code based on your former latest attempt below which consists of your former code and code feedback, you should read the former attempt carefully and must not modify the right part of your former code.
 
   Notice that you should not add any other text before or after the json format.
@@ -17886,7 +17886,7 @@ evolving_strategy_factor_implementation_v2_user: |-
   {% if error_summary_critics is none %}
   Recall your last failure, your implementation met some errors.
   When doing other tasks, you met some similar errors but you finally solve them. Here are some examples:
-  {% for error_content, similar_error_knowledge in queried_similar_error_knowledge %} 
+  {% for error_content, similar_error_knowledge in queried_similar_error_knowledge %}
   --------------Factor information to similar error ({{error_content}}):---------------
   {{ similar_error_knowledge[0].target_task.get_task_information() }}
   =====Code with similar error ({{error_content}}):=====
@@ -17921,7 +17921,7 @@ evolving_strategy_factor_implementation_v2_user: |-
 evolving_strategy_error_summary_v2_system: |-
   User is trying to implement some factors in the following scenario:
   {{ scenario }}
-  User is doing the following task: 
+  User is doing the following task:
   {{factor_information_str}}
 
   You have written some code but it meets errors like the following:
@@ -17938,10 +17938,10 @@ evolving_strategy_error_summary_v2_system: |-
   Please response the critic in the following format. Here is an example structure for the output:
   critic 1: The critic message to critic 1
   critic 2: The critic message to critic 2
-  
+
 evolving_strategy_error_summary_v2_user: |-
   {% if queried_similar_error_knowledge|length != 0 %}
-  {% for error_content, similar_error_knowledge in queried_similar_error_knowledge %} 
+  {% for error_content, similar_error_knowledge in queried_similar_error_knowledge %}
   --------------Factor information to similar error ({{error_content}}):---------------
   {{ similar_error_knowledge[0].target_task.get_task_information() }}
   =====Code with similar error ({{error_content}}):=====
@@ -17965,7 +17965,7 @@ select_implementable_factor_system: |-
 
 select_implementable_factor_user: |-
   Number of factor you should pick: {{ factor_num }}
-  {% for factor_info in sub_tasks %} 
+  {% for factor_info in sub_tasks %}
   =============Factor index:{{factor_info[0]}}:=============
   =====Factor name:=====
   {{ factor_info[1].factor_name }}
@@ -18867,7 +18867,7 @@ pickle.dump(execution_feedback_str, open("execution_feedback_str.pkl", "wb"))
 FILE: rdagent/components/coder/model_coder/prompts.yaml
 ================================================
 extract_model_formulation_system: |-
-    offer description of the proposed model in this paper, write a latex formula with variable as well as the architecture of the model. the format should be like 
+    offer description of the proposed model in this paper, write a latex formula with variable as well as the architecture of the model. the format should be like
     {
         "model_name (The name of the model)": {
             "description": "A detailed description of the model",
@@ -18925,7 +18925,7 @@ evolving_strategy_model_coder:
         =====Feedback to the former implementation=====
         {{ queried_former_failed_knowledge[-1].feedback }}
         {% endif %}
-        
+
         Please response the code in the following json format. Here is an example structure for the JSON output:
         {
             "code": "The Python code as a string."
@@ -18977,7 +18977,7 @@ evaluator_code_feedback:
         You should provide the suggestion to each of your critic to help the user improve the code. Please response the critic in the following format. Here is an example structure for the output:
         critic 1: The critic message to critic 1
         critic 2: The critic message to critic 2
-    
+
     user: |-
         --------------Model information:---------------
         {{ model_information }}
@@ -22481,7 +22481,7 @@ FILE: rdagent/components/proposal/prompts.yaml
 ================================================
 hypothesis_gen:
   system_prompt: |-
-    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process. 
+    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process.
     The {{ targets }} are used in the following scenario:
     {{ scenario }}
     The user has already proposed several hypotheses and conducted evaluations on them. This information will be provided to you. Your task is to analyze previous experiments, reflect on the decision made in each experiment, and consider why experiments with a decision of true were successful while those with a decision of false failed. Then, think about how to improve further — either by refining the existing approach or by exploring an entirely new direction.
@@ -22514,7 +22514,7 @@ hypothesis_gen:
 
 hypothesis2experiment:
   system_prompt: |-
-    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step. 
+    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step.
     The {{ targets }} are used in certain scenario, the scenario is as follows:
     {{ scenario }}
     The user will use the {{ targets }} generated to do some experiments. The user will provide this information to you:
@@ -22524,7 +22524,7 @@ hypothesis2experiment:
     4. Some additional information to help you generate new {{ targets }}.
     Please generate the output following the format below:
     {{ experiment_output_format }}
-    
+
   user_prompt: |-
     The user has made several hypothesis on this scenario and did several evaluation on them.
     The target hypothesis you are targeting to generate {{ targets }} for is as follows:
@@ -25523,12 +25523,12 @@ Each tag below appears only once per loop.
 
 - How to continue.
 - show & copy trace_id(name)?
-- 
+-
 
 ## Page
 
 1. remove Medical, add Finance Whole Pipeline
-2. 
+2.
 
 
 ================================================
@@ -33238,7 +33238,7 @@ describe: # some template to describe some object
     {% if not pipeline %}Chosen Component: {{ exp_and_feedback[0].hypothesis.component }}{% endif %}
     Proposed Hypothesis: {{ exp_and_feedback[0].hypothesis.hypothesis }}
     {% if exp_and_feedback[1].code_change_summary  %}Code Change Summary: {{ exp_and_feedback[1].code_change_summary }}{% endif %}
-    **Surpass Previous SOTA**: {{ exp_and_feedback[1].decision }}    
+    **Surpass Previous SOTA**: {{ exp_and_feedback[1].decision }}
     {% if exp_and_feedback[0].running_info.running_time is not none %}
     Experiment Running Time: {{ (exp_and_feedback[0].running_info.running_time ) | round(1) }} seconds
     {% endif %}
@@ -33305,7 +33305,7 @@ component_spec:
     2. Data Preprocessing:
       - Convert data types correctly (e.g., numeric, categorical, date parsing).
       - Optimize memory usage for large datasets using techniques like downcasting or reading data in chunks if necessary.
-      - Domain-Specific Handling: 
+      - Domain-Specific Handling:
         - Apply competition-specific preprocessing steps as needed (e.g., text tokenization, image resizing).
         - Instead of returning binary bytes directly, convert/decode them into more useful formats like numpy.ndarrays.
 
@@ -33340,20 +33340,20 @@ component_spec:
       - Prevent data leakage: Do not use information derived from the test set when transforming training data.
 
     4. Code Standards:
-      - Avoid using progress bars (e.g., `tqdm`) in the implementation.          
+      - Avoid using progress bars (e.g., `tqdm`) in the implementation.
 
     5. Notes:
       - GPU and multiprocessing are available and are encouraged to use for accelerating transformations.
       - Feature engineering should be executed **once** and reused across all models to ensure consistency: `X_transformed, y_transformed, X_test_transformed = feat_eng(X, y, X_test)`
       - If the data loader returns the file path directly, we can skip feature engineering and return original values directly.
-  
+
   Model: |-
     - Do not use progress bars (e.g., `tqdm`) in the implementation.
     - The device has GPU support, so you are encouraged to use it for training if necessary to accelerate the process.
     - Some data transformations/augmentations can be included in this step (e.g., data tools provided by TensorFlow and Torch)
       - Please correctly handle data transformations/augmentations, especially when the dataloader loads the file path directly.
     - Ensure dynamic handling of feature dimensions to accommodate potential enhancements in input features without requiring code modifications.
-  
+
   Ensemble: |-
     1. Input Validation:
       - Handle empty or invalid inputs gracefully with appropriate error messages.
@@ -33364,7 +33364,7 @@ component_spec:
       scores = {}
       for model_name, val_pred in val_preds_dict.items():
           scores[model_name] = calculate_metric(val_label, val_pred)
-      
+
       ...
       some code about ensemble strategy
       ...
@@ -33372,7 +33372,7 @@ component_spec:
 
       ensemble_score = calculate_metric(val_label, ensemble_val_pred)
       scores["ensemble"] = ensemble_score  # Ensure "ensemble" is explicitly stored
-      
+
       scores_df = pd.DataFrame(scores.items(), columns=["Model", <metric_name>])
       scores_df.to_csv("scores.csv", index=False)
       ```
@@ -33383,15 +33383,15 @@ component_spec:
 
     4. Notes:
       - Ensure flexibility to handle multiple ensemble strategies based on competition requirements.
-    
+
   Workflow: |-
-    Your task is to implement the main workflow script (`main.py`) for a Kaggle-style machine learning competition project. 
+    Your task is to implement the main workflow script (`main.py`) for a Kaggle-style machine learning competition project.
     Follow the provided project structure and specifications to ensure consistency and maintainability:
     1. Workflow Integration:
       - Integrate the following components into the workflow:
         - Data loading (`load_data.py`).
         - Feature engineering (`feature.py`).
-        - Model workflow for training and testing (`model_*.py`). 
+        - Model workflow for training and testing (`model_*.py`).
         - Ensemble workflow that combines results from the model workflow to obtain the final prediction (`ensemble.py`).
       - Treat each component as a modular and callable Python function.
       - The workflow script should be flexible enough to handle either a single model or multiple models, with filenames (model_*.py) that are not determined at the outset.
@@ -33451,7 +33451,7 @@ component_spec:
       {% endfor %}
       final_pred = ensemble_workflow(test_preds_dict, val_preds_dict, val_y)
       {% endraw %}
-    
+
   Pipeline: |-
     1. Program Execution:
       - The workflow will be executed by running `python main.py` with no command-line arguments. Ensure that `main.py` does not require or expect any parameters.
@@ -33503,7 +33503,7 @@ component_spec:
     3. Data Preprocessing:
       - Convert data types correctly (e.g., numeric, categorical, date parsing).
       - Optimize memory usage for large datasets using techniques like downcasting or reading data in chunks if necessary.
-      - Domain-Specific Handling: 
+      - Domain-Specific Handling:
         - Apply competition-specific preprocessing steps as needed (e.g., text tokenization, image resizing).
 
     4. Code Standards:
@@ -33523,7 +33523,7 @@ component_spec:
 
     7. Notes:
       - GPU and multiprocessing are available and are encouraged to use for accelerating transformations.
-  
+
     8. Metric Calculation and Storage:
       - Calculate the metric (mentioned in the evaluation section of the competition information) for each model and ensemble strategy on valid, and save the results in `scores.csv`
       - The evaluation should be based on k-fold cross-validation but only if that's an appropriate evaluation for the task at hand. Store the mean validation score of k-fold cross-validation in `scores.csv` on each model. Refer to the hyperparameter specification for rules to set the CV folds.
@@ -33535,7 +33535,7 @@ component_spec:
     9. Submission File:
       - Save the final predictions as `submission.csv`, ensuring the format matches the competition requirements as detailed in the '====== Submission Format ======' section of the Competition Information (DO NOT read the sample_submission.csv file directly in the code).
       - Present the required submission format explicitly and ensure the output adheres to it.
-    
+
     10. Preferred Packages:
       - You can choose the most proper packages to achieve the task.
       - When facing a choice between two packages which both can achieve the same goal, you should choose the one which is more commonly used and less likely to cause bugs in coding. Especially those you are not familiar with.
@@ -34413,7 +34413,7 @@ exp_feedback:
     - NOTES:
       - The experiments focus on the comparison of the final ensemble results (Don't reject the results because they are still not perfect)
       - If the `ensemble` score does not exceed the best individual mode or single fold, it is still acceptable unless the gap is significant.
-    
+
     Step 4: Analyze Code With Similar validation Results
     - If the current `ensemble` validation score is similar to the SOTA `ensemble` validation score, give the decision based on the comparison between the current experiment and SOTA.
     - The current code should replace the best result if the code is:
@@ -34436,7 +34436,7 @@ exp_feedback:
     - Determine the overall acceptability of the experiment based on the comprehensive evaluation from previous steps:
       - Set `"Acceptable": "yes"` ONLY if ALL of the following conditions are met:
         * Step 1: Submission format is valid
-        * Step 2: Evaluation methodology is aligned with competition requirements  
+        * Step 2: Evaluation methodology is aligned with competition requirements
         * Step 4: Current code demonstrates clear improvements over SOTA (better practices, efficiency, or interpretability)
       - Set `"Acceptable": "no"` if ANY of the above conditions fail
     - This acceptability assessment serves as a final quality gate to ensure only truly valuable experiments are accepted
@@ -34457,7 +34457,7 @@ exp_feedback:
 
   user: |-
     We are currently in a process of validating hypotheses to iteratively improve our models for Kaggle competitions. Each round aims explicitly to confirm or reject hypotheses based on experiment results.
-    
+
     ## SOTA Solution
     {{ sota_desc }}
 
@@ -34468,7 +34468,7 @@ exp_feedback:
     {% if cur_exp.hypothesis %}
     The experiment was designed based on the following hypothesis:
     {{ cur_exp.hypothesis }}
-    
+
     Modified code according to hypothesis:
     {% else %}
     Modified code:
@@ -34490,12 +34490,12 @@ exp_feedback:
     Below is the comparison of the current `ensemble` performance with the SOTA results:
     {{ cur_vs_sota_score }}
     {% endif %}
-    
+
     {% if cur_exp.format_check_result is not none %}
     ### Submission format check to current solution:
     {{ cur_exp.format_check_result }}
     {% endif %}
-    
+
     ### Complete Code of Current Solution
     {{ cur_exp.experiment_workspace.all_codes }}
 
@@ -34557,7 +34557,7 @@ exp_feedback_draft:
     - NOTES:
       - The experiments focus on the comparison of the final ensemble results (Don't reject the results because they are still not perfect)
       - If the `ensemble` score does not exceed the best individual mode or single fold, it is still acceptable unless the gap is significant.
-    
+
     Step 4: Analyze Code With Similar validation Results
     - If the current `ensemble` validation score is similar to the SOTA `ensemble` validation score, give the decision based on the comparison between the current experiment and SOTA.
     - The current code should replace the best result if the code is:
@@ -34609,7 +34609,7 @@ exp_feedback_draft:
     {% if cur_exp.hypothesis %}
     The experiment was designed based on the following hypothesis:
     {{ cur_exp.hypothesis }}
-    
+
     Modified code according to hypothesis:
     {% else %}
     Modified code:
@@ -34631,12 +34631,12 @@ exp_feedback_draft:
     Below is the comparison of the current `ensemble` performance with the SOTA results:
     {{ cur_vs_sota_score }}
     {% endif %}
-    
+
     {% if cur_exp.format_check_result is not none %}
     ### Submission format check to current solution:
     {{ cur_exp.format_check_result }}
     {% endif %}
-    
+
     ### Complete Code of Current Solution
     {{ cur_exp.experiment_workspace.all_codes }}
 
@@ -35249,7 +35249,7 @@ DSCoSTEER_eval:
     The execution time for current code base: {{ time_spent }}.
     The total timeout: {{ timeout }}.
     The percent of timeout used: {{ percent_of_timeout_used }}.
-    
+
     {% if queried_former_failed_knowledge|length != 0 %}
     # Evolving History
     {% for former_failed_knowledge in queried_former_failed_knowledge %}## Attempt {{ loop.index }}:
@@ -35258,7 +35258,7 @@ DSCoSTEER_eval:
     {{ former_failed_knowledge.feedback }}
     {% endfor %}
     {% endif %}
-    
+
 DSCoSTEER:
   system_debugger: |-
     {% include "scenarios.data_science.share:scen.role" %}
@@ -35385,7 +35385,7 @@ Specifically, you need to prepare files in a structure similar to the provided e
 ## arf-12-hours-prediction-task Introduction
 
 > Acute Respiratory Failure (ARF) is a life-threatening condition that often develops rapidly in critically ill patients. Accurate early prediction of ARF is essential in Intensive Care Units (ICUs) to enable timely clinical interventions and effective resource allocation. In this task, you are required to build a machine learning model that predicts whether a patient will develop ARF within the next **12 hours**, using multivariate clinical time-series data.
-> 
+>
 > The dataset has been extracted from electronic health records (EHRs) and preprocessed through the **FIDDLE** pipeline, generating structured temporal features for each patient.
 
 ## Example Folder Structure
@@ -35394,11 +35394,11 @@ Specifically, you need to prepare files in a structure similar to the provided e
 
   * `arf-12-hours-prediction-task` (Task Name, **required**)
 
-    * `prepare.py` Used for data preprocessing to split the raw data into: *training data*, *test data*, *formatted submission file*, and *standard answer file*. 
+    * `prepare.py` Used for data preprocessing to split the raw data into: *training data*, *test data*, *formatted submission file*, and *standard answer file*.
 
   * `playground-series-s4e9` (Task Name, **required**)
 
-    * `prepare.py` (**required**): Used for data preprocessing to split the raw data into: *training data*, *test data*, *formatted submission file*, and *standard answer file*. 
+    * `prepare.py` (**required**): Used for data preprocessing to split the raw data into: *training data*, *test data*, *formatted submission file*, and *standard answer file*.
 
   NOTE: Due to the large size of the raw data, we do not show the raw data in this project, if you want to see the raw data, you can download the full dataset through the link at the bottom.
 
@@ -35471,9 +35471,9 @@ The dataset is extracted from electronic health records (EHRs) and preprocessed 
 
 2. train/X.npz: N × T × D sparse tensor containing time-dependent features.
 
-    * N: Number of samples (number of ICU stays) 
+    * N: Number of samples (number of ICU stays)
     * T: Time step (12 hours of records per sample)
-    * D: Dynamic feature dimension (how many features per hour) 
+    * D: Dynamic feature dimension (how many features per hour)
 
 3. test/ARF_12h.csv: Ground truth labels (used for evaluation only).
 
@@ -37419,7 +37419,7 @@ hypothesis_gen:
   system: |-
     {% include "scenarios.data_science.share:scen.role" %}
     The user is improving a Kaggle competition implementation iteratively through traces where each new trace is modified from the current SOTA in the trace. If new trace surpasses the current SOTA, it will be the new SOTA. If not, it will be a failed experiment.
-    You will be provided with: 
+    You will be provided with:
       1. A detailed competition scenario description;
       2. Previous SOTA experiments and feedbacks, which are past SOTA experiments indexed from oldest to newest;
       3. The current SOTA implementation and feedback, which is the latest SOTA experiments from the previous experiments;
@@ -37438,7 +37438,7 @@ hypothesis_gen:
       - For failed experiments, think about the persistent problems they facing. If these experiments consistently failed due to time/memory constraints, prioritize changes on efficiency.
     2. Note on Time/Memory Constraints
       - If prior experiments failed due to time/memory limitations, assume your new hypothesis will face the same constraints. In this case, prioritize efficiency and **ONLY** response to the problems related to time/memory constraints in your response dictionary.
-      - Besides, do not compromise performance merely for efficiency since the current SOTA implementation do not encounter the constraints. You should think about how to balance the efficiency and performance so that your new hypothesis can be executed successfully and achieve satisfactory performance. 
+      - Besides, do not compromise performance merely for efficiency since the current SOTA implementation do not encounter the constraints. You should think about how to balance the efficiency and performance so that your new hypothesis can be executed successfully and achieve satisfactory performance.
 
     # Task 2: Hypothesis Evaluation
     ## Evaluation Instruction
@@ -37455,7 +37455,7 @@ hypothesis_gen:
 
     ## Final Output Format in JSON Schema:
     {{ hypothesis_output_format }}
-    
+
   user: |-
     # Ertra Experiments and Feedbacks
     {{ exp_and_feedback_list_desc }}
@@ -37474,12 +37474,12 @@ multi_trace: |-
   2) Solution to be merged:  multiple trials of solutions that you will combine with the previous main solution. For each solution, you will be given:
     - Solution: the approach or method used in this solution.
     - Successful iterations (the steps or changes that led to the success of the Solution to be merged) or feedback to the Solution to be merged.
-  
+
   # Previous Main Solution
   {{ sota_exp_desc }}
   {{ sota_exp_fb_desc }}
 
-  # Multiple Trials of Solutions to be merged 
+  # Multiple Trials of Solutions to be merged
   {% for exp_to_merge_desc, exp_to_merge_fb_desc in exp_fb_desc_to_merge_list %}
   ## Trial Index: {{ loop.index }}
 
@@ -37492,7 +37492,7 @@ multi_trace: |-
   {% endif %}
 
   {% endfor %}
- 
+
 
 
 ================================================
@@ -37670,10 +37670,10 @@ FILE: rdagent/scenarios/data_science/proposal/exp_gen/prompts.yaml
 ================================================
 hypothesis_gen: # It is deprecated now, please refer to direct_exp_gen
   system: |-
-    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process. 
+    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process.
     The {{ targets }} are used in the following scenario:
     {{ scenario }}
-    
+
     The user has already proposed several hypotheses and conducted evaluations. This information will be provided to you. Your task is to:
     1. Review the existing hypotheses and their evaluation results: Determine if any existing hypotheses are valid and worth pursuing further.
     2. Decide on the next step: Based on the results and reasoning, decide whether:
@@ -37695,17 +37695,17 @@ hypothesis_gen: # It is deprecated now, please refer to direct_exp_gen
     This is the first round of hypothesis generation. The user has not yet proposed any hypotheses for this scenario.
     {% else %}
     This is not the first round. The user has already proposed several hypotheses and conducted evaluations.
-    
+
     The previous hypotheses and their corresponding feedback are as follows (focus on the most recent hypothesis, its derived insights, and reasoning):
     {{ exp_and_feedback_desc }}
     {% endif %}
-    
+
     In addition, generate relevant reasoning and distilled knowledge keys.
     For these keys, especially the knowledge section, provide detailed context specific to the scenario to enhance domain understanding, rather than offering general knowledge.
 
 hypothesis_model: # It is deprecated now, please refer to direct_exp_gen
   system: |-
-    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process. 
+    The user is working on generating new hypotheses for the {{ targets }} in a data-driven research and development process.
     The {{ targets }} are used in the following scenario:
     {{ scenario }}
     {% if model_enough %}
@@ -37740,7 +37740,7 @@ hypothesis_and_feedback: |-
 
 task_gen:
   system: |-
-    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step. 
+    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step.
     The {{ targets }} are used in certain scenario, the scenario is as follows:
     {{ scenario }}
 
@@ -37762,7 +37762,7 @@ task_gen:
 
     Please generate the output following the format below:
     {{ task_output_format }}
-    
+
   user: |-
     {% if workspace_code %}
     Here is a list of all the filenames and their corresponding content in the workspace:
@@ -37773,11 +37773,11 @@ task_gen:
     The user has made several task on this scenario but didn't get the expected result due to wrong implementation or just bad luck. The former task is as follows:
     {{ former_task_desc }}
     Please avoid generating similar task to the former task to avoid the same mistake and boost efficiency.
-    
+
     {% if targets == "Model" %}
     Based on the feedback from previous experiment failures, if the failure was due to exceeding the time limit or memory constraints, start with the smallest model size or choose alternative algorithms or methods with significantly lower time or space complexity instead of using a neural network. You can then iteratively refine and optimize the model in later stages.
     {% endif %}
-    
+
     {% endif %}
 
     {% if hypothesis is not none %}
@@ -37794,9 +37794,9 @@ task_gen:
 task_gen_model: # It is deprecated now, please refer to direct_exp_gen
   system: |-
     {% if hypothesis is not none %}
-    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step. 
+    The user is trying to generate new {{ targets }} based on the hypothesis generated in the previous step.
     {% else %}
-    The user is trying to generate new {{ targets }} based on the information provided. 
+    The user is trying to generate new {{ targets }} based on the information provided.
     {% endif %}
     The {{ targets }} are used in certain scenario, the scenario is as follows:
     {{ scenario }}
@@ -37810,7 +37810,7 @@ task_gen_model: # It is deprecated now, please refer to direct_exp_gen
     {% endif %}
     Please generate the output following the format below:
     {{ task_output_format }}
-    
+
   user: |-
     {% if hypothesis is not none %}
     The user has made several hypothesis on this scenario and did several evaluation on them.
@@ -37828,7 +37828,7 @@ direct_exp_gen:
     {% include "scenarios.data_science.share:scen.role" %}
     You are a world-class data scientist and machine learning engineer with deep expertise in statistics, mathematics, and computer science.
     Your knowledge spans cutting-edge data analysis techniques, advanced machine learning algorithms, and their practical applications to solve complex real-world problems.
-    
+
     The user is working on creating a solution for a Kaggle competition. Your task is to first suggest a hypothesis and then design a task to enhance the current best solution based on that hypothesis.
 
     The component to focus on for the next hypothesis is already determined as: {{ component }}.
@@ -37839,7 +37839,7 @@ direct_exp_gen:
     The user has already proposed several hypotheses and conducted evaluations on them. This information will be provided to you later.
 
     ## Hypothesis Specification
-    To assist you in formulating new hypotheses, the user has provided some additional information: 
+    To assist you in formulating new hypotheses, the user has provided some additional information:
     {{ hypothesis_specification }}
 
     ## Guidelines
@@ -37885,14 +37885,14 @@ direct_exp_gen:
   user: |-
     # All former experiments and their feedbacks
     {{ exp_and_feedback_list_desc }}
-    
+
     {% if targets == "Model" %}
     Based on the feedback from previous experiment failures, if the failure was due to exceeding the time limit or memory constraints, start with the smallest model size or choose alternative algorithms or methods with significantly lower time or space complexity instead of using a neural network. You can then iteratively refine and optimize the model in later stages.
 
     Here is the SOTA solution:
     {{ sota_exp_desc }}
     Pay attention to the **Results** section. If there are sufficient models available and there is a model with a significantly worse score, consider removing that model. In this case, `model_name` in task_design should be the model you are going to remove (the name must be the same as the name in the model column in the **Results** section), and `description` should start with "Model removal".
-    
+
     Otherwise, if the number of available models is insufficient. Your task is to first decide whether to:
       a. Tune an existing model: Select one of the current models for further tuning and improvement.
       b. Add a new model: Introduce a new model to expand the hypothesis space.
@@ -37905,7 +37905,7 @@ direct_exp_gen:
 
     When building the model, if the runtime permits, consider incorporating hyperparameter search methods to improve performance.
     {% endif %}
-    
+
     {% if last_exp_diff %}
     # Here are the differences between the latest version of implementation and the current best version of implementation
     It is presented in diff format, highlighting changes from the best version to the latest version.
@@ -37941,7 +37941,7 @@ component_gen:
   user: |-
     Here are the former experiments and their feedbacks:
     {{ exp_and_feedback_list_desc }}
-    
+
     Please choose the most proper component to focus on based on the information above. Please balance the exploration and exploitation.
     Avoid selecting the same component more than 5 times in a row to ensure that the chosen component is not overly repetitive.
 
@@ -37993,7 +37993,7 @@ output_format:
     }
   model: |-
     Design a specific and detailed model task based on the given hypothesis. The output should be detailed enough to directly implement the corresponding code.
-    The output should follow JSON format. The schema is as follows: 
+    The output should follow JSON format. The schema is as follows:
     {
         "model_name": "model name, must start with 'model_' and only contain letters, numbers, and underscores",
         "description": "A precise and comprehensive description of the model. Start with [Model building/tuning] or [Model removal].",
@@ -38904,34 +38904,34 @@ knowledge:
     {{ component_desc }}
 
     ## Component Guidelines
-    1. [DataPreprocess]  
+    1. [DataPreprocess]
       - This is the **foundation of the pipeline** and must be executed **first**.
       - Ensure all **raw data is correctly loaded**, without missing files, broken paths, or incorrect dtypes.
       - **Do not generate or fabricate synthetic data** unless explicitly allowed by competition rules.
       - You must **traverse directories** to validate the presence of required files (such as images and data tables).
       - Handle missing values, type casting, ID normalization, and consistent formats **before any modeling**.
       - If this step fails or is skipped, all downstream steps are invalid.
-    2. [EDA] (Exploratory Data Analysis)  
+    2. [EDA] (Exploratory Data Analysis)
       - Perform essential statistical summaries and visualization to understand **label distribution**, **feature correlation**, and **data quality**.
       - Detect issues such as class imbalance, high-cardinality features, duplicates, or corrupted samples.
       - Use EDA findings to form modeling hypotheses and choose sampling strategies.
-    3. [FeatureEngineer]  
+    3. [FeatureEngineer]
       - Build features in **modular, traceable steps**.
       - Begin with basic and interpretable features; add complex ones only when justified.
       - Ensure reproducibility—avoid in-place mutation or random feature engineering without seeds.
-    4. [Model]  
+    4. [Model]
       - Choose models suitable for the **data modality**, **dataset size**, and **available compute resources**.
       - You may use larger models **as long as they can finish training within the time constraint**.
       - Start with a **simple but realistic baseline** to verify pipeline correctness.
       - Estimate optimal batch size via dry-runs or heuristics based on available resources.
       - Ensure training time is acceptable with early stopping.
       - Save best model checkpoints, log key metrics, and visualize learning curves.
-    5. [Tuning]  
+    5. [Tuning]
       - Tune **only after verifying the pipeline and model correctness**.
       - Use a small subset or minimal cross-validation to debug tuning logic before scaling up.
       - Dynamically set parameters (such as batch size or epochs) based on observed resource usage.
       - Set training duration to allow convergence without overfitting.
-    6. [Ensemble]  
+    6. [Ensemble]
       - Ensemble **only after** all base models are fully trained and validated.
       - Prefer diverse models (e.g., different seeds, architectures, folds) to improve ensemble effectiveness.
       - Keep the ensembling method **simple, reproducible**.
@@ -38996,7 +38996,7 @@ hypothesis_draft:
       "hypothesis": "A concise, testable statement derived from previous experimental outcomes.",
       "reason": "Provide a clear, logical progression from problem identification to hypothesis formulation, grounded in evidence (e.g., trace history, domain principles, or competition constraints). Refer to the Hypothesis Guidelines for better understanding.",
     }
-    
+
   user: |-
     # Scenario Description
     {{ scenario_desc }}
@@ -39019,9 +39019,9 @@ task_gen:
     Your primary goal is to generate a detailed, step-by-step **sketch or refinement plan** for a new data processing and modeling pipeline, specifically for the main workflow script (`main.py`), that effectively implements the `Proposed Hypothesis`. This sketch will guide a developer to write the code correctly.
 
     # Pipeline Implementation Standards & Constraints
-    
+
     The `main.py` sketch you generate should lead to a pipeline implementation that adheres to the following standards. These are guiding principles for the final *outcome* of your sketch:
-    
+
     1. **Program Execution**: The resulting `main.py` script must be executable via `python main.py` without command-line parameters. Configurations should be hardcoded for simplicity.
     2. **File Handling**:
       - Implement robust handling of file encodings and delimiters.
@@ -39092,7 +39092,7 @@ task_gen:
       - Handle file I/O robustly, especially for zipped data or large files, to prevent `FileNotFoundError` or `BadZipFile` issues.
       - Confirm no `tqdm` or other progress bars are in the final script.
       - Double-check that validation scores are saved correctly to `scores.csv` with specified 'Model' and metric columns, even for a single model run (include 'ensemble' row).
-    
+
     {% if task_output_format is not none %}
     ## [Partial Response Format 1] Task Output Format:
     {{ task_output_format }}
@@ -39104,7 +39104,7 @@ task_gen:
     [Partial Response Format 2] Your generated workflow description should be a simple text and the following agent will do the implementation. If you think the workflow should not be updated, just respond with "No update needed".
     {% endif %}
 
-    Your final output should strictly adhere to the following JSON format. 
+    Your final output should strictly adhere to the following JSON format.
     {
       "task_design": ---The dict corresponding to task output format---,
       {% if workflow_check %}"workflow_update": ---A string corresponding to workflow description--- {% endif %}
@@ -39112,11 +39112,11 @@ task_gen:
     {% else %}
     Please response in json format.
     {% endif %}
-    
+
   user: |-
     # Competition Scenario Description
     {{ scenario_desc }}
-    
+
     # Template Implementation & Guidelines
     {{ knowledge }}
 
@@ -39601,7 +39601,7 @@ auto_sota_selector:
 
     1. **Valid Score as Primary Criterion**
 
-      * The valid score in the feedbacks is the most crucial information and should be considered first. 
+      * The valid score in the feedbacks is the most crucial information and should be considered first.
       * Also consider criteria below on generalizability and risk of overfitting, especially when the valid scores are getting close.
 
     2. **Generalizability**
@@ -39656,7 +39656,7 @@ auto_sota_selector:
       "explanation": "A brief explanation text for your selection."
     }
 
-    If you cannot make a selection, like no SOTA experiments and feedbacks, return 
+    If you cannot make a selection, like no SOTA experiments and feedbacks, return
       {
         "selected_SOTA_idx": None,
         "explanation": "No SOTA experiments and feedbacks"
@@ -39668,8 +39668,8 @@ auto_sota_selector:
 
 sample_data:
   system: |-
-    You are a senior machine learning engineer. 
-    Generate a single, self-contained Python script that strictly follows the user's instructions. 
+    You are a senior machine learning engineer.
+    Generate a single, self-contained Python script that strictly follows the user's instructions.
     Requirements:
     - The script MUST be runnable via `python <file>.py` without extra arguments unless specified.
     - Prefer standard libraries; it's OK to use numpy/pandas/scikit-learn if helpful.
@@ -39680,17 +39680,17 @@ sample_data:
     Full runnable model code:
     {{ reference_code }}
     Write a separate script based on this code to sample 80% of the data (while maintaining the class proportions as much as possible) as the new train set,
-    and 20% as the new test set. Save the new train and test in the `{{ input_folder }}` folder. 
+    and 20% as the new test set. Save the new train and test in the `{{ input_folder }}` folder.
     Save test label with id to `{{ input_folder }}/label.csv`, which is to be used for grading.
-    Load source data from path `./source` directory. 
-    Please make sure the new test set has the same columns as the original test set. 
+    Load source data from path `./source` directory.
+    Please make sure the new test set has the same columns as the original test set.
     Please make sure all files used in the original code and exists in source folder are also available in the `{{ input_folder }}` folder.
     Ignore all files that do not exist in the read only source folder.
-    {% if error %} 
+    {% if error %}
     {{ error }}
     {% endif %}
 
-grade: 
+grade:
   user: |-
     Metric method according to {{ reference_code }}
     `{{ input_folder }}/label.csv` generated by {{ sample_code }}
@@ -39698,7 +39698,7 @@ grade:
     Input files (relative to current working directory):
     - `{{ input_folder }}/label.csv` and `submission.csv`
     Output format: `{'score': float, 'metric': str}`
-    {% if error %} 
+    {% if error %}
     {{ error }}
     {% endif %}
 
@@ -40950,7 +40950,7 @@ competition_description_template:
     Please answer in Json format with the following schema:
     {
       "Task Type": "The type of competition task, e.g., 'Classification', 'Regression', 'Clustering', 'Recommendation", "Time-Series Forecasting",
-      "Data Type": "The type of competition data, e.g., 'Tabular', 'Time Series', 'Text (Natural Language Processing)', 'Image (Computer Vision)', 'Audio', 'Video'", 
+      "Data Type": "The type of competition data, e.g., 'Tabular', 'Time Series', 'Text (Natural Language Processing)', 'Image (Computer Vision)', 'Audio', 'Video'",
       "Brief Description": "A brief description of the competition",
       "Dataset Description": "The dataset utilized in the competition is described based on two sources: the Competition Description, which provides contextual details about the original files, and the Processed Data folder description, which outlines the structure of the dataset after processing. While there may be differences—for instance, original files mentioned in the Competition Description (e.g., .zip files) may have been extracted or restructured—your task is to interpret the new file structure accurately (do not contain any file or folder that is not in Processed Data folder description) and reconcile it with the contextual information from the Competition Description to provide a clear and updated explanation.",
       "Submission Specifications": "The submission specification & sample submission file descriptions for the model to output."
@@ -40961,17 +40961,17 @@ competition_description_template:
       "Longer time limit required": "True or False, whether the competition scenario requires a longer time limit to the code. Most computer vision, NLP, and some large-scale tabular tasks might require more time since they need to train a model with GPU.",
     }
   user: |-
-    Competition Description: 
+    Competition Description:
     {{ competition_raw_description }}
 
     Processed Data folder description:
     {{ competition_processed_data_folder_description }}
-    
+
     [Note] There may be some discrepancies between the competition description and the processed data folder description. Please base your information on the processed data folder description, particularly the file structure.
 
 
 competition_background: |-
-  You are a world-class data scientist and machine learning engineer with deep expertise in statistics, mathematics, and computer science. 
+  You are a world-class data scientist and machine learning engineer with deep expertise in statistics, mathematics, and computer science.
   Your knowledge spans cutting-edge data analysis techniques, advanced machine learning algorithms, and their practical applications to solve complex real-world problems.
   You are dedicated to producing accurate, efficient, and innovative solutions.
 
@@ -40979,10 +40979,10 @@ competition_background: |-
   The data type used in this competition is **{{ data_type }}**.
 
   Briefly, the competition involves: {{ brief_description }}.
-  
+
   The dataset used in this competition is:
   {{ dataset_description }}.
-  
+
   Submission channel number to each sample is: {{ model_output_channel }}.
 
   The evaluation metric of this competition is:
@@ -41734,22 +41734,22 @@ def describe_data_folder_v2(
 ================================================
 FILE: rdagent/scenarios/data_science/sing_docker/Dockerfile
 ================================================
-# Use the official PyTorch image as the base image  
+# Use the official PyTorch image as the base image
 FROM pytorch/pytorch:latest
 # FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 # torch.__version__ == '2.4.1+cu121' in "gcr.io/kaggle-gpu-images/python"
-  
-# Install additional tools  
-RUN apt-get update && apt-get install -y \  
-    curl \  
-    vim \  
-    git \  
-    build-essential \  
-    git-lfs \  
-    unzip && \  
-    rm -rf /var/lib/apt/lists/*  
-  
-# Default command to keep the container running  
+
+# Install additional tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    vim \
+    git \
+    build-essential \
+    git-lfs \
+    unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Default command to keep the container running
 ENTRYPOINT ["/workspace/run/entrypoint.sh"]
 
 RUN conda init bash
@@ -42226,7 +42226,7 @@ general_model_background: |-
   The general model should provide clear and detailed documentation of its factors, architecture, and hyperparameters. Each model should have a fixed architecture and hyperparameters to ensure reproducibility and consistency.
 
 general_model_interface: |-
-  Your python code should follow the interface to better interact with the user's system. It should be a pytorch model. 
+  Your python code should follow the interface to better interact with the user's system. It should be a pytorch model.
   Your code should contain several parts:
   1. The import part: import the necessary libraries.
   2. A class which is a sub-class of pytorch.nn.Module. This class should have an init function and a forward function which inputs a tensor and outputs a tensor.
@@ -42246,12 +42246,12 @@ general_model_interface: |-
 
   The input shape to a tabular model is (batch_size, num_features).
   The input shape to a time series model is (batch_size, num_features, num_timesteps).
-  The input to a graph model are two tensors. 
+  The input to a graph model are two tensors.
   node_feature: a tensor of shape (batch_size, num_features)
-  edge_index: a tensor of shape (2, num_edges) 
-  
+  edge_index: a tensor of shape (2, num_edges)
+
   The batch_size is a dynamic value which is determined by the input of the forward function.
-  
+
   The output shape of the model should be (batch_size, 1).
 
   The "num_features", "num_timesteps" are static and will be provided to the model through the init function.
@@ -42291,13 +42291,13 @@ general_model_rich_style_description: |-
   #### [Overview](#_summary)
 
   This demo automates the extraction and development of PyTorch models from academic papers. It supports various model types through two main components: Reader and Coder.
-  
+
   #### [Workflow Components](#_rdloops)
-  
+
   1. **[Reader](#_research)**
       - Extracts model information from papers, including architectures and parameters.
       - Converts content into a structured format using Large Language Models.
-  
+
   2. **[Evolving Coder](#_development)**
       - Translates structured information into executable PyTorch code.
       - Ensures correct tensor shapes with an evolving coding mechanism.
@@ -42832,11 +42832,11 @@ if __name__ == "__main__":
 FILE: rdagent/scenarios/kaggle/prompts.yaml
 ================================================
 KG_hypothesis_gen_RAG: |-
-  The user has proposed several hypothesis and conducted experiments to validate them. 
+  The user has proposed several hypothesis and conducted experiments to validate them.
   The hypothesis can divided into two categories:
   1. Insights: These are the observations user did to other similar problems. You can either apply the same hypothesis or modify them to fit the current problem.
   2. Experience: These are former hypothesis and experiments user did to the current problem. You can either continue to improve the hypothesis or change to a new one.
-  
+
   {% if insights %}
   The insights are as follows:
   {% for insight in insights %}
@@ -42880,9 +42880,9 @@ hypothesis_output_format: |-
 hypothesis_specification:
   Feature engineering: |-
     Action: Feature engineering
-    
+
     Description: We engineer the features for the sake of best model performance on the basis of engineering the most influential features.
-    
+
     1. Type of Feature and Data Characteristics:
       - Clearly define the type of feature being introduced.
       - Explain what data characteristics or patterns this feature captures.
@@ -42892,7 +42892,7 @@ hypothesis_specification:
       - Start by introducing features that are simple yet likely to be effective.
       - Provide a concise explanation of why these features are expected to perform well.
       - Avoid complex or combined features during the initial stages.
-    
+
     3. Gradual Complexity Increase:
       - After initial feature testing, introduce more complex features.
       - Discuss both the potential benefits and any additional complexities of these features.
@@ -42903,24 +42903,24 @@ hypothesis_specification:
       - Propose one new direction per iteration for clarity and focus.
       - If a previous hypothesis did not surpass the previous best but shows promise, continue in the same direction with optimizations.
       - Emphasize that features that outperform previous best results are added to the feature library, avoiding redundant work.
-      
+
     5. 1-3 Feature Tasks per Generation:
       - Each generation should produce 1-3 feature tasks.
       - Maintain a balance between simplicity and complexity to develop a diverse and robust feature library.
 
   Feature processing: |-
     Action: Feature processing
-    
+
     1. Feature Transformation and Normalization:
       - Clearly define any transformations applied to features (e.g., scaling, normalization, log transforms).
       - Explain how these transformations improve the data's suitability for the model.
       - Ensure transformations do not introduce unnecessary complexity early on.
-    
+
     2. Handling Missing Values and Outliers:
       - Define any imputation methods used for missing data (e.g., mean, median, or more complex methods).
       - Explain how outliers are handled (e.g., clipping, removal, or transformation).
       - Ensure these processes are straightforward, enhancing data quality without overcomplicating early feature processing.
-    
+
     3. Feature Interactions and Combinations:
       - After testing individual features, introduce combinations or interactions.
       - Discuss the potential advantages of feature interaction terms (e.g., polynomial or multiplicative features).
@@ -42936,14 +42936,14 @@ hypothesis_specification:
     1. Selection based on model_type:
       - Specify which features are being selected and explain why, considering the model type (e.g., NN, Random Forest, LightGBM, XGBoost).
       - Ensure the relationship between features and the model type is well-defined, as different features perform better on different models.
-    
+
     2. Pattern recognition:
       - Explain the data characteristics or patterns that influenced feature selection for the specific model.
       - Clarify how the selected features complement the model's strengths and handle its potential weaknesses.
 
   Model tuning: |-
     Action: Model tuning
-      
+
     1. Overview:
     - Clearly explain your hypothesis.
       - Which model are you tuning (one of the four types)?
@@ -42993,7 +42993,7 @@ feature_experiment_output_format: |-
 model_experiment_output_format: |-
   According to the hypothesis, please help user design one model task.
   We only build one model from four main model types: ["XGBoost", "RandomForest", "LightGBM", "NN"].
-  The output should follow JSON format. The schema is as follows: 
+  The output should follow JSON format. The schema is as follows:
   {
       "model_name": "model_name",
       "description": "A detailed description of the model",
@@ -43037,7 +43037,7 @@ kg_feedback_generation_user: |-
   {% if last_hypothesis_and_feedback %}
   The user has made some hypothesis and conducted experiments to validate them, and the results are as follows:
   hypothesis: {{ last_hypothesis_and_feedback[0].hypothesis }}
-  feedback decision: {{ last_hypothesis_and_feedback[1].decision }} 
+  feedback decision: {{ last_hypothesis_and_feedback[1].decision }}
   reason: {{ last_hypothesis_and_feedback[1].reason }}
   {% endif %}
   Please refer to these hypothesis and feedback to help you recommend new hypothesis
@@ -43053,13 +43053,13 @@ model_tuning_feedback_generation:
     The task is described in the following scenario:
     {{ scenario }}
 
-    You will analyze the current experiment's hypothesis, model tuning code, results, and compare them with previous experiments and the best past result. 
+    You will analyze the current experiment's hypothesis, model tuning code, results, and compare them with previous experiments and the best past result.
     Your feedback should:
     1. Confirm if the current result supports or refutes the hypothesis.
     2. Compare with previous best results.
     3. Suggest improvements or new directions. Stay innovative and adaptive.
 
-    Please provide detailed and constructive feedback. Note that as hypothesis evolve, a general trend should be that the model grows larger. 
+    Please provide detailed and constructive feedback. Note that as hypothesis evolve, a general trend should be that the model grows larger.
     Example JSON Structure for Result Analysis:
     {
       "Observations": "Your overall observations here",
@@ -43071,7 +43071,7 @@ model_tuning_feedback_generation:
 
     Hypothesis Evolution Logic:
     - If the current hypothesis works, make the model more complex (e.g., add layers, neurons, etc.).
-    - If a hypothesis works, build on it. If not, adjust at the same level before growing deeper. Think step by step and make changes. Act innovatively. 
+    - If a hypothesis works, build on it. If not, adjust at the same level before growing deeper. Think step by step and make changes. Act innovatively.
     - If it doesn't, modify elements at the current level (e.g., adjust regularization, change features).
 
     Example Hypothesis Evolution Stages: (We want hypotheses to continue growing.) Levels include **Model Type**, **Layer Configuration**, **Activation Functions**, **Regularization Techniques**, **Feature Selection Methods**...
@@ -43084,13 +43084,13 @@ model_tuning_feedback_generation:
 
 factor_feedback_generation:
   system: |-
-    You are a professional data feature engineering assistant in data-driven R&D. 
+    You are a professional data feature engineering assistant in data-driven R&D.
     The task is described in the following scenario:
     {{ scenario }}
-    
-    You will receive a hypothesis, multiple tasks with their features, their results, and the best previous result. 
+
+    You will receive a hypothesis, multiple tasks with their features, their results, and the best previous result.
     Your feedback should specify whether the current result supports or refutes the hypothesis, compare it with previous best results, and suggest improvements or new directions.
-    
+
     Please understand the following operation logic and then make your feedback suitable for the scenario:
       1. Logic Explanation:
           - If the previous hypothesis feature surpasses the previous best, include this feature in the feature library.
@@ -43106,7 +43106,7 @@ factor_feedback_generation:
               - If the previous experiment's feature did not replace the best, suggest ways to optimize and develop features in this direction.
       3. Final Goal:
           - The ultimate goal is to continuously accumulate features that surpass each iteration to maintain the best results.
-    
+
     Consider Changing Direction for Significant Gaps with the Best Result:
       - If the new results significantly differ from the best result, consider exploring a new direction.
       - Avoid re-implementing previous features as those that surpassed the best are already included in the feature library and will be used in each run.
@@ -43125,7 +43125,7 @@ feature_selection_feedback_generation:
     You are a professional feature selection assistant for machine learning models. Your task is to analyze the current feature selection strategy, evaluate its effectiveness, and suggest improvements.
     The task is described in the following scenario:
     {{ scenario }}
-    
+
     In your feedback, consider:
     1. How effective is the current feature selection strategy?
     2. Are there any patterns in the selected or discarded features that might inform future selections?
@@ -43133,7 +43133,7 @@ feature_selection_feedback_generation:
     4. Are there any domain-specific considerations that should inform our feature selection?
 
     Provide detailed and constructive feedback, focusing on actionable insights for feature selection improvement.
-    
+
     Respond in JSON format. Example JSON structure for Result Analysis:
     {
       "Observations": "Your overall observations here",
@@ -43166,7 +43166,7 @@ model_feature_selection:
   user: |-
     Current feature groups:
     {% for feature in feature_groups %}
-      Group {{ loop.index }}: 
+      Group {{ loop.index }}:
       {{ feature }}
     {% endfor %}
 
@@ -43185,9 +43185,9 @@ gen_knowledge_from_code_mini_case:
     (4) What is the optimization objective?
     (5) What advanced machine learning technique does this copy of code use?
     (6) What other important tricks do you think play an important role for high performance?
-    
+
     Note that make sure the answers are directly included from the code or markdown text, rather than based on your assumption.
-    
+
     --------------------
     {{ notebook }}
     --------------------
@@ -43615,13 +43615,13 @@ FILE: rdagent/scenarios/kaggle/docker/DS_docker/Dockerfile
 ================================================
 FROM gcr.io/kaggle-gpu-images/python:latest
 
-RUN apt-get clean && apt-get update && apt-get install -y \  
-    curl \  
-    vim \  
-    git \  
+RUN apt-get clean && apt-get update && apt-get install -y \
+    curl \
+    vim \
+    git \
     build-essential \
     strace \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 
 ================================================
@@ -43630,12 +43630,12 @@ FILE: rdagent/scenarios/kaggle/docker/kaggle_docker/Dockerfile
 FROM pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime
 # For GPU support, please choose the proper tag from https://hub.docker.com/r/pytorch/pytorch/tags
 
-RUN apt-get clean && apt-get update && apt-get install -y \  
-    curl \  
-    vim \  
-    git \  
+RUN apt-get clean && apt-get update && apt-get install -y \
+    curl \
+    vim \
+    git \
     build-essential \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 
@@ -43665,14 +43665,14 @@ FILE: rdagent/scenarios/kaggle/docker/mle_bench_docker/Dockerfile
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 # For GPU support, please choose the proper tag from https://hub.docker.com/r/pytorch/pytorch/tags
 
-RUN apt-get clean && apt-get update && apt-get install -y \  
-    curl \  
-    vim \  
-    git \  
+RUN apt-get clean && apt-get update && apt-get install -y \
+    curl \
+    vim \
+    git \
     build-essential \
     git-lfs \
     unzip \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/openai/mle-bench.git
 RUN cd mle-bench && git lfs fetch --all
@@ -43805,28 +43805,28 @@ kg_description_template:
 
 
   user: |-
-    Competition Description: 
+    Competition Description:
     {{ competition_descriptions }}
     The raw data information:
     {{ raw_data_information }}
-    Evaluation_metric_direction: 
+    Evaluation_metric_direction:
     {{ evaluation_metric_direction }}
 
 kg_background: |-
   You are solving a data science tasks and the type of the competition is {{ competition_type }}.
-  The competition description is: {{competition_description}}. 
-  
+  The competition description is: {{competition_description}}.
+
   We provide an overall script in file: train.py. The user will run the train.py script along with several feature and model scripts to train several model to get a good performance on this task.
 
   The train.py script is as follows:
   ```python
   {{ train_script }}
   ```
-  
+
   The final output of our pipeline is from a ensemble of up to four models. Each model is trained on a different subset of the data.
   The four model types are: XGBoost, RandomForest, LightGBM and Neural Network (A Pytorch model).
   About the Neural Network model, You can try different architectures and hyperparameters to improve the performance. You can even use a pytorch model to ensemble the other three types of models. Try to open your mind on the NN model.
-  
+
   The data is extracted from the competition dataset, focusing on relevant attributes in {{ competition_features }}.
 
   The user firstly designs and implements a feature book for each model. The feature book is a combination of several features and feature groups.
@@ -43839,7 +43839,7 @@ kg_background: |-
   - Description: A description of the feature or feature group.
   - Formulation: The formulation of the feature or feature group.
   - Variables: The variable list used in the formulation. Notice: The variable should be a specific feature in the dataset. Please make sure the feature name is exactly the same as the feature name in the dataset.
-  
+
   For each model, the user will design and implement the model in a separate script.
   The model is defined in the following parts:
   - Name: The name of the model.
@@ -43854,8 +43854,8 @@ kg_background: |-
     - "Feature processing": The user will design a new task to process the feature book like normalization or one hot encoding to improve the model performance. Any processing with help of a deep model is not included in this task.
   - Model related:
     - "Model feature selection": The user will modify one model to select the part of the features from the feature book to improve the model performance.
-    - "Model tuning": The user will tune the hyperparameters of XGBoost, RandomForest or LightGBM or build or improve the NN model to improve the model performance. 
-  Notice: You can automatically optimize the hyperparameters of the model using some library when training the model. Since we don't have a lot of time to train the model, please use a small number of trials to optimize the hyperparameters. 
+    - "Model tuning": The user will tune the hyperparameters of XGBoost, RandomForest or LightGBM or build or improve the NN model to improve the model performance.
+  Notice: You can automatically optimize the hyperparameters of the model using some library when training the model. Since we don't have a lot of time to train the model, please use a small number of trials to optimize the hyperparameters.
   Our validation set split is not deterministic, so when you are using hyperparameter tuning, you can merge training and validation and use cross validation method to tune the hyperparameters.
   One you have determine the best model parameter, you should retrain the model on all training and validation set to get the final model.
 
@@ -43876,7 +43876,7 @@ kg_feature_interface: |-
   Notice: Since we have a very big dataset, the feature engineering should be efficient and fast. Otherwise, please sufficiently exploit the multiprocessing or parallel computing to speed up the feature engineering process!
 
   Exception handling will be managed externally, so avoid using try-except blocks in your code. The user will handle any exceptions that arise and provide feedback as needed.
-  
+
   The feat_eng function can be one of the following:
   - Feature engineering: This function calculated one new feature based on the existing raw data.
   - Feature processing: This function processes the existing raw data like normalization or one hot encoding and return the processed data in the form of a pandas DataFrame.
@@ -43888,7 +43888,7 @@ kg_feature_interface: |-
   class FeatureEngineeringName:
       def fit(self, train_df: pd.DataFrame):
           """
-          Fit the feature engineering model to the training data. 
+          Fit the feature engineering model to the training data.
           For example, for one hot encoding, this would involve fitting the encoder to the training data.
           For feature scaling, this would involve fitting the scaler to the training data.
           """
@@ -43927,7 +43927,7 @@ kg_model_interface: |-
       - X_valid: The validation features as a pandas DataFrame.
       - y_valid: The validation labels as a pandas Series.
     The function should return the trained model.
-  3. A function called predict() that makes predictions using the trained model. 
+  3. A function called predict() that makes predictions using the trained model.
     The function should take the following arguments:
       - model: The trained model.
       - X: The features as a pandas DataFrame.
@@ -44072,9 +44072,9 @@ kg_model_interface: |-
   {% endif %}
 
 kg_feature_simulator: |-
-  The data preprocessing method you provide will be used to prepare data by processing it, concatenating the results with other features, and removing unnecessary features before training the model. 
+  The data preprocessing method you provide will be used to prepare data by processing it, concatenating the results with other features, and removing unnecessary features before training the model.
   The processed data will then be used for model training and prediction.
-  
+
   User will use your data preprocessing method to do the following steps:
   1. Execute your Python files to process the data. (what you need to do)
   2. Concatenate the processed features with other features and the original data.
@@ -44088,24 +44088,24 @@ kg_feature_output_format: |-
   <class 'pandas.core.frame.DataFrame'>
   Index: {Same to the input DataFrame}
   Data columns (total N columns):
-  #   Column      Dtype  
-  ---  ------      -----  
+  #   Column      Dtype
+  ---  ------      -----
   0   feature_name_0   float64
   1   feature_name_1  float64
   dtypes: float64(N)
   memory usage: {Memory usage of the output DataFrame}
 
 kg_model_output_format: |-
-  For model related tasks, the output should be an np.ndarray with the appropriate number of predictions. 
+  For model related tasks, the output should be an np.ndarray with the appropriate number of predictions.
   Please refer to the train.py script to verify whether the output should be a class label or a probability!
   {% if channel == 1 %}
   For each sample, the output should be a single value (e.g., (8, 1) if there are 8 samples).
   {% else %}
   For each sample, the output should be multiple values with {{ channel }} numbers (e.g., (8, {{ channel }}) if there are 8 samples).
   {% endif %}
-  
+
 kg_model_simulator: |-
-  The models will be trained on the competition dataset and evaluated on their ability to predict the target. Metrics like accuracy and AUC-ROC is used to evaluate the model performance. 
+  The models will be trained on the competition dataset and evaluated on their ability to predict the target. Metrics like accuracy and AUC-ROC is used to evaluate the model performance.
   Model performance will be iteratively improved based on feedback from evaluation results.
   Your output should follow some requirements to submit to the competition:
   {{ submission_specifications }}
@@ -52297,7 +52297,7 @@ FILE: rdagent/scenarios/kaggle/knowledge_management/README.md
 ================================================
 ## Usage
 
-This folder implements a knowledge base using RAG based on Kaggle competitions. 
+This folder implements a knowledge base using RAG based on Kaggle competitions.
 It allows you to store Kaggle competition experiences into the knowledge base, as well as store experimental experiences from RD-Agent.
 
 1. First, generate a knowledge base (in JSON format) by running the `main` function in `extract_knowledge.py`.
@@ -52501,10 +52501,10 @@ FILE: rdagent/scenarios/kaggle/knowledge_management/prompts.yaml
 ================================================
 extract_kaggle_knowledge_prompts:
   system: |-
-    You are a Kaggle competition expert with extensive experience in analyzing high-ranking Kaggle notebooks and competition strategies. 
+    You are a Kaggle competition expert with extensive experience in analyzing high-ranking Kaggle notebooks and competition strategies.
     Your task is to summarize or infer key information such as the competition name, task type, and specific techniques employed in the notebook or strategy.
     For each provided content, you are expected to extract valuable insights and organize the analysis in the structured format outlined below.
-    
+
     Please provide the analysis in the following JSON format:
     {
       "content": "Put the provided content here",
@@ -52515,16 +52515,16 @@ extract_kaggle_knowledge_prompts:
       "ranking": "extracted ranking, if available",
       "score": "extracted score or metric, if available"
     }
-  
+
   user: |-
     High-ranking Kaggle notebooks or competition strategies: {{ file_content }}
 
 extract_kaggle_knowledge_from_feedback_prompts:
   system: |-
-    You are a Kaggle competition expert with extensive experience in analyzing Kaggle notebooks and competition strategies. 
+    You are a Kaggle competition expert with extensive experience in analyzing Kaggle notebooks and competition strategies.
     Your task is to summarize or infer key information such as the competition name, task type, and specific techniques employed in the notebook or strategy.
     For each provided content, you are expected to extract valuable insights and organize the analysis in the structured format outlined below.
-    
+
     Please provide the analysis in the following JSON format:
     {
       "content": "all provided content",
@@ -52535,7 +52535,7 @@ extract_kaggle_knowledge_from_feedback_prompts:
       "ranking": "extracted ranking, if available",
       "score": "extracted score or metric, if available"
     }
-  
+
   user: |-
     Experiment strategy: {{ experiment_strategy }}
 
@@ -52556,13 +52556,13 @@ extract_knowledge_graph_from_document:
     You should return a dict containing a single knowledge which includes several fields:
     1. The competition the document is related to.
     2. The hypothesis the document is trying to prove. Containing a type to the hypothesis and very detailed explanation to the hypothesis. The type should be one from ["Feature engineering", "Feature processing", "Model feature selection", "Model tuning"].
-    3. Detailed experiments the document has conducted. 
+    3. Detailed experiments the document has conducted.
     4. Any related code snippets related to the hypothesis if available.
     5. The conclusion to this knowledge. A bool value indicating whether the hypothesis is proved or not is required. More explainable conclusion is also needed.
 
     Please provide the analysis in the following JSON format:
     {
-      "competition": "(Plain text) extracted competition information, including the competition name, type, description, target, and features (If no specific competition name or other fields are found, leave them blank).", 
+      "competition": "(Plain text) extracted competition information, including the competition name, type, description, target, and features (If no specific competition name or other fields are found, leave them blank).",
       "hypothesis":
         {
           "type": "one of the hypothesis types from ['Feature engineering', 'Feature processing', 'Model feature selection', 'Model tuning']",
@@ -52570,7 +52570,7 @@ extract_knowledge_graph_from_document:
         },
       "experiments": "(Plain text) Detailed descriptions of the experiments conducted in the document, which can be listed in bullet points.",
       "code": "extracted code snippets if available",
-      "conclusion": 
+      "conclusion":
         {
           "proved": "bool value indicating whether the hypothesis is proved or not",
           "explanation": "(Plain text) extracted detailed explanation to the conclusion"
@@ -52579,17 +52579,17 @@ extract_knowledge_graph_from_document:
     All fields are required so don't miss any key in the schema. The document might not contain all the fields, so you should extract as much information as possible. If a field is not available, please put "N/A" in the field.
 
     If you find no valuable insights in the document, please return an empty dict.
-  
+
   user: |-
     Document content: {{ document_content }}
 
 refine_with_LLM:
   system: |-
     You are an experienced data science expert and an assistant, helping the user evaluate and improve content.
-  
+
   user: |-
-    Here is the target: {{ target }}. 
-    Please evaluate whether the following RAG query result aligns with the target. 
+    Here is the target: {{ target }}.
+    Please evaluate whether the following RAG query result aligns with the target.
     If it does not, simply respond with "There are no relevant RAG results to support."
     RAG query result: {{ text }}.
 
@@ -53376,7 +53376,7 @@ We use a runnable concrete example to demonstrate what the project should be lik
 ## Step3: ensemble and decision
 - generate `ens_and_decsion`
   - why we generate score on ensemble phase
-  - ensemble has following tasks which has great overlap 
+  - ensemble has following tasks which has great overlap
     - ensemble usually check the performance before ensemble
     - A additional step to record performance is easier.
 
@@ -53983,7 +53983,7 @@ Information to generate spec
 ```python
 def feature_eng(x: {{type of the feature}}) -> {{type of the feature}}:
     """
-    
+
     x: np.ndarray
           {{description}}
     """
@@ -54018,10 +54018,10 @@ FILE: rdagent/scenarios/qlib/prompts.yaml
 hypothesis_and_feedback: |-
   =========================================================
   {% for experiment, feedback in trace.hist %}
-  # Trial {{ loop.index }}: 
+  # Trial {{ loop.index }}:
   ## Hypothesis
   {{ experiment.hypothesis }}
-  ## Specific task: 
+  ## Specific task:
   {% for task in experiment.sub_tasks %}
   {% if task is not none and task.get_task_brief_information is defined %}
   {{ task.get_task_brief_information() }}
@@ -54040,7 +54040,7 @@ hypothesis_and_feedback: |-
 last_hypothesis_and_feedback: |-
   ## Hypothesis
   {{ experiment.hypothesis }}
-  ## Specific task: 
+  ## Specific task:
   {% for task in experiment.sub_tasks %}
   {% if task is not none and task.get_task_brief_information is defined %}
   {{ task.get_task_brief_information() }}
@@ -54050,9 +54050,9 @@ last_hypothesis_and_feedback: |-
   {% if experiment.result is not none %}
   Backtest Result: {{ experiment.result.loc[["IC", "1day.excess_return_without_cost.annualized_return", "1day.excess_return_without_cost.max_drawdown"]] }}
   {% endif %}
-  Training Log: 
+  Training Log:
   Here, you need to focus on analyzing whether there are any issues with the training. If any problems are identified, you must correct them in the next iteration and clearly describe how the changes will be made in the hypothesis.
-  {{ experiment.stdout }} 
+  {{ experiment.stdout }}
   Observation: {{ feedback.observations }}
   Evaluation: {{ feedback.hypothesis_evaluation }}
   Decision (Whether this experiment is SOTA): {{ feedback.decision }}
@@ -54062,7 +54062,7 @@ last_hypothesis_and_feedback: |-
 sota_hypothesis_and_feedback: |-
   ## Hypothesis
   {{ experiment.hypothesis }}
-  ## Specific task: 
+  ## Specific task:
   {% for task in experiment.sub_tasks %}
   {% if task is not none and task.get_task_brief_information is defined %}
   {{ task.get_task_brief_information() }}
@@ -54151,8 +54151,8 @@ factor_experiment_output_format: |-
   }
 
 model_experiment_output_format: |-
-  So far please only design one model to test the hypothesis! 
-  The output should follow JSON format. The schema is as follows (value in training_hyperparameters is a basic setting for reference, you CAN CHANGE depends on the previous training log): 
+  So far please only design one model to test the hypothesis!
+  The output should follow JSON format. The schema is as follows (value in training_hyperparameters is a basic setting for reference, you CAN CHANGE depends on the previous training log):
   {
     "model_name (The name of the model)": {
         "description": "A detailed description of the model",
@@ -54181,14 +54181,14 @@ model_experiment_output_format: |-
 
 factor_feedback_generation:
   system: |-
-    You are a professional financial result analysis assistant in data-driven R&D. 
+    You are a professional financial result analysis assistant in data-driven R&D.
     The task is described in the following scenario:
 
     {{ scenario }}
-    
-    You will receive a hypothesis, multiple tasks with their factors, their results, and the SOTA result. 
+
+    You will receive a hypothesis, multiple tasks with their factors, their results, and the SOTA result.
     Your feedback should specify whether the current result supports or refutes the hypothesis, compare it with previous SOTA (State of the Art) results, and suggest improvements or new directions.
-    
+
     Please understand the following operation logic and then make your feedback that is suitable for the scenario:
       1. Logic Explanation:
         a) All factors that have surpassed SOTA in previous attempts will be included in the SOTA factor library.
@@ -54200,7 +54200,7 @@ factor_feedback_generation:
           - Suggest further improvements to that factor (this can include further optimization of the factor or proposing a direction that combines better with the factor).
           - Avoid re-implementing previous factors as those that surpassed SOTA are already included in the factor library and will be used in each run.
       3. Final Goal: To continuously accumulate factors that surpass each iteration to maintain the best SOTA.
-    
+
     When judging the results:
       1. Any small improvement should be considered for inclusion as SOTA (set `Replace Best Result` as yes).
       2. If the new factor(s) shows an improvement in the annualized return, recommend it to replace the current best result.
@@ -54220,7 +54220,7 @@ factor_feedback_generation:
       "Replace Best Result": "yes or no"
     }
   user: |-
-    Target hypothesis: 
+    Target hypothesis:
     {{ hypothesis_text }}
     Tasks and Factors:
     {% for task in task_details %}
@@ -54232,13 +54232,13 @@ factor_feedback_generation:
         **Note: This factor was not implemented in the current experiment. Only the hypothesis for implemented factors can be verified.**
         {% endif %}
     {% endfor %}
-    Combined Results: 
+    Combined Results:
     {{ combined_result }}
-    
+
     Analyze the combined result in the context of its ability to:
     1. Support or refute the hypothesis.
     2. Show improvement or deterioration compared to the SOTA experiment.
-    
+
     Note: Only factors with 'Factor Implementation' as True are implemented and tested in this experiment. If 'Factor Implementation' is False, the hypothesis for that factor cannot be verified in this run.
 
 model_feedback_generation:
@@ -54248,7 +54248,7 @@ model_feedback_generation:
     The task is described in the following scenario:
     {{ scenario }}
 
-    You will receive a quantitative model hypothesis, its specific task description, and it market backtest result. 
+    You will receive a quantitative model hypothesis, its specific task description, and it market backtest result.
     Your feedback should specify whether the current result supports or refutes the hypothesis, compare it with previous SOTA results, examine the model's training logs to analyze whether there are issues with hyperparameter settings, and suggest improvements or new directions.
 
     Please provide detailed and constructive feedback.
@@ -54261,18 +54261,18 @@ model_feedback_generation:
       "Decision": <true or false>,
     }
 
-    
+
   user: |-
-    {% if sota_hypothesis %} 
+    {% if sota_hypothesis %}
     # SOTA Round Information:
     Hypothesis: {{ sota_hypothesis.hypothesis }}
     Specific Task: {{ sota_task }}
     Code Implementation: {{ sota_code }}
     Result: {{ sota_result }}
     {% else %}
-    # This is the first round. No previous information available. As long as the performance is not too negative (eg.ICIR is greater than 0), treat it as successful. Do not set the threshold too high.  
-    {% endif %} 
-    
+    # This is the first round. No previous information available. As long as the performance is not too negative (eg.ICIR is greater than 0), treat it as successful. Do not set the threshold too high.
+    {% endif %}
+
     # Current Round Information:
     Hypothesis: {{ hypothesis.hypothesis }}
     Why propose this hypothesis: {{ hypothesis.reason }}
@@ -54291,10 +54291,10 @@ model_feedback_generation:
 action_gen:
   system: |-
     Quantitative investment is a data-driven approach to asset management that relies on mathematical models, statistical techniques, and computational methods to analyze financial markets and make investment decisions. Two essential components of this approach are factors and models.
-  
+
     You are one of the most authoritative quantitative researchers at a top Wall Street hedge fund. I need your expertise to develop new factors and models that can enhance our investment returns. Based on the given context, I will ask for your assistance in designing and implementing either factors or a model.
 
-    You will receive a series of experiments, including their factors and models, and their results. 
+    You will receive a series of experiments, including their factors and models, and their results.
     Your task is to analyze the previous experiments and decide whether the next experiment should focus on factors or models.
 
     Example JSON Structure for your return:
@@ -54310,7 +54310,7 @@ action_gen:
     {{ hypothesis_and_feedback }}
     {% endif %}
 
-  
+
     {% if last_hypothesis_and_feedback != "" %}
     Here is the last trial's hypothesis and the corresponding feedback. The main feedback includes a new hypothesis for your reference only. You should evaluate the entire reasoning chain to decide whether to adopt it, propose a more suitable hypothesis, or transfer and optimize it for another scenario (e.g., factor/model), since transfers are generally encouraged:
     {{ last_hypothesis_and_feedback }}
@@ -54912,13 +54912,13 @@ FROM pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime
 
 # For GPU support, please choose the proper tag from https://hub.docker.com/r/pytorch/pytorch/tags
 
-RUN apt-get clean && apt-get update && apt-get install -y \  
-    curl \  
-    vim \  
-    git \  
+RUN apt-get clean && apt-get update && apt-get install -y \
+    curl \
+    vim \
+    git \
     build-essential \
     coreutils \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/microsoft/qlib.git
 
@@ -55145,7 +55145,7 @@ FILE: rdagent/scenarios/qlib/experiment/prompts.yaml
 ================================================
 qlib_quant_background: |-
   Quantitative investment is a data-driven approach to asset management that relies on mathematical models, statistical techniques, and computational methods to analyze financial markets and make investment decisions. Two essential components of this approach are factors and models.
-  
+
   You are one of the most authoritative quantitative researchers at a top Wall Street hedge fund. I need your expertise to develop new factors and models that can enhance our investment returns. Based on the given context, I will ask for your assistance in designing and implementing either factors or a model.
 
   {% if runtime_environment is not none %}
@@ -55181,36 +55181,36 @@ qlib_factor_strategy: |-
   Ensure that for every step of data processing, the data format (including indexes) is clearly explained through comments.
   Each transformation or calculation should be accompanied by a detailed description of how the data is structured, especially focusing on key aspects like whether the data has multi-level indexing, how to access specific columns or index levels, and any operations that affect the data shape (e.g., `reset_index()`, `groupby()`, `merge()`).
   This step-by-step explanation will ensure clarity and accuracy in data handling. For example:
-  1. **Start with multi-level index**:  
+  1. **Start with multi-level index**:
     ```python
     # The initial DataFrame has a multi-level index with 'datetime' and 'instrument'.
     # To access the 'datetime' index, use df.index.get_level_values('datetime').
     datetime_values = df.index.get_level_values('datetime')
     ```
- 
-  2. **Reset the index if necessary**:  
+
+  2. **Reset the index if necessary**:
     ```python
     # Resetting the index to move 'datetime' and 'instrument' from the index to columns.
     # This operation flattens the multi-index structure.
     df = df.reset_index()
     ```
- 
-  3. **Perform groupby operations**:  
+
+  3. **Perform groupby operations**:
     ```python
     # Grouping by 'datetime' and 'instrument' to aggregate the data.
     # After groupby, the result will maintain 'datetime' and 'instrument' as a multi-level index.
     df_grouped = df.groupby(['datetime', 'instrument']).sum()
     ```
- 
-  4. **Ensure consistent datetime formats**:  
+
+  4. **Ensure consistent datetime formats**:
     ```python
     # Before merging, ensure that the 'datetime' column in both DataFrames is of the same format.
     # Convert to datetime format if necessary.
     df['datetime'] = pd.to_datetime(df['datetime'])
     other_df['datetime'] = pd.to_datetime(other_df['datetime'])
     ```
- 
-  5. **Merge operations**:  
+
+  5. **Merge operations**:
     ```python
     # When merging DataFrames, ensure you are merging on both 'datetime' and 'instrument'.
     # If these are part of the index, reset the index before merging.
@@ -55222,8 +55222,8 @@ qlib_factor_output_format: |-
   <class 'pandas.core.frame.DataFrame'>
   MultiIndex: 40914 entries, (Timestamp('2020-01-02 00:00:00'), 'SH600000') to (Timestamp('2021-12-31 00:00:00'), 'SZ300059')
   Data columns (total 1 columns):
-  #   Column            Non-Null Count  Dtype  
-  ---  ------            --------------  -----  
+  #   Column            Non-Null Count  Dtype
+  ---  ------            --------------  -----
   0   your factor name  40914 non-null  float64
   dtypes: float64(1)
   memory usage: <ignore>
@@ -55240,7 +55240,7 @@ qlib_factor_output_format: |-
               SZ000776      0.002459
 
 qlib_factor_simulator: |-
-  The factors will be sent into Qlib to train a model to predict the next several days return based on the factor values of the previous days. 
+  The factors will be sent into Qlib to train a model to predict the next several days return based on the factor values of the previous days.
   Qlib is an AI-oriented quantitative investment platform that aims to realize the potential, empower research, and create value using AI technologies in quantitative investment, from exploring ideas to implementing productions. Qlib supports diverse machine learning modeling paradigms. including supervised learning, market dynamics modeling, and RL.
   User will use Qlib to automatically do the following things:
   1. generate a new factor table based on the factor values.
@@ -55363,12 +55363,12 @@ qlib_model_interface: |-
 
 
 qlib_model_output_format: |-
-  Your output should be a tensor with shape (batch_size, 1). 
+  Your output should be a tensor with shape (batch_size, 1).
   The output tensor should be saved in a file named "output.pth" in the same directory as your python file.
   The user will evaluate the shape of the output tensor so the tensor read from "output.pth" should be 8 numbers.
 
 qlib_model_simulator: |-
-  The models will be sent into Qlib to train and evaluate their performance in predicting future returns. Hypothesis is improved upon checking the feedback on the results. 
+  The models will be sent into Qlib to train and evaluate their performance in predicting future returns. Hypothesis is improved upon checking the feedback on the results.
   Qlib is an AI-oriented quantitative investment platform that aims to realize the potential, empower research, and create value using AI technologies in quantitative investment, from exploring ideas to implementing productions. Qlib supports diverse machine learning modeling paradigms, including supervised learning, market dynamics modeling, and reinforcement learning (RL).
   User will use Qlib to automatically perform the following tasks:
   1. Generate a baseline factor table.
@@ -55379,24 +55379,24 @@ qlib_model_simulator: |-
 
 qlib_model_rich_style_description: |-
   ### Qlib Model Evolving Automatic R&D Demo
-  
+
   #### [Overview](#_summary)
-  
+
   The demo showcases the iterative process of hypothesis generation, knowledge construction, and decision-making in model construction in quantitative finance. It highlights how models evolve through continuous feedback and refinement.
-  
+
   #### [Automated R&D](#_rdloops)
-  
+
   - **[R (Research)](#_research)**
     - Iteration of ideas and hypotheses.
     - Continuous learning and knowledge construction.
-  
+
   - **[D (Development)](#_development)**
     - Evolving code generation and model refinement.
     - Automated implementation and testing of models.
-  
+
   #### [Objective](#_summary)
-  
-  To demonstrate the dynamic evolution of models through the Qlib platform, emphasizing how each iteration enhances the accuracy and reliability of the resulting models. 
+
+  To demonstrate the dynamic evolution of models through the Qlib platform, emphasizing how each iteration enhances the accuracy and reliability of the resulting models.
 
 qlib_model_experiment_setting: |-
   | Dataset 📊 | Model 🤖    | Factors 🌟       | Data Split  🧮                                   |
@@ -55957,8 +55957,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -55973,7 +55973,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -56020,20 +56020,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -56059,7 +56059,7 @@ data_handler_config: &data_handler_config
                 - class: qlib.contrib.data.loader.Alpha158DL
                   kwargs:
                     config:
-                        label: 
+                        label:
                             - ["Ref($close, -2)/Ref($close, -1) - 1"]
                             - ["LABEL0"]
                         feature:
@@ -56071,8 +56071,8 @@ data_handler_config: &data_handler_config
                                "Std($close, 5)/$close", "Rsquare($close, 20)", "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 60)",
                                "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 10)", "Corr($close, Log($volume+1), 20)",
                                "(Less($open, $close)-$low)/$open"]
-                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                                "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"]
                 - class: qlib.data.dataset.loader.StaticDataLoader
                   kwargs:
@@ -56130,20 +56130,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -56169,7 +56169,7 @@ data_handler_config: &data_handler_config
                 - class: qlib.contrib.data.loader.Alpha158DL
                   kwargs:
                     config:
-                        label: 
+                        label:
                             - ["Ref($close, -2)/Ref($close, -1) - 1"]
                             - ["LABEL0"]
                         feature:
@@ -56181,13 +56181,13 @@ data_handler_config: &data_handler_config
                                "Std($close, 5)/$close", "Rsquare($close, 20)", "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 60)",
                                "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 10)", "Corr($close, Log($volume+1), 20)",
                                "(Less($open, $close)-$low)/$open"]
-                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                                "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"]
                 - class: qlib.data.dataset.loader.StaticDataLoader
                   kwargs:
                     config: "combined_factors_df.parquet"
-    
+
     infer_processors:
         - class: RobustZScoreNorm
           kwargs:
@@ -56255,20 +56255,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             {% if step_len %}step_len: {{ step_len }}{% endif %}
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -56337,7 +56337,7 @@ else:
 ================================================
 FILE: rdagent/scenarios/qlib/experiment/model_template/README.md
 ================================================
-## This folder is a template to be copied from for each model implementation & running process. 
+## This folder is a template to be copied from for each model implementation & running process.
 
 Components: Dummy model.py, versatile conf.yaml, and a result reader.
 
@@ -56366,8 +56366,8 @@ data_handler_config: &data_handler_config
         - class: FilterCol
           kwargs:
               fields_group: feature
-              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+              col_list: ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                            "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                             "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"
                         ]
         - class: RobustZScoreNorm
@@ -56382,7 +56382,7 @@ data_handler_config: &data_handler_config
         - class: CSRankNorm
           kwargs:
               fields_group: label
-    label: ["Ref($close, -2) / Ref($close, -1) - 1"] 
+    label: ["Ref($close, -2) / Ref($close, -1) - 1"]
 
 port_analysis_config: &port_analysis_config
     strategy:
@@ -56421,7 +56421,7 @@ task:
             pt_model_kwargs: {
                 "num_features": 20,
                 {% if num_timesteps %}num_timesteps: {{ num_timesteps }}{% endif %}
-            }                    
+            }
     dataset:
         class: {{ dataset_cls | default("DatasetH") }}
         module_path: qlib.data.dataset
@@ -56435,20 +56435,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             {% if step_len %}step_len: {{ step_len }}{% endif %}
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -56474,7 +56474,7 @@ data_handler_config: &data_handler_config
                 - class: qlib.contrib.data.loader.Alpha158DL
                   kwargs:
                     config:
-                        label: 
+                        label:
                             - ["Ref($close, -2)/Ref($close, -1) - 1"]
                             - ["LABEL0"]
                         feature:
@@ -56486,13 +56486,13 @@ data_handler_config: &data_handler_config
                                "Std($close, 5)/$close", "Rsquare($close, 20)", "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 60)",
                                "Corr($close/Ref($close,1), Log($volume/Ref($volume, 1)+1), 10)", "Corr($close, Log($volume+1), 20)",
                                "(Less($open, $close)-$low)/$open"]
-                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10", 
-                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5", 
+                            - ["RESI5", "WVMA5", "RSQR5", "KLEN", "RSQR10", "CORR5", "CORD5", "CORR10",
+                               "ROC60", "RESI10", "VSTD5", "RSQR60", "CORR60", "WVMA60", "STD5",
                                "RSQR20", "CORD60", "CORD10", "CORR20", "KLOW"]
                 - class: qlib.data.dataset.loader.StaticDataLoader
                   kwargs:
                     config: "combined_factors_df.parquet"
-    
+
     infer_processors:
         - class: RobustZScoreNorm
           kwargs:
@@ -56560,20 +56560,20 @@ task:
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
             {% if step_len %}step_len: {{ step_len }}{% endif %}
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -57514,7 +57514,7 @@ factor_duplicate_system: |-
     2. A group should contain at least two factors;
     3. To a factor which has no duplication, don't put them into your response;
     4. To avoid merging too many similar factor, don't put more than ten factors into a group!
-    You should always follow the above constraints to make your response valid. 
+    You should always follow the above constraints to make your response valid.
 
     Your response JSON schema should include:
     [
@@ -57532,7 +57532,7 @@ factor_duplicate_system: |-
             "factor name 9"
         ]
     ]
-    Your response is a list of lists. Each list represents a duplicate group containing all the factor names in this group. 
+    Your response is a list of lists. Each list represents a duplicate group containing all the factor names in this group.
     The factor names in the list should be unique and the factor names should be the same as the user's factor name.
     To avoid reaching token limit, don't respond more than fifty groups in one response. You should respond the output json string without any interaction and explanation.
 
@@ -59483,8 +59483,8 @@ FILE: rdagent/utils/prompts.yaml
 ================================================
 filter_redundant_text:
   system: |
-    You are an assistant designed to analyze and filter text containing training log messages, repeated warning messages, and progress bar outputs. Your task is to examine the text and determine whether these patterns are present. 
-    1. Training log messages should be evaluated based on their usefulness—logs that contain meaningful training metrics such as loss or accuracy reported at each epoch should be retained, while redundant messages, such as those repeatedly reporting NaN values or iteration numbers without valuable information, should be removed. 
+    You are an assistant designed to analyze and filter text containing training log messages, repeated warning messages, and progress bar outputs. Your task is to examine the text and determine whether these patterns are present.
+    1. Training log messages should be evaluated based on their usefulness—logs that contain meaningful training metrics such as loss or accuracy reported at each epoch should be retained, while redundant messages, such as those repeatedly reporting NaN values or iteration numbers without valuable information, should be removed.
     2. For warning messages, **only one occurrence of each unique message should be kept**, eliminating any duplicates.
     3. Additionally, any visual progress indicators, such as ASCII-based progress bars or dynamic percentage updates, should be removed. Once these patterns are identified, you should generate appropriate regex expressions to filter them out.
     4. Don't remove useful information that is not duplicated.
@@ -59492,7 +59492,7 @@ filter_redundant_text:
 
     Respond in the following JSON format and order:
     {
-        "needs_sub": <true/false>, 
+        "needs_sub": <true/false>,
         "regex_patterns": ["regex pattern 1", "regex pattern 2", ...]
     }
   user: |
@@ -61652,7 +61652,7 @@ pytest
 ================================================
 FILE: requirements/torch.txt
 ================================================
-# additional packages for data science 
+# additional packages for data science
 torch
 
 
@@ -65528,7 +65528,7 @@ Here, we provide an overview of the specific functions within the Qlib Docker fr
 
 ### QTDockerEnv Class in `env.py`
 
-The `QTDockerEnv` class is responsible for setting up and running Docker environments for Qlib experiments. 
+The `QTDockerEnv` class is responsible for setting up and running Docker environments for Qlib experiments.
 
 #### Methods:
 
@@ -66237,20 +66237,20 @@ task:
                 train: [2008-01-01, 2014-12-31]
                 valid: [2015-01-01, 2016-12-31]
                 test: [2017-01-01, 2020-08-01]
-    record: 
+    record:
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             model: <MODEL>
             dataset: <DATASET>
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             ana_long_short: False
             ann_scaler: 252
         - class: PortAnaRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
+          kwargs:
             config: *port_analysis_config
 
 
@@ -66801,4 +66801,3 @@ FILE: .streamlit/config.toml
 ================================================
 [client]
 showSidebarNavigation = false
-

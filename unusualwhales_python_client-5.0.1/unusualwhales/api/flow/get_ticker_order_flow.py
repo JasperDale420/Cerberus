@@ -74,9 +74,7 @@ def _get_kwargs(
     if not isinstance(rule_name, Unset):
         json_rule_name = []
         for componentsschemas_rule_name_item_data in rule_name:
-            componentsschemas_rule_name_item = (
-                componentsschemas_rule_name_item_data.value
-            )
+            componentsschemas_rule_name_item = componentsschemas_rule_name_item_data.value
             json_rule_name.append(componentsschemas_rule_name_item)
 
     params["rule_name[]"] = json_rule_name
@@ -95,9 +93,7 @@ def _get_kwargs(
     if not isinstance(issue_types, Unset):
         json_issue_types = []
         for componentsschemas_issue_types_item_data in issue_types:
-            componentsschemas_issue_types_item = (
-                componentsschemas_issue_types_item_data.value
-            )
+            componentsschemas_issue_types_item = componentsschemas_issue_types_item_data.value
             json_issue_types.append(componentsschemas_issue_types_item)
 
     params["issue_types[]"] = json_issue_types
@@ -119,9 +115,7 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(
-    *, client: UnusualWhalesClient, response: httpx.Response
-) -> ErrorMessage | FlowAlert | str | None:
+def _parse_response(*, client: UnusualWhalesClient, response: httpx.Response) -> ErrorMessage | FlowAlert | str | None:
     response_json = response.json()
     if response_json.get("data") is not None:
         response_json = response_json["data"]
