@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.config.models import PairTradingConfig
 from src.core.domain import (
+    Bar,
     Regime,
     ScanResult,
     StrategyCandidate,
@@ -60,9 +61,7 @@ class Scanner:
 
         # P4: Initialize profiles from config or use defaults
         self.profiles: Dict[str, ScannerProfile] = (
-            strategy_profiles
-            if strategy_profiles is not None
-            else self._build_profiles_from_config()
+            strategy_profiles if strategy_profiles is not None else self._build_profiles_from_config()
         )
         self.ranking_engine = RankingEngine(logger)
 
@@ -73,14 +72,10 @@ class Scanner:
         self.pair_scanner = PairScanner(self.pair_config, logger)
 
         # Phase 3 Optimization: Pair discovery cache
-        self._discovered_pairs: List[Dict] = []
+        self._discovered_pairs: List[Dict[str, Any]] = []
         self._last_pair_discovery_time: Optional[datetime] = None
         self._discovery_interval = timedelta(
-            minutes=int(
-                self.config.get("scanner", {}).get(
-                    "pair_discovery_interval_minutes", 60
-                )
-            )
+            minutes=int(self.config.get("scanner", {}).get("pair_discovery_interval_minutes", 60))
         )
 
         # P5: Feature cache with TTL + LRU eviction (H1 memory audit fix)
@@ -92,9 +87,7 @@ class Scanner:
         if not isinstance(scanner_cfg, dict):
             scanner_cfg = {}
         try:
-            self._cache_ttl_seconds = int(
-                scanner_cfg.get("feature_cache_ttl_seconds", 60)
-            )
+            self._cache_ttl_seconds = int(scanner_cfg.get("feature_cache_ttl_seconds", 60))
         except (TypeError, ValueError):
             self._cache_ttl_seconds = 60
         try:
@@ -160,9 +153,7 @@ class Scanner:
             ),
         }
 
-    async def scan(
-        self, regime: Regime = Regime.CHOP, scan_time: Optional[datetime] = None
-    ) -> ScanResult:
+    async def scan(self, regime: Regime = Regime.CHOP, scan_time: Optional[datetime] = None) -> ScanResult:
         """
         Runs the scan orchestration.
         """
@@ -172,14 +163,10 @@ class Scanner:
 
         symbols = self.universe_builder.get_universe()
         universe_size = len(symbols)
-        self.logger.info(
-            "Starting scan", universe_size=universe_size, regime=regime.value
-        )
+        self.logger.info("Starting scan", universe_size=universe_size, regime=regime.value)
 
         # Stage 1: Fetch Technicals
-        features_map = await self._fetch_technicals(
-            symbols, scan_time, regime, universe_size
-        )
+        features_map = await self._fetch_technicals(symbols, scan_time, regime, universe_size)
         features_returned = len(features_map)
 
         # Stage 2: Validate and Filter
@@ -219,9 +206,7 @@ class Scanner:
 
         return ScanResult(generated_at=scan_time, regime=regime, watchlist=watchlist)
 
-    def _resolve_scan_time(
-        self, scan_time: Optional[datetime], regime: Regime
-    ) -> datetime:
+    def _resolve_scan_time(self, scan_time: Optional[datetime], regime: Regime) -> datetime:
         if scan_time is not None:
             return scan_time
 
@@ -283,14 +268,10 @@ class Scanner:
         # Fetch uncached/expired symbols
         if symbols_to_fetch:
             try:
-                fresh = await self.feature_pipeline.compute_technicals_only(
-                    symbols_to_fetch, as_of=scan_time
-                )
+                fresh = await self.feature_pipeline.compute_technicals_only(symbols_to_fetch, as_of=scan_time)
                 # Update cache with LRU eviction
                 for sym, features in fresh.items():
-                    self._feature_cache[sym] = _CachedFeature(
-                        features=features, cached_at=now
-                    )
+                    self._feature_cache[sym] = _CachedFeature(features=features, cached_at=now)
                     self._feature_cache.move_to_end(sym)
                     cached_results[sym] = features
 
@@ -319,15 +300,11 @@ class Scanner:
 
         return cached_results
 
-    def _apply_data_validation(
-        self, features_map: Dict[str, SymbolFeatures]
-    ) -> Tuple[Dict[str, SymbolFeatures], int]:
+    def _apply_data_validation(self, features_map: Dict[str, SymbolFeatures]) -> Tuple[Dict[str, SymbolFeatures], int]:
         survivors = {}
         baseline_filtered = 0
 
-        scanner_cfg = (
-            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
-        )
+        scanner_cfg = (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
 
         # Extract filter params
         params = {
@@ -346,9 +323,7 @@ class Scanner:
 
         return survivors, baseline_filtered
 
-    async def _fetch_flow_for_survivors(
-        self, survivors: Dict[str, SymbolFeatures]
-    ) -> None:
+    async def _fetch_flow_for_survivors(self, survivors: Dict[str, SymbolFeatures]) -> None:
         try:
             await self.feature_pipeline.append_flow_features(survivors)
         except Exception as e:
@@ -357,9 +332,7 @@ class Scanner:
                 error=str(e),
             )
 
-    def _score_strategies(
-        self, survivors: Dict[str, SymbolFeatures], regime: Regime
-    ) -> List[StrategyCandidate]:
+    def _score_strategies(self, survivors: Dict[str, SymbolFeatures], regime: Regime) -> List[StrategyCandidate]:
         candidates = []
         for symbol, features in survivors.items():
             if not isinstance(features, SymbolFeatures):
@@ -386,9 +359,7 @@ class Scanner:
         survivors: Dict[str, SymbolFeatures],
         regime: Regime,
     ) -> List[WatchlistSymbol]:
-        scanner_cfg = (
-            (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
-        )
+        scanner_cfg = (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
         top_k = int(scanner_cfg.get("top_k_per_strategy", 10))
 
         # Group by strategy and prune
@@ -448,11 +419,7 @@ class Scanner:
         # Apply Top-N Alpha Rank gating if enabled
         alpha_rank_limit = int(scanner_cfg.get("alpha_rank_limit", 0))
         if alpha_rank_limit > 0:
-            watchlist_all = [
-                w
-                for w in watchlist_all
-                if getattr(w.features, "alpha_rank", 999) <= alpha_rank_limit
-            ]
+            watchlist_all = [w for w in watchlist_all if getattr(w.features, "alpha_rank", 999) <= alpha_rank_limit]
             self.logger.info(
                 "Applied Alpha Rank gating",
                 limit=alpha_rank_limit,
@@ -492,23 +459,17 @@ class Scanner:
             universe_size=universe_size,
             features_returned=features_returned,
             baseline_filtered=baseline_filtered,
-            feature_pipeline_metrics=getattr(
-                self.feature_pipeline, "last_run_metrics", {}
-            ),
+            feature_pipeline_metrics=getattr(self.feature_pipeline, "last_run_metrics", {}),
         )
         return watchlist
 
-    def run_scan(
-        self, regime: Regime, scan_time: Optional[datetime] = None
-    ) -> ScanResult:
+    def run_scan(self, regime: Regime, scan_time: Optional[datetime] = None) -> ScanResult:
         """
         PRD 4.6: `Scanner.run_scan(regime) -> ScanResult`.
         """
         return self.run_scan_sync(regime=regime, scan_time=scan_time)
 
-    def run_scan_sync(
-        self, regime: Regime, scan_time: Optional[datetime] = None
-    ) -> ScanResult:
+    def run_scan_sync(self, regime: Regime, scan_time: Optional[datetime] = None) -> ScanResult:
         """
         PRD 4.6-compatible synchronous wrapper.
 
@@ -521,9 +482,7 @@ class Scanner:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.scan(regime=regime, scan_time=scan_time))
-        raise RuntimeError(
-            "run_scan_sync cannot be called from an active event loop; use await scan()"
-        )
+        raise RuntimeError("run_scan_sync cannot be called from an active event loop; use await scan()")
 
     async def _scan_pairs(
         self,
@@ -540,7 +499,7 @@ class Scanner:
 
         import pandas as pd
 
-        from src.core.domain import OrderSide, WatchlistSymbol
+        from src.core.domain import OrderSide
 
         # 1. Decide if we need a new discovery run
         should_discover = (
@@ -552,36 +511,37 @@ class Scanner:
             # 1a. Select top survivors to avoid O(N^2)
             all_survivors = list(survivors.values())
             # Sort by volume to ensure we pick liquid pairs
-            top_n_feat = sorted(
-                all_survivors, key=lambda x: x.avg_volume, reverse=True
-            )[:50]
+            top_n_feat = sorted(all_survivors, key=lambda x: x.avg_volume, reverse=True)[:50]
             symbols = [s.symbol for s in top_n_feat]
 
             if len(symbols) >= 2:
-                self.logger.info(
-                    "Discovering cointegrated pairs", candidate_count=len(symbols)
-                )
+                self.logger.info("Discovering cointegrated pairs", candidate_count=len(symbols))
                 lookback = self.pair_config.lookback_days
                 window_start = scan_time - timedelta(days=int(lookback * 1.5) + 10)
 
                 tasks = [
-                    self.feature_pipeline.fetcher.fetch_bars(
-                        sym, window_start, scan_time, timeframe="1Day"
-                    )
+                    self.feature_pipeline.fetcher.fetch_bars(sym, window_start, scan_time, timeframe="1Day")
                     for sym in symbols
                 ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                results: List[Any] = await asyncio.gather(*tasks, return_exceptions=True)
 
-                price_data = {}
+                price_data: Dict[str, pd.Series] = {}
                 for sym, res in zip(symbols, results, strict=False):
-                    if isinstance(res, Exception) or not res:
+                    if isinstance(res, BaseException) or not res:
                         continue
-                    bars, _ = res
+                    if not isinstance(res, tuple) or len(res) != 2:
+                        continue
+                    bars_raw, _ = res
+                    if not isinstance(bars_raw, list):
+                        continue
+                    bars = [b for b in bars_raw if isinstance(b, Bar)]
                     if not bars:
                         continue
 
                     s = pd.Series(
-                        [float(b.close) for b in bars], index=[b.time for b in bars]
+                        data=[float(b.close) for b in bars],
+                        index=[b.time for b in bars],
+                        dtype=float,
                     )
                     if len(s) >= lookback:
                         price_data[sym] = s
@@ -591,9 +551,7 @@ class Scanner:
                     if not matrix.empty and len(matrix.columns) >= 2:
                         self._discovered_pairs = self.pair_scanner.find_pairs(matrix)
                         self._last_pair_discovery_time = scan_time
-                        self.logger.info(
-                            "Pair discovery complete", found=len(self._discovered_pairs)
-                        )
+                        self.logger.info("Pair discovery complete", found=len(self._discovered_pairs))
 
         # 2. Update Z-scores for all discovered pairs using current survivor prices
         for pair in self._discovered_pairs:

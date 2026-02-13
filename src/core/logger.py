@@ -6,14 +6,13 @@ context-aware structured logging. All output is JSON-formatted for machine parsi
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from typing import Any, Optional
 
 import structlog
 
 
-def _upcase_level(
-    logger: Any, method_name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+def _upcase_level(_logger: Any, _method_name: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     """Uppercase the log level to match standard conventions (INFO, ERROR, etc.)."""
     if "level" in event_dict:
         event_dict["level"] = event_dict["level"].upper()
@@ -21,8 +20,8 @@ def _upcase_level(
 
 
 def _rename_event_to_message(
-    logger: Any, method_name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+    _logger: Any, _method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Rename structlog's 'event' key to 'message' for consistency with existing format."""
     if "event" in event_dict:
         event_dict["message"] = event_dict.pop("event")
@@ -42,9 +41,7 @@ def _configure_structlog(level: str = "INFO") -> None:
             _rename_event_to_message,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, level.upper(), logging.INFO)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, level.upper(), logging.INFO)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )

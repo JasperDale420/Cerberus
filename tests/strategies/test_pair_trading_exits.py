@@ -1,3 +1,4 @@
+from collections import deque
 from datetime import datetime, timezone
 
 import pytest
@@ -48,7 +49,7 @@ def market_state():
 def test_pair_trading_exit_long(strategy, bar, market_state):
     symbol_state = SymbolState(
         symbol="AAPL",
-        bars=[],
+        bars=deque(),
         indicators={},
         position=None,
         open_orders={},
@@ -77,7 +78,7 @@ def test_pair_trading_exit_long(strategy, bar, market_state):
 def test_pair_trading_exit_short(strategy, bar, market_state):
     symbol_state = SymbolState(
         symbol="AAPL",
-        bars=[],
+        bars=deque(),
         indicators={},
         position=None,
         open_orders={},
@@ -106,7 +107,7 @@ def test_pair_trading_exit_short(strategy, bar, market_state):
 def test_pair_trading_no_exit_yet(strategy, bar, market_state):
     symbol_state = SymbolState(
         symbol="AAPL",
-        bars=[],
+        bars=deque(),
         indicators={},
         position=None,
         open_orders={},

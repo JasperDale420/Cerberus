@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 import sys
-from typing import List
+from typing import Any, List
 
 import numpy as np
 import pandas as pd
@@ -51,9 +51,7 @@ def load_bars_to_df(file_path: str) -> pd.DataFrame:
     return df
 
 
-def compute_alpha_factors(
-    df: pd.DataFrame, benchmark_df: pd.DataFrame = None
-) -> pd.DataFrame:
+def compute_alpha_factors(df: pd.DataFrame, benchmark_df: pd.DataFrame | None = None) -> pd.DataFrame:
     """Vectorized calculation of alpha factors (including Qlib Alpha158 base)"""
     feat = pd.DataFrame(index=df.index)
 
@@ -101,7 +99,7 @@ def compute_alpha_factors(
 
 def process_symbol_v2(
     symbol: str, data_dir: str, benchmark_df: pd.DataFrame, fwd_windows: List[int]
-):
+) -> pd.DataFrame | None:
     path_v1 = os.path.join(data_dir, f"{symbol}.jsonl")
     path_v2 = os.path.join(data_dir, f"{symbol}_1Min.jsonl")
     path = path_v2 if os.path.exists(path_v2) else path_v1
@@ -143,11 +141,7 @@ def main():
 
     symbols = args.symbols.split(",") if args.symbols else []
     if not symbols:
-        available = [
-            f.split("_")[0].split(".")[0]
-            for f in os.listdir(args.data_dir)
-            if f.endswith(".jsonl")
-        ]
+        available = [f.split("_")[0].split(".")[0] for f in os.listdir(args.data_dir) if f.endswith(".jsonl")]
         symbols = sorted(list(set(available)))[: args.limit_symbols]
 
     # Load Benchmark first
@@ -184,7 +178,7 @@ def main():
     factor_cols = [c for c in master_df.columns if c.startswith("f_")]
     target_cols = [c for c in master_df.columns if c.startswith("t_")]
 
-    audit_results = {
+    audit_results: dict[str, Any] = {
         "summary": {
             "total_samples": len(master_df),
             "symbols": symbols,
@@ -231,8 +225,8 @@ def main():
             if abs(corr) > 0.02:
                 print(f"{f:<25}: {corr:>12.4f}")
 
-    with open(args.output, "w") as f:
-        json.dump(audit_results, f, indent=2)
+    with open(args.output, "w") as output_file:
+        json.dump(audit_results, output_file, indent=2)
 
     logger.info("Audit complete", output=args.output)
 

@@ -58,9 +58,7 @@ def setup_harness_logger(run_id: str, log_dir: str):
 
     # Console Handler (Simulated stdout for user visibility)
     console = logging.StreamHandler()
-    console.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+    console.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     root_logger.addHandler(console)
 
     return logging.getLogger("Harness")
@@ -106,9 +104,7 @@ class TestHarness:
 
         def _slog(name: str, level: str = "INFO") -> StructuredLogger:
             # Use a unique logger name per run_id so handlers don't leak across runs.
-            return StructuredLogger(
-                f"{name}.{self.run_id}", level=level, logging_config=logging_cfg
-            )
+            return StructuredLogger(f"{name}.{self.run_id}", level=level, logging_config=logging_cfg)
 
         # 1. Logger
         # We want the main bot logger to also write to our artifact file if possible,
@@ -177,9 +173,7 @@ class TestHarness:
 
         # INJECT RISK BREACH IF REQUESTED
         if self.args.scenario == "risk":
-            self.logger.info(
-                "Risk Breach Scenario: reducing limits to trigger rejection"
-            )
+            self.logger.info("Risk Breach Scenario: reducing limits to trigger rejection")
             # Create a mock risk config override
             self.engine.risk_manager.max_daily_loss = 1.0  # $1 daily loss limit
             self.engine.risk_manager.max_risk_per_trade = 0.5
@@ -205,7 +199,7 @@ class TestHarness:
                 # In a real async loop we'd sleep, but here we just raise TimeoutError
                 raise asyncio.TimeoutError("Simulated Request Timeout")
 
-        alpaca.trading_client.submit_order = faulty_submit
+        alpaca.trading_client.submit_order = faulty_submit  # type: ignore[method-assign]
 
     def _export_broker_state(self):
         """Exports current orders and positions from Broker"""
@@ -280,9 +274,7 @@ class TestHarness:
                     pass
 
         except Exception as e:
-            self.logger.error(
-                f"Harness failed with exception: {e}", extra={"exception": str(e)}
-            )
+            self.logger.error(f"Harness failed with exception: {e}", extra={"exception": str(e)})
             raise
         finally:
             self._generate_report()
@@ -372,9 +364,7 @@ class TestHarness:
             if self.bot_log_path:
                 for record in _iter_jsonl(self.bot_log_path):
                     msg = record.get("message", "")
-                    correlation_id = (
-                        str(record.get("correlation_id") or "").strip() or None
-                    )
+                    correlation_id = str(record.get("correlation_id") or "").strip() or None
 
                     if record.get("level") == "ERROR":
                         exceptions += 1
@@ -385,28 +375,19 @@ class TestHarness:
                             if correlation_id is not None:
                                 seen_signals.add(correlation_id)
                     elif "Signal approved" in msg:
-                        if (
-                            correlation_id is None
-                            or correlation_id not in seen_approved
-                        ):
+                        if correlation_id is None or correlation_id not in seen_approved:
                             stats["approved"] += 1
                             if correlation_id is not None:
                                 seen_approved.add(correlation_id)
                     elif "Signal rejected" in msg:
-                        if (
-                            correlation_id is None
-                            or correlation_id not in seen_rejected
-                        ):
+                        if correlation_id is None or correlation_id not in seen_rejected:
                             stats["rejected"] += 1
                             if correlation_id is not None:
                                 seen_rejected.add(correlation_id)
                         reason = record.get("reason_code", "UNKNOWN")
                         stats["reasons"][reason] = stats["reasons"].get(reason, 0) + 1
                     elif "Order submitted" in msg:
-                        if (
-                            correlation_id is None
-                            or correlation_id not in seen_submitted
-                        ):
+                        if correlation_id is None or correlation_id not in seen_submitted:
                             stats["submitted"] += 1
                             if correlation_id is not None:
                                 seen_submitted.add(correlation_id)
@@ -417,10 +398,7 @@ class TestHarness:
                         or "ORDER_SUBMIT_FAILED" in msg
                         or "Order submission failed" in msg
                     ):
-                        if (
-                            correlation_id is None
-                            or correlation_id not in seen_exec_errors
-                        ):
+                        if correlation_id is None or correlation_id not in seen_exec_errors:
                             stats["exec_errors"] += 1
                             if correlation_id is not None:
                                 seen_exec_errors.add(correlation_id)
@@ -433,9 +411,7 @@ class TestHarness:
             if latencies:
                 stats["mean_latency"] = statistics.mean(latencies)
                 if len(latencies) > 1:
-                    stats["p95_latency"] = statistics.quantiles(latencies, n=20)[
-                        -1
-                    ]  # approx p95
+                    stats["p95_latency"] = statistics.quantiles(latencies, n=20)[-1]  # approx p95
                 else:
                     stats["p95_latency"] = latencies[0]
             else:
@@ -462,11 +438,7 @@ class TestHarness:
         # Risk Scenario Expectation
         if self.args.scenario == "risk":
             # PASS if at least one injected signal was blocked before submission.
-            if (
-                stats["signals_injected"] > 0
-                and stats["submitted"] == 0
-                and stats["approved"] == 0
-            ):
+            if stats["signals_injected"] > 0 and stats["submitted"] == 0 and stats["approved"] == 0:
                 outcome = "PASS (Risk Blocked)"
             else:
                 outcome = "FAIL (Risk Did Not Block)"
@@ -492,13 +464,9 @@ class TestHarness:
 def parse_args():
     parser = argparse.ArgumentParser(description="Cerberus Paper-Live Harness")
     parser.add_argument("--config", default="config/config.yaml", help="Path to config")
-    parser.add_argument(
-        "--scenario", choices=["happy", "failure", "risk"], default="happy"
-    )
+    parser.add_argument("--scenario", choices=["happy", "failure", "risk"], default="happy")
     parser.add_argument("--duration", type=int, default=5, help="Duration in minutes")
-    parser.add_argument(
-        "--force-live", action="store_true", help="Allow Live execution (DANGEROUS)"
-    )
+    parser.add_argument("--force-live", action="store_true", help="Allow Live execution (DANGEROUS)")
     parser.add_argument(
         "--inject-signal",
         action="store_true",

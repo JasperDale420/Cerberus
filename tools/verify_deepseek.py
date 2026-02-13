@@ -49,7 +49,10 @@ def test_deepseek():
             temperature=1.0,
         )
         print("\nResponse Received:")
-        print(response.choices[0].message.content)
+        if hasattr(response, "choices"):
+            print(response.choices[0].message.content)
+        else:
+            print(str(response))
         print("\nSuccess!")
 
     except Exception as e:

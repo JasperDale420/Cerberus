@@ -11,7 +11,7 @@ Usage:
 
 import json
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -37,10 +37,13 @@ def load_trades(path: str) -> List[Dict[str, Any]]:
     """Load trades from backtest JSON file."""
     with open(path, "r") as f:
         data = json.load(f)
-    return data.get("engine_trades", [])
+    trades = data.get("engine_trades", [])
+    if isinstance(trades, list):
+        return [t for t in trades if isinstance(t, dict)]
+    return []
 
 
-def build_feature_df(trades: List[Dict]) -> pd.DataFrame:
+def build_feature_df(trades: List[Dict[str, Any]]) -> pd.DataFrame:
     """Convert trades to feature DataFrame for ML."""
     rows = []
     for t in trades:
@@ -73,13 +76,9 @@ def encode_features(df: pd.DataFrame) -> Tuple[np.ndarray, List[str]]:
     return encoded.values, feature_names
 
 
-def train_classifier(
-    X: np.ndarray, y: np.ndarray, feature_names: List[str]
-) -> Tuple[Any, float, float]:
+def train_classifier(X: np.ndarray, y: np.ndarray, feature_names: List[str]) -> Tuple[Any, float, float]:
     """Train LightGBM classifier."""
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     # Create dataset
     train_data = lgb.Dataset(X_train, label=y_train, feature_name=feature_names)
@@ -209,7 +208,7 @@ def main():
     print("=" * 60)
 
     X, feature_names = encode_features(df)
-    y = df["is_winner"].values
+    y = cast(np.ndarray, df["is_winner"].to_numpy())
 
     model, train_auc, test_auc = train_classifier(X, y, feature_names)
     print(f"\nTrain AUC: {train_auc:.3f}")

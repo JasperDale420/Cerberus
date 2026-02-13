@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,9 +16,9 @@ from src.data.fetcher import DataFetcher
 from src.data.unusual_whales import UnusualWhalesClient
 
 
-def build_settings(**overrides: object) -> Settings:
+def build_settings(**overrides: Any) -> Settings:
     """Create runtime settings using environment aliases used in production."""
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "CERBERUS_DATA_BACKEND": "legacy",
         "CERBERUS_FAILOVER_TO_LEGACY": True,
     }

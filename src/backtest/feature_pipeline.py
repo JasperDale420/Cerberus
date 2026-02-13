@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import bisect
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import pytz  # type: ignore
@@ -72,14 +72,8 @@ class BacktestFeaturePipeline:
         # Shim for PairScanner/Scanner which expects pipeline.fetcher.fetch_bars
         self.fetcher = self
 
-        fp_cfg = (
-            (self.config.get("feature_pipeline") or {})
-            if isinstance(self.config, dict)
-            else {}
-        )
-        self.daily_volume_lookback_days = int(
-            fp_cfg.get("daily_volume_lookback_days", 20)
-        )
+        fp_cfg = (self.config.get("feature_pipeline") or {}) if isinstance(self.config, dict) else {}
+        self.daily_volume_lookback_days = int(fp_cfg.get("daily_volume_lookback_days", 20))
 
         self._series: Dict[str, _Series] = {}
         self._daily_volumes: Dict[str, Dict[Any, float]] = {}
@@ -90,7 +84,7 @@ class BacktestFeaturePipeline:
         # Per-day feature cache: Alpha Ranking factors (50/200-day SMAs) only change daily,
         # so we cache them to avoid re-slicing 200k+ bars per symbol on every intraday scan.
         self._daily_feature_cache: Dict[str, SymbolFeatures] = {}
-        self._cache_date: Optional[datetime] = None
+        self._cache_date: Optional[date] = None
 
     def _build_index(self, bars_by_symbol: Dict[str, List[Bar]]) -> None:
         for sym_raw, bars in bars_by_symbol.items():
@@ -171,9 +165,7 @@ class BacktestFeaturePipeline:
         if self._cache_date is None or self._cache_date != current_date:
             self._daily_feature_cache.clear()
             self._cache_date = current_date
-            self.logger.info(
-                "Feature cache cleared for new trading day", date=str(current_date)
-            )
+            self.logger.info("Feature cache cleared for new trading day", date=str(current_date))
 
         metrics: Dict[str, int] = {
             "symbols_total": int(len(symbols)),
@@ -223,13 +215,9 @@ class BacktestFeaturePipeline:
             avg_daily_volume = self._avg_daily_volume(sym, now)
             feat = SymbolFeatures(
                 symbol=sym,
-                last_updated=(
-                    tech.timestamp if isinstance(tech.timestamp, datetime) else now
-                ),
+                last_updated=(tech.timestamp if isinstance(tech.timestamp, datetime) else now),
                 price=float(tech.price),
-                avg_volume=float(
-                    avg_daily_volume if avg_daily_volume is not None else tech.volume
-                ),
+                avg_volume=float(avg_daily_volume if avg_daily_volume is not None else tech.volume),
                 atr_pct=float(tech.atr_pct),
                 intraday_range_pct=float(tech.intraday_range_pct),
                 gap_pct=float(tech.gap_pct),
@@ -276,9 +264,7 @@ class BacktestFeaturePipeline:
         self.last_run_metrics = dict(metrics)
         return out
 
-    async def append_flow_features(
-        self, features_map: Dict[str, SymbolFeatures]
-    ) -> Dict[str, SymbolFeatures]:
+    async def append_flow_features(self, features_map: Dict[str, SymbolFeatures]) -> Dict[str, SymbolFeatures]:
         # Complies with Scanner interface which is async
         # Deterministic backtests do not fetch external flow by default.
         return features_map

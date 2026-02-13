@@ -44,3 +44,16 @@ def test_hurst_exponent_short_series():
     h = calc.calculate_hurst_exponent(series)
     # Should return default 0.5 for short series
     assert h == 0.5
+
+
+def test_hurst_exponent_handles_non_positive_prices():
+    calc = FeatureCalculator()
+    series = [0.0 for _ in range(100)]
+    h = calc.calculate_hurst_exponent(series)
+    assert h == 0.5
+
+
+def test_relative_strength_handles_non_positive_baseline():
+    calc = FeatureCalculator()
+    assert calc.calculate_relative_strength([0.0, 101.0], [100.0, 101.0]) == 0.0
+    assert calc.calculate_relative_strength([100.0, 101.0], [0.0, 101.0]) == 0.0
