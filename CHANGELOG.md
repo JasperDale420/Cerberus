@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Runtime stream-mode helper utilities for backend selection and market-session scheduling (2026-02-13).
+- Failed Breakout reclaim-distance filter (`min_reclaim_pct`) with micro backtest PnL guard test (2026-02-13).
 
 ### Changed
 
@@ -14,6 +15,8 @@ All notable changes to this project will be documented in this file.
 - Market-session helpers now require timezone-aware datetimes (2026-02-13).
 
 ### Fixed
+
+- Feature pipeline close extraction now tolerates `None` values in mixed bar payloads (2026-02-13).
 
 ### Added
 

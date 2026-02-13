@@ -117,6 +117,11 @@ class FailedBreakoutConfig(BaseStrategyConfig):
 
     lookback_days: int = Field(default=1, ge=1, description="Days to look back for high/low")
     risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
+    min_reclaim_pct: float = Field(
+        default=0.0,
+        ge=0,
+        description="Minimum reclaim distance back inside range (percent of level)",
+    )
 
 
 class FlowMomentumConfig(BaseStrategyConfig):

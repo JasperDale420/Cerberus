@@ -19,6 +19,7 @@ class FailedBreakoutStrategy(BaseStrategy):
         cfg = FailedBreakoutConfig(**config)
         self.lookback_days = cfg.lookback_days
         self.risk_reward = cfg.risk_reward
+        self.min_reclaim_pct = cfg.min_reclaim_pct
 
         # We need to know the Key Levels.
         # Ideally these come from SymbolFeatures (Scanner) or we re-calc.
@@ -106,6 +107,8 @@ class FailedBreakoutStrategy(BaseStrategy):
         # Trigger: Price closes back inside range ( < PDH )
         if bar.close >= pdh:
             return None
+        if self.min_reclaim_pct > 0 and bar.close > pdh * (1 - float(self.min_reclaim_pct)):
+            return None
 
         is_crossing_down = False
         if len(symbol_state.bars) >= 2:
@@ -146,6 +149,8 @@ class FailedBreakoutStrategy(BaseStrategy):
 
         # Trigger: Price closes back inside range ( > PDL )
         if bar.close <= pdl:
+            return None
+        if self.min_reclaim_pct > 0 and bar.close < pdl * (1 + float(self.min_reclaim_pct)):
             return None
 
         is_crossing_up = False
