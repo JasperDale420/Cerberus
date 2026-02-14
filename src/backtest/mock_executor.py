@@ -266,7 +266,9 @@ class BacktestOrderExecutor:
         if self._partial_fill_mode == "fixed":
             return float(order_qty) * self._partial_fill_pct
 
-        if self._partial_fill_mode == "volume_aware" and bar_volume > 0:
+        if self._partial_fill_mode == "volume_aware":
+            if bar_volume <= 0:
+                return 0.0
             # Can only capture a fraction of bar volume
             max_capturable = float(bar_volume) * self._partial_fill_rate
             return min(float(order_qty), max_capturable)
@@ -414,6 +416,7 @@ class BacktestOrderExecutor:
 
         if age >= float(self._max_open_order_age_sec):
             o.status = "canceled"
+            self._remove_pending_order(o)
             self.logger.info(
                 "Backtest order canceled due to age",
                 order_id=o.id,
@@ -433,6 +436,18 @@ class BacktestOrderExecutor:
             if o.status == "new":
                 self._check_and_cancel_expired(o, now)
 
+    def _remove_pending_order(self, o: _PendingOrder) -> None:
+        sym = str(o.intent.symbol)
+        pending = self._pending_by_symbol.get(sym)
+        if not pending:
+            return
+        try:
+            pending.remove(o)
+        except ValueError:
+            return
+        if not pending:
+            self._pending_by_symbol.pop(sym, None)
+
     def _execute_order_fill(
         self,
         engine: ExecutionEngine,
@@ -448,6 +463,14 @@ class BacktestOrderExecutor:
         # Calculate fill quantity using volume-aware logic
         fill_qty = self._calculate_fill_qty(order_qty, bar_volume)
         if fill_qty <= 0:
+            if self._partial_fill_mode == "volume_aware":
+                self.logger.debug(
+                    "Backtest volume-aware fill skipped due to zero volume",
+                    symbol=symbol,
+                    order_qty=float(order_qty),
+                    bar_volume=float(bar_volume),
+                    correlation_id=o.intent.correlation_id,
+                )
             return
 
         # Apply spread first, then volume-aware slippage
@@ -481,6 +504,7 @@ class BacktestOrderExecutor:
         )
 
         o.status = "filled"
+        self._remove_pending_order(o)
         self._record_fill(
             order_id=o.id,
             intent=o.intent,
