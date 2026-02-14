@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 - **Hard stop validation now fails fast** (2026-02-14):
   - Invalid `hard_stop_time` formats/ranges now log an error and raise to avoid silent misconfiguration.
+- **Gateway/legacy stream gating guardrails** (2026-02-14):
+  - `_should_start_alpaca_stream()` now respects `data_backend` and avoids unexpected argument errors in gateway mode tests.
+- **Feature pipeline close extraction guard** (2026-02-14):
+  - `_extract_closes()` now treats `None` close values as `0.0` instead of raising.
 
 ### Added
 
