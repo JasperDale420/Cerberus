@@ -61,3 +61,19 @@ def test_run_daily_session_subprocess(mock_run):
     assert "live" in cmd
     assert "--config" in cmd
     assert "custom_config.yaml" in cmd
+
+
+def test_scheduler_invalid_schedule_time_defaults():
+    config = {"timezone": "America/New_York", "schedule_time": "bad"}
+    scheduler = CerberusScheduler(config)
+
+    with patch.object(scheduler.scheduler, "start"):
+        with patch.object(scheduler.scheduler, "add_job") as mock_add_job:
+            scheduler.start()
+
+            _, kwargs = mock_add_job.call_args
+            trigger = kwargs["trigger"]
+            fields = {field.name: field for field in trigger.fields}
+
+            assert str(fields["hour"]) == "9"
+            assert str(fields["minute"]) == "25"
