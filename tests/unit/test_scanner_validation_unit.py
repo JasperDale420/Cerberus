@@ -59,6 +59,13 @@ def test_validate_technicals_bad_data():
     assert validator.validate_technicals(create_features(price=-10.0)) is False
 
 
+def test_validate_technicals_non_finite_values():
+    validator = DataValidator()
+    assert validator.validate_technicals(create_features(price=float("nan"))) is False
+    assert validator.validate_technicals(create_features(volume=float("inf"))) is False
+    assert validator.validate_technicals(create_features(atr_pct=float("-inf"))) is False
+
+
 def test_validate_technicals_atr_filter():
     validator = DataValidator()
     # Min ATR
