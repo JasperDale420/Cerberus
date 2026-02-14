@@ -50,6 +50,42 @@ def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
     return True
 
 
+def _next_market_open_local(now: datetime) -> datetime:
+    """
+    Return the next regular US market open (09:30 local time on a weekday).
+
+    The input must be timezone-aware and already expressed in the market timezone.
+    """
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+
+    today_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now < today_open and now.weekday() < 5:
+        return today_open
+
+    candidate = today_open + timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+def _is_regular_market_session_local(now: datetime) -> bool:
+    """
+    Return True when within regular US session hours on a weekday.
+
+    Session window is 09:30 <= time < 16:00 in the provided local timezone.
+    """
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    if now.weekday() >= 5:
+        return False
+    if now.hour < 9 or (now.hour == 9 and now.minute < 30):
+        return False
+    if now.hour >= 16:
+        return False
+    return True
+
+
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
     """Capture daily screener snapshot for historical backtest replay."""
     snapshot = {
