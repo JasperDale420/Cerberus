@@ -30,8 +30,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Heber Parquet Race Condition** (2026-02-13):
-  - Added retry logic to `HeberReadClient._read_parquet_rows` to handle transient `FileNotFoundError`.
+- **Feature Pipeline Bar Close Handling** (2026-02-14):
+  - Accepts `close` aliases from bar dict/object shapes and safely handles `None` close values.
+- **Stream Mode Helper** (2026-02-14):
+  - `_should_start_alpaca_stream()` now considers `data_backend` to avoid starting Alpaca streams in gateway+noop mode.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Fixed `_should_start_alpaca_stream()` to allow Gateway bar stream to start correctly.
 - Fixed potential infinite loop in `wait_for_backfill` tests by mocking monotonic time correctly.
