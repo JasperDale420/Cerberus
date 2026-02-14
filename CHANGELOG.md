@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
   - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
   - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
+- **Hard stop validation now fails fast** (2026-02-14):
+  - Invalid `hard_stop_time` formats/ranges now log an error and raise to avoid silent misconfiguration.
 
 ### Added
 

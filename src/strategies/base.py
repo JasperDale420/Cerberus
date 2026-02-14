@@ -55,13 +55,21 @@ class BaseStrategy(ABC):
 
         try:
             stop_h, stop_m = map(int, hard_stop.split(":"))
+            if not (0 <= stop_h <= 23 and 0 <= stop_m <= 59):
+                raise ValueError("hour/minute out of range")
             # Compare only hour and minute
             if current_time.hour > stop_h:
                 return True
             if current_time.hour == stop_h and current_time.minute >= stop_m:
                 return True
-        except (ValueError, AttributeError):
-            pass
+        except (ValueError, AttributeError) as exc:
+            self.logger.error(
+                "Invalid hard stop time",
+                hard_stop_time=hard_stop,
+                error=str(exc),
+                exc_info=True,
+            )
+            raise ValueError(f"Invalid hard_stop_time: {hard_stop}") from exc
 
         return False
 
