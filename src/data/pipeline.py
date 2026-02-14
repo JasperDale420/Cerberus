@@ -71,7 +71,31 @@ class FeaturePipeline:
 
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
-        return [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+        closes: List[float] = []
+        for b in bars_data:
+            close_value: Any
+            if hasattr(b, "c"):
+                close_value = getattr(b, "c", None)
+            elif isinstance(b, dict):
+                close_value = b.get("c")
+            else:
+                close_value = None
+
+            if close_value is None:
+                closes.append(0.0)
+                continue
+
+            try:
+                closes.append(float(close_value))
+            except (TypeError, ValueError) as exc:
+                self.logger.warning(
+                    "FeaturePipeline: invalid close value",
+                    close_value=str(close_value),
+                    error=str(exc),
+                )
+                closes.append(0.0)
+
+        return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
         start, end = self._calculate_fetch_window(as_of)

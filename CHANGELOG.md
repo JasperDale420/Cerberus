@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Feature pipeline close extraction now safely handles None/invalid close values with a warning (2026-02-14).
+- Alpaca stream start logic now accounts for data backend (gateway vs legacy) to avoid unnecessary streams (2026-02-14).
 - Scheduler now defaults invalid `schedule_time` values to `09:25` with a warning (2026-02-14).
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
