@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Feature pipeline close extraction now tolerates None/malformed values (2026-02-14).
+
+- Alpaca stream start decision now respects gateway/legacy backend selection (2026-02-14).
+
 - Backtest scan failures now log stack traces for easier debugging (2026-02-14).
 
 - Backtest config now guards invalid realism modes and warns before defaulting (2026-02-14).
