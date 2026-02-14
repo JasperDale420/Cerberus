@@ -149,7 +149,10 @@ class AlpacaClient:
                 timeframe=tf_obj,
             )
             resp = self.historical_client.get_stock_bars(req)
-            bars = (resp.data or {}).get(symbol) or []
+            if isinstance(resp, dict):
+                bars = (resp.get("data") or {}).get(symbol) or []
+            else:
+                bars = (getattr(resp, "data", None) or {}).get(symbol) or []
 
             # Return a stable dict format aligned with existing FeaturePipeline parsing.
             out = []
@@ -189,7 +192,10 @@ class AlpacaClient:
                 end=end,
             )
             resp = self.historical_client.get_stock_trades(req)
-            trades = (resp.data or {}).get(symbol) or []
+            if isinstance(resp, dict):
+                trades = (resp.get("data") or {}).get(symbol) or []
+            else:
+                trades = (getattr(resp, "data", None) or {}).get(symbol) or []
 
             out = []
             for t in trades:

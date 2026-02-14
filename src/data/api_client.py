@@ -15,6 +15,8 @@ class CentralApiClient:
 
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.logger = logger
+        self.gateway_max_retries: int
+        self.gateway_retry_backoff_seconds: float
         self.base_url = config_loader.get_env(
             "CERBERUS_GATEWAY_URL",
             config_loader.get_env("DATA_INGESTION_URL", "http://localhost:8080"),
@@ -66,7 +68,7 @@ class CentralApiClient:
                     return max(0.0, float(retry_after))
                 except ValueError:
                     pass
-        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+        return float(self.gateway_retry_backoff_seconds) * float(2 ** max(0, attempt - 1))
 
     def _request_with_retry(
         self,

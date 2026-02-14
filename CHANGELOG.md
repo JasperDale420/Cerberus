@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   - `_should_start_alpaca_stream()` now accepts `data_backend` and skips Alpaca streams in `gateway+noop/gateway` mode.
   - FeaturePipeline close extraction now treats `None` close values as `0.0`.
   - Unknown bar shapes now log a warning and default the close to `0.0`.
+  - Cleared remaining mypy errors in gateway stream parsing, API retry delay typing, Alpaca historical response unions, snapshot persistence keyword args, and CI config loading types.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
