@@ -158,6 +158,36 @@ def test_signal_short_gap_up(gap_fill):
 
 
 @pytest.mark.unit
+def test_gap_fill_respects_min_opening_range_volume(mock_logger):
+    config = {
+        "min_gap": 0.02,
+        "max_gap": 0.05,
+        "risk_reward": 1.0,
+        "or_time_minutes": 15,
+        "min_or_volume": 3000.0,
+    }
+    gap_fill = GapFillStrategy(config, mock_logger)
+    market = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL)
+
+    import pytz
+
+    et = pytz.timezone("US/Eastern")
+    date = datetime(2023, 10, 23, 9, 30, 0)
+    open_dt = et.localize(date)
+
+    b1 = Bar("AAPL", open_dt, 103.0, 103.5, 102.5, 103.5, 500)
+    b2 = Bar("AAPL", open_dt + timedelta(minutes=5), 103.5, 103.5, 103.0, 103.5, 600)
+
+    current_dt = open_dt + timedelta(minutes=20)
+    current_bar = Bar("AAPL", current_dt, 102.5, 102.5, 101.0, 102.0, 500)
+
+    state = SymbolState("AAPL", deque([b1, b2], maxlen=100), {}, None, {}, [], {"gap_pct": 0.03})
+    sig = gap_fill.on_bar("AAPL", current_bar, state, market)
+
+    assert sig is None
+
+
+@pytest.mark.unit
 def test_signal_long_gap_down(gap_fill):
     gap_fill.risk_reward = 1.0
     market = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP)

@@ -135,6 +135,7 @@ class GapFillConfig(BaseStrategyConfig):
     risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     or_time_minutes: int = Field(default=15, ge=1, description="Opening range time window in minutes")
     weak_trend_max_score: float = Field(default=1.0, ge=0, description="Max trend score for entry (weak trend filter)")
+    min_or_volume: float = Field(default=0.0, ge=0, description="Minimum opening range volume filter")
 
 
 class IndexMeanReversionConfig(BaseStrategyConfig):

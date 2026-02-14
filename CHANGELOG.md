@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- (2026-02-14): FeaturePipeline close extraction now handles None/invalid values with warning fallback.
+- (2026-02-14): `_should_start_alpaca_stream()` now accounts for `data_backend` to match gateway/legacy behavior.
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
@@ -16,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- (2026-02-14): GapFill config now supports `min_or_volume` (opening range volume filter).
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
