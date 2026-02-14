@@ -1,7 +1,7 @@
 import asyncio
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from src.core.errors import ErrorCode
 from src.core.logger import StructuredLogger
@@ -11,6 +11,9 @@ from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
 from src.data.heber_read_client import HeberReadClient
 from src.data.unusual_whales import UnusualWhalesClient
+
+if TYPE_CHECKING:
+    from src.data.bar_buffer import LiveBarBuffer
 
 
 class DataFetcher:
@@ -27,6 +30,7 @@ class DataFetcher:
         config: Optional[Dict[str, Any]] = None,
         clock: Optional[Callable[[], datetime]] = None,
         central_api_client: Optional[CentralApiClient] = None,
+        bar_buffer: Optional["LiveBarBuffer"] = None,
     ):
         self.alpaca_client = alpaca_client
         self.unusual_whales_client = unusual_whales_client
@@ -59,6 +63,8 @@ class DataFetcher:
             self._cache_maxsize = int(self.config.get("bars_cache_maxsize", 500))
         except (TypeError, ValueError):
             self._cache_maxsize = 500
+
+        self._bar_buffer = bar_buffer
 
     def _resolve_fetch_start(self, symbol: str, start: datetime) -> Tuple[datetime, List[Dict[str, Any]]]:
         cached = self._bars_cache.get(symbol)
@@ -105,6 +111,17 @@ class DataFetcher:
     def _get_historical_bars_sync(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> Any:
         """Fetch bars from configured backend with optional legacy failover."""
         sym = str(symbol).strip().upper()
+
+        # For crypto, prefer real-time WebSocket buffer over 15-min delayed REST
+        if self.asset_class == "crypto" and self._bar_buffer is not None:
+            buffered = self._bar_buffer.get_bars(sym, start, end)
+            if buffered:
+                self.logger.debug(
+                    "Using live bar buffer for crypto",
+                    symbol=sym,
+                    bar_count=len(buffered),
+                )
+                return buffered
         if self.heber_client is not None:
             try:
                 heber_bars = self.heber_client.get_bars(
@@ -138,6 +155,11 @@ class DataFetcher:
 
                 if self.enable_dual_compare:
                     self._compare_bars_with_legacy(sym, start, end, timeframe, bars)
+                # Seed bar buffer with REST data for future real-time use
+                if self._bar_buffer is not None and self.asset_class == "crypto" and bars:
+                    bar_list = list(bars.get("bars", bars)) if isinstance(bars, dict) else list(bars)
+                    if bar_list:
+                        self._bar_buffer.seed(sym, bar_list)
                 return bars
             except Exception as e:
                 self.logger.warning(
@@ -281,6 +303,19 @@ class DataFetcher:
             "incremental_fetches": 0,
         }
         sym = str(symbol).strip().upper()
+
+        # For crypto, serve bars from the live WebSocket buffer to avoid
+        # 15-min delayed REST endpoints.  The buffer is seeded from REST
+        # on first fetch and continuously appended by the WebSocket stream.
+        if self.asset_class == "crypto" and self._bar_buffer is not None:
+            buffered = self._bar_buffer.get_bars(sym, start, end)
+            if buffered:
+                self.logger.debug(
+                    "Using live bar buffer for crypto",
+                    symbol=sym,
+                    bar_count=len(buffered),
+                )
+                return buffered, metrics
 
         fetch_start, existing_bars = self._resolve_fetch_start(sym, start)
         new_bars = []

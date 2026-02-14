@@ -14,6 +14,7 @@ from src.core.logger import StructuredLogger
 from src.core.market_session import CryptoSession, MarketSession, USEquitySession
 from src.data.alpaca import AlpacaClient
 from src.data.api_client import CentralApiClient
+from src.data.bar_buffer import LiveBarBuffer
 from src.data.gateway_stream import GatewayStreamClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
@@ -308,8 +309,12 @@ async def async_main():
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
     central_api_client = CentralApiClient(config_loader, logger)
+    bar_buffer = LiveBarBuffer() if runtime_settings.cerberus_asset_class == "crypto" else None
     gateway_stream_client = GatewayStreamClient(
-        config_loader, logger, asset_class=runtime_settings.cerberus_asset_class
+        config_loader,
+        logger,
+        asset_class=runtime_settings.cerberus_asset_class,
+        bar_buffer=bar_buffer,
     )
 
     feature_pipeline = FeaturePipeline(
@@ -319,6 +324,7 @@ async def async_main():
         central_api_client=central_api_client,
         config=config,
         clock=clock,
+        bar_buffer=bar_buffer,
     )
 
     universe_builder = UniverseBuilder(

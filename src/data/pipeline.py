@@ -13,6 +13,7 @@ from src.data.fetcher import DataFetcher
 from src.data.unusual_whales import UnusualWhalesClient
 
 if TYPE_CHECKING:
+    from src.data.bar_buffer import LiveBarBuffer
     from src.data.snapshot_manager import SnapshotManager
 
 US_EASTERN = pytz.timezone("US/Eastern")
@@ -33,6 +34,7 @@ class FeaturePipeline:
         clock: Optional[Callable[[], datetime]] = None,
         snapshot_manager: Optional["SnapshotManager"] = None,
         central_api_client: Optional[CentralApiClient] = None,
+        bar_buffer: Optional["LiveBarBuffer"] = None,
     ):
         self.alpaca_client = alpaca_client
         self.unusual_whales_client = unusual_whales_client
@@ -57,6 +59,7 @@ class FeaturePipeline:
             central_api_client=central_api_client,
             config=config,
             clock=self.clock,
+            bar_buffer=bar_buffer,
         )
         self.calculator = FeatureCalculator()
 
@@ -275,14 +278,26 @@ class FeaturePipeline:
 
         sem = asyncio.Semaphore(max(1, int(self.max_concurrency)))
 
-        # Stage 1a: Fetch Benchmark (SPY) for Relative Strength
+        # Only fetch if not in crypto mode (SPY is US Equity)
         benchmark_closes: List[float] = []
-        try:
-            start, end = self._calculate_fetch_window(as_of)
-            spy_bars, _ = await self.fetcher.fetch_bars("SPY", start, end, "1Min")
-            benchmark_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in spy_bars]
-        except Exception as e:
-            self.logger.warning("Failed to fetch benchmark SPY bars", error=str(e))
+
+        # We don't have direct access to asset_class in `self`, but `self.fetcher` might.
+        # Assuming DataFetcher has access, but Pipeline might not direct access check.
+        # Check if "asset_class" in config, or use heuristic.
+        # Simpler: Try/Except is already there, but let's be explicit if possible.
+        # Actually, let's just make the error log less scary or skip if asset_class is crypto.
+
+        # We don't have direct access to asset_class in `self`, but `self.fetcher` might.
+        # Let's check `self.fetcher.asset_class` if it exists (we added it).
+        is_crypto = getattr(self.fetcher, "asset_class", "us_equity") == "crypto"
+
+        if not is_crypto:
+            try:
+                start, end = self._calculate_fetch_window(as_of)
+                spy_bars, _ = await self.fetcher.fetch_bars("SPY", start, end, "1Min")
+                benchmark_closes = [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in spy_bars]
+            except Exception as e:
+                self.logger.warning("Failed to fetch benchmark SPY bars", error=str(e))
 
         # Use symbols list directly
         results = await asyncio.gather(*[self._process_single_symbol(s, as_of, sem, benchmark_closes) for s in symbols])

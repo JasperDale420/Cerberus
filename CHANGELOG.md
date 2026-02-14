@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - Made `GatewayStreamClient` asset-class-aware: selects `crypto_bars` or `stock_bars` feeds dynamically.
   - WebSocket subscription subscribes to crypto universe symbols when `CERBERUS_ASSET_CLASS=crypto`.
   - Added `cerberus-crypto` Docker service (profile: `crypto`) for headless 24/7 operation.
+  - Added `LiveBarBuffer` to feed real-time WebSocket bars into the scanner, bypassing 15-min delayed REST endpoints after initial seed.
 
 - **Backtest Data Provisioning via Data-Gateway + Heber** (2026-02-13):
   - Added backfill methods to `CentralApiClient`: `request_backfill`, `get_backfill_status`, `wait_for_backfill`, `cancel_backfill`.

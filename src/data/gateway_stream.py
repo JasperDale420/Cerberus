@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 from urllib.parse import urlparse, urlunparse
 
 import websockets
@@ -11,6 +11,9 @@ import websockets
 from src.core.config import ConfigLoader
 from src.core.domain import Bar
 from src.core.logger import StructuredLogger
+
+if TYPE_CHECKING:
+    from src.data.bar_buffer import LiveBarBuffer
 
 
 class GatewayStreamClient:
@@ -24,8 +27,15 @@ class GatewayStreamClient:
     # All bar-type feed names accepted during payload extraction
     _BAR_FEEDS = frozenset({"bars", "crypto_bars", "stock_bars"})
 
-    def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger, asset_class: str = "us_equity"):
+    def __init__(
+        self,
+        config_loader: ConfigLoader,
+        logger: StructuredLogger,
+        asset_class: str = "us_equity",
+        bar_buffer: Optional["LiveBarBuffer"] = None,
+    ):
         self.logger = logger
+        self._bar_buffer = bar_buffer
         self.asset_class = asset_class
         base_url = config_loader.get_env(
             "CERBERUS_GATEWAY_URL",
@@ -203,6 +213,9 @@ class GatewayStreamClient:
         except Exception as e:
             self.logger.warning("Failed to normalize gateway bar", error=str(e))
             return
+        # Populate shared bar buffer for scanner access
+        if self._bar_buffer is not None:
+            self._bar_buffer.append(bar.symbol, payload)
         await self._invoke_bar_callback(callback, bar, bar.symbol, arity)
 
     async def start_stream(
