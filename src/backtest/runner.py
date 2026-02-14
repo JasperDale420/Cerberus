@@ -72,6 +72,14 @@ class BacktestRunner:
         self.end_date = self._parse_dt(end_date)
         if "T" not in end_date:
             self.end_date = self.end_date.replace(hour=23, minute=59, second=59)
+        if self.start_date > self.end_date:
+            self.logger.error(
+                "Backtest date range invalid",
+                start=self.start_date.isoformat(),
+                end=self.end_date.isoformat(),
+                exc_info=True,
+            )
+            raise ValueError("Backtest start_date must be before end_date.")
         self.offline_bars_dir = str(offline_bars_dir).strip() if offline_bars_dir else ""
         self.offline_provider = JsonlBarsProvider(Path(self.offline_bars_dir)) if self.offline_bars_dir else None
         self.warmup_days = int(warmup_days)
@@ -215,26 +223,54 @@ class BacktestRunner:
 
     def _parse_single_bar(self, b: Dict[str, Any], symbol: str) -> Optional[Bar]:
         """Parse a single bar dictionary into a Bar object."""
-        # Handle different formats (raw vs parsed)
-        t = b.get("t") or b.get("timestamp")
-        o = b.get("o") or b.get("open")
-        h = b.get("h") or b.get("high")
-        low_price = b.get("l") or b.get("low")
-        c = b.get("c") or b.get("close")
-        v = b.get("v") or b.get("volume")
 
-        if not t:
+        def _coalesce(primary: str, fallback: str) -> Any:
+            if primary in b and b[primary] is not None:
+                return b[primary]
+            if fallback in b and b[fallback] is not None:
+                return b[fallback]
             return None
 
-        return Bar(
-            symbol=symbol,
-            time=(datetime.fromisoformat(str(t).replace("Z", "+00:00")) if isinstance(t, str) else t),
-            open=float(o or 0.0),
-            high=float(h or 0.0),
-            low=float(low_price or 0.0),
-            close=float(c or 0.0),
-            volume=float(v or 0.0),
-        )
+        # Handle different formats (raw vs parsed)
+        t = _coalesce("t", "timestamp")
+        o = _coalesce("o", "open")
+        h = _coalesce("h", "high")
+        low_price = _coalesce("l", "low")
+        c = _coalesce("c", "close")
+        v = _coalesce("v", "volume")
+
+        if t is None:
+            return None
+
+        try:
+            if isinstance(t, datetime):
+                bar_time = t
+            elif isinstance(t, str):
+                bar_time = datetime.fromisoformat(t.replace("Z", "+00:00"))
+            else:
+                raise ValueError(f"Unsupported timestamp type: {type(t).__name__}")
+
+            if bar_time.tzinfo is None:
+                bar_time = bar_time.replace(tzinfo=timezone.utc)
+
+            return Bar(
+                symbol=symbol,
+                time=bar_time,
+                open=float(o) if o is not None else 0.0,
+                high=float(h) if h is not None else 0.0,
+                low=float(low_price) if low_price is not None else 0.0,
+                close=float(c) if c is not None else 0.0,
+                volume=float(v) if v is not None else 0.0,
+            )
+        except Exception:
+            self.logger.error(
+                "Backtest bar parse error",
+                symbol=symbol,
+                raw_timestamp=t,
+                raw_bar=b,
+                exc_info=True,
+            )
+            return None
 
     def _parse_bars(self, bars_data: Any, symbol: str) -> List[Bar]:
         bars: List[Bar] = []

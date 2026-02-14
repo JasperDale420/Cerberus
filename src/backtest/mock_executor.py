@@ -76,6 +76,8 @@ class BacktestOrderExecutor:
         self._spread_mode: str = "fixed"  # fixed|atr_based
         # Daily equity reset for regime analysis backtests
         self._daily_equity_reset: bool = False
+        # Minimum bar volume required to allow fills (skip illiquid bars)
+        self._min_bar_volume_for_fill: float = 0.0
 
     def set_risk_config(self, risk_cfg: Optional[Dict[str, Any]]) -> None:
         self._risk_cfg = dict(risk_cfg) if isinstance(risk_cfg, dict) else {}
@@ -117,6 +119,13 @@ class BacktestOrderExecutor:
 
         # Daily equity reset: start each day fresh with initial_cash
         self._daily_equity_reset = bool(self._backtest_cfg.get("daily_equity_reset", False))
+
+        # Minimum bar volume required for fills (0 disables)
+        try:
+            self._min_bar_volume_for_fill = float(self._backtest_cfg.get("min_bar_volume_for_fill", 0.0))
+            self._min_bar_volume_for_fill = max(0.0, self._min_bar_volume_for_fill)
+        except (TypeError, ValueError):
+            self._min_bar_volume_for_fill = 0.0
 
         # Check if advanced exits are enabled (from risk config)
         # If so, disable broker_managed_exits to let PositionManager handle exits
@@ -260,6 +269,8 @@ class BacktestOrderExecutor:
         - fixed: fill at configured percentage
         - volume_aware: fill based on order size vs bar volume
         """
+        if self._min_bar_volume_for_fill > 0 and float(bar_volume) < float(self._min_bar_volume_for_fill):
+            return 0.0
         if self._partial_fill_mode == "none":
             return float(order_qty)
 

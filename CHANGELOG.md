@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest Bar Parsing** (2026-02-14):
+  - Preserve zero OHLCV values when parsing bars.
+  - Log invalid timestamps with structured context and skip malformed bars.
+  - Reject invalid backtest date ranges before running.
+
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
@@ -23,6 +29,11 @@ All notable changes to this project will be documented in this file.
     - `scripts/smoke_gateway_heber_integration.py`
   - Added unit coverage for smoke gate checks:
     - `tests/unit/test_smoke_gateway_heber_integration_unit.py`
+
+### Changed
+
+- **Backtest Execution Realism** (2026-02-14):
+  - Added `min_bar_volume_for_fill` guard to skip fills on illiquid bars in backtests.
 
 - Added local Claude/Swarm workspace tooling assets and skill bundles:
   - `.claude/` helpers, settings, and skill definitions

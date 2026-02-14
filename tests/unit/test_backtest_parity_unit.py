@@ -122,6 +122,36 @@ class TestPartialFillModes:
 
 
 @pytest.mark.unit
+class TestMinimumBarVolume:
+    """Tests for min_bar_volume_for_fill guard."""
+
+    def test_min_bar_volume_for_fill_skips_zero_volume_bars(self) -> None:
+        logger = MagicMock()
+        engine = MagicMock()
+        engine.on_fill = MagicMock()
+
+        baseline = BacktestOrderExecutor(logger, initial_cash=100000)
+        baseline.set_backtest_config({"min_bar_volume_for_fill": 0})
+        baseline.submit(_make_intent(order_type=OrderType.MARKET, qty=1.0))
+
+        improved = BacktestOrderExecutor(logger, initial_cash=100000)
+        improved.set_backtest_config({"min_bar_volume_for_fill": 1})
+        improved.submit(_make_intent(order_type=OrderType.MARKET, qty=1.0))
+
+        bar_zero = _make_bar(time_offset_min=1, open=110.0, high=110.0, low=110.0, close=110.0, volume=0.0)
+        bar_liquid = _make_bar(time_offset_min=2, open=100.0, high=100.0, low=100.0, close=100.0, volume=1000.0)
+
+        baseline.fill_pending_for_bar(engine, "AAPL", bar_zero)
+        baseline.fill_pending_for_bar(engine, "AAPL", bar_liquid)
+
+        improved.fill_pending_for_bar(engine, "AAPL", bar_zero)
+        improved.fill_pending_for_bar(engine, "AAPL", bar_liquid)
+
+        assert baseline.fills[0]["fill_price"] == 110.0
+        assert improved.fills[0]["fill_price"] == 100.0
+
+
+@pytest.mark.unit
 class TestVolumeImpactSlippage:
     """Tests for _apply_slippage with volume_impact mode."""
 
