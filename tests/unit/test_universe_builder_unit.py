@@ -128,3 +128,14 @@ def test_universe_builder_uses_gateway_client_for_dynamic_volume_selection() -> 
         )
 
     assert builder.build_universe() == ["AAPL", "TSLA"]
+
+
+@pytest.mark.unit
+def test_universe_builder_strips_inline_comments_in_static_files(tmp_path) -> None:
+    static = tmp_path / "symbols.txt"
+    static.write_text("goog  # comment\n# full line comment\n")
+
+    cfg = {"universe": {"symbols": [], "static_files": [str(static)]}}
+    builder = UniverseBuilder(_DummyConfigLoader(cfg), _logger(), config=cfg)
+
+    assert builder.build_universe() == ["GOOG"]
