@@ -98,6 +98,21 @@ def create_async_http_client(
     )
 
 
+def _safe_response_excerpt(response: httpx.Response, limit: int = 500) -> str:
+    """Return a response text excerpt without raising on encoding issues."""
+    try:
+        return response.text[:limit]
+    except Exception:
+        content = response.content[:limit]
+        encoding = response.encoding
+        if encoding:
+            try:
+                return content.decode(encoding, errors="replace")
+            except LookupError:
+                return content.decode("utf-8", errors="replace")
+        return content.decode("utf-8", errors="replace")
+
+
 def raise_for_status(response: httpx.Response) -> None:
     """Validate HTTP response status, raising with structured context on failure."""
     try:
@@ -108,7 +123,8 @@ def raise_for_status(response: httpx.Response) -> None:
             method=str(response.request.method),
             url=str(response.request.url),
             status_code=response.status_code,
-            response_text=response.text[:500],
+            response_text=_safe_response_excerpt(response),
+            exc_info=True,
         )
         raise
 
