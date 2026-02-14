@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Scheduler now defaults invalid `schedule_time` values to `09:25` with a warning (2026-02-14).
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
@@ -15,6 +17,8 @@ All notable changes to this project will be documented in this file.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 
 ### Added
+
+- GapFill config now supports `min_or_range_pct` to filter overly tight opening ranges (2026-02-14).
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
@@ -50,6 +54,8 @@ All notable changes to this project will be documented in this file.
     - Created `tests/unit/test_startup_validation_unit.py` with 14 validation tests
 
 ### Changed
+
+- Universe static file parsing now strips inline `#` comments before symbol extraction (2026-02-14).
 
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
