@@ -30,12 +30,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Backtest volume-aware fills skip zero-volume bars** (2026-02-14):
-  - Volume-aware partial fills now return zero quantity when bar volume is missing/zero.
-  - Added debug log when a volume-aware fill is skipped due to zero volume.
-
-- **Backtest pending order index cleanup** (2026-02-14):
-  - Remove filled/canceled orders from the symbol-indexed pending list to prevent unbounded growth.
+- **Pipeline bar close extraction guardrails** (2026-02-14):
+  - Handle `None`/invalid close values with a warning and `0.0` fallback.
+- **Startup Alpaca stream gating** (2026-02-14):
+  - `_should_start_alpaca_stream()` now considers `data_backend` to avoid gateway/noop mis-starts.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
@@ -59,6 +57,13 @@ All notable changes to this project will be documented in this file.
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 - ORB minimum opening-range percent filter with micro backtest guard (2026-02-13).
+
+### Changed
+
+- **Scheduler config parsing safety** (2026-02-14):
+  - Invalid `schedule_time` now defaults to 09:25 ET with a warning.
+- **GapFill opening-range filter** (2026-02-14):
+  - Added `min_or_range_pct` to skip ultra-tight opening ranges.
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:
