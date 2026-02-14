@@ -147,11 +147,11 @@ def test_feature_pipeline_extracts_closes_from_mixed_bar_shapes() -> None:
 @pytest.mark.unit
 def test_feature_pipeline_extracts_closes_handles_invalid_values() -> None:
     alpaca = MagicMock()
-    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_invalid_closes"))
+    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_invalid"))
 
     class _Bar:
         def __init__(self, c: object) -> None:
             self.c = c
 
-    bars = [_Bar("bad"), {"c": "nope"}, {"c": 105.5}]
-    assert fp._extract_closes(bars) == [0.0, 0.0, 105.5]
+    bars = [_Bar("bad"), {"c": "oops"}, {"c": "101.5"}]
+    assert fp._extract_closes(bars) == [0.0, 0.0, 101.5]

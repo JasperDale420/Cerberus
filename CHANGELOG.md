@@ -35,13 +35,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Logged and surfaced time window parsing/check failures to aid debugging (2026-02-14).
-- Backtest universe builder now falls back to offline bars directory for `offline_symbols.txt` when static file paths are missing (2026-02-14).
-
-- **Stream/Feature helpers** (2026-02-14):
-  - Feature pipeline now treats missing close values as zero and logs a count for visibility.
-  - Alpaca stream startup logic now respects the configured data backend.
-  - Fetcher cache now handles object-style bars when resuming fetch windows.
+- (2026-02-14): FeaturePipeline close extraction now handles None/invalid values with warning fallback.
+- (2026-02-14): `_should_start_alpaca_stream()` now accounts for `data_backend` to match gateway/legacy behavior.
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
@@ -68,8 +63,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- GapFill config now supports `min_or_range_pct` to filter overly tight opening ranges (2026-02-14).
-
+- (2026-02-14): GapFill config now supports `min_or_volume` (opening range volume filter).
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 - **ORB opening-range filter** (2026-02-14):
   - Added `min_or_range_pct` to skip narrow opening ranges and avoid low-signal breakouts.

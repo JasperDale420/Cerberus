@@ -34,7 +34,7 @@ class GapFillStrategy(BaseStrategy):
         self.risk_reward = cfg.risk_reward
         self.or_time_minutes = cfg.or_time_minutes
         self.weak_trend_max_score = cfg.weak_trend_max_score
-        self.min_or_range_pct = cfg.min_or_range_pct
+        self.min_or_volume = cfg.min_or_volume
 
     def on_bar(
         self,
@@ -119,6 +119,16 @@ class GapFillStrategy(BaseStrategy):
                 or_bars.append(b)
 
         if not or_bars:
+            return None
+
+        or_volume = float(sum(float(b.volume) for b in or_bars))
+        if self.min_or_volume > 0 and or_volume < float(self.min_or_volume):
+            self.logger.debug(
+                "GapFill: Opening range volume below threshold",
+                symbol=symbol,
+                or_volume=or_volume,
+                min_or_volume=float(self.min_or_volume),
+            )
             return None
 
         or_high = max(b.high for b in or_bars)
