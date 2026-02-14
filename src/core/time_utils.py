@@ -13,7 +13,7 @@ from src.core.logger import StructuredLogger
 
 # Cache timezone object for performance
 _EASTERN_TZ = pytz.timezone("US/Eastern")
-logger = StructuredLogger("time_utils")
+logger = StructuredLogger("TimeUtils")
 
 
 def get_eastern_timezone() -> pytz.tzinfo.BaseTzInfo:
@@ -80,15 +80,17 @@ def in_trading_window(dt: datetime, start: time, end: time, convert_to_eastern: 
         else:
             t = dt.time()
         return start <= t <= end
-    except Exception:
-        logger.error(
+    except Exception as exc:
+        # Fail open - better to allow trading than halt on timezone errors
+        logger.warning(
             "time_window_check_failed",
+            error=str(exc),
             start=str(start),
             end=str(end),
             convert_to_eastern=convert_to_eastern,
+            dt=str(dt),
             exc_info=True,
         )
-        # Fail open to avoid blocking trading due to timezone errors.
         return True
 
 
@@ -147,12 +149,14 @@ def in_time_window_str(dt: datetime, start_str: str, end_str: str, convert_to_ea
         start = parse_time_string(start_str)
         end = parse_time_string(end_str)
         return in_trading_window(dt, start, end, convert_to_eastern)
-    except Exception:
-        logger.error(
-            "time_window_parse_failed",
+    except Exception as exc:
+        logger.warning(
+            "time_window_string_check_failed",
+            error=str(exc),
             start_str=start_str,
             end_str=end_str,
             convert_to_eastern=convert_to_eastern,
+            dt=str(dt),
             exc_info=True,
         )
         return True
