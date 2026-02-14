@@ -12,7 +12,11 @@ from src.backtest.stats import BacktestAnalyzer
 from src.core.config import ConfigLoader
 from src.core.domain import Bar, SymbolState
 from src.core.logger import StructuredLogger
+from src.core.settings import get_settings
 from src.data.alpaca import AlpacaClient
+from src.data.api_client import CentralApiClient
+from src.data.fetcher import DataFetcher
+from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.universe import UniverseBuilder
@@ -75,9 +79,25 @@ class BacktestRunner:
         self.offline_bars_dir = str(offline_bars_dir).strip() if offline_bars_dir else ""
         self.offline_provider = JsonlBarsProvider(Path(self.offline_bars_dir)) if self.offline_bars_dir else None
         self.warmup_days = int(warmup_days)
+        self.central_api_client: Optional[CentralApiClient] = None
 
         self.alpaca_client = (
             None if self.offline_provider is not None else AlpacaClient(self.config_loader, self.logger)
+        )
+        runtime_settings = get_settings()
+        if runtime_settings.use_gateway_data and runtime_settings.cerberus_gateway_key:
+            self.central_api_client = CentralApiClient(self.config_loader, self.logger)
+        self.unusual_whales_client = UnusualWhalesClient(
+            self.config_loader,
+            self.logger,
+            config=self.config,
+        )
+        self.data_fetcher = DataFetcher(
+            self.alpaca_client,
+            self.unusual_whales_client,
+            self.logger,
+            central_api_client=self.central_api_client,
+            config=self.config,
         )
 
         # Mock Executor
@@ -125,6 +145,7 @@ class BacktestRunner:
             logger=self.logger,
             config=self.config,
             alpaca_client=self.alpaca_client,
+            central_api_client=self.central_api_client,
             offline_bars_provider=self.offline_provider,
             clock=_backtest_clock,
         )
@@ -249,15 +270,21 @@ class BacktestRunner:
         fetch_start = self.start_date - timedelta(days=self.warmup_days)
         if self.offline_provider is not None:
             return list(self.offline_provider.get_bars(symbol, fetch_start, self.end_date, timeframe=timeframe))
-        if self.alpaca_client is None:
+        if self.data_fetcher is None:
             return []
 
-        bars_data = await asyncio.to_thread(
-            self.alpaca_client.get_historical_bars,
+        bars_data, fetch_metrics = await self.data_fetcher.fetch_bars(
             symbol,
             fetch_start,
             self.end_date,
             timeframe,
+        )
+        self.logger.info(
+            "Loaded bars from fetcher",
+            symbol=str(symbol).upper(),
+            timeframe=timeframe,
+            count=len(bars_data),
+            fetch_metrics=fetch_metrics,
         )
         if isinstance(bars_data, dict) and "bars" in bars_data:
             bars_data = bars_data["bars"]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
@@ -9,6 +9,7 @@ import pytest
 
 import src.backtest.runner as runner_mod
 from src.backtest.runner import BacktestRunner
+from src.core.settings import Settings
 
 
 @pytest.mark.unit
@@ -131,3 +132,108 @@ def test_backtest_runner_logs_scan_exceptions_with_exc_info() -> None:
     _, kwargs = runner.logger.error.call_args
     assert kwargs.get("exc_info") is True
     assert "scan blew up" in str(kwargs.get("error"))
+
+
+@pytest.mark.unit
+def test_backtest_runner_uses_data_fetcher_for_gateway_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_loader = MagicMock()
+    fake_loader.load_config.return_value = {
+        "timezone": "US/Eastern",
+        "index_symbol": "SPY",
+        "risk": {},
+        "strategies": {},
+        "scanner": {"enabled": False},
+    }
+    monkeypatch.setattr(runner_mod, "ConfigLoader", MagicMock(return_value=fake_loader))
+    mock_alpaca = MagicMock()
+    monkeypatch.setattr(runner_mod, "AlpacaClient", MagicMock(return_value=mock_alpaca))
+    monkeypatch.setattr(runner_mod, "UnusualWhalesClient", MagicMock())
+
+    central = MagicMock()
+    settings = Settings(
+        CERBERUS_DATA_BACKEND="gateway",
+        CERBERUS_GATEWAY_URL="http://gateway.test",
+        CERBERUS_GATEWAY_KEY="gw_key",
+    )
+    monkeypatch.setattr(runner_mod, "get_settings", lambda: settings)
+    monkeypatch.setattr(runner_mod, "CentralApiClient", MagicMock(return_value=central))
+
+    mock_fetcher = MagicMock()
+    mock_fetcher.fetch_bars = AsyncMock(
+        return_value=(
+            [
+                {
+                    "t": "2025-01-01T14:30:00Z",
+                    "o": 100.0,
+                    "h": 101.0,
+                    "l": 99.5,
+                    "c": 100.5,
+                    "v": 1000,
+                }
+            ],
+            {
+                "alpaca_fetch_fail": 0,
+                "alpaca_no_bars": 0,
+                "cache_hits": 0,
+                "incremental_fetches": 0,
+            },
+        )
+    )
+    monkeypatch.setattr(runner_mod, "DataFetcher", MagicMock(return_value=mock_fetcher))
+
+    mock_ub = MagicMock()
+    mock_ub.build_universe.return_value = ["AAPL"]
+    monkeypatch.setattr(runner_mod, "UniverseBuilder", MagicMock(return_value=mock_ub))
+
+    runner = BacktestRunner("ignored", "2025-01-10", "2025-01-11")
+    bars = asyncio.run(runner._load_bars_for_symbol("aapl", "1Min"))
+
+    assert len(bars) == 1
+    assert bars[0].symbol == "aapl"
+    expected_start = runner.start_date - timedelta(days=runner.warmup_days)
+    mock_fetcher.fetch_bars.assert_called_once_with(
+        "aapl",
+        expected_start,
+        runner.end_date,
+        "1Min",
+    )
+    mock_alpaca.get_historical_bars.assert_not_called()
+
+
+@pytest.mark.unit
+def test_backtest_runner_universe_builder_receives_central_api_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_loader = MagicMock()
+    fake_loader.load_config.return_value = {"timezone": "US/Eastern", "index_symbol": "SPY"}
+    monkeypatch.setattr(runner_mod, "ConfigLoader", MagicMock(return_value=fake_loader))
+    monkeypatch.setattr(runner_mod, "AlpacaClient", MagicMock())
+    monkeypatch.setattr(runner_mod, "UnusualWhalesClient", MagicMock())
+
+    settings = Settings(
+        CERBERUS_DATA_BACKEND="gateway",
+        CERBERUS_GATEWAY_URL="http://gateway.test",
+        CERBERUS_GATEWAY_KEY="gw_key",
+    )
+    monkeypatch.setattr(runner_mod, "get_settings", lambda: settings)
+
+    mock_central = MagicMock()
+    monkeypatch.setattr(runner_mod, "CentralApiClient", MagicMock(return_value=mock_central))
+
+    mock_fetcher = MagicMock()
+    mock_fetcher.fetch_bars = AsyncMock(
+        return_value=([], {"alpaca_fetch_fail": 0, "alpaca_no_bars": 0, "cache_hits": 0, "incremental_fetches": 0})
+    )
+    monkeypatch.setattr(runner_mod, "DataFetcher", MagicMock(return_value=mock_fetcher))
+
+    captured_kwargs: dict[str, object] = {}
+
+    def _universe_builder(**kwargs):
+        captured_kwargs.update(kwargs)
+        ub = MagicMock()
+        ub.build_universe.return_value = ["AAPL"]
+        return ub
+
+    monkeypatch.setattr(runner_mod, "UniverseBuilder", _universe_builder)
+
+    BacktestRunner("ignored", "2025-01-10", "2025-01-11")
+
+    assert captured_kwargs.get("central_api_client") is mock_central

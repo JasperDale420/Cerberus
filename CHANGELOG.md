@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - Mypy cleanups for gateway stream parsing, Alpaca responses, and snapshot persistence (2026-02-14).
 
+- Backtest historical bar loading now uses the shared DataFetcher/Data-Gateway/Heber path (with Alpaca fallback) instead of only direct Alpaca pulls, enabling backtests to replay from Heber-normalized ingested data when configured (2026-02-14).
+
 - Mypy typing for CI tooling config loaders (2026-02-14).
 
 - Feature pipeline close extraction now tolerates None/malformed values (2026-02-14).
