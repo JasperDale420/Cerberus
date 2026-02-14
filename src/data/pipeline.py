@@ -335,13 +335,29 @@ class FeaturePipeline:
                     # we need a date for the flow fetch. feature.last_updated should be consistent with as_of.
                     date_str = feat.last_updated.strftime("%Y-%m-%d")
                     flow_data = await self.fetcher.fetch_flow(sym, date_str)
-
-                    # Also fetch Greek Exposure for GEX
-                    gex_data = await self.fetcher.fetch_gex(sym)
-                except Exception:
+                except Exception as e:
                     local_fail = 1
-                    # Log already handled in fetcher but we can log context here too if needed
                     flow_data = []
+                    self.logger.warning(
+                        "Unusual Whales flow fetch failed in pipeline",
+                        symbol=sym,
+                        error=str(e),
+                    )
+
+                if flow_data:
+                    try:
+                        # Also fetch Greek Exposure for GEX
+                        gex_data = await self.fetcher.fetch_gex(sym)
+                    except Exception as e:
+                        local_fail = 1
+                        gex_data = []
+                        self.logger.warning(
+                            "Unusual Whales GEX fetch failed in pipeline",
+                            symbol=sym,
+                            error=str(e),
+                        )
+                else:
+                    gex_data = []
 
             (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = self.calculator.compute_flow_metrics(flow_data)
             d_score = abs(float(f_bias)) * float(agg_share)
