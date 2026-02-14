@@ -142,3 +142,12 @@ def test_feature_pipeline_extracts_closes_from_mixed_bar_shapes() -> None:
 
     bars = [_Bar(101.0), {"c": 102.5}, {"c": None}, _Bar(103.25)]
     assert fp._extract_closes(bars) == [101.0, 102.5, 0.0, 103.25]
+
+
+@pytest.mark.unit
+def test_feature_pipeline_extracts_closes_handles_unknown_shapes() -> None:
+    alpaca = MagicMock()
+    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_unknown"))
+
+    bars = ["oops", {"c": 1.5}]
+    assert fp._extract_closes(bars) == [0.0, 1.5]
