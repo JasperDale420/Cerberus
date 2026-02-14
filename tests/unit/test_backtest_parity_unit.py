@@ -238,6 +238,18 @@ class TestBacktestConfigParsing:
         executor.set_backtest_config({"partial_fill_pct": 0.05})
         assert executor._partial_fill_pct == 0.1
 
+    def test_broker_managed_exits_resets_when_advanced_exits_disabled(self) -> None:
+        logger = MagicMock()
+        executor = BacktestOrderExecutor(logger, initial_cash=100000)
+
+        executor.set_risk_config({"advanced_exits": {"enabled": True}})
+        executor.set_backtest_config({})
+        assert executor.broker_managed_exits is False
+
+        executor.set_risk_config({"advanced_exits": {"enabled": False}})
+        executor.set_backtest_config({})
+        assert executor.broker_managed_exits is True
+
 
 @pytest.mark.unit
 def test_order_fill_uses_volume_aware_logic() -> None:

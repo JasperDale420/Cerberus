@@ -121,14 +121,25 @@ class BacktestOrderExecutor:
         # Check if advanced exits are enabled (from risk config)
         # If so, disable broker_managed_exits to let PositionManager handle exits
         adv_exits = self._risk_cfg.get("advanced_exits", {})
-        if isinstance(adv_exits, dict) and adv_exits.get("enabled", False):
+        adv_enabled = isinstance(adv_exits, dict) and adv_exits.get("enabled", False)
+        if adv_enabled:
+            if self.broker_managed_exits:
+                self.logger.info(
+                    "Advanced exits enabled, broker_managed_exits disabled",
+                    trailing_stop=adv_exits.get("trailing_stop", {}).get("enabled", False),
+                    partial_exits=adv_exits.get("partial_exits", {}).get("enabled", False),
+                    regime_aware_stops=adv_exits.get("regime_aware_stops", True),
+                )
             self.broker_managed_exits = False
-            self.logger.info(
-                "Advanced exits enabled, broker_managed_exits disabled",
-                trailing_stop=adv_exits.get("trailing_stop", {}).get("enabled", False),
-                partial_exits=adv_exits.get("partial_exits", {}).get("enabled", False),
-                regime_aware_stops=adv_exits.get("regime_aware_stops", True),
-            )
+        else:
+            if not self.broker_managed_exits:
+                self.logger.info(
+                    "Advanced exits disabled, broker_managed_exits enabled",
+                    trailing_stop=False,
+                    partial_exits=False,
+                    regime_aware_stops=False,
+                )
+            self.broker_managed_exits = True
 
     def set_max_open_order_age_sec(self, value: Any) -> None:
         try:
