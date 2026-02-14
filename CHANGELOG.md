@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   - Re-enabled broker-managed exits when advanced exits are turned off, with structured logs on mode switches.
   - Unrealized PnL now accounts for zero-price inputs instead of treating them as missing.
   - Realized PnL preserves sub-cent precision across trades to avoid rounding away small gains.
+  - Feature pipeline close extraction now tolerates `None` values without raising.
+  - Alpaca stream startup respects data backend selection for gateway vs legacy modes.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
