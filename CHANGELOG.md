@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **HTTP error logging resilience** (2026-02-14):
+  - `raise_for_status` now logs safely even if response encoding is invalid.
+  - Added traceback logging for HTTP errors.
+  - Added tests for error logging and bad-encoding handling.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
