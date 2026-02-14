@@ -308,7 +308,9 @@ async def async_main():
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
     central_api_client = CentralApiClient(config_loader, logger)
-    gateway_stream_client = GatewayStreamClient(config_loader, logger)
+    gateway_stream_client = GatewayStreamClient(
+        config_loader, logger, asset_class=runtime_settings.cerberus_asset_class
+    )
 
     feature_pipeline = FeaturePipeline(
         alpaca_client,
@@ -419,7 +421,12 @@ async def async_main():
         gateway_stream_task = asyncio.create_task(
             gateway_stream_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
         )
-        gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
+        # Subscribe to the right symbols based on asset class
+        if runtime_settings.cerberus_asset_class == "crypto":
+            for sym in config.get("universe", {}).get("symbols", []):
+                gateway_stream_client.subscribe(sym)
+        else:
+            gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
 
     # Alpaca direct streams: only for direct Alpaca execution mode.
     start_alpaca_stream = _should_start_alpaca_stream(order_executor=args.order_executor)

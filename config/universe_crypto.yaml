@@ -1,0 +1,9 @@
+universe:
+  symbols:
+    - BTC/USD
+    - ETH/USD
+  dynamic:
+    previous_day_top_volume:
+      enabled: false
+    screener:
+      enabled: false

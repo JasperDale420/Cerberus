@@ -16,14 +16,24 @@ from src.core.logger import StructuredLogger
 class GatewayStreamClient:
     """WebSocket client for Data-Gateway live bar streaming."""
 
-    def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
+    # Feed names by asset class
+    _FEED_MAP = {
+        "crypto": ["crypto_bars"],
+        "us_equity": ["stock_bars"],
+    }
+    # All bar-type feed names accepted during payload extraction
+    _BAR_FEEDS = frozenset({"bars", "crypto_bars", "stock_bars"})
+
+    def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger, asset_class: str = "us_equity"):
         self.logger = logger
+        self.asset_class = asset_class
         base_url = config_loader.get_env(
             "CERBERUS_GATEWAY_URL",
             config_loader.get_env("DATA_INGESTION_URL", "http://localhost:8080"),
         )
         self.gateway_key = config_loader.get_env("CERBERUS_GATEWAY_KEY", "")
         self.ws_url = self._build_ws_url(base_url)
+        self._feeds = self._FEED_MAP.get(asset_class, ["stock_bars"])
 
         self._desired_symbols: set[str] = set()
         self._ws: Any = None
@@ -60,9 +70,7 @@ class GatewayStreamClient:
         except Exception:
             return -1
 
-    async def _invoke_bar_callback(
-        self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int
-    ) -> None:
+    async def _invoke_bar_callback(self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int) -> None:
         async def _call(cb: Callable[..., Any], *args: Any) -> None:
             if asyncio.iscoroutinefunction(cb):
                 await cb(*args)
@@ -112,7 +120,7 @@ class GatewayStreamClient:
         if message.get("type") != "data":
             return None
         feed = str(message.get("feed") or "")
-        if feed != "bars":
+        if feed not in self._BAR_FEEDS:
             return None
 
         data = message.get("data")
@@ -137,7 +145,7 @@ class GatewayStreamClient:
         await self._send_json(
             {
                 "action": "subscribe",
-                "feeds": ["stock_bars"],
+                "feeds": self._feeds,
                 "symbols": symbols,
             }
         )
@@ -148,7 +156,7 @@ class GatewayStreamClient:
         await self._send_json(
             {
                 "action": "unsubscribe",
-                "feeds": ["stock_bars"],
+                "feeds": self._feeds,
                 "symbols": symbols,
             }
         )
@@ -251,4 +259,3 @@ class GatewayStreamClient:
                 backoff = min(backoff * 2.0, 30.0)
             finally:
                 self._ws = None
-

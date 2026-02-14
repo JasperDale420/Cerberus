@@ -36,6 +36,43 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # Crypto Paper Trading - Runs 24/7 (independent of market hours)
+  cerberus-crypto:
+    build: .
+    image: empire/cerberus:latest
+    container_name: cerberus_crypto
+    command: python -m src.main --mode paper --order-executor gateway --config config/strategies_crypto.yaml
+    restart: always
+    profiles:
+      - crypto # Start with: docker compose --profile crypto up -d
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./cerberus.db:/app/cerberus.db
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
+      - CERBERUS_ASSET_CLASS=crypto
+      - CERBERUS_DATA_BACKEND=gateway
+      - CERBERUS_STORAGE_BACKEND=sqlite
+      - CERBERUS_FAILOVER_TO_LEGACY=false
+      - CERBERUS_GATEWAY_URL=http://host.docker.internal:8080
+      - CERBERUS_GATEWAY_KEY=${CERBERUS_GATEWAY_KEY:-gw_cerberus_dev_key_12345}
+    healthcheck:
+      test: [ "CMD", "python", "-m", "src.main", "--healthcheck" ]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   # Scheduler for EOD jobs and weekly analysis (optional - runs 24/7)
   cerberus-scheduler:
     build: .

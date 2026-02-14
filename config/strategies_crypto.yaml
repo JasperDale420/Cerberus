@@ -1,0 +1,41 @@
+universe:
+  symbols:
+    - BTC/USD
+    - ETH/USD
+  static_files: []
+  dynamic:
+    previous_day_top_volume:
+      enabled: false
+    screener:
+      enabled: false
+
+strategies:
+  # Disable all equity strategies by default
+  vwap_reversion:
+    enabled: true  # Let's test with one simple strategy
+    params:
+      symbol: BTC/USD
+      timeframe: 1Min
+
+  orb:
+    enabled: false
+  vwap_trend_rider:
+    enabled: false
+  index_mean_reversion:
+    enabled: false
+  flow_momentum:
+    enabled: false
+  gap_fill:
+    enabled: false
+  vix_spike_fade:
+    enabled: false
+  momentum_continuation:
+    enabled: false
+  fusion_v1:
+    enabled: false
+  pair_trading:
+    enabled: false
+  trend_pullback:
+    enabled: false
+  failed_breakout:
+    enabled: false
