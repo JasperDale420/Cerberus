@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from unittest.mock import patch
 
 from apscheduler.triggers.cron import CronTrigger
@@ -39,6 +40,24 @@ def test_add_job_correctly():
             # but we can rely on integration verification if this is too fragile.
             # But let's at least check the repr or configured fields if accessible.
             pass
+
+
+def test_invalid_schedule_time_defaults_to_0925():
+    config = {"timezone": "America/New_York", "schedule_time": "bad"}
+    scheduler = CerberusScheduler(config)
+
+    with patch.object(scheduler.scheduler, "start"):
+        with patch.object(scheduler.scheduler, "add_job") as mock_add_job:
+            scheduler.start()
+
+            _, kwargs = mock_add_job.call_args
+            trigger = kwargs["trigger"]
+
+            now = datetime(2026, 2, 12, 8, 0, tzinfo=scheduler.tz)
+            next_fire = trigger.get_next_fire_time(None, now)
+
+            assert next_fire.hour == 9
+            assert next_fire.minute == 25
 
 
 @patch("subprocess.run")
