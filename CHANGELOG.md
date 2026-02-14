@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest volume-aware fills skip zero-volume bars** (2026-02-14):
+  - Volume-aware partial fills now return zero quantity when bar volume is missing/zero.
+  - Added debug log when a volume-aware fill is skipped due to zero volume.
+
+- **Backtest pending order index cleanup** (2026-02-14):
+  - Remove filled/canceled orders from the symbol-indexed pending list to prevent unbounded growth.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).

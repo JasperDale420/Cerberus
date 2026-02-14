@@ -120,6 +120,40 @@ class TestPartialFillModes:
 
         assert fill_qty == 500.0
 
+    def test_volume_aware_zero_volume_yields_no_fill(self) -> None:
+        logger = MagicMock()
+        executor = BacktestOrderExecutor(logger, initial_cash=100000)
+        executor.set_backtest_config(
+            {
+                "partial_fill_mode": "volume_aware",
+                "partial_fill_rate": 0.1,
+            }
+        )
+
+        fill_qty = executor._calculate_fill_qty(order_qty=500, bar_volume=0)
+
+        assert fill_qty == 0.0
+
+
+@pytest.mark.unit
+class TestPendingOrderCleanup:
+    """Tests for pending order cleanup after fills."""
+
+    def test_filled_order_removed_from_pending_index(self) -> None:
+        logger = MagicMock()
+        executor = BacktestOrderExecutor(logger, initial_cash=100000)
+        engine = MagicMock()
+
+        intent = _make_intent()
+        executor.submit(intent)
+
+        assert len(executor._pending_by_symbol["AAPL"]) == 1
+
+        bar = _make_bar(time_offset_min=1)
+        executor.fill_pending_for_bar(engine, "AAPL", bar)
+
+        assert executor._pending_by_symbol.get("AAPL") in (None, [])
+
 
 @pytest.mark.unit
 class TestVolumeImpactSlippage:
