@@ -425,7 +425,7 @@ class FeaturePipeline:
         if self.snapshots_enabled and self.snapshot_manager:
             now = as_of or self.clock()
             for feat in features.values():
-                self.snapshot_manager.persist_feature_snapshot(feat, now)
+                self.snapshot_manager.persist_feature_snapshot(features=feat, as_of_ts=now)
 
         # Finalize metrics
         if hasattr(self, "last_run_metrics"):

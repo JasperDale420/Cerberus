@@ -19,6 +19,16 @@ All notable changes to this project will be documented in this file.
   - `_should_start_alpaca_stream()` now respects `data_backend` and avoids unexpected argument errors in gateway mode tests.
 - **Feature pipeline close extraction guard** (2026-02-14):
   - `_extract_closes()` now treats `None` close values as `0.0` instead of raising.
+- **CI tooling config typing cleanup** (2026-02-14):
+  - Cast CI config loaders to satisfy mypy return type expectations.
+- **Gateway stream bar coercion** (2026-02-14):
+  - Normalize gateway bar fields with safe float coercion to avoid None/typing errors.
+- **Snapshot persistence call fix** (2026-02-14):
+  - Feature snapshot persistence now uses keyword arguments to match snapshot manager signature.
+- **Alpaca historical response guards** (2026-02-14):
+  - Use safe `data` extraction when Alpaca SDK responses are dicts or objects.
+- **Gateway retry backoff typing** (2026-02-14):
+  - Tightened retry backoff parsing/casts to keep mypy clean.
 
 ### Added
 
