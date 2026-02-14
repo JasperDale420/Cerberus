@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 
 - **Scheduler config parsing safety** (2026-02-14):
   - Invalid `schedule_time` now defaults to 09:25 ET with a warning.
+- **GapFill opening-range filter** (2026-02-14):
+  - Added `min_or_range_pct` to skip ultra-tight opening ranges.
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:

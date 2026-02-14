@@ -30,6 +30,7 @@ class GapFillStrategy(BaseStrategy):
         cfg = GapFillConfig(**config)
         self.min_gap = cfg.min_gap
         self.max_gap = cfg.max_gap
+        self.min_or_range_pct = cfg.min_or_range_pct
         self.risk_reward = cfg.risk_reward
         self.or_time_minutes = cfg.or_time_minutes
         self.weak_trend_max_score = cfg.weak_trend_max_score
@@ -121,6 +122,17 @@ class GapFillStrategy(BaseStrategy):
 
         or_high = max(b.high for b in or_bars)
         or_low = min(b.low for b in or_bars)
+        open_price = float(or_bars[0].open)
+        if float(self.min_or_range_pct) > 0 and open_price > 0:
+            or_range_pct = (float(or_high) - float(or_low)) / open_price
+            if or_range_pct < float(self.min_or_range_pct):
+                self.logger.debug(
+                    "GapFill: Opening range too tight",
+                    symbol=symbol,
+                    or_range_pct=round(or_range_pct * 100, 3),
+                    min_or_range_pct=round(float(self.min_or_range_pct) * 100, 3),
+                )
+                return None
 
         # Fade gap up (short): breakdown below OR low.
         if gap_up and bar.close < or_low:
