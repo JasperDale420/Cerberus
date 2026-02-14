@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta
 from datetime import time as time_type
 from typing import Any, Dict, Optional
@@ -134,17 +135,13 @@ class ORBStrategy(BaseStrategy):
         orb_high = symbol_state.indicators.get("orb_high")
         orb_low = symbol_state.indicators.get("orb_low")
 
-        if not orb_high or not orb_low:
+        if not self._orb_range_ready(orb_high, orb_low):
+            self._log_missing_orb_range(symbol_state, symbol, bar.time, orb_high, orb_low)
             return None
-        orb_high = float(orb_high)
-        orb_low = float(orb_low)
-
-        if self.min_or_range_pct > 0:
-            if orb_low <= 0:
-                return None
-            orb_range_pct = (orb_high - orb_low) / orb_low
-            if orb_range_pct < self.min_or_range_pct:
-                return None
+        assert orb_high is not None
+        assert orb_low is not None
+        orb_high_f = float(orb_high)
+        orb_low_f = float(orb_low)
 
         # === QLIB-INSPIRED CONFIRMATIONS ===
 
@@ -161,7 +158,7 @@ class ORBStrategy(BaseStrategy):
             breakout_rvol = rvol  # fallback to pre-computed RVOL
 
         # Long Breakout
-        if bar.close > orb_high:
+        if bar.close > orb_high_f:
             # Confirmation 1: VWAP - price should be above VWAP for longs
             if vwap and bar.close < vwap:
                 return None  # Weak long - price below VWAP
@@ -176,18 +173,19 @@ class ORBStrategy(BaseStrategy):
                 return None  # Counter-trend long after large down gap
 
             # P2 fix: Apply ATR buffer to stop
-            stop = orb_low
+            stop = orb_low_f
             if self.stop_buffer_atr_mult > 0:
                 atr = self._calculate_atr(symbol_state)
-                stop = orb_low - (atr * self.stop_buffer_atr_mult)
+                stop = orb_low_f - (atr * self.stop_buffer_atr_mult)
+            stop = self._cap_stop_loss(OrderSide.BUY, bar.close, stop, symbol, bar.time)
             return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.BUY,
                 stop,
                 market_state,
-                orb_high,
-                orb_low,
+                orb_high_f,
+                orb_low_f,
                 meta={
                     "gap_pct": gap_pct,
                     "flow_zscore": flow_zscore,
@@ -198,7 +196,7 @@ class ORBStrategy(BaseStrategy):
             )
 
         # Short Breakout
-        if bar.close < orb_low:
+        if bar.close < orb_low_f:
             # Confirmation 1: VWAP - price should be below VWAP for shorts
             if vwap and bar.close > vwap:
                 return None  # Weak short - price above VWAP
@@ -213,18 +211,19 @@ class ORBStrategy(BaseStrategy):
                 return None  # Counter-trend short after large up gap
 
             # P2 fix: Apply ATR buffer to stop
-            stop = orb_high
+            stop = orb_high_f
             if self.stop_buffer_atr_mult > 0:
                 atr = self._calculate_atr(symbol_state)
-                stop = orb_high + (atr * self.stop_buffer_atr_mult)
+                stop = orb_high_f + (atr * self.stop_buffer_atr_mult)
+            stop = self._cap_stop_loss(OrderSide.SELL, bar.close, stop, symbol, bar.time)
             return self._create_orb_signal(
                 symbol,
                 bar,
                 OrderSide.SELL,
                 stop,
                 market_state,
-                orb_high,
-                orb_low,
+                orb_high_f,
+                orb_low_f,
                 meta={
                     "gap_pct": gap_pct,
                     "flow_zscore": flow_zscore,
@@ -235,6 +234,68 @@ class ORBStrategy(BaseStrategy):
             )
 
         return None
+
+    def _orb_range_ready(self, orb_high: Any, orb_low: Any) -> bool:
+        if orb_high is None or orb_low is None:
+            return False
+        try:
+            return math.isfinite(float(orb_high)) and math.isfinite(float(orb_low))
+        except (TypeError, ValueError):
+            return False
+
+    def _log_missing_orb_range(
+        self,
+        symbol_state: SymbolState,
+        symbol: str,
+        bar_time: datetime,
+        orb_high: Any,
+        orb_low: Any,
+    ) -> None:
+        bar_date = bar_time.date()
+        if symbol_state.indicators.get("orb_missing_range_logged") == bar_date:
+            return
+        symbol_state.indicators["orb_missing_range_logged"] = bar_date
+        self.logger.warning(
+            f"{self.name}: missing opening range data",
+            symbol=symbol,
+            orb_high=orb_high,
+            orb_low=orb_low,
+            orb_complete=symbol_state.indicators.get("orb_complete"),
+        )
+
+    def _cap_stop_loss(
+        self,
+        side: OrderSide,
+        entry_price: float,
+        stop_price: float,
+        symbol: str,
+        bar_time: datetime,
+    ) -> float:
+        if self.stop_loss_pct <= 0:
+            return stop_price
+        entry = float(entry_price)
+        if entry <= 0:
+            return stop_price
+        max_risk = entry * float(self.stop_loss_pct)
+        if max_risk <= 0:
+            return stop_price
+
+        if side == OrderSide.BUY:
+            capped_stop = max(float(stop_price), entry - max_risk)
+        else:
+            capped_stop = min(float(stop_price), entry + max_risk)
+
+        if capped_stop != float(stop_price):
+            self.logger.info(
+                f"{self.name}: stop_loss_pct cap applied",
+                symbol=symbol,
+                entry_price=entry,
+                stop_price=float(stop_price),
+                capped_stop=capped_stop,
+                stop_loss_pct=self.stop_loss_pct,
+                bar_time=bar_time.isoformat(),
+            )
+        return capped_stop
 
     def _create_orb_signal(
         self,

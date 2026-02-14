@@ -45,9 +45,9 @@ def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
     """
     normalized_executor = str(order_executor or "").strip().lower()
     normalized_backend = str(data_backend or "").strip().lower()
-    if normalized_backend == "gateway" and normalized_executor in ("noop", "gateway"):
-        return False
-    return normalized_executor == "alpaca" or normalized_backend != "gateway"
+    if normalized_backend == "gateway":
+        return normalized_executor == "alpaca"
+    return True
 
 
 def _next_market_open_local(now: datetime) -> datetime:

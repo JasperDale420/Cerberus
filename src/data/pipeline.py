@@ -76,12 +76,7 @@ class FeaturePipeline:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
         closes: List[float] = []
         for bar in bars_data:
-            if hasattr(bar, "c"):
-                value = getattr(bar, "c", 0)
-            elif isinstance(bar, dict):
-                value = bar.get("c", 0)
-            else:
-                value = 0
+            value = bar.c if hasattr(bar, "c") else bar.get("c", 0)
             closes.append(float(value or 0))
         return closes
 

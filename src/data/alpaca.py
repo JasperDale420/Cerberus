@@ -150,11 +150,8 @@ class AlpacaClient:
             )
             resp = self.historical_client.get_stock_bars(req)
             data = getattr(resp, "data", None)
-            if not isinstance(data, dict) and isinstance(resp, dict):
-                data = resp.get("data")
-            if not isinstance(data, dict):
-                data = {}
-            bars = data.get(symbol) or []
+            bars = data.get(symbol) if isinstance(data, dict) else []
+            bars = bars or []
 
             # Return a stable dict format aligned with existing FeaturePipeline parsing.
             out = []
@@ -195,11 +192,8 @@ class AlpacaClient:
             )
             resp = self.historical_client.get_stock_trades(req)
             data = getattr(resp, "data", None)
-            if not isinstance(data, dict) and isinstance(resp, dict):
-                data = resp.get("data")
-            if not isinstance(data, dict):
-                data = {}
-            trades = data.get(symbol) or []
+            trades = data.get(symbol) if isinstance(data, dict) else []
+            trades = trades or []
 
             out = []
             for t in trades:

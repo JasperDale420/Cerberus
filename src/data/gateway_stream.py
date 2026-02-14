@@ -123,17 +123,29 @@ class GatewayStreamClient:
         if not symbol:
             raise ValueError("Missing symbol in gateway bar payload")
         ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        open_val = self._coerce_float(payload.get("o") if payload.get("o") is not None else payload.get("open"))
+        high_val = self._coerce_float(payload.get("h") if payload.get("h") is not None else payload.get("high"))
+        low_val = self._coerce_float(payload.get("l") if payload.get("l") is not None else payload.get("low"))
+        close_val = self._coerce_float(payload.get("c") if payload.get("c") is not None else payload.get("close"))
+        volume_val = self._coerce_float(payload.get("v") if payload.get("v") is not None else payload.get("volume"))
         return Bar(
             symbol=symbol,
             time=ts,
-            open=self._coerce_float(payload.get("o") if payload.get("o") is not None else payload.get("open")),
-            high=self._coerce_float(payload.get("h") if payload.get("h") is not None else payload.get("high")),
-            low=self._coerce_float(payload.get("l") if payload.get("l") is not None else payload.get("low")),
-            close=self._coerce_float(payload.get("c") if payload.get("c") is not None else payload.get("close")),
-            volume=self._coerce_float(payload.get("v") if payload.get("v") is not None else payload.get("volume")),
+            open=open_val,
+            high=high_val,
+            low=low_val,
+            close=close_val,
+            volume=volume_val,
             vwap=payload.get("vw") or payload.get("vwap"),
             trade_count=payload.get("n") or payload.get("trade_count"),
         )
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     def _extract_bar_payload(self, message: dict[str, Any]) -> dict[str, Any] | None:
         if message.get("type") != "data":
