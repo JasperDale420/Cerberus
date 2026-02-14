@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Pipeline bar close extraction guardrails** (2026-02-14):
+  - Handle `None`/invalid close values with a warning and `0.0` fallback.
+- **Startup Alpaca stream gating** (2026-02-14):
+  - `_should_start_alpaca_stream()` now considers `data_backend` to avoid gateway/noop mis-starts.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
