@@ -142,3 +142,16 @@ def test_feature_pipeline_extracts_closes_from_mixed_bar_shapes() -> None:
 
     bars = [_Bar(101.0), {"c": 102.5}, {"c": None}, _Bar(103.25)]
     assert fp._extract_closes(bars) == [101.0, 102.5, 0.0, 103.25]
+
+
+@pytest.mark.unit
+def test_feature_pipeline_extracts_close_aliases() -> None:
+    alpaca = MagicMock()
+    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_closes_aliases"))
+
+    class _Bar:
+        def __init__(self, close: float) -> None:
+            self.close = close
+
+    bars = [{"close": 11.5}, _Bar(12.25)]
+    assert fp._extract_closes(bars) == [11.5, 12.25]

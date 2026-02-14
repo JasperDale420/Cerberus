@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Feature Pipeline Bar Close Handling** (2026-02-14):
+  - Accepts `close` aliases from bar dict/object shapes and safely handles `None` close values.
+- **Stream Mode Helper** (2026-02-14):
+  - `_should_start_alpaca_stream()` now considers `data_backend` to avoid starting Alpaca streams in gateway+noop mode.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
