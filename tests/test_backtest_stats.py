@@ -92,6 +92,26 @@ def test_partial_fills_and_open_position(analyzer):
 
 
 @pytest.mark.unit
+def test_unrealized_pnl_handles_zero_price(analyzer):
+    t1 = datetime(2023, 1, 1, 10, 0)
+    fills = [
+        {
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 10,
+            "fill_price": 100.0,
+            "filled_at": t1,
+            "strategy": "strat1",
+        }
+    ]
+
+    stats = analyzer.calculate_statistics(fills, {"AAPL": 0.0})
+
+    assert stats["open_pnl"] == -1000.0
+    assert stats["open_positions"][0]["current_price"] == 0.0
+
+
+@pytest.mark.unit
 def test_multiple_symbols_mixed_results(analyzer):
     t1 = datetime(2023, 1, 1, 10, 0)
 
@@ -140,6 +160,45 @@ def test_multiple_symbols_mixed_results(analyzer):
 
     # Gross profit 50. Gross loss 20. PF = 2.5
     assert stats["profit_factor"] == 2.5
+
+
+@pytest.mark.unit
+def test_realized_pnl_aggregates_precision(analyzer):
+    t1 = datetime(2023, 1, 1, 10, 0)
+    fills = [
+        {
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 1,
+            "fill_price": 100.0,
+            "filled_at": t1,
+        },
+        {
+            "symbol": "AAPL",
+            "side": "sell",
+            "qty": 1,
+            "fill_price": 100.004,
+            "filled_at": t1 + timedelta(minutes=1),
+        },
+        {
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 1,
+            "fill_price": 100.0,
+            "filled_at": t1 + timedelta(minutes=2),
+        },
+        {
+            "symbol": "AAPL",
+            "side": "sell",
+            "qty": 1,
+            "fill_price": 100.004,
+            "filled_at": t1 + timedelta(minutes=3),
+        },
+    ]
+
+    stats = analyzer.calculate_statistics(fills, {})
+
+    assert stats["total_closed_pnl"] == 0.01
 
 
 @pytest.mark.unit

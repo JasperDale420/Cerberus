@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest executor exit-mode reset + PnL precision** (2026-02-14):
+  - Re-enabled broker-managed exits when advanced exits are turned off, with structured logs on mode switches.
+  - Unrealized PnL now accounts for zero-price inputs instead of treating them as missing.
+  - Realized PnL preserves sub-cent precision across trades to avoid rounding away small gains.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).

@@ -106,7 +106,7 @@ class BacktestAnalyzer:
             current_price = current_prices.get(symbol)
             unrealized = 0.0
 
-            if current_price:
+            if current_price is not None:
                 if pos["side"] == "buy":
                     unrealized = (current_price - pos["entry_price"]) * pos["qty"]
                 else:
@@ -286,7 +286,7 @@ class BacktestAnalyzer:
                     "entry_price": entry_price,
                     "exit_price": price,
                     "qty": match_qty,
-                    "pnl": round(pnl, 2),
+                    "pnl": pnl,
                     "strategy": item.get("strategy", "unknown"),
                     "exit_strategy": fill_strategy,
                 }
