@@ -75,29 +75,28 @@ class FeaturePipeline:
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
         closes: List[float] = []
-        invalid = 0
+        for b in bars_data:
+            close_value: Any
+            if hasattr(b, "c"):
+                close_value = getattr(b, "c", None)
+            elif isinstance(b, dict):
+                close_value = b.get("c")
+            else:
+                close_value = None
 
-        for bar in bars_data:
-            value = None
-            if hasattr(bar, "c"):
-                value = bar.c
-            elif isinstance(bar, dict):
-                value = bar.get("c", 0)
+            if close_value is None:
+                closes.append(0.0)
+                continue
 
             try:
-                if value is None:
-                    raise TypeError("close is None")
-                closes.append(float(value))
-            except (TypeError, ValueError):
-                invalid += 1
+                closes.append(float(close_value))
+            except (TypeError, ValueError) as exc:
+                self.logger.warning(
+                    "FeaturePipeline: invalid close value",
+                    close_value=str(close_value),
+                    error=str(exc),
+                )
                 closes.append(0.0)
-
-        if invalid:
-            self.logger.warning(
-                "FeaturePipeline close extraction saw invalid values",
-                invalid_count=invalid,
-                total=len(bars_data),
-            )
 
         return closes
 

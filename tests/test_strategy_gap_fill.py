@@ -206,3 +206,28 @@ def test_signal_long_gap_down(gap_fill):
     assert sig is not None
     assert sig.side == OrderSide.BUY
     assert sig.target_price == pytest.approx(100.0, rel=0.01)
+
+
+@pytest.mark.unit
+def test_on_bar_ignored_if_or_range_too_tight(gap_fill):
+    gap_fill.risk_reward = 1.0
+    gap_fill.min_or_range_pct = 0.02
+
+    market = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP)
+
+    import pytz
+
+    et = pytz.timezone("US/Eastern")
+    date = datetime(2023, 10, 23, 9, 30, 0)
+    open_dt = et.localize(date)
+
+    b1 = Bar("AAPL", open_dt, 100.0, 100.1, 100.0, 100.05, 1000)
+    b2 = Bar("AAPL", open_dt + timedelta(minutes=5), 100.05, 100.1, 100.0, 100.05, 1000)
+    current_dt = open_dt + timedelta(minutes=20)
+    current_bar = Bar("AAPL", current_dt, 99.9, 100.0, 99.7, 99.8, 500)
+
+    state = SymbolState("AAPL", deque([b1, b2], maxlen=100), {}, None, {}, [], {"gap_pct": 0.03})
+
+    sig = gap_fill.on_bar("AAPL", current_bar, state, market)
+
+    assert sig is None

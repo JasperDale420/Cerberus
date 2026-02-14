@@ -16,19 +16,26 @@ class CerberusScheduler:
         self.scheduler = BlockingScheduler()
         self.tz = timezone(config.get("timezone", "America/New_York"))
 
-    def _parse_schedule_time(self) -> tuple[int, int]:
-        schedule_time = self.config.get("schedule_time", "09:25")
+    def _parse_schedule_time(self, schedule_time: str) -> tuple[int, int]:
+        default_time = "09:25"
+        raw = str(schedule_time or "").strip()
+        if not raw:
+            raw = default_time
+
         try:
-            hour_str, minute_str = str(schedule_time).split(":")
-            hour = int(hour_str)
-            minute = int(minute_str)
-            if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            parts = raw.split(":")
+            if len(parts) != 2:
+                raise ValueError("schedule_time must be HH:MM")
+            hour = int(parts[0])
+            minute = int(parts[1])
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 raise ValueError("schedule_time out of range")
             return hour, minute
-        except Exception:
+        except Exception as e:
             logger.warning(
                 "Invalid schedule_time; defaulting to 09:25",
-                schedule_time=str(schedule_time),
+                schedule_time=raw,
+                error=str(e),
             )
             return 9, 25
 
@@ -37,7 +44,8 @@ class CerberusScheduler:
         Starts the blocking scheduler.
         """
         # Parse schedule time from config or default to 09:25 ET
-        hour, minute = self._parse_schedule_time()
+        schedule_time = self.config.get("schedule_time", "09:25")
+        hour, minute = self._parse_schedule_time(schedule_time)
 
         # Add job to run Mon-Fri
         trigger = CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=self.tz)

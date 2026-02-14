@@ -129,6 +129,10 @@ class UniverseBuilder:
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
+            if "#" in line:
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
             # Allow CSV lines; take first token.
             token = line.split(",")[0].strip()
             if token:

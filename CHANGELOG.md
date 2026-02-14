@@ -30,10 +30,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Pipeline bar close extraction guardrails** (2026-02-14):
-  - Handle `None`/invalid close values with a warning and `0.0` fallback.
-- **Startup Alpaca stream gating** (2026-02-14):
-  - `_should_start_alpaca_stream()` now considers `data_backend` to avoid gateway/noop mis-starts.
+- Feature pipeline close extraction now safely handles None/invalid close values with a warning (2026-02-14).
+- Alpaca stream start logic now accounts for data backend (gateway vs legacy) to avoid unnecessary streams (2026-02-14).
+- Scheduler now defaults invalid `schedule_time` values to `09:25` with a warning (2026-02-14).
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
@@ -51,9 +50,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **Fetcher cache timestamp coverage** (2026-02-14):
-  - Datetime bar timestamps are now supported in cache resume logic.
-  - Added unit test for datetime-based cache timestamps.
+- GapFill config now supports `min_or_range_pct` to filter overly tight opening ranges (2026-02-14).
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 - ORB minimum opening-range percent filter with micro backtest guard (2026-02-13).
@@ -97,6 +94,8 @@ All notable changes to this project will be documented in this file.
     - Created `tests/unit/test_startup_validation_unit.py` with 14 validation tests
 
 ### Changed
+
+- Universe static file parsing now strips inline `#` comments before symbol extraction (2026-02-14).
 
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
