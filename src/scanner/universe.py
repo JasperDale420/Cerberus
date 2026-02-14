@@ -113,8 +113,24 @@ class UniverseBuilder:
     def _load_symbol_file(self, path: str) -> List[str]:
         p = Path(path)
         if not p.exists():
-            self.logger.warning("Universe static file missing", path=str(p))
-            return []
+            fallback = None
+            if self.offline_bars_provider is not None:
+                offline_dir = getattr(self.offline_bars_provider, "bars_dir", None)
+                if offline_dir is not None:
+                    candidate = Path(offline_dir) / p.name
+                    if candidate.exists():
+                        fallback = candidate
+
+            if fallback is None:
+                self.logger.warning("Universe static file missing", path=str(p))
+                return []
+
+            self.logger.info(
+                "Universe static file fallback used",
+                path=str(p),
+                fallback=str(fallback),
+            )
+            p = fallback
         lines = []
         for raw in p.read_text().splitlines():
             line = raw.strip()

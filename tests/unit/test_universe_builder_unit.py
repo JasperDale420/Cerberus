@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from src.agent.bars_provider import JsonlBarsProvider
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
 from src.core.settings import Settings
@@ -128,3 +129,21 @@ def test_universe_builder_uses_gateway_client_for_dynamic_volume_selection() -> 
         )
 
     assert builder.build_universe() == ["AAPL", "TSLA"]
+
+
+@pytest.mark.unit
+def test_universe_builder_falls_back_to_offline_symbols(tmp_path) -> None:
+    offline_dir = tmp_path / "offline"
+    offline_dir.mkdir()
+    (offline_dir / "offline_symbols.txt").write_text("AAPL\nMSFT\n")
+
+    cfg = {"universe": {"symbols": [], "static_files": [str(tmp_path / "missing/offline_symbols.txt")]}}
+
+    builder = UniverseBuilder(
+        _DummyConfigLoader(cfg),
+        _logger(),
+        config=cfg,
+        offline_bars_provider=JsonlBarsProvider(offline_dir),
+    )
+
+    assert builder.build_universe() == ["AAPL", "MSFT"]
