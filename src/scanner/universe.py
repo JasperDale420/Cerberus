@@ -122,8 +122,16 @@ class UniverseBuilder:
     def _load_symbol_file(self, path: str) -> List[str]:
         p = Path(path)
         if not p.exists():
-            self.logger.warning("Universe static file missing", path=str(p))
-            return []
+            fallback = self._resolve_offline_symbol_file(p)
+            if fallback is None:
+                self.logger.warning("Universe static file missing", path=str(p))
+                return []
+            self.logger.warning(
+                "Universe static file fallback",
+                path=str(p),
+                fallback=str(fallback),
+            )
+            p = fallback
         lines = []
         for raw in p.read_text().splitlines():
             line = raw.strip()
@@ -138,6 +146,17 @@ class UniverseBuilder:
             if token:
                 lines.append(token.upper())
         return lines
+
+    def _resolve_offline_symbol_file(self, missing_path: Path) -> Optional[Path]:
+        if self.offline_bars_provider is None:
+            return None
+        bars_dir = getattr(self.offline_bars_provider, "bars_dir", None)
+        if not isinstance(bars_dir, Path):
+            return None
+        candidate = bars_dir / missing_path.name
+        if candidate.exists():
+            return candidate
+        return None
 
     def _get_symbol_volume(self, symbol: str, start: datetime, end: datetime) -> Optional[float]:
         """Get last bar volume for symbol from Alpaca or offline provider."""
