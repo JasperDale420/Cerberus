@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
+- **ORB opening-range filter** (2026-02-14):
+  - Added `min_or_range_pct` to skip narrow opening ranges and avoid low-signal breakouts.
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:

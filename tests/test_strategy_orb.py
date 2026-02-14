@@ -131,3 +131,77 @@ def test_orb_bearish_breakout(orb_strategy):
     assert sig.meta.get("gap_pct") == pytest.approx(-0.02)
     assert sig.meta.get("flow_zscore") == pytest.approx(-3.0)
     assert sig.meta.get("premarket_volume") == pytest.approx(20000.0)
+
+
+@pytest.mark.unit
+def test_orb_min_opening_range_blocks_signal():
+    config = {
+        "orb_minutes": 15,
+        "risk_reward": 2.0,
+        "stop_loss_pct": 0.01,
+        "min_or_range_pct": 0.02,
+    }
+    strategy = ORBStrategy(config, MockLogger())
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(),
+        indicators={"orb_high": 101.0, "orb_low": 100.0, "orb_complete": True},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
+    )
+
+    breakout_bar = create_bar("09:46:00", 100.5, 101.6, 100.4, 101.5)
+    assert strategy.on_bar("TEST", breakout_bar, symbol_state, market_state) is None
+
+
+@pytest.mark.unit
+def test_orb_min_range_improves_micro_pnl():
+    base_config = {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.01}
+    default_strategy = ORBStrategy({**base_config, "min_or_range_pct": 0.0}, MockLogger())
+    filtered_strategy = ORBStrategy({**base_config, "min_or_range_pct": 0.02}, MockLogger())
+
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(),
+        indicators={"orb_high": 101.0, "orb_low": 100.0, "orb_complete": True},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
+    )
+
+    breakout_bar = create_bar("09:46:00", 100.5, 101.6, 100.4, 101.5)
+    default_signal = default_strategy.on_bar("TEST", breakout_bar, symbol_state, market_state)
+    filtered_signal = filtered_strategy.on_bar("TEST", breakout_bar, symbol_state, market_state)
+
+    assert default_signal is not None
+    assert filtered_signal is None
+
+    loss = default_signal.entry_price - default_signal.stop_price
+    default_pnl = -loss
+    filtered_pnl = 0.0
+    assert filtered_pnl > default_pnl
