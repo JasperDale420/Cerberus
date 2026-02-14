@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Mypy cleanups for gateway stream parsing, Alpaca responses, and snapshot persistence (2026-02-14).
+
+- Mypy typing for CI tooling config loaders (2026-02-14).
+
 - Feature pipeline close extraction now tolerates None/malformed values (2026-02-14).
 
 - Alpaca stream start decision now respects gateway/legacy backend selection (2026-02-14).

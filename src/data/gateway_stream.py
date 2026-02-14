@@ -60,9 +60,7 @@ class GatewayStreamClient:
         except Exception:
             return -1
 
-    async def _invoke_bar_callback(
-        self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int
-    ) -> None:
+    async def _invoke_bar_callback(self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int) -> None:
         async def _call(cb: Callable[..., Any], *args: Any) -> None:
             if asyncio.iscoroutinefunction(cb):
                 await cb(*args)
@@ -91,19 +89,43 @@ class GatewayStreamClient:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         raise ValueError(f"Invalid bar timestamp: {value}")
 
+    @staticmethod
+    def _coerce_float(value: Any, default: float = 0.0) -> float:
+        if value is None:
+            return float(default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
     def _normalize_bar_from_data(self, payload: dict[str, Any]) -> Bar:
         symbol = str(payload.get("S") or payload.get("symbol") or "").upper()
         if not symbol:
             raise ValueError("Missing symbol in gateway bar payload")
         ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        open_raw = payload.get("o")
+        if open_raw is None:
+            open_raw = payload.get("open")
+        high_raw = payload.get("h")
+        if high_raw is None:
+            high_raw = payload.get("high")
+        low_raw = payload.get("l")
+        if low_raw is None:
+            low_raw = payload.get("low")
+        close_raw = payload.get("c")
+        if close_raw is None:
+            close_raw = payload.get("close")
+        volume_raw = payload.get("v")
+        if volume_raw is None:
+            volume_raw = payload.get("volume")
         return Bar(
             symbol=symbol,
             time=ts,
-            open=float(payload.get("o") if payload.get("o") is not None else payload.get("open", 0.0)),
-            high=float(payload.get("h") if payload.get("h") is not None else payload.get("high", 0.0)),
-            low=float(payload.get("l") if payload.get("l") is not None else payload.get("low", 0.0)),
-            close=float(payload.get("c") if payload.get("c") is not None else payload.get("close", 0.0)),
-            volume=float(payload.get("v") if payload.get("v") is not None else payload.get("volume", 0.0)),
+            open=self._coerce_float(open_raw),
+            high=self._coerce_float(high_raw),
+            low=self._coerce_float(low_raw),
+            close=self._coerce_float(close_raw),
+            volume=self._coerce_float(volume_raw),
             vwap=payload.get("vw") or payload.get("vwap"),
             trade_count=payload.get("n") or payload.get("trade_count"),
         )
@@ -251,4 +273,3 @@ class GatewayStreamClient:
                 backoff = min(backoff * 2.0, 30.0)
             finally:
                 self._ws = None
-

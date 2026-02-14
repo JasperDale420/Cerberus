@@ -13,13 +13,19 @@ class CentralApiClient:
     Client for central API services (Data Gateway + optional LLM endpoint).
     """
 
+    base_url: str = ""
+    gateway_key: str = ""
+    gateway_max_retries: int = 1
+    gateway_retry_backoff_seconds: float = 0.25
+    llm_base_url: str = ""
+
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.logger = logger
-        self.base_url = config_loader.get_env(
+        self.base_url: str = config_loader.get_env(
             "CERBERUS_GATEWAY_URL",
             config_loader.get_env("DATA_INGESTION_URL", "http://localhost:8080"),
         )
-        self.gateway_key = config_loader.get_env("CERBERUS_GATEWAY_KEY", "")
+        self.gateway_key: str = config_loader.get_env("CERBERUS_GATEWAY_KEY", "")
         try:
             timeout = float(config_loader.get_env("CERBERUS_GATEWAY_TIMEOUT_SECONDS", "30"))
         except ValueError:
@@ -35,17 +41,16 @@ class CentralApiClient:
             headers=headers,
         )
         try:
-            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
-        except ValueError:
+            raw_max_retries = config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")
+            self.gateway_max_retries = max(0, int(str(raw_max_retries)))
+        except (TypeError, ValueError):
             self.gateway_max_retries = 1
         try:
-            self.gateway_retry_backoff_seconds = max(
-                0.0,
-                float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")),
-            )
-        except ValueError:
+            raw_backoff = config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")
+            self.gateway_retry_backoff_seconds = max(0.0, float(str(raw_backoff)))
+        except (TypeError, ValueError):
             self.gateway_retry_backoff_seconds = 0.25
-        self.llm_base_url = config_loader.get_env("CENTRAL_LLM_API_URL", self.base_url)
+        self.llm_base_url: str = config_loader.get_env("CENTRAL_LLM_API_URL", self.base_url)
         self._llm_client: Optional[httpx.Client] = None
 
     @staticmethod
@@ -63,10 +68,12 @@ class CentralApiClient:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
-                    return max(0.0, float(retry_after))
-                except ValueError:
+                    retry_after_value = cast(str, retry_after)
+                    return max(0.0, float(retry_after_value))
+                except (TypeError, ValueError):
                     pass
-        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+        backoff = cast(float, self.gateway_retry_backoff_seconds)
+        return backoff * (2 ** max(0, attempt - 1))  # type: ignore[no-any-return]
 
     def _request_with_retry(
         self,
