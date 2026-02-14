@@ -88,6 +88,12 @@ class BacktestOrderExecutor:
 
         # Partial fill mode: none|fixed|volume_aware
         self._partial_fill_mode = str(self._backtest_cfg.get("partial_fill_mode", "none")).lower()
+        if self._partial_fill_mode not in {"none", "fixed", "volume_aware"}:
+            self.logger.warning(
+                "Unknown backtest partial_fill_mode; defaulting to none",
+                partial_fill_mode=self._partial_fill_mode,
+            )
+            self._partial_fill_mode = "none"
 
         # Fixed partial fill percentage (for mode=fixed)
         try:
@@ -105,6 +111,12 @@ class BacktestOrderExecutor:
 
         # Slippage mode: fixed|volume_impact
         self._slippage_mode = str(self._backtest_cfg.get("slippage_mode", "fixed")).lower()
+        if self._slippage_mode not in {"fixed", "volume_impact"}:
+            self.logger.warning(
+                "Unknown backtest slippage_mode; defaulting to fixed",
+                slippage_mode=self._slippage_mode,
+            )
+            self._slippage_mode = "fixed"
 
         # Volume impact multiplier (for slippage_mode=volume_impact)
         try:
@@ -114,6 +126,12 @@ class BacktestOrderExecutor:
 
         # Spread mode: fixed|atr_based
         self._spread_mode = str(self._backtest_cfg.get("spread_mode", "fixed")).lower()
+        if self._spread_mode not in {"fixed", "atr_based"}:
+            self.logger.warning(
+                "Unknown backtest spread_mode; defaulting to fixed",
+                spread_mode=self._spread_mode,
+            )
+            self._spread_mode = "fixed"
 
         # Daily equity reset: start each day fresh with initial_cash
         self._daily_equity_reset = bool(self._backtest_cfg.get("daily_equity_reset", False))

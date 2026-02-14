@@ -563,7 +563,12 @@ class BacktestRunner:
             try:
                 await self.engine.run_scan()
             except Exception as e:
-                self.logger.error("Backtest scan failed", error=str(e))
+                self.logger.error(
+                    "Backtest scan failed",
+                    error=str(e),
+                    scan_time=bt.isoformat(),
+                    exc_info=True,
+                )
             last_scan_ts = bt
             next_scan_ts = self._ceil_time_to_interval(bt + timedelta(minutes=scan_interval), scan_interval, market_tz)
         return last_scan_ts, next_scan_ts

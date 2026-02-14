@@ -113,3 +113,22 @@ async def test_backtest_order_executor_bracket_exit_stop_priority():
     assert engine.symbol_states["AAPL"].position is None
     assert len(executor.fills) == 1
     assert executor.fills[0]["kind"] == "bracket"
+
+
+@pytest.mark.unit
+def test_backtest_executor_invalid_modes_default_and_warn():
+    logger = MagicMock()
+    executor = BacktestOrderExecutor(logger, initial_cash=100000)
+
+    executor.set_backtest_config(
+        {
+            "partial_fill_mode": "nonsense",
+            "slippage_mode": "warp",
+            "spread_mode": "bananas",
+        }
+    )
+
+    assert executor._partial_fill_mode == "none"
+    assert executor._slippage_mode == "fixed"
+    assert executor._spread_mode == "fixed"
+    assert logger.warning.call_count >= 1

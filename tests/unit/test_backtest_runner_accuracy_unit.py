@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -111,3 +113,21 @@ def test_backtest_runner_runs_scanner_on_interval(monkeypatch) -> None:
     asyncio.run(r.run())
 
     assert r.engine.run_scan.call_count >= 1
+
+
+@pytest.mark.unit
+def test_backtest_runner_logs_scan_exceptions_with_exc_info() -> None:
+    runner = BacktestRunner.__new__(BacktestRunner)
+    runner.engine = MagicMock()
+    runner.engine.run_scan = AsyncMock(side_effect=RuntimeError("scan blew up"))
+    runner.logger = MagicMock()
+
+    bt = datetime(2025, 1, 1, 14, 30, tzinfo=timezone.utc)
+    market_tz = ZoneInfo("US/Eastern")
+
+    asyncio.run(runner._handle_scanner_replay(bt, market_tz, 1, None, None))
+
+    assert runner.logger.error.called
+    _, kwargs = runner.logger.error.call_args
+    assert kwargs.get("exc_info") is True
+    assert "scan blew up" in str(kwargs.get("error"))
