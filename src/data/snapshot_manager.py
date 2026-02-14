@@ -115,6 +115,10 @@ class SnapshotManager:
             raise
 
     def persist_daily_universe(self, *, trade_date: datetime, symbols: list[str], source: str) -> None:
+        if not symbols:
+            self.logger.warning("Skipped daily universe persistence; no symbols", source=source)
+            return
+
         trade_ts = _as_utc(trade_date)
         try:
             with self.db.get_session() as session:
@@ -128,7 +132,7 @@ class SnapshotManager:
                         )
                     )
                 session.commit()
-            self.logger.info(f"Persisted daily universe from {source} with {len(symbols)} symbols")
+            self.logger.info("Persisted daily universe", source=source, symbol_count=len(symbols))
         except Exception:
             self.logger.error(
                 f"Failed to persist daily universe for {source}",

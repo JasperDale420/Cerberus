@@ -41,6 +41,37 @@ def test_add_job_correctly():
             pass
 
 
+def test_schedule_time_parsing_valid():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
+
+    hour, minute = scheduler._parse_schedule_time("09:25")
+
+    assert hour == 9
+    assert minute == 25
+
+
+def test_schedule_time_parsing_invalid_format():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
+
+    try:
+        scheduler._parse_schedule_time("bad-time")
+    except ValueError as exc:
+        assert "schedule_time must be in HH:MM format" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid schedule_time format")
+
+
+def test_schedule_time_parsing_invalid_range():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
+
+    try:
+        scheduler._parse_schedule_time("25:00")
+    except ValueError as exc:
+        assert "schedule_time hour must be between 0 and 23" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid schedule_time hour")
+
+
 @patch("subprocess.run")
 def test_run_daily_session_subprocess(mock_run):
     config = {"config_path": "custom_config.yaml"}

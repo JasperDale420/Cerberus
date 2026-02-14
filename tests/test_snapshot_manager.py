@@ -109,6 +109,20 @@ def test_persist_daily_universe(snapshot_manager, mock_db):
     assert session.commit.called
 
 
+def test_persist_daily_universe_skips_empty(snapshot_manager, mock_db, mock_logger):
+    """Empty universes should skip persistence to avoid empty writes."""
+    snapshot_manager.persist_daily_universe(
+        trade_date=datetime(2026, 1, 13, tzinfo=timezone.utc),
+        symbols=[],
+        source="scanner",
+    )
+
+    session = mock_db.get_session.return_value.__enter__.return_value
+    assert not session.add.called
+    assert not session.commit.called
+    mock_logger.warning.assert_called_once()
+
+
 def test_git_sha_retrieval():
     """Test git SHA retrieval for code versioning."""
     from src.data.snapshot_manager import _get_git_sha
