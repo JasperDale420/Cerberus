@@ -30,10 +30,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Feature pipeline close extraction** (2026-02-14):
-  - Treats `None` closes as `0.0` to avoid `float(None)` errors when bars are mixed shapes.
-- **Stream mode helper compatibility** (2026-02-14):
-  - `_should_start_alpaca_stream()` now accepts `data_backend` and keeps Alpaca streams on for legacy mode.
+- **Feature pipeline close extraction and Alpaca stream gating** (2026-02-14):
+  - Default missing/invalid bar closes to `0.0` with structured warnings.
+  - Restore `data_backend` awareness for `_should_start_alpaca_stream()` to match gateway vs legacy modes.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Fixed `_should_start_alpaca_stream()` to allow Gateway bar stream to start correctly.

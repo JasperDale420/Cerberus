@@ -77,7 +77,19 @@ class FeaturePipeline:
         closes: List[float] = []
         for bar in bars_data:
             raw_close = bar.c if hasattr(bar, "c") else bar.get("c", 0)
-            closes.append(0.0 if raw_close is None else float(raw_close))
+            if raw_close is None:
+                self.logger.warning("Bar close missing; defaulting to 0", bar_type=type(bar).__name__)
+                closes.append(0.0)
+                continue
+            try:
+                closes.append(float(raw_close))
+            except (TypeError, ValueError):
+                self.logger.warning(
+                    "Bar close invalid; defaulting to 0",
+                    bar_type=type(bar).__name__,
+                    close=str(raw_close),
+                )
+                closes.append(0.0)
         return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
