@@ -76,7 +76,10 @@ class DataFetcher:
             return start, []
 
         last_bar = existing[-1]
-        raw_ts = last_bar.get("t") or last_bar.get("timestamp")
+        if isinstance(last_bar, dict):
+            raw_ts = last_bar.get("t") or last_bar.get("timestamp")
+        else:
+            raw_ts = getattr(last_bar, "t", None) or getattr(last_bar, "timestamp", None)
         if not raw_ts:
             return start, existing
 

@@ -38,6 +38,10 @@ All notable changes to this project will be documented in this file.
 - Logged and surfaced time window parsing/check failures to aid debugging (2026-02-14).
 - Backtest universe builder now falls back to offline bars directory for `offline_symbols.txt` when static file paths are missing (2026-02-14).
 
+- **Stream/Feature helpers** (2026-02-14):
+  - Feature pipeline now treats missing close values as zero and logs a count for visibility.
+  - Alpaca stream startup logic now respects the configured data backend.
+  - Fetcher cache now handles object-style bars when resuming fetch windows.
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
