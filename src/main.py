@@ -476,7 +476,7 @@ async def async_main():
     # Alpaca direct streams: only for direct Alpaca execution mode.
     start_alpaca_stream = _should_start_alpaca_stream(
         order_executor=args.order_executor,
-        data_backend=runtime_settings.cerberus_data_backend,
+        data_backend=args.data_backend,
     )
     alpaca_stream_task: asyncio.Task[object] | None = None
     if start_alpaca_stream:

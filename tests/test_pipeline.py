@@ -8,6 +8,7 @@ sys.modules["unusualwhales"] = MagicMock()
 
 from datetime import datetime, timezone  # noqa: E402
 
+from src.core.domain import SymbolFeatures  # noqa: E402
 from src.data.calculator import FeatureCalculator  # noqa: E402
 from src.data.pipeline import FeaturePipeline  # noqa: E402
 
@@ -224,3 +225,49 @@ async def test_compute_features_skips_symbol_when_technicals_raise():
 
     assert "GOOD" in features
     assert "BAD" not in features
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_append_flow_features_handles_flow_exception_without_gex():
+    mock_alpaca = MagicMock()
+    mock_uw = MagicMock()
+    mock_logger = MagicMock()
+
+    pipeline = FeaturePipeline(mock_alpaca, mock_uw, mock_logger)
+    now = datetime.now(timezone.utc)
+
+    feat = SymbolFeatures(
+        symbol="AAPL",
+        price=100.0,
+        atr_pct=0.1,
+        avg_volume=1_000_000.0,
+        intraday_range_pct=0.1,
+        gap_pct=0.0,
+        ema20_slope=0.0,
+        ema_trend_strength=0.0,
+        distance_from_vwap=0.0,
+        premarket_volume=0.0,
+        adx=0.0,
+        distance_from_ema20=0.0,
+        prior_day_high=0.0,
+        prior_day_low=0.0,
+        bb_upper=0.0,
+        bb_lower=0.0,
+        price_zscore=0.0,
+        flow_zscore=0.0,
+        call_put_ratio=0.0,
+        large_sweeps_count=0,
+        aggressive_flow_share=0.0,
+        last_updated=now,
+    )
+
+    pipeline.fetcher.fetch_flow = AsyncMock(side_effect=RuntimeError("uw flow down"))  # type: ignore[method-assign]
+    pipeline.fetcher.fetch_gex = AsyncMock(return_value=[])  # type: ignore[method-assign]
+
+    features = await pipeline.append_flow_features({"AAPL": feat})
+
+    assert features["AAPL"].net_gex == 0.0
+    assert features["AAPL"].gex_flip_dist == 0.0
+    assert features["AAPL"].extra["flow_raw_count"] == 0
+    assert pipeline.fetcher.fetch_gex.await_count == 0

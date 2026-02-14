@@ -75,29 +75,9 @@ class FeaturePipeline:
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
         closes: List[float] = []
-        for b in bars_data:
-            close_value: Any
-            if hasattr(b, "c"):
-                close_value = getattr(b, "c", None)
-            elif isinstance(b, dict):
-                close_value = b.get("c")
-            else:
-                close_value = None
-
-            if close_value is None:
-                closes.append(0.0)
-                continue
-
-            try:
-                closes.append(float(close_value))
-            except (TypeError, ValueError) as exc:
-                self.logger.warning(
-                    "FeaturePipeline: invalid close value",
-                    close_value=str(close_value),
-                    error=str(exc),
-                )
-                closes.append(0.0)
-
+        for bar in bars_data:
+            value = bar.c if hasattr(bar, "c") else bar.get("c", 0)
+            closes.append(float(value) if value is not None else 0.0)
         return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
@@ -374,13 +354,29 @@ class FeaturePipeline:
                     # we need a date for the flow fetch. feature.last_updated should be consistent with as_of.
                     date_str = feat.last_updated.strftime("%Y-%m-%d")
                     flow_data = await self.fetcher.fetch_flow(sym, date_str)
-
-                    # Also fetch Greek Exposure for GEX
-                    gex_data = await self.fetcher.fetch_gex(sym)
-                except Exception:
+                except Exception as e:
                     local_fail = 1
-                    # Log already handled in fetcher but we can log context here too if needed
                     flow_data = []
+                    self.logger.warning(
+                        "Unusual Whales flow fetch failed in pipeline",
+                        symbol=sym,
+                        error=str(e),
+                    )
+
+                if flow_data:
+                    try:
+                        # Also fetch Greek Exposure for GEX
+                        gex_data = await self.fetcher.fetch_gex(sym)
+                    except Exception as e:
+                        local_fail = 1
+                        gex_data = []
+                        self.logger.warning(
+                            "Unusual Whales GEX fetch failed in pipeline",
+                            symbol=sym,
+                            error=str(e),
+                        )
+                else:
+                    gex_data = []
 
             (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = self.calculator.compute_flow_metrics(flow_data)
             d_score = abs(float(f_bias)) * float(agg_share)

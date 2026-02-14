@@ -29,6 +29,11 @@ All notable changes to this project will be documented in this file.
 - `api_client.py`: Added retry logic for 404s on backfill polling.
 
 ### Fixed
+- Avoided fetching GEX when flow data is empty; added context logging when flow/GEX fetch fails.
+- Handled None close values in feature close extraction to prevent type errors.
+- Respected data backend when deciding whether to start Alpaca streams.
+
+### Fixed
 
 - Logged and surfaced time window parsing/check failures to aid debugging (2026-02-14).
 - Backtest universe builder now falls back to offline bars directory for `offline_symbols.txt` when static file paths are missing (2026-02-14).
