@@ -35,11 +35,11 @@ class CentralApiClient:
             headers=headers,
         )
         try:
-            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
+            self.gateway_max_retries: int = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
         except ValueError:
             self.gateway_max_retries = 1
         try:
-            self.gateway_retry_backoff_seconds = max(
+            self.gateway_retry_backoff_seconds: float = max(
                 0.0,
                 float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")),
             )
@@ -53,6 +53,16 @@ class CentralApiClient:
         """Return True when an HTTP status should be retried."""
         return status_code == 429 or status_code >= 500
 
+    @staticmethod
+    def _parse_retry_after(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            delay = float(value)
+        except (TypeError, ValueError):
+            return None
+        return max(0.0, delay)
+
     def _get_retry_delay_seconds(
         self,
         attempt: int,
@@ -61,12 +71,18 @@ class CentralApiClient:
         """Calculate delay before next retry attempt."""
         if response is not None and response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    return max(0.0, float(retry_after))
-                except ValueError:
-                    pass
-        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+            delay = self._parse_retry_after(retry_after)
+            if delay is not None:
+                return delay
+            if retry_after is not None:
+                self.logger.warning(
+                    "Failed to parse Retry-After header; using exponential backoff",
+                    status_code=response.status_code,
+                    retry_after=retry_after,
+                    attempt=attempt,
+                )
+        backoff_factor = 2.0 ** max(0, attempt - 1)
+        return float(self.gateway_retry_backoff_seconds) * float(backoff_factor)
 
     def _request_with_retry(
         self,

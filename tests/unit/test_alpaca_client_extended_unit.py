@@ -117,3 +117,32 @@ def test_alpaca_client_subscribe_and_unsubscribe_queues_then_subscribes(
     client.unsubscribe("AAPL")
     assert stream.unsubscribed == ["AAPL"]
     assert "AAPL" not in client._subscribed_symbols
+
+
+def test_alpaca_client_get_historical_bars_handles_list_data(monkeypatch) -> None:
+    class _ListDataHistoricalClient(_FakeHistoricalClient):
+        def get_stock_bars(self, req: _FakeBarsRequest) -> Any:
+            bars = self._bars_by_symbol.get(req.symbol_or_symbols, [])
+            return SimpleNamespace(data=bars)
+
+    fake_hist = _ListDataHistoricalClient()
+
+    monkeypatch.setattr(alpaca_mod, "TradingClient", _FakeTradingClient)
+    monkeypatch.setattr(alpaca_mod, "StockHistoricalDataClient", lambda *_a, **_k: fake_hist)
+    monkeypatch.setattr(alpaca_mod, "StockDataStream", _FakeStream)
+    monkeypatch.setattr(alpaca_mod, "TradingStream", object)
+    monkeypatch.setattr(alpaca_mod, "StockBarsRequest", _FakeBarsRequest)
+    monkeypatch.setattr(alpaca_mod, "TimeFrame", SimpleNamespace(Minute="Minute", Day="Day"))
+
+    logger = StructuredLogger("test_alpaca_historical_list_data", level="INFO")
+    client = AlpacaClient(_DummyConfigLoader(), logger)  # type: ignore
+
+    t = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    fake_hist.set_bars(
+        "AAPL",
+        [SimpleNamespace(t=t, open=1.0, high=2.0, low=0.5, close=1.5, volume=10)],
+    )
+    result = client.get_historical_bars("AAPL", t, t, timeframe="1Min")
+    assert result == {
+        "bars": [{"t": t, "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 10.0}],
+    }

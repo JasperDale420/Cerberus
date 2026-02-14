@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest Data Parsing and Runtime Logging** (2026-02-14):
+  - Preserved zero OHLCV values in backtest bar parsing (`runner._parse_single_bar`) instead of incorrectly falling back to alternate fields.
+  - Added structured warning logs for missing/invalid bar timestamps and malformed OHLCV values.
+  - Improved historical data shape handling in Gateway stream and Alpaca history parsing while preserving zero/alternate fallback behavior.
+
 - **Backtest executor exit-mode reset + PnL precision** (2026-02-14):
   - Re-enabled broker-managed exits when advanced exits are turned off, with structured logs on mode switches.
   - Unrealized PnL now accounts for zero-price inputs instead of treating them as missing.
@@ -23,6 +28,10 @@ All notable changes to this project will be documented in this file.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 
 ### Added
+
+- **Backtest Bracket Exit Runtime Tuning** (2026-02-14):
+  - Added `backtest.bracket_exit_mode` config support with explicit `stop_first`/`best_exit` validation and precedence over `risk.bracket_exit_mode`.
+  - Added regression tests covering backtest runner OHLCV parsing, bracket mode precedence, and same-bar stop-vs-target exit outcome.
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 

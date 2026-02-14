@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backtest.mock_executor import BacktestOrderExecutor
-from src.core.domain import Bar, OrderIntent, OrderSide, OrderType, SymbolState
+from src.core.domain import Bar, OrderIntent, OrderSide, OrderType, Position, Side, SymbolState
 from src.engine.execution import ExecutionEngine
 
 
@@ -249,6 +249,65 @@ class TestBacktestConfigParsing:
         executor.set_risk_config({"advanced_exits": {"enabled": False}})
         executor.set_backtest_config({})
         assert executor.broker_managed_exits is True
+
+    def test_bracket_exit_mode_overrides_risk_config(self) -> None:
+        logger = MagicMock()
+        executor = BacktestOrderExecutor(logger, initial_cash=100000)
+
+        executor.set_risk_config({"bracket_exit_mode": "stop_first"})
+        executor.set_backtest_config({"bracket_exit_mode": "best_exit"})
+        assert executor._bracket_exit_mode == "best_exit"
+
+    def test_invalid_backtest_bracket_exit_mode_falls_back_to_existing_mode(self) -> None:
+        logger = MagicMock()
+        executor = BacktestOrderExecutor(logger, initial_cash=100000)
+
+        executor.set_risk_config({"bracket_exit_mode": "stop_first"})
+        executor.set_backtest_config({"bracket_exit_mode": "unsupported_mode"})
+        assert executor._bracket_exit_mode == "stop_first"
+
+
+@pytest.mark.unit
+def test_bracket_exit_mode_improves_same_bar_pnl_when_target_hit_together() -> None:
+    """Best-exit mode should improve PnL when stop and target are both touched in same bar."""
+    logger = MagicMock()
+    executor = BacktestOrderExecutor(logger, initial_cash=100_000)
+    bar = Bar(
+        symbol="AAPL",
+        time=datetime(2025, 1, 1, 14, 30, tzinfo=timezone.utc),
+        open=100.0,
+        high=120.0,
+        low=90.0,
+        close=110.0,
+        volume=10_000.0,
+    )
+    entry_price = 100.0
+    qty = 10.0
+    pos = Position(
+        symbol="AAPL",
+        side=Side.LONG,
+        qty=qty,
+        avg_price=entry_price,
+        unrealized_pnl=0.0,
+        realized_pnl=0.0,
+        strategy="unit",
+        stop_price=95.0,
+        target_price=110.0,
+    )
+
+    executor.set_risk_config({"bracket_exit_mode": "stop_first"})
+    stop_price, stop_reason = executor._calculate_bracket_exit(pos, bar)
+    stop_pnl = (stop_price if stop_price is not None else 0.0) - entry_price
+    stop_pnl *= qty
+
+    executor.set_backtest_config({"bracket_exit_mode": "best_exit"})
+    target_price, target_reason = executor._calculate_bracket_exit(pos, bar)
+    target_pnl = (target_price if target_price is not None else 0.0) - entry_price
+    target_pnl *= qty
+
+    assert stop_reason == "STOP_HIT"
+    assert target_reason == "TARGET_HIT"
+    assert target_pnl > stop_pnl
 
 
 @pytest.mark.unit

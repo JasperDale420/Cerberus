@@ -118,6 +118,25 @@ class BacktestOrderExecutor:
         # Daily equity reset: start each day fresh with initial_cash
         self._daily_equity_reset = bool(self._backtest_cfg.get("daily_equity_reset", False))
 
+        # Bracket exit mode from backtest config (risk config remains fallback).
+        bracket_exit_mode = self._backtest_cfg.get("bracket_exit_mode")
+        if isinstance(bracket_exit_mode, str):
+            normalized = bracket_exit_mode.strip().lower()
+            if normalized in {"stop_first", "best_exit"}:
+                if normalized != self._bracket_exit_mode:
+                    self.logger.info(
+                        "Backtest bracket exit mode updated from backtest config",
+                        previous_mode=self._bracket_exit_mode,
+                        next_mode=normalized,
+                    )
+                self._bracket_exit_mode = normalized
+            else:
+                self.logger.warning(
+                    "Invalid bracket_exit_mode in backtest config; keeping current mode",
+                    provided=bracket_exit_mode,
+                    current_mode=self._bracket_exit_mode,
+                )
+
         # Check if advanced exits are enabled (from risk config)
         # If so, disable broker_managed_exits to let PositionManager handle exits
         adv_exits = self._risk_cfg.get("advanced_exits", {})

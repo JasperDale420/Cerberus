@@ -427,7 +427,16 @@ class FeaturePipeline:
         if self.snapshots_enabled and self.snapshot_manager:
             now = as_of or self.clock()
             for feat in features.values():
-                self.snapshot_manager.persist_feature_snapshot(feat, now)
+                try:
+                    self.snapshot_manager.persist_feature_snapshot(features=feat, as_of_ts=now)
+                except Exception as exc:
+                    self.logger.error(
+                        "Failed to persist feature snapshot",
+                        symbol=feat.symbol,
+                        snapshot_time=now,
+                        error=str(exc),
+                        exc_info=True,
+                    )
 
         # Finalize metrics
         if hasattr(self, "last_run_metrics"):

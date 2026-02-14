@@ -58,6 +58,17 @@ class AlpacaClient:
             self.logger.critical("Failed to initialize Alpaca clients", error=str(e))
             raise
 
+    @staticmethod
+    def _extract_symbol_data(response_data: Any, request_symbol: str) -> list[Any]:
+        """Extract per-symbol bars/trades from Alpaca response payloads."""
+        if isinstance(response_data, dict):
+            symbol_data = response_data.get(request_symbol)
+            if isinstance(symbol_data, list):
+                return symbol_data
+        elif isinstance(response_data, list):
+            return response_data
+        return []
+
     def _to_bar(self, data: Any, symbol_override: Optional[str] = None) -> Bar:
         def _f(v: Any) -> float:
             try:
@@ -149,7 +160,7 @@ class AlpacaClient:
                 timeframe=tf_obj,
             )
             resp = self.historical_client.get_stock_bars(req)
-            bars = (resp.data or {}).get(symbol) or []
+            bars = self._extract_symbol_data(getattr(resp, "data", None), symbol)
 
             # Return a stable dict format aligned with existing FeaturePipeline parsing.
             out = []
@@ -189,7 +200,7 @@ class AlpacaClient:
                 end=end,
             )
             resp = self.historical_client.get_stock_trades(req)
-            trades = (resp.data or {}).get(symbol) or []
+            trades = self._extract_symbol_data(getattr(resp, "data", None), symbol)
 
             out = []
             for t in trades:

@@ -215,25 +215,64 @@ class BacktestRunner:
 
     def _parse_single_bar(self, b: Dict[str, Any], symbol: str) -> Optional[Bar]:
         """Parse a single bar dictionary into a Bar object."""
-        # Handle different formats (raw vs parsed)
-        t = b.get("t") or b.get("timestamp")
-        o = b.get("o") or b.get("open")
-        h = b.get("h") or b.get("high")
-        low_price = b.get("l") or b.get("low")
-        c = b.get("c") or b.get("close")
-        v = b.get("v") or b.get("volume")
-
-        if not t:
+        # Handle different formats (raw vs parsed), preserve legitimate zeros.
+        t = b.get("t")
+        if t is None:
+            t = b.get("timestamp")
+        if t is None:
+            self.logger.warning(
+                "Skipping historical bar with missing timestamp",
+                symbol=symbol,
+                bar=b,
+            )
             return None
+
+        if isinstance(t, datetime):
+            parsed_time = t
+            if parsed_time.tzinfo is None:
+                parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+        else:
+            try:
+                parsed_time = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+                if parsed_time.tzinfo is None:
+                    parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to parse historical bar timestamp",
+                    symbol=symbol,
+                    timestamp=t,
+                    exc_info=True,
+                    error=str(exc),
+                )
+                return None
+
+        def _coerce_bar_value(primary: str, fallback: str) -> float:
+            raw = b.get(primary)
+            if raw is None:
+                raw = b.get(fallback)
+            if raw is None:
+                return 0.0
+            try:
+                return float(raw)
+            except (TypeError, ValueError) as exc:
+                self.logger.warning(
+                    "Using 0 for invalid bar value",
+                    symbol=symbol,
+                    field=primary,
+                    value=raw,
+                    exc_info=True,
+                    error=str(exc),
+                )
+                return 0.0
 
         return Bar(
             symbol=symbol,
-            time=(datetime.fromisoformat(str(t).replace("Z", "+00:00")) if isinstance(t, str) else t),
-            open=float(o or 0.0),
-            high=float(h or 0.0),
-            low=float(low_price or 0.0),
-            close=float(c or 0.0),
-            volume=float(v or 0.0),
+            time=parsed_time,
+            open=_coerce_bar_value("o", "open"),
+            high=_coerce_bar_value("h", "high"),
+            low=_coerce_bar_value("l", "low"),
+            close=_coerce_bar_value("c", "close"),
+            volume=_coerce_bar_value("v", "volume"),
         )
 
     def _parse_bars(self, bars_data: Any, symbol: str) -> List[Bar]:

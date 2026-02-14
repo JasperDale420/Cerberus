@@ -1,17 +1,58 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
-from unittest.mock import MagicMock
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.core.domain import SymbolFeatures
 from src.core.logger import StructuredLogger
 from src.data.pipeline import FeaturePipeline
 
 
 def _logger(name: str) -> StructuredLogger:
     return StructuredLogger(name, level="INFO")
+
+
+class _KeywordOnlySnapshotManager:
+    def __init__(self) -> None:
+        self.calls: list[tuple[SymbolFeatures, datetime]] = []
+
+    def persist_feature_snapshot(self, *, features: SymbolFeatures, as_of_ts: datetime) -> None:
+        self.calls.append((features, as_of_ts))
+
+
+def _make_test_features(ts: datetime) -> SymbolFeatures:
+    return SymbolFeatures(
+        symbol="AAPL",
+        price=100.0,
+        atr_pct=0.01,
+        avg_volume=1000000,
+        intraday_range_pct=0.02,
+        gap_pct=0.0,
+        ema20_slope=0.5,
+        ema_trend_strength=1.0,
+        distance_from_vwap=0.01,
+        premarket_volume=123,
+        adx=25.0,
+        distance_from_ema20=0.01,
+        prior_day_high=110.0,
+        prior_day_low=95.0,
+        bb_upper=102.0,
+        bb_lower=98.0,
+        price_zscore=0.0,
+        flow_zscore=0.0,
+        call_put_ratio=0.0,
+        large_sweeps_count=0,
+        aggressive_flow_share=0.0,
+        last_updated=ts,
+        tfi=0.0,
+        hurst_exponent=0.5,
+        frac_diff_close=0.0,
+        net_gex=0.0,
+        gex_flip_dist=0.0,
+    )
 
 
 @pytest.mark.unit
@@ -87,6 +128,30 @@ async def test_feature_pipeline_computes_true_gap_and_premarket_volume() -> None
     feat = out["AAPL"]
     assert feat.premarket_volume == pytest.approx(3000.0)
     assert feat.gap_pct == pytest.approx(0.05)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_feature_pipeline_persists_feature_snapshot_with_keyword_args() -> None:
+    fp = FeaturePipeline(MagicMock(), MagicMock(), _logger("test_fp_snapshot_kw"))
+    fp.snapshots_enabled = True
+    fp.snapshot_manager = cast(_KeywordOnlySnapshotManager, _KeywordOnlySnapshotManager())  # type: ignore[assignment]
+
+    as_of = datetime(2026, 2, 13, 15, 0, tzinfo=timezone.utc)
+    features = {"AAPL": _make_test_features(as_of)}
+
+    async def _compute_technicals_only(*_args: Any, **_kwargs: Any) -> dict[str, SymbolFeatures]:
+        return features
+
+    fp.compute_technicals_only = AsyncMock(side_effect=_compute_technicals_only)  # type: ignore[method-assign]
+    fp.append_flow_features = AsyncMock(return_value=features)  # type: ignore[method-assign]
+
+    await fp.compute_features(["AAPL"], as_of=as_of)
+
+    calls = fp.snapshot_manager.calls  # type: ignore[union-attr]
+    assert len(calls) == 1
+    _, snapshot_time = calls[0]
+    assert snapshot_time == as_of
 
 
 @pytest.mark.unit
