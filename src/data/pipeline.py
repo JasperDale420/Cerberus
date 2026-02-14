@@ -71,7 +71,16 @@ class FeaturePipeline:
 
     def _extract_closes(self, bars_data: List[Any]) -> List[float]:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
-        return [float(b.c if hasattr(b, "c") else b.get("c", 0)) for b in bars_data]
+        closes: List[float] = []
+        for bar in bars_data:
+            if hasattr(bar, "c"):
+                value = getattr(bar, "c", None)
+            elif isinstance(bar, dict):
+                value = bar.get("c", None)
+            else:
+                value = None
+            closes.append(float(value) if value is not None else 0.0)
+        return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:
         start, end = self._calculate_fetch_window(as_of)
@@ -421,7 +430,7 @@ class FeaturePipeline:
         if self.snapshots_enabled and self.snapshot_manager:
             now = as_of or self.clock()
             for feat in features.values():
-                self.snapshot_manager.persist_feature_snapshot(feat, now)
+                self.snapshot_manager.persist_feature_snapshot(features=feat, as_of_ts=now)
 
         # Finalize metrics
         if hasattr(self, "last_run_metrics"):

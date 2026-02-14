@@ -1,6 +1,6 @@
 import random
 from datetime import datetime
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Optional, Set, cast
 
 from alpaca.data.enums import DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
@@ -149,7 +149,14 @@ class AlpacaClient:
                 timeframe=tf_obj,
             )
             resp = self.historical_client.get_stock_bars(req)
-            bars = (resp.data or {}).get(symbol) or []
+            data: dict[str, Any] = {}
+            if isinstance(resp, dict):
+                data = cast(dict[str, Any], resp.get("data") or {})
+            else:
+                data_attr = resp.data if hasattr(resp, "data") else None
+                if isinstance(data_attr, dict):
+                    data = cast(dict[str, Any], data_attr)
+            bars = data.get(symbol) or []
 
             # Return a stable dict format aligned with existing FeaturePipeline parsing.
             out = []
@@ -189,7 +196,14 @@ class AlpacaClient:
                 end=end,
             )
             resp = self.historical_client.get_stock_trades(req)
-            trades = (resp.data or {}).get(symbol) or []
+            data: dict[str, Any] = {}
+            if isinstance(resp, dict):
+                data = cast(dict[str, Any], resp.get("data") or {})
+            else:
+                data_attr = resp.data if hasattr(resp, "data") else None
+                if isinstance(data_attr, dict):
+                    data = cast(dict[str, Any], data_attr)
+            trades = data.get(symbol) or []
 
             out = []
             for t in trades:

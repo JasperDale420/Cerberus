@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file.
   - Log invalid timestamps with structured context and skip malformed bars.
   - Reject invalid backtest date ranges before running.
 
+- **Runtime/CI Guardrails** (2026-02-14):
+  - Feature pipeline close extraction now defaults missing values to 0.0.
+  - Alpaca stream start gating accepts data backend for gateway/legacy parity.
+  - Gateway stream bar normalization now coerces numeric payloads safely.
+  - Snapshot persistence now uses keyword arguments (mypy consistency).
+
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
