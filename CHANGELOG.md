@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
   - Added `CERBERUS_ASSET_CLASS` setting (`us_equity` or `crypto`).
   - Added `get_crypto_bars` and `get_crypto_trades` to `CentralApiClient`.
   - Updated `UniverseBuilder` to route data requests based on asset class.
+  - Made `GatewayStreamClient` asset-class-aware: selects `crypto_bars` or `stock_bars` feeds dynamically.
+  - WebSocket subscription subscribes to crypto universe symbols when `CERBERUS_ASSET_CLASS=crypto`.
+  - Added `cerberus-crypto` Docker service (profile: `crypto`) for headless 24/7 operation.
 
 - **Backtest Data Provisioning via Data-Gateway + Heber** (2026-02-13):
   - Added backfill methods to `CentralApiClient`: `request_backfill`, `get_backfill_status`, `wait_for_backfill`, `cancel_backfill`.
