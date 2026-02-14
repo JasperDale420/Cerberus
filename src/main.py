@@ -34,7 +34,7 @@ def _should_initialize_alpaca_client(
     return True
 
 
-def _should_start_alpaca_stream(order_executor: str) -> bool:
+def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
     """Determine whether Alpaca direct bar/trade streams should run.
 
     The gateway stream is started separately when using gateway data backend.
@@ -42,7 +42,10 @@ def _should_start_alpaca_stream(order_executor: str) -> bool:
     requires Alpaca API keys) should also start.
     """
     normalized_executor = str(order_executor or "").strip().lower()
-    return normalized_executor == "alpaca"
+    normalized_backend = str(data_backend or "").strip().lower()
+    if normalized_backend == "gateway":
+        return normalized_executor == "alpaca"
+    return True
 
 
 def _next_market_open_local(now: datetime) -> datetime:
@@ -448,7 +451,10 @@ async def async_main():
         gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
 
     # Alpaca direct streams: only for direct Alpaca execution mode.
-    start_alpaca_stream = _should_start_alpaca_stream(order_executor=args.order_executor)
+    start_alpaca_stream = _should_start_alpaca_stream(
+        order_executor=args.order_executor,
+        data_backend=args.data_backend,
+    )
     alpaca_stream_task: asyncio.Task[object] | None = None
     if start_alpaca_stream:
         logger.info("Starting Alpaca stream...")

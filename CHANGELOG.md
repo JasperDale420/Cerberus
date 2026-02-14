@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Avoided fetching GEX when flow data is empty; added context logging when flow/GEX fetch fails.
+- Handled None close values in feature close extraction to prevent type errors.
+- Respected data backend when deciding whether to start Alpaca streams.
 
 ### Fixed
 

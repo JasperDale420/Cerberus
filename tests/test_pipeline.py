@@ -262,8 +262,8 @@ async def test_append_flow_features_handles_flow_exception_without_gex():
         last_updated=now,
     )
 
-    pipeline.fetcher.fetch_flow = AsyncMock(side_effect=RuntimeError("uw flow down"))
-    pipeline.fetcher.fetch_gex = AsyncMock(return_value=[])
+    pipeline.fetcher.fetch_flow = AsyncMock(side_effect=RuntimeError("uw flow down"))  # type: ignore[method-assign]
+    pipeline.fetcher.fetch_gex = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     features = await pipeline.append_flow_features({"AAPL": feat})
 
