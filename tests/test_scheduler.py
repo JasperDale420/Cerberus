@@ -42,22 +42,35 @@ def test_add_job_correctly():
             pass
 
 
-def test_invalid_schedule_time_defaults_to_0925():
-    config = {"timezone": "America/New_York", "schedule_time": "bad"}
-    scheduler = CerberusScheduler(config)
+def test_schedule_time_parsing_valid():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
 
-    with patch.object(scheduler.scheduler, "start"):
-        with patch.object(scheduler.scheduler, "add_job") as mock_add_job:
-            scheduler.start()
+    hour, minute = scheduler._parse_schedule_time("09:25")
 
-            _, kwargs = mock_add_job.call_args
-            trigger = kwargs["trigger"]
+    assert hour == 9
+    assert minute == 25
 
-            now = datetime(2026, 2, 12, 8, 0, tzinfo=scheduler.tz)
-            next_fire = trigger.get_next_fire_time(None, now)
 
-            assert next_fire.hour == 9
-            assert next_fire.minute == 25
+def test_schedule_time_parsing_invalid_format():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
+
+    try:
+        scheduler._parse_schedule_time("bad-time")
+    except ValueError as exc:
+        assert "schedule_time must be in HH:MM format" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid schedule_time format")
+
+
+def test_schedule_time_parsing_invalid_range():
+    scheduler = CerberusScheduler({"schedule_time": "09:25"})
+
+    try:
+        scheduler._parse_schedule_time("25:00")
+    except ValueError as exc:
+        assert "schedule_time hour must be between 0 and 23" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid schedule_time hour")
 
 
 @patch("subprocess.run")

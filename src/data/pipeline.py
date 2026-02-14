@@ -76,10 +76,13 @@ class FeaturePipeline:
         """Extract close prices from bar objects/dicts (fast, allocation-light)."""
         closes: List[float] = []
         for bar in bars_data:
-            close = bar.c if hasattr(bar, "c") else bar.get("c", 0)
-            if close is None:
-                close = 0.0
-            closes.append(float(close))
+            if hasattr(bar, "c"):
+                value = getattr(bar, "c", None)
+            elif isinstance(bar, dict):
+                value = bar.get("c")
+            else:
+                value = None
+            closes.append(float(value) if value is not None else 0.0)
         return closes
 
     async def _fetch_bars_wrapper(self, sym: str, as_of: datetime) -> tuple[List[Any], Dict[str, int]]:

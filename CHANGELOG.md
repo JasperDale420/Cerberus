@@ -47,6 +47,13 @@ All notable changes to this project will be documented in this file.
   - Added traceback logging for HTTP errors.
   - Added tests for error logging and bad-encoding handling.
 
+- **Scheduler config validation + snapshot guard** (2026-02-14):
+  - Added explicit `schedule_time` validation with clear error logging for invalid HH:MM values.
+  - Skips daily universe persistence when no symbols are present to avoid empty writes.
+  - Falls back to offline bars directory when `offline_symbols.txt` is missing.
+  - Feature pipeline close extraction treats missing/None closes as 0.0 to avoid crashes.
+  - Alpaca stream gating now respects data backend when deciding to start streams.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
