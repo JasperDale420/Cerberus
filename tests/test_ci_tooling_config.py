@@ -19,7 +19,7 @@ def _load_pyproject() -> dict[str, Any]:
 
 def _load_pre_commit() -> dict[str, Any]:
     with (REPO_ROOT / ".pre-commit-config.yaml").open("r", encoding="utf-8") as f:
-        return cast(dict[str, Any], yaml.safe_load(f) or {})
+        return cast(dict[str, Any], yaml.safe_load(f))
 
 
 def test_ruff_extend_path_exists_in_repo() -> None:

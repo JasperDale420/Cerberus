@@ -49,19 +49,14 @@ class CentralApiClient:
         )
         self.gateway_max_retries: int = 1
         try:
-            self.gateway_max_retries = max(
-                0,
-                int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")),
-            )
+            raw_max_retries = str(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1"))
+            self.gateway_max_retries = max(0, int(raw_max_retries))
         except ValueError:
-            pass
-
-        self.gateway_retry_backoff_seconds: float = 0.25
+            self.gateway_max_retries = 1
+        self.gateway_retry_backoff_seconds = 0.25
         try:
-            self.gateway_retry_backoff_seconds = max(
-                0.0,
-                float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")),
-            )
+            raw_backoff = str(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25"))
+            self.gateway_retry_backoff_seconds = max(0.0, float(raw_backoff))
         except ValueError:
             pass
         self.llm_base_url = config_loader.get_env("CENTRAL_LLM_API_URL", self.base_url)
@@ -79,15 +74,16 @@ class CentralApiClient:
     ) -> float:
         """Calculate delay before next retry attempt."""
         if response is not None and response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
+            retry_after = cast(Optional[str], response.headers.get("Retry-After"))
+            if retry_after is not None:
                 try:
-                    return max(0.0, float(retry_after))
+                    delay = float(retry_after)
+                    return max(0.0, delay)
                 except ValueError:
                     pass
-        base_delay: float = self.gateway_retry_backoff_seconds
-        exponent = max(0, attempt - 1)
-        return cast(float, base_delay * (2.0 ** float(exponent)))
+        backoff_seconds = float(self.gateway_retry_backoff_seconds)
+        power: int = max(0, attempt - 1)
+        return cast(float, backoff_seconds * (2**power))
 
     def _request_with_retry(
         self,

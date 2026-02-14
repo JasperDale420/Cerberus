@@ -49,26 +49,30 @@ All notable changes to this project will be documented in this file.
   - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
   - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
-- ORB now logs when opening-range data is missing (once per day) to prevent silent skips (2026-02-14).
-- Feature pipeline close extraction now tolerates None close values again (2026-02-14).
-- Alpaca stream gating restored to honor `data_backend` for gateway vs legacy modes (2026-02-14).
-- Gateway bar normalization now coerces missing numeric fields safely for typed payloads (2026-02-14).
-- Feature snapshot persistence now uses keyword args to match the snapshot API (2026-02-14).
-- Alpaca historical data parsing now guards response data shape (2026-02-14).
+- **Hard stop validation now fails fast** (2026-02-14):
+  - Invalid `hard_stop_time` formats/ranges now log an error and raise to avoid silent misconfiguration.
+- **Gateway/legacy stream gating guardrails** (2026-02-14):
+  - `_should_start_alpaca_stream()` now respects `data_backend` and avoids unexpected argument errors in gateway mode tests.
+- **Feature pipeline close extraction guard** (2026-02-14):
+  - `_extract_closes()` now treats `None` close values as `0.0` instead of raising.
+- **CI tooling config typing cleanup** (2026-02-14):
+  - Cast CI config loaders to satisfy mypy return type expectations.
+- **Gateway stream bar coercion** (2026-02-14):
+  - Normalize gateway bar fields with safe float coercion to avoid None/typing errors.
+- **Snapshot persistence call fix** (2026-02-14):
+  - Feature snapshot persistence now uses keyword arguments to match snapshot manager signature.
+- **Alpaca historical response guards** (2026-02-14):
+  - Use safe `data` extraction when Alpaca SDK responses are dicts or objects.
+- **Gateway retry backoff typing** (2026-02-14):
+  - Tightened retry backoff parsing/casts to keep mypy clean.
 
 ### Added
 
 - GapFill config now supports `min_or_range_pct` to filter overly tight opening ranges (2026-02-14).
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
-- ORB minimum opening-range percent filter with micro backtest guard (2026-02-13).
-
-### Changed
-
-- **Scheduler config parsing safety** (2026-02-14):
-  - Invalid `schedule_time` now defaults to 09:25 ET with a warning.
-- **GapFill opening-range filter** (2026-02-14):
-  - Added `min_or_range_pct` to skip ultra-tight opening ranges.
+- **ORB opening-range filter** (2026-02-14):
+  - Added `min_or_range_pct` to skip narrow opening ranges and avoid low-signal breakouts.
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:

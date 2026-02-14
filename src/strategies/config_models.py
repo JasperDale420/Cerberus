@@ -168,6 +168,7 @@ class ORBConfig(BaseStrategyConfig):
     orb_minutes: int = Field(default=15, ge=1, description="Opening range duration in minutes")
     risk_reward: float = Field(default=2.0, gt=0, description=_DESC_RISK_REWARD)
     stop_loss_pct: float = Field(default=0.005, gt=0, description="Stop loss percentage (0.5%)")
+    min_or_range_pct: float = Field(default=0.0, ge=0, description="Minimum opening-range percent filter")
     min_gap_pct: float = Field(default=0.01, ge=0, description="Minimum gap percentage filter")
     min_flow_zscore: float = Field(default=0.0, description="Minimum flow z-score filter")
     min_premarket_volume: float = Field(default=0.0, ge=0, description="Minimum premarket volume filter")

@@ -118,6 +118,12 @@ class GatewayStreamClient:
         except (TypeError, ValueError):
             return default
 
+    def _payload_float(self, payload: dict[str, Any], primary: str, fallback: str) -> float:
+        raw = payload.get(primary)
+        if raw is None:
+            raw = payload.get(fallback)
+        return self._coerce_float(raw)
+
     def _normalize_bar_from_data(self, payload: dict[str, Any]) -> Bar:
         symbol = str(payload.get("S") or payload.get("symbol") or "").upper()
         if not symbol:
@@ -131,11 +137,11 @@ class GatewayStreamClient:
         return Bar(
             symbol=symbol,
             time=ts,
-            open=open_val,
-            high=high_val,
-            low=low_val,
-            close=close_val,
-            volume=volume_val,
+            open=self._payload_float(payload, "o", "open"),
+            high=self._payload_float(payload, "h", "high"),
+            low=self._payload_float(payload, "l", "low"),
+            close=self._payload_float(payload, "c", "close"),
+            volume=self._payload_float(payload, "v", "volume"),
             vwap=payload.get("vw") or payload.get("vwap"),
             trade_count=payload.get("n") or payload.get("trade_count"),
         )

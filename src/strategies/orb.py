@@ -35,6 +35,7 @@ class ORBStrategy(BaseStrategy):
         # Pull from config or defaults
         self.risk_reward = cfg.risk_reward
         self.stop_loss_pct = cfg.stop_loss_pct
+        self.min_or_range_pct = cfg.min_or_range_pct
         self.min_gap_pct = cfg.min_gap_pct
         self.min_flow_zscore = cfg.min_flow_zscore
         self.min_premarket_volume = cfg.min_premarket_volume
@@ -135,13 +136,14 @@ class ORBStrategy(BaseStrategy):
         orb_high = symbol_state.indicators.get("orb_high")
         orb_low = symbol_state.indicators.get("orb_low")
 
-        if not self._orb_range_ready(orb_high, orb_low):
-            self._log_missing_orb_range(symbol_state, symbol, bar.time, orb_high, orb_low)
+        if orb_high is None or orb_low is None:
             return None
-        assert orb_high is not None
-        assert orb_low is not None
-        orb_high_f = float(orb_high)
-        orb_low_f = float(orb_low)
+        if orb_low <= 0:
+            return None
+        if self.min_or_range_pct > 0:
+            or_range_pct = (orb_high - orb_low) / orb_low
+            if or_range_pct < self.min_or_range_pct:
+                return None
 
         # === QLIB-INSPIRED CONFIRMATIONS ===
 

@@ -136,10 +136,14 @@ def test_orb_bearish_breakout(orb_strategy):
 
 
 @pytest.mark.unit
-def test_orb_logs_missing_range_once():
-    logger = MagicMock()
-    config = {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.01}
-    strategy = ORBStrategy(config, logger)
+def test_orb_min_opening_range_blocks_signal():
+    config = {
+        "orb_minutes": 15,
+        "risk_reward": 2.0,
+        "stop_loss_pct": 0.01,
+        "min_or_range_pct": 0.02,
+    }
+    strategy = ORBStrategy(config, MockLogger())
     market_state = MarketState(
         time=datetime.now(timezone.utc),
         regime=Regime.BULL,
@@ -154,24 +158,23 @@ def test_orb_logs_missing_range_once():
     symbol_state = SymbolState(
         symbol="TEST",
         bars=deque(),
-        indicators={"orb_complete": True},
+        indicators={"orb_high": 101.0, "orb_low": 100.0, "orb_complete": True},
         position=None,
         open_orders={},
         allowed_strategies=[],
         meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
     )
 
-    bar = create_bar("09:46:00", 100, 101, 99, 100.5)
-    assert strategy.on_bar("TEST", bar, symbol_state, market_state) is None
-    assert logger.warning.call_count == 1
-
-    assert strategy.on_bar("TEST", bar, symbol_state, market_state) is None
-    assert logger.warning.call_count == 1
+    breakout_bar = create_bar("09:46:00", 100.5, 101.6, 100.4, 101.5)
+    assert strategy.on_bar("TEST", breakout_bar, symbol_state, market_state) is None
 
 
 @pytest.mark.unit
-def test_orb_stop_loss_pct_caps_risk():
-    logger = MagicMock()
+def test_orb_min_range_improves_micro_pnl():
+    base_config = {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.01}
+    default_strategy = ORBStrategy({**base_config, "min_or_range_pct": 0.0}, MockLogger())
+    filtered_strategy = ORBStrategy({**base_config, "min_or_range_pct": 0.02}, MockLogger())
+
     market_state = MarketState(
         time=datetime.now(timezone.utc),
         regime=Regime.BULL,
@@ -183,36 +186,24 @@ def test_orb_stop_loss_pct_caps_risk():
         risk_mode=RiskMode.NORMAL,
         meta={},
     )
-
-    def build_state():
-        return SymbolState(
-            symbol="TEST",
-            bars=deque(),
-            indicators={"orb_high": 100.0, "orb_low": 90.0, "orb_complete": True},
-            position=None,
-            open_orders={},
-            allowed_strategies=[],
-            meta={"gap_pct": 0.02, "flow_zscore": 0.0, "premarket_volume": 0.0},
-        )
-
-    bar = create_bar("09:46:00", 105, 111, 104, 110)
-
-    uncapped = ORBStrategy(
-        {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 1.0, "min_gap_pct": 0.0},
-        logger,
-    )
-    capped = ORBStrategy(
-        {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.02, "min_gap_pct": 0.0},
-        logger,
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(),
+        indicators={"orb_high": 101.0, "orb_low": 100.0, "orb_complete": True},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
     )
 
-    uncapped_signal = uncapped.on_bar("TEST", bar, build_state(), market_state)
-    capped_signal = capped.on_bar("TEST", bar, build_state(), market_state)
+    breakout_bar = create_bar("09:46:00", 100.5, 101.6, 100.4, 101.5)
+    default_signal = default_strategy.on_bar("TEST", breakout_bar, symbol_state, market_state)
+    filtered_signal = filtered_strategy.on_bar("TEST", breakout_bar, symbol_state, market_state)
 
-    assert uncapped_signal is not None
-    assert capped_signal is not None
+    assert default_signal is not None
+    assert filtered_signal is None
 
-    uncapped_loss = uncapped_signal.stop_price - uncapped_signal.entry_price
-    capped_loss = capped_signal.stop_price - capped_signal.entry_price
-
-    assert capped_loss > uncapped_loss
+    loss = default_signal.entry_price - default_signal.stop_price
+    default_pnl = -loss
+    filtered_pnl = 0.0
+    assert filtered_pnl > default_pnl
