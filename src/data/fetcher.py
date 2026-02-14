@@ -74,7 +74,12 @@ class DataFetcher:
             return start, existing
 
         try:
-            last_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            if isinstance(raw_ts, datetime):
+                last_ts = raw_ts
+                if last_ts.tzinfo is None:
+                    last_ts = last_ts.replace(tzinfo=timezone.utc)
+            else:
+                last_ts = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
             return last_ts + timedelta(seconds=1), existing
         except Exception as e:
             self.logger.debug(

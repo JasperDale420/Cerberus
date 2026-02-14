@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Feature pipeline close extraction** (2026-02-14):
+  - Treats `None` closes as `0.0` to avoid `float(None)` errors when bars are mixed shapes.
+- **Stream mode helper compatibility** (2026-02-14):
+  - `_should_start_alpaca_stream()` now accepts `data_backend` and keeps Alpaca streams on for legacy mode.
+
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
   - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
@@ -15,6 +20,10 @@ All notable changes to this project will be documented in this file.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 
 ### Added
+
+- **Fetcher cache timestamp coverage** (2026-02-14):
+  - Datetime bar timestamps are now supported in cache resume logic.
+  - Added unit test for datetime-based cache timestamps.
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
 
