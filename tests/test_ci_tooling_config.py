@@ -5,20 +5,21 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_pyproject() -> dict:
+def _load_pyproject() -> dict[str, Any]:
     with (REPO_ROOT / "pyproject.toml").open("rb") as f:
-        return tomllib.load(f)
+        return cast(dict[str, Any], tomllib.load(f))
 
 
-def _load_pre_commit() -> dict:
+def _load_pre_commit() -> dict[str, Any]:
     with (REPO_ROOT / ".pre-commit-config.yaml").open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return cast(dict[str, Any], yaml.safe_load(f) or {})
 
 
 def test_ruff_extend_path_exists_in_repo() -> None:

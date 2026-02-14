@@ -1,5 +1,6 @@
 from collections import deque
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 import pytest
 import pytz  # type: ignore
@@ -93,7 +94,7 @@ def test_orb_logic(orb_strategy):
     assert sig is not None
     assert sig.side.value == "buy"
     assert sig.strategy == "orb"
-    assert sig.stop_price == 99  # Low of range (from b1)
+    assert sig.stop_price == pytest.approx(105.93)  # stop_loss_pct cap on wide range
     assert sig.meta.get("gap_pct") == pytest.approx(0.02)
     assert sig.meta.get("flow_zscore") == pytest.approx(3.0)
     assert sig.meta.get("premarket_volume") == pytest.approx(12345.0)
@@ -131,3 +132,86 @@ def test_orb_bearish_breakout(orb_strategy):
     assert sig.meta.get("gap_pct") == pytest.approx(-0.02)
     assert sig.meta.get("flow_zscore") == pytest.approx(-3.0)
     assert sig.meta.get("premarket_volume") == pytest.approx(20000.0)
+
+
+@pytest.mark.unit
+def test_orb_logs_missing_range_once():
+    logger = MagicMock()
+    config = {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.01}
+    strategy = ORBStrategy(config, logger)
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+    symbol_state = SymbolState(
+        symbol="TEST",
+        bars=deque(),
+        indicators={"orb_complete": True},
+        position=None,
+        open_orders={},
+        allowed_strategies=[],
+        meta={"gap_pct": 0.02, "flow_zscore": 3.0, "premarket_volume": 12345.0},
+    )
+
+    bar = create_bar("09:46:00", 100, 101, 99, 100.5)
+    assert strategy.on_bar("TEST", bar, symbol_state, market_state) is None
+    assert logger.warning.call_count == 1
+
+    assert strategy.on_bar("TEST", bar, symbol_state, market_state) is None
+    assert logger.warning.call_count == 1
+
+
+@pytest.mark.unit
+def test_orb_stop_loss_pct_caps_risk():
+    logger = MagicMock()
+    market_state = MarketState(
+        time=datetime.now(timezone.utc),
+        regime=Regime.BULL,
+        index_symbol="SPY",
+        index_price=100,
+        index_return=0,
+        realized_vol=0,
+        daily_pnl=0,
+        risk_mode=RiskMode.NORMAL,
+        meta={},
+    )
+
+    def build_state():
+        return SymbolState(
+            symbol="TEST",
+            bars=deque(),
+            indicators={"orb_high": 100.0, "orb_low": 90.0, "orb_complete": True},
+            position=None,
+            open_orders={},
+            allowed_strategies=[],
+            meta={"gap_pct": 0.02, "flow_zscore": 0.0, "premarket_volume": 0.0},
+        )
+
+    bar = create_bar("09:46:00", 105, 111, 104, 110)
+
+    uncapped = ORBStrategy(
+        {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 1.0, "min_gap_pct": 0.0},
+        logger,
+    )
+    capped = ORBStrategy(
+        {"orb_minutes": 15, "risk_reward": 2.0, "stop_loss_pct": 0.02, "min_gap_pct": 0.0},
+        logger,
+    )
+
+    uncapped_signal = uncapped.on_bar("TEST", bar, build_state(), market_state)
+    capped_signal = capped.on_bar("TEST", bar, build_state(), market_state)
+
+    assert uncapped_signal is not None
+    assert capped_signal is not None
+
+    uncapped_loss = uncapped_signal.stop_price - uncapped_signal.entry_price
+    capped_loss = capped_signal.stop_price - capped_signal.entry_price
+
+    assert capped_loss > uncapped_loss

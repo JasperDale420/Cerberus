@@ -60,9 +60,7 @@ class GatewayStreamClient:
         except Exception:
             return -1
 
-    async def _invoke_bar_callback(
-        self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int
-    ) -> None:
+    async def _invoke_bar_callback(self, callback: Callable[..., Any], bar: Bar, symbol: str, arity: int) -> None:
         async def _call(cb: Callable[..., Any], *args: Any) -> None:
             if asyncio.iscoroutinefunction(cb):
                 await cb(*args)
@@ -96,17 +94,29 @@ class GatewayStreamClient:
         if not symbol:
             raise ValueError("Missing symbol in gateway bar payload")
         ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        open_val = self._coerce_float(payload.get("o") if payload.get("o") is not None else payload.get("open"))
+        high_val = self._coerce_float(payload.get("h") if payload.get("h") is not None else payload.get("high"))
+        low_val = self._coerce_float(payload.get("l") if payload.get("l") is not None else payload.get("low"))
+        close_val = self._coerce_float(payload.get("c") if payload.get("c") is not None else payload.get("close"))
+        volume_val = self._coerce_float(payload.get("v") if payload.get("v") is not None else payload.get("volume"))
         return Bar(
             symbol=symbol,
             time=ts,
-            open=float(payload.get("o") if payload.get("o") is not None else payload.get("open", 0.0)),
-            high=float(payload.get("h") if payload.get("h") is not None else payload.get("high", 0.0)),
-            low=float(payload.get("l") if payload.get("l") is not None else payload.get("low", 0.0)),
-            close=float(payload.get("c") if payload.get("c") is not None else payload.get("close", 0.0)),
-            volume=float(payload.get("v") if payload.get("v") is not None else payload.get("volume", 0.0)),
+            open=open_val,
+            high=high_val,
+            low=low_val,
+            close=close_val,
+            volume=volume_val,
             vwap=payload.get("vw") or payload.get("vwap"),
             trade_count=payload.get("n") or payload.get("trade_count"),
         )
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     def _extract_bar_payload(self, message: dict[str, Any]) -> dict[str, Any] | None:
         if message.get("type") != "data":
@@ -251,4 +261,3 @@ class GatewayStreamClient:
                 backoff = min(backoff * 2.0, 30.0)
             finally:
                 self._ws = None
-

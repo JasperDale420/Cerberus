@@ -13,8 +13,13 @@ class CentralApiClient:
     Client for central API services (Data Gateway + optional LLM endpoint).
     """
 
+    gateway_max_retries: int = 1
+    gateway_retry_backoff_seconds: float = 0.25
+
     def __init__(self, config_loader: ConfigLoader, logger: StructuredLogger):
         self.logger = logger
+        self.gateway_max_retries: int = 1
+        self.gateway_retry_backoff_seconds: float = 0.25
         self.base_url = config_loader.get_env(
             "CERBERUS_GATEWAY_URL",
             config_loader.get_env("DATA_INGESTION_URL", "http://localhost:8080"),
@@ -35,7 +40,10 @@ class CentralApiClient:
             headers=headers,
         )
         try:
-            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
+            self.gateway_max_retries = max(
+                0,
+                int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")),
+            )
         except ValueError:
             self.gateway_max_retries = 1
         try:
@@ -66,7 +74,9 @@ class CentralApiClient:
                     return max(0.0, float(retry_after))
                 except ValueError:
                     pass
-        return self.gateway_retry_backoff_seconds * (2 ** max(0, attempt - 1))
+        base_delay: float = self.gateway_retry_backoff_seconds
+        exponent = max(0, attempt - 1)
+        return cast(float, base_delay * (2.0 ** float(exponent)))
 
     def _request_with_retry(
         self,

@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
   - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
   - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
   - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
+- ORB now logs when opening-range data is missing (once per day) to prevent silent skips (2026-02-14).
+- Feature pipeline close extraction now tolerates None close values again (2026-02-14).
+- Alpaca stream gating restored to honor `data_backend` for gateway vs legacy modes (2026-02-14).
+- Gateway bar normalization now coerces missing numeric fields safely for typed payloads (2026-02-14).
+- Feature snapshot persistence now uses keyword args to match the snapshot API (2026-02-14).
+- Alpaca historical data parsing now guards response data shape (2026-02-14).
 
 ### Added
 
@@ -78,6 +84,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Deduplicated Stage 3 approval checks into shared helper used by weekly report and proposals.
+- ORB stop loss now caps risk using `stop_loss_pct` to avoid oversized stops on wide ranges (2026-02-14).
 
 - **Gateway-first trading execution path** (2026-02-13):
   - Set gateway-first runtime defaults in `src/core/settings.py`:
