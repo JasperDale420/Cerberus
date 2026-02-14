@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Stream gating + close extraction** (2026-02-14):
+  - `_extract_closes` now treats `None` closes as `0.0` to avoid type errors.
+  - `_should_start_alpaca_stream` now respects `data_backend` for gateway/noop handling.
+
 - **HTTP error logging resilience** (2026-02-14):
   - `raise_for_status` now logs safely even if response encoding is invalid.
   - Added traceback logging for HTTP errors.
