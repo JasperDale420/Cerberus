@@ -45,9 +45,9 @@ def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
     """
     normalized_executor = str(order_executor or "").strip().lower()
     normalized_backend = str(data_backend or "").strip().lower()
-    if normalized_backend == "gateway":
-        return normalized_executor == "alpaca"
-    return True
+    if normalized_backend == "gateway" and normalized_executor in ("noop", "gateway"):
+        return False
+    return normalized_executor == "alpaca" or normalized_backend != "gateway"
 
 
 def _next_market_open_local(now: datetime) -> datetime:
@@ -476,7 +476,7 @@ async def async_main():
     # Alpaca direct streams: only for direct Alpaca execution mode.
     start_alpaca_stream = _should_start_alpaca_stream(
         order_executor=args.order_executor,
-        data_backend=runtime_settings.cerberus_data_backend,
+        data_backend=args.data_backend,
     )
     alpaca_stream_task: asyncio.Task[object] | None = None
     if start_alpaca_stream:

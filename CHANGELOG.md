@@ -35,8 +35,14 @@ All notable changes to this project will be documented in this file.
   - Restore `data_backend` awareness for `_should_start_alpaca_stream()` to match gateway vs legacy modes.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
-  - Fixed `_should_start_alpaca_stream()` to allow Gateway bar stream to start correctly.
-- Fixed potential infinite loop in `wait_for_backfill` tests by mocking monotonic time correctly.
+  - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
+  - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
+  - Gateway bar stream now always starts when `data_backend=gateway`, independent of order executor.
+  - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
+  - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
+  - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
+- Improved time parsing errors for invalid trading window configs (2026-02-13).
+- Stabilized gateway bar normalization and snapshot persistence typing (2026-02-13).
 
 ### Added
 
@@ -45,6 +51,7 @@ All notable changes to this project will be documented in this file.
   - Added unit test for datetime-based cache timestamps.
 
 - Automated hourly report generated (2026-02-13 04:03 UTC).
+- ORB minimum opening-range percent filter with micro backtest guard (2026-02-13).
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:

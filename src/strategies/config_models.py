@@ -165,6 +165,7 @@ class ORBConfig(BaseStrategyConfig):
     min_gap_pct: float = Field(default=0.01, ge=0, description="Minimum gap percentage filter")
     min_flow_zscore: float = Field(default=0.0, description="Minimum flow z-score filter")
     min_premarket_volume: float = Field(default=0.0, ge=0, description="Minimum premarket volume filter")
+    min_or_range_pct: float = Field(default=0.0, ge=0, description="Minimum opening range percentage filter")
     # P2 fix: ATR-based buffer for stop placement
     stop_buffer_atr_mult: float = Field(default=0.0, ge=0, description="ATR multiplier for stop buffer (0=disabled)")
 
