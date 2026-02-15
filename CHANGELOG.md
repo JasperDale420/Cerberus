@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest helper regressions** (2026-02-15):
+  - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
+  - Restored Alpaca stream gating based on `data_backend` in startup helpers.
+
 - **HTTP error logging guard** (2026-02-15):
   - Avoided `ResponseNotRead` when logging streaming response bodies.
 
