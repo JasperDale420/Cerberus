@@ -54,6 +54,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Backtest fill safeguards** (2026-02-15):
+  - Defaulted to skipping zero-volume bars for fills (configurable `min_bar_volume_for_fill`).
+  - Validated `partial_fill_mode` with warning fallback to `none`.
+  - Added unit coverage for invalid fill modes and low-volume fill deferral.
+
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
   - Tightened startup validation test precision:
