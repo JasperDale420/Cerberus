@@ -6,7 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
+- **HTTP error logging guard** (2026-02-15):
+  - Avoided `ResponseNotRead` when logging streaming response bodies.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.

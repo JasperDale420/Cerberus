@@ -64,6 +64,15 @@ async def _async_log_response(response: httpx.Response) -> None:
     _log_response(response)
 
 
+def _safe_response_text(response: httpx.Response) -> str:
+    try:
+        return response.text[:500]
+    except httpx.ResponseNotRead:
+        return "<streaming_response_unread>"
+    except Exception:
+        return "<response_text_unavailable>"
+
+
 def create_http_client(
     base_url: str = "",
     timeout: float = DEFAULT_TIMEOUT,
@@ -123,8 +132,7 @@ def raise_for_status(response: httpx.Response) -> None:
             method=str(response.request.method),
             url=str(response.request.url),
             status_code=response.status_code,
-            response_text=_safe_response_excerpt(response),
-            exc_info=True,
+            response_text=_safe_response_text(response),
         )
         raise
 
