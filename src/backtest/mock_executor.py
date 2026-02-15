@@ -69,6 +69,8 @@ class BacktestOrderExecutor:
         self._partial_fill_mode: str = "none"  # none|fixed|volume_aware
         self._partial_fill_pct: float = 1.0  # for fixed mode
         self._partial_fill_rate: float = 0.1  # for volume_aware: capture 10% of bar volume
+        # Minimum bar volume for fills (avoid zero-volume phantom fills)
+        self._min_bar_volume_for_fill: float = 1.0
         # Slippage configuration
         self._slippage_mode: str = "fixed"  # fixed|volume_impact
         self._slippage_impact_mult: float = 5.0  # multiplier for volume impact
@@ -88,6 +90,14 @@ class BacktestOrderExecutor:
 
         # Partial fill mode: none|fixed|volume_aware
         self._partial_fill_mode = str(self._backtest_cfg.get("partial_fill_mode", "none")).lower()
+        allowed_fill_modes = {"none", "fixed", "volume_aware"}
+        if self._partial_fill_mode not in allowed_fill_modes:
+            self.logger.warning(
+                "Invalid partial fill mode; defaulting to none",
+                partial_fill_mode=self._partial_fill_mode,
+                allowed_modes=sorted(allowed_fill_modes),
+            )
+            self._partial_fill_mode = "none"
 
         # Fixed partial fill percentage (for mode=fixed)
         try:
@@ -102,6 +112,18 @@ class BacktestOrderExecutor:
             self._partial_fill_rate = max(0.01, min(1.0, self._partial_fill_rate))
         except (TypeError, ValueError):
             self._partial_fill_rate = 0.1
+
+        # Minimum bar volume for fills
+        try:
+            self._min_bar_volume_for_fill = float(self._backtest_cfg.get("min_bar_volume_for_fill", 1.0))
+            if self._min_bar_volume_for_fill < 0:
+                raise ValueError("min_bar_volume_for_fill must be non-negative")
+        except (TypeError, ValueError):
+            self.logger.warning(
+                "Invalid min_bar_volume_for_fill; defaulting to 1",
+                min_bar_volume_for_fill=self._backtest_cfg.get("min_bar_volume_for_fill"),
+            )
+            self._min_bar_volume_for_fill = 1.0
 
         # Slippage mode: fixed|volume_impact
         self._slippage_mode = str(self._backtest_cfg.get("slippage_mode", "fixed")).lower()
@@ -444,6 +466,16 @@ class BacktestOrderExecutor:
     ) -> None:
         order_qty = float(o.intent.qty)
         bar_volume = float(bar.volume) if bar.volume > 0 else 0.0
+        if bar_volume < self._min_bar_volume_for_fill:
+            self.logger.info(
+                "Backtest fill skipped due to low bar volume",
+                order_id=o.id,
+                symbol=symbol,
+                bar_volume=bar_volume,
+                min_bar_volume_for_fill=self._min_bar_volume_for_fill,
+                correlation_id=o.intent.correlation_id,
+            )
+            return
 
         # Calculate fill quantity using volume-aware logic
         fill_qty = self._calculate_fill_qty(order_qty, bar_volume)
