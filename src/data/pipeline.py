@@ -1,8 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
-
-import pytz  # type: ignore
+from zoneinfo import ZoneInfo
 
 from src.core.domain import SymbolFeatures
 from src.core.logger import StructuredLogger
@@ -15,7 +14,7 @@ from src.data.unusual_whales import UnusualWhalesClient
 if TYPE_CHECKING:
     from src.data.snapshot_manager import SnapshotManager
 
-US_EASTERN = pytz.timezone("US/Eastern")
+US_EASTERN = ZoneInfo("America/New_York")
 UTC_ZERO_STR = "+00:00"
 
 

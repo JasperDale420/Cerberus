@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Cross-Repo Audit: pytz → zoneinfo Migration** (2026-02-21):
+  - Migrated `src/data/pipeline.py`, `src/main.py`, and `src/backtest/feature_pipeline.py` from deprecated `pytz` to stdlib `zoneinfo`. Replaced `pytz.timezone()` with `ZoneInfo()` and `.localize()` with `datetime(..., tzinfo=)` pattern.
+
+### Fixed
+
 - **Backtest helper regressions** (2026-02-15):
   - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
   - Restored Alpaca stream gating based on `data_backend` in startup helpers.

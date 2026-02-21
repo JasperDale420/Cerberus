@@ -487,9 +487,9 @@ async def async_main():
     logger.info("Entering main trading loop", mode=args.mode)
 
     try:
-        import pytz  # type: ignore
+        from zoneinfo import ZoneInfo
 
-        tz = pytz.timezone(config.get("timezone", "US/Eastern"))
+        tz = ZoneInfo(config.get("timezone", "America/New_York"))
 
         eod_ran_for_date = None
         flattened_for_date = None

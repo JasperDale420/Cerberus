@@ -4,14 +4,13 @@ import bisect
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
-
-import pytz  # type: ignore
+from zoneinfo import ZoneInfo
 
 from src.core.domain import Bar, Regime, ScanResult, SymbolFeatures, WatchlistSymbol
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
 
-US_EASTERN = pytz.timezone("US/Eastern")
+US_EASTERN = ZoneInfo("America/New_York")
 
 
 @dataclass(frozen=True)
@@ -203,7 +202,7 @@ class BacktestFeaturePipeline:
 
             # 2. Compute Relative Strength vs SPY
             # Anchor RS to 9:30 AM ET (Market Open) for institutional baseline
-            market_open = US_EASTERN.localize(datetime.combine(now.date(), time(9, 30)))
+            market_open = datetime.combine(now.date(), time(9, 30), tzinfo=US_EASTERN)
             if bars and benchmark_bars:
                 common_start = max(market_open, bars[0].time, benchmark_bars[0].time)
                 sym_al = [b.close for b in bars if b.time >= common_start]
