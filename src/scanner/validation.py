@@ -14,6 +14,13 @@ class DataValidator:
     def __init__(self, logger: Optional[StructuredLogger] = None):
         self.logger = logger
 
+    @staticmethod
+    def _is_finite(value: object) -> bool:
+        try:
+            return math.isfinite(value)
+        except Exception:
+            return False
+
     def validate_technicals(
         self,
         features: SymbolFeatures,
@@ -32,6 +39,10 @@ class DataValidator:
                 return False
 
             # Price validity
+            if not self._is_finite(features.price):
+                if self.logger:
+                    self.logger.warning("Invalid price", symbol=features.symbol, price=features.price)
+                return False
             if features.price <= 0:
                 if self.logger:
                     self.logger.warning("Invalid price", symbol=features.symbol, price=features.price)
@@ -41,10 +52,26 @@ class DataValidator:
             if features.price < min_price or features.price > max_price:
                 return False
 
+            if not self._is_finite(features.avg_volume):
+                if self.logger:
+                    self.logger.warning(
+                        "Invalid volume",
+                        symbol=features.symbol,
+                        avg_volume=features.avg_volume,
+                    )
+                return False
             if features.avg_volume < min_volume:
                 return False
 
             # Volatility checks (ATR)
+            if not self._is_finite(features.atr_pct):
+                if self.logger:
+                    self.logger.warning(
+                        "Invalid atr_pct",
+                        symbol=features.symbol,
+                        atr_pct=features.atr_pct,
+                    )
+                return False
             if features.atr_pct < min_atr_pct or features.atr_pct > max_atr_pct:
                 return False
 
