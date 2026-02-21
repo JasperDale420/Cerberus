@@ -6,14 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Stream gating + close extraction** (2026-02-14):
-  - `_extract_closes` now treats `None` closes as `0.0` to avoid type errors.
-  - `_should_start_alpaca_stream` now respects `data_backend` for gateway/noop handling.
-
-- **HTTP error logging resilience** (2026-02-14):
-  - `raise_for_status` now logs safely even if response encoding is invalid.
-  - Added traceback logging for HTTP errors.
-  - Added tests for error logging and bad-encoding handling.
+- Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.

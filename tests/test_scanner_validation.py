@@ -86,6 +86,20 @@ def test_validate_technicals_atr_filter(validator, valid_features):
 
 
 @pytest.mark.unit
+def test_validate_technicals_rejects_non_finite_values(validator, valid_features):
+    valid_features.price = float("nan")
+    assert validator.validate_technicals(valid_features) is False
+
+    valid_features.price = 150.0
+    valid_features.avg_volume = float("inf")
+    assert validator.validate_technicals(valid_features) is False
+
+    valid_features.avg_volume = 1000000.0
+    valid_features.atr_pct = float("-inf")
+    assert validator.validate_technicals(valid_features) is False
+
+
+@pytest.mark.unit
 def test_validate_technicals_exception_handling(validator):
     # Passing None should raise AttributeError internally which is caught
     assert validator.validate_technicals(None) is False
