@@ -1298,13 +1298,15 @@ class ExecutionEngine:
             if order_id is None:
                 return
 
-            # Idempotency
+            # Idempotency — round floats to avoid IEEE 754 mismatch on dedup
+            rounded_price = round(fill_price, 4)
+            rounded_qty = round(fill_qty, 4)
             existing = (
                 session.query(DbFill)
                 .filter(DbFill.order_id == int(order_id))
                 .filter(DbFill.fill_time == fill_ts)
-                .filter(DbFill.fill_price == fill_price)
-                .filter(DbFill.fill_qty == fill_qty)
+                .filter(DbFill.fill_price.between(rounded_price - 1e-6, rounded_price + 1e-6))
+                .filter(DbFill.fill_qty.between(rounded_qty - 1e-6, rounded_qty + 1e-6))
                 .first()
             )
             if existing is not None:
@@ -1314,8 +1316,8 @@ class ExecutionEngine:
                 DbFill(
                     order_id=order_id,
                     fill_time=fill_ts,
-                    fill_price=fill_price,
-                    fill_qty=fill_qty,
+                    fill_price=rounded_price,
+                    fill_qty=rounded_qty,
                 )
             )
 
