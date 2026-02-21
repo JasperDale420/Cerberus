@@ -6,7 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
+- **Backtest helper regressions** (2026-02-15):
+  - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
+  - Restored Alpaca stream gating based on `data_backend` in startup helpers.
+
+- **HTTP error logging guard** (2026-02-15):
+  - Avoided `ResponseNotRead` when logging streaming response bodies.
 
 - **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
   - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
@@ -52,6 +57,11 @@ All notable changes to this project will be documented in this file.
     - Created `tests/unit/test_startup_validation_unit.py` with 14 validation tests
 
 ### Changed
+
+- **Backtest fill safeguards** (2026-02-15):
+  - Defaulted to skipping zero-volume bars for fills (configurable `min_bar_volume_for_fill`).
+  - Validated `partial_fill_mode` with warning fallback to `none`.
+  - Added unit coverage for invalid fill modes and low-volume fill deferral.
 
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
