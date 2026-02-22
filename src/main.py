@@ -667,6 +667,8 @@ async def async_main():
             trade_stream_task.cancel()
         if not reconcile_task.done():
             reconcile_task.cancel()
+        central_api_client.close()
+        await uw_client.close()
 
 
 if __name__ == "__main__":
