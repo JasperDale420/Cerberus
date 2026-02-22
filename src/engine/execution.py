@@ -1251,16 +1251,25 @@ class ExecutionEngine:
         """Handle a closed trade: persist, record, and track."""
         try:
             self.closed_trades.append(closed)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.error(
+                "Failed to append closed trade",
+                error=str(e),
+                exc_info=True,
+            )
 
         if self.db:
             self._persist_closed_trade(closed)
 
         try:
             self.risk_manager.record_completed_trade(closed.strategy, as_of=closed.exit_time)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.error(
+                "Risk manager failed to record completed trade",
+                strategy=getattr(closed, "strategy", "unknown"),
+                error=str(e),
+                exc_info=True,
+            )
 
     def _persist_fill(
         self,
