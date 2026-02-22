@@ -6,11 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Cross-Repo Audit: Retry standardization** (2026-02-22):
+  - Migrated `CentralApiClient` in `src/data/api_client.py` from raw `httpx.Client` to `create_http_client()` for structured logging hooks.
+  - Raised default retry count from 1 → 3 (`CERBERUS_GATEWAY_MAX_RETRIES`) and backoff from 0.25s → 1.0s (`CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`) to match Empire standard.
 - **Cross-Repo Audit: pytz → zoneinfo Migration** (2026-02-22):
   - Migrated `src/core/time_utils.py` (central timezone module), `src/data/calculator.py`, `src/analysis/analytics.py`, `src/scheduler.py`, `src/strategies/gap_fill.py`, `src/main.py`, `src/data/pipeline.py`, and `src/backtest/feature_pipeline.py` from deprecated `pytz` to stdlib `zoneinfo`.
   - Replaced `pytz.timezone()` with `ZoneInfo()`, `.localize()` with `datetime(..., tzinfo=)` pattern, and `US/Eastern` with canonical `America/New_York`.
-
-### Fixed
 
 - **Backtest helper regressions** (2026-02-15):
   - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.

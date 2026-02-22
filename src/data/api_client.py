@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, cast
 import httpx
 
 from src.core.config import ConfigLoader
+from src.core.http_client import create_http_client
 from src.core.logger import StructuredLogger
 
 
@@ -29,22 +30,22 @@ class CentralApiClient:
         if self.gateway_key:
             headers["X-Gateway-Key"] = self.gateway_key
 
-        self.client = httpx.Client(
+        self.client = create_http_client(
             base_url=self.base_url,
             timeout=timeout,
             headers=headers,
         )
         try:
-            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "1")))
+            self.gateway_max_retries = max(0, int(config_loader.get_env("CERBERUS_GATEWAY_MAX_RETRIES", "3")))
         except ValueError:
-            self.gateway_max_retries = 1
+            self.gateway_max_retries = 3
         try:
             self.gateway_retry_backoff_seconds = max(
                 0.0,
-                float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "0.25")),
+                float(config_loader.get_env("CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS", "1.0")),
             )
         except ValueError:
-            self.gateway_retry_backoff_seconds = 0.25
+            self.gateway_retry_backoff_seconds = 1.0
         self.llm_base_url = config_loader.get_env("CENTRAL_LLM_API_URL", self.base_url)
         self._llm_client: Optional[httpx.Client] = None
 
