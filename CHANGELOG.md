@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Data Flow Integrity: Fill dedup guard** (2026-02-22):
+  - Added `_processed_fill_ids` set to `ExecutionEngine` to prevent duplicate fill processing on reconnect/restart. Uses composite key (`correlation_id|side|price|qty`) to distinguish entry from exit fills sharing the same correlation ID.
 - **Cross-Repo Audit: Retry standardization** (2026-02-22):
   - Migrated `CentralApiClient` in `src/data/api_client.py` from raw `httpx.Client` to `create_http_client()` for structured logging hooks.
   - Raised default retry count from 1 → 3 (`CERBERUS_GATEWAY_MAX_RETRIES`) and backoff from 0.25s → 1.0s (`CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`) to match Empire standard.

@@ -65,6 +65,8 @@ class ExecutionEngine:
         # M1 Memory Audit Fix: bounded trade capture for backtests/analysis
         # Keeps last 5000 trades to prevent unbounded growth in multi-day runs
         self.closed_trades: deque = deque()  # No maxlen for research backtests
+        # Fill dedup: prevent double processing of the same fill on reconnect/restart
+        self._processed_fill_ids: Set[str] = set()
 
         # Extracted Collaborators
         self.health = HealthMonitor(config, logger, run_id, self.clock)
@@ -1165,12 +1167,27 @@ class ExecutionEngine:
 
         # Normalize correlation ID
         fill = self._normalize_fill_correlation_id(fill, symbol, fill_ts)
+        corr_id = fill["correlation_id"]
+
+        # Dedup guard: skip if this exact fill was already processed (e.g. on reconnect).
+        # Use a composite key so entry and exit fills sharing the same correlation_id
+        # are treated as distinct events.
+        fill_key = f"{corr_id}|{fill.get('side', '')}|{fill.get('price', '')}|{fill.get('qty', '')}"
+        if fill_key in self._processed_fill_ids:
+            self.logger.debug(
+                "Duplicate fill skipped",
+                symbol=symbol,
+                correlation_id=corr_id,
+                fill_key=fill_key,
+            )
+            return
+        self._processed_fill_ids.add(fill_key)
 
         # Persist fill
         if self.db:
             self._persist_fill(
                 fill,
-                fill["correlation_id"],
+                corr_id,
                 fill_ts,
                 float(fill["price"]),
                 float(fill["qty"]),
