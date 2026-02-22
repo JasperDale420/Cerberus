@@ -1,9 +1,9 @@
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import pandas as pd
-import pytz  # type: ignore
 from sqlalchemy import select, text
 
 from src.analysis.db import DatabaseDatabase
@@ -214,8 +214,8 @@ class AnalyticsEngine:
             )
 
     def _write_daily_report(self, target_date: date, df: pd.DataFrame) -> Path:
-        tz_name = str((self.db.config or {}).get("timezone", "US/Eastern"))
-        tz = pytz.timezone(tz_name)
+        tz_name = str((self.db.config or {}).get("timezone", "America/New_York"))
+        tz = ZoneInfo(tz_name)
 
         report_dir = Path("artifacts") / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)

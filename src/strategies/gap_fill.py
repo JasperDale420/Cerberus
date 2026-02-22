@@ -98,7 +98,7 @@ class GapFillStrategy(BaseStrategy):
         if isinstance(bt, datetime) and bt.tzinfo is None:
             bt = bt.replace(tzinfo=timezone.utc)
         bt_et = time_utils.to_eastern_time(bt)
-        session_open_et = time_utils.get_eastern_timezone().localize(datetime.combine(bt_et.date(), time_type(9, 30)))
+        session_open_et = datetime.combine(bt_et.date(), time_type(9, 30), tzinfo=time_utils.get_eastern_timezone())
         cutoff_et = session_open_et + timedelta(minutes=self.or_time_minutes)
 
         # Build opening range.

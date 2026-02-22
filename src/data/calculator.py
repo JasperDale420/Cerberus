@@ -1,14 +1,13 @@
 import math
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
-import pytz
+from zoneinfo import ZoneInfo
 
 from src.core.domain import TechnicalFeatures
 from src.core.indicators import RollingADX, RollingATR, RollingEMA, RollingStd
 
 # Cache timezone object at module level for performance
-_ET_TZ = pytz.timezone("US/Eastern")
+_ET_TZ = ZoneInfo("America/New_York")
 
 
 class FeatureCalculator:
@@ -17,7 +16,7 @@ class FeatureCalculator:
     Computes technical indicators and flow metrics from raw data.
     """
 
-    DEFAULT_TIMEZONE = "US/Eastern"
+    DEFAULT_TIMEZONE = "America/New_York"
     UTC_OFFSET_STR = "+00:00"
 
     @staticmethod
@@ -193,7 +192,7 @@ class FeatureCalculator:
 
             if ts_et.date() == latest_date_et:
                 # Check if within the opening range
-                market_open_dt = _ET_TZ.localize(datetime.combine(latest_date_et, market_open_time))
+                market_open_dt = datetime.combine(latest_date_et, market_open_time, tzinfo=_ET_TZ)
                 orb_end_dt = market_open_dt + timedelta(minutes=orb_duration_minutes)
 
                 if market_open_dt <= ts_et <= orb_end_dt:

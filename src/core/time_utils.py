@@ -6,32 +6,31 @@ standardized functions for US equity market time conversions and validations.
 """
 
 from datetime import datetime, time, timezone
-
-import pytz  # type: ignore
+from zoneinfo import ZoneInfo
 
 # Cache timezone object for performance
-_EASTERN_TZ = pytz.timezone("US/Eastern")
+_EASTERN_TZ = ZoneInfo("America/New_York")
 
 
-def get_eastern_timezone() -> pytz.tzinfo.BaseTzInfo:
+def get_eastern_timezone() -> ZoneInfo:
     """
-    Get the US/Eastern timezone object.
+    Get the US Eastern timezone object.
 
     Returns:
-        pytz timezone object for US/Eastern
+        ZoneInfo object for America/New_York
     """
     return _EASTERN_TZ
 
 
 def to_eastern_time(dt: datetime) -> datetime:
     """
-    Convert any datetime to US/Eastern timezone.
+    Convert any datetime to US Eastern timezone.
 
     Args:
         dt: Datetime to convert (naive datetimes are assumed to be UTC)
 
     Returns:
-        Datetime converted to US/Eastern timezone
+        Datetime converted to US Eastern timezone
     """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -40,7 +39,7 @@ def to_eastern_time(dt: datetime) -> datetime:
 
 def get_eastern_time_of_day(dt: datetime) -> time:
     """
-    Get the time-of-day in US/Eastern timezone.
+    Get the time-of-day in US Eastern timezone.
 
     Args:
         dt: Datetime to convert (naive datetimes are assumed to be UTC)

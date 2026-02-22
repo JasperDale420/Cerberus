@@ -1,11 +1,11 @@
 import subprocess
 import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from pytz import timezone
 
 logger = structlog.get_logger("CerberusScheduler")
 
@@ -14,7 +14,7 @@ class CerberusScheduler:
     def __init__(self, config: dict):
         self.config = config
         self.scheduler = BlockingScheduler()
-        self.tz = timezone(config.get("timezone", "America/New_York"))
+        self.tz = ZoneInfo(config.get("timezone", "America/New_York"))
 
     def start(self):
         """
