@@ -62,9 +62,8 @@ class ExecutionEngine:
         self.position_manager = PositionManager()
         self.meta_labeler = MetaLabeler(logger)
         self.symbol_states: Dict[str, SymbolState] = {}
-        # M1 Memory Audit Fix: bounded trade capture for backtests/analysis
-        # Keeps last 5000 trades to prevent unbounded growth in multi-day runs
-        self.closed_trades: deque = deque()  # No maxlen for research backtests
+        # Bounded trade capture for backtests/analysis
+        self.closed_trades: deque = deque(maxlen=5000)
         # Fill dedup: prevent double processing of the same fill on reconnect/restart
         self._processed_fill_ids: Set[str] = set()
 
@@ -1182,6 +1181,8 @@ class ExecutionEngine:
             )
             return
         self._processed_fill_ids.add(fill_key)
+        if len(self._processed_fill_ids) > 10_000:
+            self._processed_fill_ids.clear()
 
         # Persist fill
         if self.db:
