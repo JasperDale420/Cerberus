@@ -9,8 +9,11 @@ from datetime import datetime, time, timezone
 
 import pytz  # type: ignore
 
+from src.core.logger import StructuredLogger
+
 # Cache timezone object for performance
 _EASTERN_TZ = pytz.timezone("US/Eastern")
+logger = StructuredLogger("time_utils")
 
 
 def get_eastern_timezone() -> pytz.tzinfo.BaseTzInfo:
@@ -34,6 +37,11 @@ def to_eastern_time(dt: datetime) -> datetime:
         Datetime converted to US/Eastern timezone
     """
     if dt.tzinfo is None:
+        logger.warning(
+            "Naive datetime assumed UTC for Eastern conversion",
+            event_type="naive_datetime_coerced",
+            assumed_tz="UTC",
+        )
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(_EASTERN_TZ)
 
@@ -77,7 +85,14 @@ def in_trading_window(dt: datetime, start: time, end: time, convert_to_eastern: 
         else:
             t = dt.time()
         return start <= t <= end
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "Failed to evaluate trading window; failing open",
+            event_type="time_window_error",
+            error_class=type(exc).__name__,
+            convert_to_eastern=convert_to_eastern,
+            exc_info=True,
+        )
         # Fail open - better to allow trading than halt on timezone errors
         return True
 
@@ -129,7 +144,15 @@ def in_time_window_str(dt: datetime, start_str: str, end_str: str, convert_to_ea
         start = parse_time_string(start_str)
         end = parse_time_string(end_str)
         return in_trading_window(dt, start, end, convert_to_eastern)
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "Failed to parse time window strings; failing open",
+            event_type="time_window_parse_error",
+            error_class=type(exc).__name__,
+            start_str=start_str,
+            end_str=end_str,
+            exc_info=True,
+        )
         return True
 
 
