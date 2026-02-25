@@ -44,3 +44,4 @@ vectors.db
 .env.local
 .env.*.local
 .aider*
+.env
