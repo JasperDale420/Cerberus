@@ -650,7 +650,7 @@ class ExecutionEngine:
             try:
                 self.market_manager.update_vol(bar)
             except Exception:
-                pass
+                self.logger.debug("Vol symbol update failed", exc_info=True)
 
         # Initialize or get symbol state
         state = self._get_or_create_symbol_state(symbol)
@@ -774,7 +774,7 @@ class ExecutionEngine:
                 try:
                     bar.vwap = session_vwap
                 except Exception:
-                    pass
+                    self.logger.debug("Session VWAP update failed", exc_info=True)
         except Exception:
             self._inc_error("execution")
 
@@ -1379,11 +1379,11 @@ class ExecutionEngine:
                     as_of=(fill_ts if isinstance(fill_ts, datetime) else None),
                 )
             except Exception:
-                pass
+                self.logger.debug("Risk manager PNL update failed", exc_info=True)
             try:
                 self.market_state.daily_pnl = float(self.risk_manager.current_daily_pnl)
             except Exception:
-                pass
+                self.logger.debug("Market state daily PNL update failed", exc_info=True)
 
     def _persist_closed_trade(self, closed: Any) -> None:
         def _write_trade(session: Session) -> None:
@@ -1639,7 +1639,7 @@ class ExecutionEngine:
             try:
                 self.order_executor.cancel_all_for_symbol(sym)
             except Exception:
-                pass
+                self.logger.debug("Cancel via broker API failed", symbol=sym, exc_info=True)
 
             # Also cancel by looking up order IDs in DB
             broker_ids = self._get_pending_order_ids(sym)

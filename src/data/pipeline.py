@@ -405,7 +405,7 @@ class FeaturePipeline:
             # We'll update global metrics mainly related to fetch failures.
             self.last_run_metrics = dict(metrics)
         except Exception:
-            pass
+            self.logger.debug("Failed to update pipeline metrics", exc_info=True)
 
         return features_map
 

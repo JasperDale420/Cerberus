@@ -220,7 +220,7 @@ class Scanner:
                 try:
                     return datetime.fromisoformat(raw.replace("Z", "+00:00"))
                 except Exception:
-                    pass
+                    self.logger.debug("Failed to parse start_time_utc", raw=raw, exc_info=True)
 
         self.logger.error(
             "Scanner.scan requires scan_time for deterministic behavior",

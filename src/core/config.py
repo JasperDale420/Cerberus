@@ -173,7 +173,8 @@ class ConfigLoader:
                 try:
                     del strategies[key]
                 except Exception:
-                    pass
+                    if self.logger is not None and hasattr(self.logger, "debug"):
+                        self.logger.debug("Failed to delete normalized strategy key", key=key, exc_info=True)
 
             for strat_name, strat_cfg in strategies.items():
                 if not isinstance(strat_cfg, dict):

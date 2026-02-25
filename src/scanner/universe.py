@@ -312,7 +312,7 @@ class UniverseBuilder:
                 total=len(universe),
             )
         except Exception:
-            pass
+            self.logger.debug("Error logging universe build stats", exc_info=True)
 
         if not universe:
             self.logger.error("Universe is empty; refusing to proceed")
