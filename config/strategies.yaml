@@ -16,7 +16,7 @@ strategies:
     activation:
       session: [opening, midday, power_hour]
       trend: [flat]
-      vol: [low, normal]
+      vol: [normal, high]
       liquidity: [good, thin]
       risk: [neutral, risk_off]
       min_confidence: 0.6
@@ -33,7 +33,7 @@ strategies:
     activation:
       session: [opening]
       trend: [up, down]
-      vol: [low, normal]
+      vol: [normal, high, shock]
       liquidity: [good]
       risk: [risk_on, neutral]
       min_confidence: 0.5
@@ -48,7 +48,7 @@ strategies:
     activation:
       session: [midday, power_hour]
       trend: [flat]
-      vol: [low, normal]
+      vol: [normal, high]
       liquidity: [good]
       risk: [neutral, risk_off]
       min_confidence: 0.6
@@ -62,7 +62,7 @@ strategies:
     activation:
       session: [opening, midday]
       trend: [up, down]
-      vol: [normal, high]
+      vol: [normal, high, shock]
       liquidity: [good]
       risk: [risk_on, neutral]
       min_confidence: 0.5
@@ -78,7 +78,7 @@ strategies:
     # PRD Addendum: Multi-axis regime activation
     activation:
       session: [opening]
-      trend: [flat]
+      trend: [up, down, flat]
       vol: [normal, high]
       liquidity: [good, thin]
       risk: [neutral]
@@ -130,7 +130,7 @@ strategies:
     activation:
       session: [opening]
       trend: [up, down]
-      vol: [normal, high]
+      vol: [normal, high, shock]
       liquidity: [good]
       risk: [risk_on]
       min_confidence: 0.6
