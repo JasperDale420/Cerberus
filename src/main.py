@@ -130,8 +130,10 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.fusion_v1 import FusionStrategyV1
     from src.strategies.gap_fill import GapFillStrategy
     from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
+    from src.strategies.intraday_momentum import IntradayMomentumStrategy
     from src.strategies.momentum_continuation import MomentumContinuationStrategy
     from src.strategies.orb import ORBStrategy
+    from src.strategies.order_flow_imbalance import OrderFlowImbalanceStrategy
     from src.strategies.pair_trading import PairTradingStrategy
     from src.strategies.trend_pullback import TrendPullbackStrategy
     from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
@@ -151,6 +153,8 @@ def _build_strategy_registry() -> dict[str, type]:
         "pair_trading": PairTradingStrategy,
         "trend_pullback": TrendPullbackStrategy,
         "failed_breakout": FailedBreakoutStrategy,
+        "order_flow_imbalance": OrderFlowImbalanceStrategy,
+        "intraday_momentum": IntradayMomentumStrategy,
     }
 
 
@@ -372,7 +376,7 @@ async def async_main():
     # Initialize Agent
     agent = Agent(logger, config_loader, config_path_or_dir=args.config)
 
-    engine = ExecutionEngine(config, logger, db, alpaca_client, clock=clock)
+    engine = ExecutionEngine(config, logger, db, alpaca_client, clock=clock, gateway_client=gateway_stream_client)
     engine.scanner = scanner  # Inject scanner
 
     # Configure order executor

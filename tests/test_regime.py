@@ -137,7 +137,7 @@ def test_regime_determinism_golden_data():
     # Validating exact expected output for regression.
 
     # We define the "Golden" expectation. If logic changes, this test should purposely break.
-    expected_final_regime = Regime.BEAR
+    expected_final_regime = Regime.CHOP
 
     assert results[-1][0] == expected_final_regime
     assert results[0][0] == Regime.CHOP

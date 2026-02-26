@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 # P3 fix: Constants for repeated field descriptions
 _DESC_RISK_REWARD = "Risk:reward ratio"
 _DESC_VOL_MULT = "Volume multiplier for confirmation"
+_DESC_STOP_ATR_MULT = "Stop loss ATR multiplier"
+_DESC_TARGET_ATR_MULT = "Take profit ATR multiplier"
 
 
 class ActivationConfig(BaseModel):
@@ -261,9 +263,27 @@ class FusionStrategyConfig(BaseStrategyConfig):
 
     # 4. Risk / Reward (ATR-Based)
     atr_period: int = Field(default=14, ge=5, description="ATR calculation period")
-    stop_atr_mult: float = Field(default=2.0, ge=1.0, description="Stop loss ATR multiplier")
-    target_atr_mult: float = Field(default=4.0, ge=1.0, description="Take profit ATR multiplier")
+    stop_atr_mult: float = Field(default=2.0, ge=1.0, description=_DESC_STOP_ATR_MULT)
+    target_atr_mult: float = Field(default=4.0, ge=1.0, description=_DESC_TARGET_ATR_MULT)
 
     # 5. Timing
     entry_window_start: str = Field(default="09:45", description="Entry start ET")
     entry_window_end: str = Field(default="11:00", description="Entry end ET")
+
+
+class OrderFlowImbalanceConfig(BaseStrategyConfig):
+    """Configuration for Order Flow Imbalance (OFI) strategy."""
+
+    tfi_threshold: float = Field(default=0.8, description="Minimum Trade Flow Imbalance score for entry")
+    min_flow_bias: float = Field(default=0.5, description="Minimum directional flow bias")
+    stop_atr_mult: float = Field(default=1.5, ge=1.0, description=_DESC_STOP_ATR_MULT)
+    target_atr_mult: float = Field(default=3.0, ge=1.0, description=_DESC_TARGET_ATR_MULT)
+
+
+class IntradayMomentumConfig(BaseStrategyConfig):
+    """Configuration for Intraday Time-Series Momentum (ITSM) strategy."""
+
+    min_adx: float = Field(default=25.0, ge=0, description="Minimum ADX trend strength")
+    min_trend_strength: float = Field(default=1.5, ge=0, description="Minimum EMA trend strength")
+    stop_atr_mult: float = Field(default=2.0, ge=1.0, description=_DESC_STOP_ATR_MULT)
+    target_atr_mult: float = Field(default=4.0, ge=1.0, description=_DESC_TARGET_ATR_MULT)

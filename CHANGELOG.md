@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Regime-Aware Risk Management & Routing** (2026-02-26):
+  - **Dynamic ATR Trailing Stops**: Modified `BaseStrategy._apply_regime_volatility_multiplier` to apply trailing volatility stops dynamically linked to `MarketRegimeSnapshot.vol`.
+  - **Regime-Based Capital Sizing**: Implemented `_get_regime_multiplier` within the `RiskManager` to scale order sizes inversely with market volatility, liquidity, and risk state axes.
+  - **VWAP Reversion Strategy Upgrade**: Updated strategy to use the dynamic stop logic, automatically widening/tightening relative to the active volatility regime.
+
 ### Fixed
 
 - **Data Flow Integrity: Fill dedup guard** (2026-02-22):

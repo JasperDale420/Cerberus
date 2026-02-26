@@ -24,7 +24,7 @@ def strategy(mock_logger):
 
 @pytest.mark.unit
 def test_initialization(strategy):
-    assert strategy.band_sigma == 2.0
+    assert strategy.band_sigma == pytest.approx(2.0)
     assert strategy.rsi_len == 2
     assert strategy.confirmation == "rsi"
 
@@ -55,15 +55,15 @@ def test_rsi_logic():
 
     # Flat -> RSI 100
     closes = [100.0, 100.0, 100.0, 100.0]
-    assert FeatureCalculator.calculate_rsi(closes, 2) == 100.0
+    assert FeatureCalculator.calculate_rsi(closes, 2) == pytest.approx(100.0)
 
     # Up move -> RSI 100
     closes = [100.0, 101.0, 102.0, 103.0]
-    assert FeatureCalculator.calculate_rsi(closes, 2) == 100.0
+    assert FeatureCalculator.calculate_rsi(closes, 2) == pytest.approx(100.0)
 
     # Down move -> RSI 0
     closes = [100.0, 99.0, 98.0, 97.0]
-    assert FeatureCalculator.calculate_rsi(closes, 2) == 0.0
+    assert FeatureCalculator.calculate_rsi(closes, 2) == pytest.approx(0.0)
 
     # Mixed move
     closes = [100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 100.0, 101.0]
@@ -185,3 +185,49 @@ def test_signal_generation_sell(strategy):
     if sig is not None:
         assert sig.side == OrderSide.SELL
         assert sig.meta["confirmation"] in ["rsi", "none"]
+
+
+@pytest.mark.unit
+def test_dynamic_volatility_stop_scaling(strategy):
+    from dataclasses import replace
+
+    from src.core.domain import LiquidityRegime, MarketRegimeSnapshot, RiskRegime, SessionRegime, TrendRegime, VolRegime
+
+    # Base stop distance
+    base_dist = 1.0
+
+    # Base snapshot with dummy data
+    base_snap = MarketRegimeSnapshot(
+        time=datetime.now(timezone.utc),
+        index_symbol="SPY",
+        vol_symbol="VIX",
+        trend=TrendRegime.FLAT,
+        vol=VolRegime.NORMAL,
+        liquidity=LiquidityRegime.GOOD,
+        risk=RiskRegime.NEUTRAL,
+        session=SessionRegime.MIDDAY,
+    )
+
+    # 1. Test missing snapshot
+    market_missing = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP)
+    assert strategy._apply_regime_volatility_multiplier(base_dist, market_missing) == pytest.approx(1.0)
+
+    # 2. Test LOW volatility (tighter stops)
+    snap_low = replace(base_snap, vol=VolRegime.LOW)
+    market_low = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, regime_snapshot=snap_low)
+    assert strategy._apply_regime_volatility_multiplier(base_dist, market_low) == pytest.approx(0.8)
+
+    # 3. Test NORMAL volatility (baseline stops)
+    snap_normal = replace(base_snap, vol=VolRegime.NORMAL)
+    market_normal = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, regime_snapshot=snap_normal)
+    assert strategy._apply_regime_volatility_multiplier(base_dist, market_normal) == pytest.approx(1.0)
+
+    # 4. Test HIGH volatility (wider stops)
+    snap_high = replace(base_snap, vol=VolRegime.HIGH)
+    market_high = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, regime_snapshot=snap_high)
+    assert strategy._apply_regime_volatility_multiplier(base_dist, market_high) == pytest.approx(1.2)
+
+    # 5. Test SHOCK volatility (widest stops)
+    snap_shock = replace(base_snap, vol=VolRegime.SHOCK)
+    market_shock = MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP, regime_snapshot=snap_shock)
+    assert strategy._apply_regime_volatility_multiplier(base_dist, market_shock) == pytest.approx(1.5)

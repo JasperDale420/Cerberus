@@ -194,7 +194,8 @@ class VWAPReversionStrategy(BaseStrategy):
             # Stop: A bit below the recent low or a fixed ATR multiple
             # P0.2 fix: Cap stop distance at 2% to prevent excessive risk
             max_stop_pct = 0.02
-            stop_distance = min(std * 0.5, current_price * max_stop_pct)
+            base_distance = min(std * 0.5, current_price * max_stop_pct)
+            stop_distance = self._apply_regime_volatility_multiplier(base_distance, market_state)
             stop_loss = current_price - stop_distance
             risk = current_price - stop_loss
             take_profit = current_price + (risk * self.risk_reward)
@@ -226,7 +227,8 @@ class VWAPReversionStrategy(BaseStrategy):
             # Entry Short (Reversion to mean)
             # P0.2 fix: Cap stop distance at 2% to prevent excessive risk
             max_stop_pct = 0.02
-            stop_distance = min(std * 0.5, current_price * max_stop_pct)
+            base_distance = min(std * 0.5, current_price * max_stop_pct)
+            stop_distance = self._apply_regime_volatility_multiplier(base_distance, market_state)
             stop_loss = current_price + stop_distance
             risk = stop_loss - current_price
             take_profit = current_price - (risk * self.risk_reward)

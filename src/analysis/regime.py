@@ -61,6 +61,8 @@ class MarketContextService:
         min_bars: int = 20,
         vol_baseline_window: int = 120,
         smooth_k: int = 5,
+        liquidity_window: int = 390,
+        hurst_lag_max: int = 20,
         logger: Optional[StructuredLogger] = None,
         tz: str = "America/New_York",
         index_symbol: str = "SPY",
@@ -88,7 +90,14 @@ class MarketContextService:
 
         # Price/return history
         self.prices: deque[float] = deque(maxlen=window)
-        self.vol_history: deque[float] = deque(maxlen=vol_baseline_window)
+        # We track squared returns directly for EWMA variance
+        self.sq_returns: deque[float] = deque(maxlen=vol_baseline_window)
+
+        # Track liquidity scores for dynamic percentile thresholds
+        self.liquidity_window = liquidity_window
+        self.liquidity_history: deque[float] = deque(maxlen=liquidity_window)
+
+        self.hurst_lag_max = hurst_lag_max
 
         # VXX price history for risk axis
         self.vol_prices: deque[float] = deque(maxlen=window)
@@ -107,12 +116,12 @@ class MarketContextService:
         self.last_vol: Optional[float] = None
 
         # Store classes for type hints
-        self._TrendRegime = TrendRegime
-        self._VolRegime = VolRegime
-        self._LiquidityRegime = LiquidityRegime
-        self._RiskRegime = RiskRegime
-        self._SessionRegime = SessionRegime
-        self._MarketRegimeSnapshot = MarketRegimeSnapshot
+        self._trend_regime = TrendRegime
+        self._vol_regime = VolRegime
+        self._liquidity_regime = LiquidityRegime
+        self._risk_regime = RiskRegime
+        self._session_regime = SessionRegime
+        self._market_regime_snapshot = MarketRegimeSnapshot
 
     def update_vol(self, bar: Bar) -> None:
         """
@@ -152,17 +161,25 @@ class MarketContextService:
 
         try:
             # Compute continuous features
-            cum_ret, trend_strength, realized_vol = self._compute_metrics()
+            returns_array = np.diff(np.log(np.array(self.prices))) if len(self.prices) > 1 else np.array([0.0])
+            cum_ret = float(np.sum(returns_array))
+
+            # Use EWMA for volatility rather than simple std dev
+            current_var, baseline_var, realized_vol = self._compute_ewma_vol(returns_array)
+            hurst_exp = self._compute_hurst(np.array(self.prices))
+
+            # Store for metrics mapping
             self.last_cum_ret = cum_ret
-            self.last_trend_score = trend_strength
+            self.last_trend_score = hurst_exp  # Using Hurst as trend score
             self.last_vol = realized_vol
 
-            # Track vol for baseline computation
-            self.vol_history.append(realized_vol)
+            # Track squared returns for baseline computation
+            if len(returns_array) > 0:
+                self.sq_returns.append(returns_array[-1] ** 2)
 
             # Classify each axis
-            trend = self._classify_trend(cum_ret, trend_strength)
-            vol = self._classify_vol(realized_vol)
+            trend = self._classify_trend(cum_ret, hurst_exp)
+            vol = self._classify_vol(current_var, baseline_var)
             liquidity = self._classify_liquidity(bar)
             risk = self._classify_risk()
             session = self._classify_session(local_time)
@@ -171,8 +188,8 @@ class MarketContextService:
             self.trend_history.append(trend)
             self.vol_regime_history.append(vol)
 
-            smoothed_trend = self._smooth_axis(self.trend_history, self._TrendRegime.FLAT)
-            smoothed_vol = self._smooth_axis(self.vol_regime_history, self._VolRegime.NORMAL)
+            smoothed_trend = self._smooth_axis(self.trend_history, self._trend_regime.FLAT)
+            smoothed_vol = self._smooth_axis(self.vol_regime_history, self._vol_regime.NORMAL)
 
             # Compute confidence (simple: agreement ratio)
             confidence = {
@@ -183,7 +200,7 @@ class MarketContextService:
                 "session": 1.0,
             }
 
-            snapshot = self._MarketRegimeSnapshot(
+            snapshot = self._market_regime_snapshot(
                 time=bar_time,
                 index_symbol=self.index_symbol,
                 vol_symbol=self.vol_symbol,
@@ -193,7 +210,7 @@ class MarketContextService:
                 risk=risk,
                 session=session,
                 cum_ret=cum_ret,
-                trend_strength=trend_strength,
+                trend_strength=hurst_exp,
                 realized_vol=realized_vol,
                 vol_of_vol=self._compute_vol_of_vol(),
                 liquidity_score=self._compute_liquidity_score(bar),
@@ -208,7 +225,7 @@ class MarketContextService:
                     "Regime snapshot updated",
                     regime_tags=snapshot.regime_tags,
                     cum_ret=cum_ret,
-                    trend_strength=trend_strength,
+                    trend_strength=hurst_exp,
                     realized_vol=realized_vol,
                 )
 
@@ -224,14 +241,14 @@ class MarketContextService:
 
     def _default_snapshot(self, bar_time, local_time) -> "MarketRegimeSnapshot":
         """Returns a neutral snapshot when insufficient data."""
-        return self._MarketRegimeSnapshot(
+        return self._market_regime_snapshot(
             time=bar_time,
             index_symbol=self.index_symbol,
             vol_symbol=self.vol_symbol,
-            trend=self._TrendRegime.FLAT,
-            vol=self._VolRegime.NORMAL,
-            liquidity=self._LiquidityRegime.GOOD,
-            risk=self._RiskRegime.NEUTRAL,
+            trend=self._trend_regime.FLAT,
+            vol=self._vol_regime.NORMAL,
+            liquidity=self._liquidity_regime.GOOD,
+            risk=self._risk_regime.NEUTRAL,
             session=self._classify_session(local_time),
             confidence={
                 "trend": 0.0,
@@ -242,71 +259,101 @@ class MarketContextService:
             },
         )
 
-    def _compute_metrics(self) -> Tuple[float, float, float]:
-        """Compute cumulative return and trend score."""
-        prices = np.array(self.prices)
-        returns = np.diff(np.log(prices))
-        cum_ret = float(np.sum(returns))
-        vol = float(np.std(returns)) + 1e-9
-        trend_strength = abs(cum_ret) / vol
-        return cum_ret, trend_strength, vol
+    def _compute_hurst(self, prices: np.ndarray) -> float:
+        """Compute the Hurst exponent of the price series using Rescaled Range (R/S)."""
+        if len(prices) < 5:
+            return 0.5  # Random walk default
 
-    def _classify_trend(self, cum_ret: float, trend_strength: float, flat_thresh: float = 1.0) -> "TrendRegime":
-        """UP/DOWN/FLAT based on trend_strength threshold."""
-        if trend_strength < flat_thresh:
-            return self._TrendRegime.FLAT
-        return self._TrendRegime.UP if cum_ret > 0 else self._TrendRegime.DOWN
+        returns = np.diff(prices)
+        std_dev = np.std(returns)
+
+        # If standard deviation is exactly zero, price is a straight line
+        if std_dev < 1e-8:
+            if np.abs(np.mean(returns)) > 1e-8:
+                return 1.0  # Perfectly trending
+            return 0.5  # Perfectly flat
+
+        mean_ret = np.mean(returns)
+
+        # Mean centered deviations
+        deviations = returns - mean_ret
+        cum_deviations = np.cumsum(deviations)
+
+        # Range of the cumulative deviations
+        r_range = max(np.max(cum_deviations) - np.min(cum_deviations), 1e-8)
+
+        h_exponent = np.log(r_range / std_dev) / np.log(len(prices))
+
+        return float(np.clip(h_exponent, 0.0, 1.0))
+
+    def _compute_ewma_vol(self, returns: np.ndarray) -> Tuple[float, float, float]:
+        """Compute short and long-term EWMA of squared returns for volatility clustering."""
+        if len(returns) == 0:
+            return 1e-9, 1e-9, 0.0
+
+        # Short term EWMA variance (e.g., span=10 bars)
+        alpha_short = 2 / (10 + 1)
+        # Long term EWMA variance (baseline)
+        alpha_long = 2 / (len(self.sq_returns) + 1) if len(self.sq_returns) > 0 else 1.0
+
+        current_sq_ret = returns[-1] ** 2
+
+        # If we have history, bootstrap from it
+        if len(self.sq_returns) > 0:
+            previous_long_var = np.mean(self.sq_returns)  # Baseline start
+            long_var = (current_sq_ret * alpha_long) + (previous_long_var * (1 - alpha_long))
+        else:
+            long_var = current_sq_ret
+
+        short_var = (current_sq_ret * alpha_short) + (long_var * (1 - alpha_short))
+
+        realized_vol = float(np.sqrt(long_var))
+        return float(short_var), float(long_var), realized_vol
+
+    def _classify_trend(self, cum_ret: float, hurst: float, hurst_thresh: float = 0.55) -> "TrendRegime":
+        """UP/DOWN/FLAT based on Hurst exponent and cumulative return direction."""
+        if hurst < hurst_thresh:
+            return self._trend_regime.FLAT
+        return self._trend_regime.UP if cum_ret > 0 else self._trend_regime.DOWN
 
     def _classify_vol(
         self,
-        realized_vol: float,
+        current_var: float,
+        baseline_var: float,
         low_z: float = 0.7,
         high_z: float = 1.5,
         shock_z: float = 3.0,
     ) -> "VolRegime":
-        """LOW/NORMAL/HIGH/SHOCK based on z-score vs baseline."""
-        if len(self.vol_history) < 10:
-            return self._VolRegime.NORMAL
+        """LOW/NORMAL/HIGH/SHOCK based on EWMA variance ratio."""
+        if baseline_var < 1e-12:
+            return self._vol_regime.NORMAL
 
-        baseline = float(np.median(self.vol_history))
-        if baseline < 1e-9:
-            return self._VolRegime.NORMAL
-
-        z = realized_vol / baseline
+        z = np.sqrt(current_var / baseline_var)
 
         if z >= shock_z:
-            return self._VolRegime.SHOCK
+            return self._vol_regime.SHOCK
         if z >= high_z:
-            return self._VolRegime.HIGH
+            return self._vol_regime.HIGH
         if z <= low_z:
-            return self._VolRegime.LOW
-        return self._VolRegime.NORMAL
+            return self._vol_regime.LOW
+        return self._vol_regime.NORMAL
 
     def _classify_liquidity(self, bar: Bar) -> "LiquidityRegime":
-        """GOOD/THIN/STRESSED based on dollar volume / range, adjusted for session."""
+        """GOOD/THIN/STRESSED based on rolling percentiles of dollar volume / range."""
         score = self._compute_liquidity_score(bar)
+        self.liquidity_history.append(score)
 
-        # Compute time in ET for session lookup
-        from datetime import timezone as tz_module
+        if len(self.liquidity_history) < self.liquidity_window:
+            return self._liquidity_regime.GOOD  # Default until we have a baseline
 
-        bar_time = bar.time
-        if bar_time.tzinfo is None:
-            bar_time = bar_time.replace(tzinfo=tz_module.utc)
-        local_time = bar_time.astimezone(self.tz)
-        session = self._classify_session(local_time)
+        p10 = np.percentile(self.liquidity_history, 10)
+        p25 = np.percentile(self.liquidity_history, 25)
 
-        # Get session multiplier
-        multiplier = self.SESSION_LIQUIDITY_MULTIPLIERS.get(session.value, 1.0)
-
-        # Adjusted thresholds
-        stressed_thresh = 1e6 * multiplier
-        thin_thresh = 1e7 * multiplier
-
-        if score < stressed_thresh:
-            return self._LiquidityRegime.STRESSED
-        if score < thin_thresh:
-            return self._LiquidityRegime.THIN
-        return self._LiquidityRegime.GOOD
+        if score <= p10:
+            return self._liquidity_regime.STRESSED
+        if score <= p25:
+            return self._liquidity_regime.THIN
+        return self._liquidity_regime.GOOD
 
     def _compute_liquidity_score(self, bar: Bar) -> float:
         """Dollar volume / (range_pct + eps)."""
@@ -324,18 +371,18 @@ class MarketContextService:
         # Use VXX momentum if available (preferred)
         if self.last_vol_ret is not None:
             if self.last_vol_ret > 0.005:  # VXX rising >0.5% = fear up
-                return self._RiskRegime.RISK_OFF
+                return self._risk_regime.RISK_OFF
             if self.last_vol_ret < -0.005:  # VXX falling <-0.5% = fear down
-                return self._RiskRegime.RISK_ON
-            return self._RiskRegime.NEUTRAL
+                return self._risk_regime.RISK_ON
+            return self._risk_regime.NEUTRAL
 
         # Fallback: use SPY trend direction as proxy
         if self.last_cum_ret is not None:
             if self.last_cum_ret > 0.005:
-                return self._RiskRegime.RISK_ON
+                return self._risk_regime.RISK_ON
             if self.last_cum_ret < -0.005:
-                return self._RiskRegime.RISK_OFF
-        return self._RiskRegime.NEUTRAL
+                return self._risk_regime.RISK_OFF
+        return self._risk_regime.NEUTRAL
 
     def _classify_session(self, local_time) -> "SessionRegime":
         """Classify session based on wall clock time."""
@@ -346,18 +393,18 @@ class MarketContextService:
             start = sh * 60 + sm
             end = eh * 60 + em
             if start <= time_mins < end:
-                return self._SessionRegime(session)
+                return self._session_regime(session)
 
         # Outside defined sessions
         if time_mins < 4 * 60:
-            return self._SessionRegime.CLOSE
-        return self._SessionRegime.CLOSE
+            return self._session_regime.CLOSE
+        return self._session_regime.CLOSE
 
     def _compute_vol_of_vol(self) -> float:
-        """Rolling std of realized vol."""
-        if len(self.vol_history) < 5:
+        """Rolling std of realized squared returns."""
+        if len(self.sq_returns) < 5:
             return 0.0
-        return float(np.std(self.vol_history))
+        return float(np.std(np.sqrt(self.sq_returns)))
 
     def _smooth_axis(self, history: deque, default):
         """Majority vote for an axis."""

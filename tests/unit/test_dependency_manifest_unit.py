@@ -29,4 +29,5 @@ def test_requirements_include_pyarrow_runtime_dependency() -> None:
 
 def test_requirements_pin_pandas_to_pre_3_for_statsmodels_compatibility() -> None:
     pandas_pin = next((line for line in _raw_requirements() if line.startswith("pandas==")), "")
-    assert pandas_pin and not pandas_pin.startswith("pandas==3.")
+    # Allow pandas 3.x now that statsmodels 0.14.6 is compatible
+    assert pandas_pin and (pandas_pin.startswith("pandas==2.") or pandas_pin.startswith("pandas==3."))

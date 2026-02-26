@@ -134,9 +134,9 @@ class MarketRegimeSnapshot:
     @property
     def legacy_regime(self) -> "Regime":
         """Backwards-compatible mapping to legacy BULL/BEAR/CHOP."""
-        if self.trend == TrendRegime.UP and self.trend_strength >= 1.5:
+        if self.trend == TrendRegime.UP and self.trend_strength >= 0.65:
             return Regime.BULL
-        if self.trend == TrendRegime.DOWN and self.trend_strength >= 1.5:
+        if self.trend == TrendRegime.DOWN and self.trend_strength >= 0.65:
             return Regime.BEAR
         return Regime.CHOP
 

@@ -21,6 +21,7 @@ from src.core.domain import (
 )
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
+from src.data.gateway_stream import GatewayStreamClient
 from src.engine.health import HealthMonitor
 from src.engine.market import MarketStateManager
 from src.engine.orders import OrderExecutor
@@ -45,11 +46,13 @@ class ExecutionEngine:
         alpaca_client: Optional[AlpacaClient] = None,
         run_id: Optional[str] = None,
         clock: Optional[Callable[[], datetime]] = None,
+        gateway_client: Optional[GatewayStreamClient] = None,
     ):
         self.config = config
         self.logger = logger
         self.db = db
         self.alpaca_client = alpaca_client
+        self.gateway_client = gateway_client
         self.run_id = run_id
         self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
@@ -1628,6 +1631,8 @@ class ExecutionEngine:
             del self.symbol_states[sym]
             if self.alpaca_client:
                 self.alpaca_client.unsubscribe(sym)
+            if self.gateway_client:
+                self.gateway_client.unsubscribe(sym)
 
     def _cleanup_orders_for_symbol(self, sym: str) -> None:
         """Cancel any open orders for a symbol being removed."""
@@ -1697,6 +1702,8 @@ class ExecutionEngine:
 
             if self.alpaca_client:
                 self.alpaca_client.subscribe(sym)
+            if self.gateway_client:
+                self.gateway_client.subscribe(sym)
 
     def _build_scan_meta(self, scanned_sym: Any) -> Dict[str, Any]:
         """Build symbol metadata from scan result."""

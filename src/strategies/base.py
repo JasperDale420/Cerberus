@@ -144,6 +144,31 @@ class BaseStrategy(ABC):
             regime_confidence=regime_confidence,
         )
 
+    def _apply_regime_volatility_multiplier(self, base_distance: float, market_state: MarketState) -> float:
+        """
+        Dynamically adjusts a stop-loss or take-profit distance based on the current Volatility Regime.
+        Higher volatility regimes lead to wider stops, which inherently reduces position sizing
+        through the central Risk Manager's constant-risk math.
+        """
+        snapshot = market_state.regime_snapshot
+        if not snapshot or not snapshot.vol:
+            return base_distance
+
+        vol_name = str(snapshot.vol.value).lower()
+
+        # In highly volatile environments, we need wider stops to avoid getting chopped out.
+        # This naturally decreases the execution size (risk_per_share goes up).
+        # In low volatility environments, we can run tighter stops to increase capital efficiency.
+        multipliers = {
+            "low": 0.8,
+            "normal": 1.0,
+            "high": 1.2,
+            "shock": 1.5,
+        }
+
+        mult = multipliers.get(vol_name, 1.0)
+        return base_distance * mult
+
     @abstractmethod
     def on_bar(
         self,
