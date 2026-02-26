@@ -29,6 +29,7 @@ from src.engine.position_manager import PositionManager
 from src.engine.risk import RiskManager
 from src.engine.strategy_engine import StrategyEngine, StrategyRouting
 from src.scanner.core import Scanner
+from src.scanner.streaming_scanner import StreamingScanner
 from src.strategies.base import BaseStrategy, Signal, SymbolState
 from src.strategies.config_models import build_activation_policies_from_config
 
@@ -59,6 +60,7 @@ class ExecutionEngine:
         self.risk_manager = RiskManager(config, logger)
         self.order_executor = OrderExecutor(alpaca_client, logger, db, clock=self.clock) if alpaca_client else None
         self.scanner: Optional[Scanner] = None  # Injected later or via init
+        self.streaming_scanner: Optional[StreamingScanner] = None  # Injected later
 
         self.strategies: Dict[str, BaseStrategy] = {}
         self.strategy_engine: Optional[StrategyEngine] = None
@@ -1480,6 +1482,35 @@ class ExecutionEngine:
                 }
             )
 
+    # ── Streaming Microstructure Handlers ──
+
+    async def on_quote(self, symbol: str, quote: Any) -> None:
+        """Process a live quote from the gateway stream for streaming OFI updates."""
+        if self.streaming_scanner is None:
+            return
+        try:
+            await self.streaming_scanner.on_quote(symbol, quote)
+        except Exception as e:
+            self.logger.debug("Streaming quote processing error", symbol=symbol, error=str(e))
+
+    async def on_trade_data(self, symbol: str, trade: Any) -> None:
+        """Process a live trade from the gateway stream for streaming TFI updates."""
+        if self.streaming_scanner is None:
+            return
+        try:
+            await self.streaming_scanner.on_trade(symbol, trade)
+        except Exception as e:
+            self.logger.debug("Streaming trade processing error", symbol=symbol, error=str(e))
+
+    def on_streaming_update(self, symbol: str, features: Dict[str, float]) -> None:
+        """Hot-patch SymbolState.meta with fresh microstructure features from streaming data."""
+        state = self.symbol_states.get(symbol)
+        if state is None:
+            return
+        state.meta["ofi"] = features.get("ofi", state.meta.get("ofi", 0.0))
+        state.meta["tfi"] = features.get("tfi", state.meta.get("tfi", 0.0))
+        state.meta["high_low_spread"] = features.get("high_low_spread", state.meta.get("high_low_spread", 0.0))
+
     async def run_scan(self):
         """
         Triggers a scan and updates the active symbol list/strategies.
@@ -1633,6 +1664,10 @@ class ExecutionEngine:
                 self.alpaca_client.unsubscribe(sym)
             if self.gateway_client:
                 self.gateway_client.unsubscribe(sym)
+                self.gateway_client.unsubscribe_quotes(sym)
+                self.gateway_client.unsubscribe_trades(sym)
+            if self.streaming_scanner:
+                self.streaming_scanner.remove_symbol(sym)
 
     def _cleanup_orders_for_symbol(self, sym: str) -> None:
         """Cancel any open orders for a symbol being removed."""
@@ -1704,6 +1739,10 @@ class ExecutionEngine:
                 self.alpaca_client.subscribe(sym)
             if self.gateway_client:
                 self.gateway_client.subscribe(sym)
+                self.gateway_client.subscribe_quotes(sym)
+                self.gateway_client.subscribe_trades(sym)
+            if self.streaming_scanner:
+                self.streaming_scanner.add_symbol(sym)
 
     def _build_scan_meta(self, scanned_sym: Any) -> Dict[str, Any]:
         """Build symbol metadata from scan result."""

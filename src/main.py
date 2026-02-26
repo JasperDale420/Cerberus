@@ -18,6 +18,7 @@ from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
+from src.scanner.streaming_scanner import StreamingScanner
 from src.scanner.universe import UniverseBuilder
 
 
@@ -379,6 +380,17 @@ async def async_main():
     engine = ExecutionEngine(config, logger, db, alpaca_client, clock=clock, gateway_client=gateway_stream_client)
     engine.scanner = scanner  # Inject scanner
 
+    # Initialize Streaming Scanner for live microstructure feature updates
+    from src.data.calculator import FeatureCalculator
+
+    feature_calculator = FeatureCalculator(logger)
+    streaming_scanner = StreamingScanner(
+        calculator=feature_calculator,
+        logger=logger,
+        on_update=engine.on_streaming_update,
+    )
+    engine.streaming_scanner = streaming_scanner
+
     # Configure order executor
     if args.order_executor == "gateway":
         if not runtime_settings.use_gateway_data:
@@ -450,7 +462,12 @@ async def async_main():
             order_executor=args.order_executor,
         )
         gateway_stream_task = asyncio.create_task(
-            gateway_stream_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
+            gateway_stream_client.start_stream(
+                engine.on_bar,
+                on_reconnect=engine.reconcile_broker_state,
+                on_quote=engine.on_quote,
+                on_trade=engine.on_trade_data,
+            )
         )
         gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
 
