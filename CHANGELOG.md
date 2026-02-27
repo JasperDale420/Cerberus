@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - Data-Gateway stream now normalizes timezone-naive ISO bar timestamps to UTC and emits a structured warning event for traceability (2026-03-04).
 
+- Backtest feature pipeline now precomputes sorted per-symbol volume days and uses binary search in `_avg_daily_volume` to avoid repeated per-scan sorting (2026-02-27).
+
 - Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
 - Time window checks now log structured warnings/errors when datetimes are naive or parsing fails (2026-02-24).
 
