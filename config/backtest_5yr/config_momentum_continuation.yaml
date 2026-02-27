@@ -51,6 +51,14 @@ strategies:
 risk:
   max_daily_loss: 10000.0
   max_risk_per_trade: 1000.0
+  max_equity_pct: 0.10
+  kelly:
+    enabled: true
+    fraction: 0.5
+    lookback_trades: 50
+    min_trades: 10
+    max_equity_pct: 0.30
+    min_equity_pct: 0.05
   max_open_risk: 10000.0
   max_trades_per_day: 100
   max_orders_per_day: 1000

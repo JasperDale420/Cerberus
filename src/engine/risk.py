@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from src.config.models import RiskConfig, StrategyConfig
 from src.core.domain import MarketState, OrderIntent, OrderType, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.engine.kelly import KellySizer
 
 
 class RiskManager:
@@ -63,6 +64,9 @@ class RiskManager:
         # M2 fix: Track positions carried from previous session
         self.positions_carried_forward = 0
         self.last_rejection_reason: Optional[str] = None
+
+        # Kelly Criterion position sizer
+        self.kelly_sizer = KellySizer(self.risk_cfg.kelly, self.logger)
 
     def _session_date_for(self, as_of: datetime) -> date:
         tz_name = str(self.raw_config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE)
@@ -243,13 +247,22 @@ class RiskManager:
         effective_max_risk: float,
     ) -> int:
         if account_equity > 0 and signal.entry_price > 0:
-            max_equity_allocation = account_equity * 0.05
+            # Use Kelly-computed fraction if available, otherwise fall back to static config
+            kelly_frac = self.kelly_sizer.get_kelly_fraction(signal.strategy)
+            if kelly_frac is not None:
+                max_equity_pct = kelly_frac
+            else:
+                max_equity_pct = getattr(self.risk_cfg, "max_equity_pct", 0.10)
+
+            max_equity_allocation = account_equity * max_equity_pct
             max_qty_equity = int(max_equity_allocation / signal.entry_price)
             if max_qty_equity < qty_limit:
                 self.logger.info(
                     "Risk sizing constrained by equity",
                     symbol=signal.symbol,
                     equity=account_equity,
+                    max_equity_pct=round(max_equity_pct, 4),
+                    kelly_active=kelly_frac is not None,
                     max_equity_qty=max_qty_equity,
                     risk_qty=int(effective_max_risk / risk_per_share),
                 )
@@ -573,8 +586,18 @@ class RiskManager:
         self._maybe_rollover(as_of)
         self.current_daily_pnl += pnl
 
-    def record_completed_trade(self, strategy: str, *, as_of: Optional[datetime] = None) -> None:
-        """Increment completed-trade counters (not used for entry caps)."""
+    def record_completed_trade(
+        self,
+        strategy: str,
+        *,
+        pnl_net: Optional[float] = None,
+        as_of: Optional[datetime] = None,
+    ) -> None:
+        """Increment completed-trade counters and feed Kelly sizer."""
         self._maybe_rollover(as_of)
         self.daily_completed_trade_count += 1
         self.per_strategy_completed_trade_count[strategy] = self.per_strategy_completed_trade_count.get(strategy, 0) + 1
+
+        # Feed trade result to Kelly sizer for dynamic position sizing
+        if pnl_net is not None:
+            self.kelly_sizer.record_trade(strategy, pnl_net)

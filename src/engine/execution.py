@@ -688,7 +688,7 @@ class ExecutionEngine:
                 position=None,
                 indicators={},
                 open_orders={},
-                allowed_strategies=[],
+                allowed_strategies=list(self.strategies.keys()),
                 meta={},
             )
         return self.symbol_states[symbol]
@@ -748,7 +748,7 @@ class ExecutionEngine:
         self._last_regime = current_regime
 
     def _update_session_vwap(self, state: SymbolState, bar: Any, bar_time: Any) -> None:
-        """Update session VWAP tracking for intraday calculations."""
+        """Update session VWAP tracking and daily high/low for intraday calculations."""
         try:
             bt = bar_time or self.clock()
             session_day = bt.date() if hasattr(bt, "date") else None
@@ -756,9 +756,40 @@ class ExecutionEngine:
 
             # Reset on new session
             if session_day is not None and prev_day != session_day:
+                # Save completed day's high/low before resetting
+                if prev_day is not None:
+                    daily_highs = state.indicators.get("daily_highs", deque(maxlen=20))
+                    daily_lows = state.indicators.get("daily_lows", deque(maxlen=20))
+                    cur_h = state.indicators.get("current_day_high")
+                    cur_l = state.indicators.get("current_day_low")
+
+                    if cur_h is not None and cur_l is not None:
+                        daily_highs.append(cur_h)
+                        daily_lows.append(cur_l)
+                        state.indicators["daily_highs"] = daily_highs
+                        state.indicators["daily_lows"] = daily_lows
+
+                        # Set convenience properties
+                        state.meta["prior_day_high"] = cur_h
+                        state.meta["prior_day_low"] = cur_l
+
+                # Initialize new session
                 state.indicators["session_day"] = session_day
                 state.indicators["cum_pv"] = 0.0
                 state.indicators["cum_vol"] = 0.0
+                state.indicators["current_day_high"] = float(getattr(bar, "high", 0.0) or 0.0)
+                state.indicators["current_day_low"] = float(getattr(bar, "low", 0.0) or 0.0)
+            else:
+                # Update current day high/low
+                h = float(getattr(bar, "high", 0.0) or 0.0)
+                low_val = float(getattr(bar, "low", 0.0) or 0.0)
+                cur_h = state.indicators.get("current_day_high")
+                cur_l = state.indicators.get("current_day_low")
+
+                if cur_h is None or h > cur_h:
+                    state.indicators["current_day_high"] = h
+                if cur_l is None or low_val < cur_l:
+                    state.indicators["current_day_low"] = low_val
 
             # Calculate cumulative values
             vol = float(getattr(bar, "volume", 0.0) or 0.0)
@@ -1268,7 +1299,7 @@ class ExecutionEngine:
             self._persist_closed_trade(closed)
 
         try:
-            self.risk_manager.record_completed_trade(closed.strategy, as_of=closed.exit_time)
+            self.risk_manager.record_completed_trade(closed.strategy, pnl_net=closed.pnl_net, as_of=closed.exit_time)
         except Exception as e:
             self.logger.error(
                 "Risk manager failed to record completed trade",
@@ -1809,6 +1840,8 @@ class ExecutionEngine:
         meta["orb_low"] = float(getattr(features, "orb_low", 0.0))
         meta["alpha_score"] = float(getattr(features, "alpha_score", 0.0))
         meta["alpha_rank"] = int(getattr(features, "alpha_rank", 0))
+        meta["prior_day_high"] = float(getattr(features, "prior_day_high", 0.0))
+        meta["prior_day_low"] = float(getattr(features, "prior_day_low", 0.0))
         # ATR might be a top-level field or in extra
         if hasattr(features, "atr") and features.atr is not None:
             meta["atr"] = float(features.atr)

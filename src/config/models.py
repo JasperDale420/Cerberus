@@ -65,8 +65,21 @@ class PairTradingConfig(BaseModel):
     entry_zscore: float = Field(default=2.0, description="Spread Z-Score to trigger entry")
     exit_zscore: float = Field(default=0.0, description="Spread Z-Score to trigger exit")
     max_active_pairs: int = Field(default=10, description="Maximum simultaneous active pairs")
-    min_half_life: int = Field(default=2, description="Minimum mean-reversion half-life")
-    max_half_life: int = Field(default=40, description="Maximum mean-reversion half-life")
+    min_half_life: float = Field(default=2.0, description="Minimum mean-reversion half-life")
+    max_half_life: float = Field(default=40.0, description="Maximum mean-reversion half-life")
+
+
+class KellyConfig(BaseModel):
+    """Kelly Criterion position sizing configuration."""
+
+    enabled: bool = Field(default=False, description="Enable Kelly-based position sizing")
+    fraction: float = Field(default=0.5, description="Kelly scalar: 1.0 = full Kelly, 0.5 = half-Kelly")
+    lookback_trades: int = Field(default=50, description="Rolling window of trades for Kelly calculation")
+    min_trades: int = Field(
+        default=20, description="Minimum trades before Kelly activates (falls back to max_equity_pct)"
+    )
+    max_equity_pct: float = Field(default=0.30, description="Upper bound on Kelly-computed equity fraction")
+    min_equity_pct: float = Field(default=0.05, description="Lower bound on Kelly-computed equity fraction")
 
 
 class RiskConfig(BaseModel):
@@ -127,6 +140,9 @@ class RiskConfig(BaseModel):
     )
 
     pair_trading: PairTradingConfig = Field(default_factory=PairTradingConfig)
+
+    # Kelly Criterion position sizing
+    kelly: KellyConfig = Field(default_factory=KellyConfig)
 
     # L5 fix: Bounds validation for critical risk parameters
     @field_validator("max_daily_loss")
