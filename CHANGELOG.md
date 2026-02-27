@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Profit-Maximization Metrics Upgrade** (2026-02-27):
+  - Added `profit_factor`, `avg_win_loss_ratio`, `recovery_factor`, `ev_per_trade`, `avg_hold_seconds` to `StrategyStatsDaily` schema with SQLite auto-migration patches.
+  - `AnalyticsEngine.run_daily_aggregation()` now computes all 5 new metrics per strategy/regime.
+  - Daily report now includes regime-axis breakdowns (trend/vol/session PnL) and hold-time summary by strategy.
+  - Stage 2 `_score_fn` upgraded from naive expectancy-based scoring to composite formula: `PF × √trades × (1 - DD_penalty)`.
+  - `Stage2Metrics` expanded with `profit_factor` and `win_rate` fields.
+  - 8 new unit tests covering edge cases (all winners, all losers, hold time, Stage2Metrics).
+
 - **Regime-Aware Risk Management & Routing** (2026-02-26):
   - **Dynamic ATR Trailing Stops**: Modified `BaseStrategy._apply_regime_volatility_multiplier` to apply trailing volatility stops dynamically linked to `MarketRegimeSnapshot.vol`.
   - **Regime-Based Capital Sizing**: Implemented `_get_regime_multiplier` within the `RiskManager` to scale order sizes inversely with market volatility, liquidity, and risk state axes.

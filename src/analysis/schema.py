@@ -142,6 +142,11 @@ class StrategyStatsDaily(Base):
     net_pnl: Mapped[float] = mapped_column(Float, default=0.0)  # Added for dollar aggregation
     std_dev_pnl: Mapped[float] = mapped_column(Float, default=0.0)
     z_score: Mapped[float] = mapped_column(Float, default=0.0)
+    profit_factor: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_win_loss_ratio: Mapped[float] = mapped_column(Float, default=0.0)
+    recovery_factor: Mapped[float] = mapped_column(Float, default=0.0)
+    ev_per_trade: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_hold_seconds: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class AgentAction(Base):

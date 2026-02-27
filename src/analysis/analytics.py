@@ -68,8 +68,10 @@ class AnalyticsEngine:
                             "commission": t.commission,
                             "slippage": t.slippage_estimate,
                             "exit_time": t.exit_time,
+                            "holding_period_seconds": t.holding_period_seconds,
                             "scanner_score": _extract_feature(t, "scanner_score"),
                             "flow_zscore": _extract_feature(t, "flow_zscore"),
+                            "regime_tags": t.regime_tags_entry_json,
                             "win": 1 if (t.pnl_net or 0) > 0 else 0,
                         }
                         for t in trades
@@ -88,6 +90,7 @@ class AnalyticsEngine:
                     "mfe_r",
                     "commission",
                     "slippage",
+                    "holding_period_seconds",
                     "scanner_score",
                     "flow_zscore",
                 ]:
@@ -108,9 +111,28 @@ class AnalyticsEngine:
                         avg_r=("pnl_r", "mean"),
                         median_r=("pnl_r", "median"),
                         std_r=("pnl_r", "std"),
+                        avg_hold_seconds=("holding_period_seconds", "mean"),
                     )
                     .reset_index()
                 )
+
+                # Compute profit_factor + avg_win_loss_ratio per group
+                pf_by_group: Dict[Tuple[str, str], float] = {}
+                awl_by_group: Dict[Tuple[str, str], float] = {}
+                for (strat, regime), grp_df in df.groupby(["strategy", "regime"]):
+                    key = (str(strat), str(regime))
+                    winners = grp_df[grp_df["pnl"] > 0]["pnl"]
+                    losers = grp_df[grp_df["pnl"] < 0]["pnl"]
+                    gross_win = float(winners.sum()) if len(winners) > 0 else 0.0
+                    gross_loss = abs(float(losers.sum())) if len(losers) > 0 else 0.0
+                    pf_by_group[key] = (
+                        min(gross_win / gross_loss, 999.0) if gross_loss > 0 else (999.0 if gross_win > 0 else 0.0)
+                    )
+                    avg_win = float(winners.mean()) if len(winners) > 0 else 0.0
+                    avg_loss = abs(float(losers.mean())) if len(losers) > 0 else 0.0
+                    awl_by_group[key] = (
+                        min(avg_win / avg_loss, 999.0) if avg_loss > 0 else (999.0 if avg_win > 0 else 0.0)
+                    )
 
                 # 2b. Per-(strategy, regime) path-dependent metrics (drawdown, losers).
                 dd_by_group: Dict[Tuple[str, str], float] = {}
@@ -161,21 +183,33 @@ class AnalyticsEngine:
                     n_trades = int(row["trade_count"])
                     avg_r = float(0.0 if pd.isna(row["avg_r"]) else row["avg_r"])
                     std_r = float(0.0 if pd.isna(row["std_r"]) else row["std_r"])
+                    net_pnl = float(row["total_pnl"])
+                    max_dd_r = float(dd_by_group.get(key, 0.0))
+                    pf = float(pf_by_group.get(key, 0.0))
+                    awl = float(awl_by_group.get(key, 0.0))
+                    ev = float(net_pnl / n_trades) if n_trades > 0 else 0.0
+                    avg_hold = float(0.0 if pd.isna(row["avg_hold_seconds"]) else row["avg_hold_seconds"])
+                    recovery = float(net_pnl / max_dd_r) if max_dd_r > 0 else (999.0 if net_pnl > 0 else 0.0)
                     stats = StrategyStatsDaily(
                         date=target_date,
                         strategy=row["strategy"],
                         regime=row["regime"],
-                        net_pnl=float(row["total_pnl"]),  # Mapped to net_pnl
-                        n_trades=n_trades,  # Mapped to n_trades
+                        net_pnl=net_pnl,
+                        n_trades=n_trades,
                         winrate=(float(row["win_count"] / row["trade_count"]) if row["trade_count"] > 0 else 0.0),
                         avg_r=avg_r,
                         median_r=float(0.0 if pd.isna(row["median_r"]) else row["median_r"]),
                         std_r=std_r,
-                        max_drawdown_r=float(dd_by_group.get(key, 0.0)),
+                        max_drawdown_r=max_dd_r,
                         max_consecutive_losers=int(losers_by_group.get(key, 0)),
                         std_dev_pnl=(float(row["std_dev"]) if not pd.isna(row["std_dev"]) else 0.0),
                         z_score=0.0,
                         pnl_r_total=float(0.0 if pd.isna(row["pnl_r_total"]) else row["pnl_r_total"]),
+                        profit_factor=pf,
+                        avg_win_loss_ratio=awl,
+                        recovery_factor=recovery,
+                        ev_per_trade=ev,
+                        avg_hold_seconds=avg_hold,
                     )
 
                     # PRD 9.1: z = expectancy / se, where expectancy is avg_r.
@@ -341,6 +375,51 @@ class AnalyticsEngine:
                 .sort_values("flow_decile")
             )
             lines.append(_md_table(fdec, ["flow_decile", "n_trades", "net_pnl", "avg_r", "total_r"]))
+
+        # Regime-axis breakdowns (trend, vol, session)
+        if "regime_tags" in df_local.columns:
+            for axis in ["trend", "vol", "session"]:
+                axis_vals = df_local["regime_tags"].apply(
+                    lambda tags, _axis=axis: (tags or {}).get(_axis, "unknown") if isinstance(tags, dict) else "unknown"
+                )
+                if axis_vals.nunique() > 1 or (axis_vals.nunique() == 1 and axis_vals.iloc[0] != "unknown"):
+                    lines.append(f"\n## PnL By {axis.title()} Regime\n")
+                    df_local[f"regime_{axis}"] = axis_vals
+                    by_axis = (
+                        df_local.groupby(f"regime_{axis}", dropna=True)
+                        .agg(
+                            n_trades=("pnl", "count"),
+                            net_pnl=("pnl", "sum"),
+                            avg_r=("pnl_r", "mean"),
+                            total_r=("pnl_r", "sum"),
+                            win_rate=("win", "mean"),
+                        )
+                        .reset_index()
+                        .sort_values("net_pnl", ascending=False)
+                    )
+                    lines.append(
+                        _md_table(
+                            by_axis,
+                            [f"regime_{axis}", "n_trades", "net_pnl", "avg_r", "total_r", "win_rate"],
+                        )
+                    )
+
+        # Hold time summary by strategy
+        if "holding_period_seconds" in df_local.columns and df_local["holding_period_seconds"].gt(0).any():
+            lines.append("\n## Avg Hold Time By Strategy\n")
+            hold = (
+                df_local[df_local["holding_period_seconds"] > 0]
+                .groupby("strategy")
+                .agg(
+                    n_trades=("pnl", "count"),
+                    avg_hold_min=("holding_period_seconds", lambda x: round(x.mean() / 60, 1)),
+                    min_hold_min=("holding_period_seconds", lambda x: round(x.min() / 60, 1)),
+                    max_hold_min=("holding_period_seconds", lambda x: round(x.max() / 60, 1)),
+                )
+                .reset_index()
+                .sort_values("avg_hold_min")
+            )
+            lines.append(_md_table(hold, ["strategy", "n_trades", "avg_hold_min", "min_hold_min", "max_hold_min"]))
 
         out_path.write_text("".join(lines))
         self.logger.info("Daily report written", path=str(out_path))

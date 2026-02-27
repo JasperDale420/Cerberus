@@ -21,6 +21,8 @@ class Stage2Metrics:
     expectancy: float
     max_drawdown_r: float
     n_trades: int
+    profit_factor: float = 0.0
+    win_rate: float = 0.0
 
 
 class _PendingEntry(TypedDict):
@@ -289,6 +291,16 @@ class DeterministicStage2Evaluator:
         n = len(pnl_r_series)
         expectancy = float(sum(pnl_r_series) / n) if n > 0 else 0.0
 
+        # Profit factor: sum of wins / abs(sum of losses)
+        wins = [r for r in pnl_r_series if r > 0]
+        losses = [r for r in pnl_r_series if r < 0]
+        gross_win = sum(wins) if wins else 0.0
+        gross_loss = abs(sum(losses)) if losses else 0.0
+        profit_factor = min(gross_win / gross_loss, 999.0) if gross_loss > 0 else (999.0 if gross_win > 0 else 0.0)
+
+        # Win rate
+        win_rate = float(len(wins) / n) if n > 0 else 0.0
+
         # Max drawdown on cumulative R.
         equity = 0.0
         peak = 0.0
@@ -298,7 +310,13 @@ class DeterministicStage2Evaluator:
             peak = max(peak, equity)
             max_dd = max(max_dd, peak - equity)
 
-        return Stage2Metrics(expectancy=expectancy, max_drawdown_r=float(max_dd), n_trades=int(n))
+        return Stage2Metrics(
+            expectancy=expectancy,
+            max_drawdown_r=float(max_dd),
+            n_trades=int(n),
+            profit_factor=float(profit_factor),
+            win_rate=float(win_rate),
+        )
 
 
 class Stage2Tuner:
@@ -392,13 +410,18 @@ class Stage2Tuner:
                 "expectancy": float(m_metrics.expectancy),
                 "max_drawdown_r": float(m_metrics.max_drawdown_r),
                 "n_trades": int(m_metrics.n_trades),
+                "profit_factor": float(m_metrics.profit_factor),
+                "win_rate": float(m_metrics.win_rate),
             }
 
         def _score_fn(metrics: Dict[str, Any]) -> float:
-            exp = float(metrics.get("expectancy", 0.0))
-            dd = float(metrics.get("max_drawdown_r", 0.0))
+            pf = float(metrics.get("profit_factor", 0.0))
             n = int(metrics.get("n_trades", 0))
-            return exp * 1_000_000.0 - dd * 1_000.0 + n
+            dd = float(metrics.get("max_drawdown_r", 0.0))
+            # Composite: PF × √trades × (1 - drawdown_penalty)
+            # DD penalty caps at 1.0 (100% penalty) when DD reaches 10R
+            dd_penalty = 1.0 - min(dd / 10.0, 1.0)
+            return pf * (n**0.5) * dd_penalty
 
         # Baseline Evaluation
         baseline_metrics = _evaluate_params({})

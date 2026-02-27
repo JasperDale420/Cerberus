@@ -18,6 +18,13 @@ class DatabaseDatabase:
             ("regime_tags_exit_json", "TEXT"),
         ),
         "signals": (("feature_snapshot_json", "TEXT"),),
+        "strategy_stats_daily": (
+            ("profit_factor", "REAL"),
+            ("avg_win_loss_ratio", "REAL"),
+            ("recovery_factor", "REAL"),
+            ("ev_per_trade", "REAL"),
+            ("avg_hold_seconds", "REAL"),
+        ),
         "regime_history": (
             ("model_version", "TEXT"),
             ("trend", "TEXT"),
