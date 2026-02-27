@@ -40,10 +40,12 @@ strategies:
   momentum_continuation:
     enabled: true
     params:
-      breakout_lookback: 5
-      vol_mult: 2.0
-      close_position: 0.75
-      risk_reward: 1.5
+      breakout_lookback: 1
+      vol_mult: 1.2
+      close_position_threshold: 0.6
+      risk_reward: 2.0
+      stop_pct: 0.005
+      max_trades_per_session: 5
   vix_spike_fade:
     enabled: false
 risk:
@@ -56,6 +58,7 @@ risk:
   max_positions_per_strategy: 25
   max_notional_per_order: 50000.0
   max_notional_per_symbol: 50000.0
+  max_notional_pct: 1.0
   time_in_force: day
   risk_mode: normal
   commission_per_share: 0.0

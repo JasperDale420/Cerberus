@@ -30,10 +30,11 @@ class MomentumContinuationStrategy(BaseStrategy):
     name = "momentum_continuation"
 
     # Default thresholds
-    DEFAULT_BREAKOUT_LOOKBACK = 5  # Days for high/low
-    DEFAULT_VOL_MULT = 2.0  # Volume > 2x average
-    DEFAULT_CLOSE_POSITION = 0.75  # Close in top 25% of range
-    DEFAULT_RISK_REWARD = 1.5
+    DEFAULT_BREAKOUT_LOOKBACK = 3  # Days for high/low
+    DEFAULT_VOL_MULT = 1.2  # Volume > 1.2x average
+    DEFAULT_CLOSE_POSITION = 0.6  # Close in top 40% of range
+    DEFAULT_RISK_REWARD = 2.0
+    DEFAULT_STOP_PCT = 0.005  # 0.5% stop loss from entry
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
@@ -41,8 +42,11 @@ class MomentumContinuationStrategy(BaseStrategy):
         # Breakout parameters
         self.breakout_lookback = int(config.get("breakout_lookback", self.DEFAULT_BREAKOUT_LOOKBACK))
         self.vol_mult = float(config.get("vol_mult", self.DEFAULT_VOL_MULT))
-        self.close_position_threshold = float(config.get("close_position", self.DEFAULT_CLOSE_POSITION))
+        self.close_position_threshold = float(
+            config.get("close_position_threshold", config.get("close_position", self.DEFAULT_CLOSE_POSITION))
+        )
         self.risk_reward = float(config.get("risk_reward", self.DEFAULT_RISK_REWARD))
+        self.stop_pct = float(config.get("stop_pct", self.DEFAULT_STOP_PCT))
 
         # EMA for trend confirmation
         self.ema_fast = int(config.get("ema_fast", 20))
@@ -50,13 +54,17 @@ class MomentumContinuationStrategy(BaseStrategy):
 
         # Time window (morning momentum)
         self.entry_start = time_type(9, 35)
-        self.entry_end = time_type(11, 0)
+        self.entry_end = time_type(15, 0)
 
         # Position management
         self.max_trades_per_session = int(config.get("max_trades_per_session", 2))
+        self.slippage_allowance = float(config.get("slippage_allowance", 0.001))  # 10 bps default leeway
+
         self._session_trades: Dict[str, int] = {}
         self._traded_symbols_today: set = set()
         self._last_date: Optional[str] = None
+        self._entries_per_timestamp: Dict[str, int] = {}  # Limit correlated entries
+        self._last_timestamp: Optional[str] = None
 
     def on_bar(
         self,
@@ -65,7 +73,12 @@ class MomentumContinuationStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # 1. Regime gating removed - handled by engine
+        # 1. Regime gating
+        # Breakouts require strong conditions. Bypass if market_state does not match our activation config.
+        if market_state.regime in ["chop", "risk_off"]:
+            if len(symbol_state.bars) % 200 == 0:
+                self.logger.warning(f"MomentumCont: Rejected by regime {market_state.regime}")
+            return None
 
         # 2. Check cooldown
         if not self._check_cooldown(symbol, bar.time):
@@ -106,12 +119,17 @@ class MomentumContinuationStrategy(BaseStrategy):
         is_uptrend = float(ema_fast) > float(ema_slow)
         is_downtrend = float(ema_fast) < float(ema_slow)
 
+        # Require meaningful EMA spread (0.1% minimum separation)
+        ema_spread = abs(float(ema_fast) - float(ema_slow)) / float(ema_slow)
+        if ema_spread < 0.001:
+            return None
+
         # 9. Get breakout levels
-        high_level, low_level = self._get_breakout_levels(bars, bar)
+        high_level, low_level = self._get_breakout_levels(symbol_state)
         if high_level is None or low_level is None:
             # Debug: Log when breakout levels unavailable
             if len(bars) % 100 == 0:
-                self.logger.debug(
+                self.logger.warning(
                     "MomentumCont: No breakout levels",
                     symbol=symbol,
                     bar_count=len(bars),
@@ -130,7 +148,7 @@ class MomentumContinuationStrategy(BaseStrategy):
 
         # Debug: Log periodically when no breakout condition met
         if len(bars) % 200 == 0:
-            self.logger.debug(
+            self.logger.warning(
                 "MomentumCont: No breakout",
                 symbol=symbol,
                 close=round(bar.close, 2),
@@ -140,22 +158,38 @@ class MomentumContinuationStrategy(BaseStrategy):
                 downtrend=is_downtrend,
             )
 
-        # 11. Check for breakout with strong close
+        # 11. Limit correlated entries (max 2 per timestamp to avoid cluster losses)
+        ts_key = bar.time.isoformat()[:16]  # Minute-level grouping
+        if ts_key != self._last_timestamp:
+            self._entries_per_timestamp = {}
+            self._last_timestamp = ts_key
+        if self._entries_per_timestamp.get(ts_key, 0) >= 2:
+            return None
+
+        # 12. Check for breakout with strong close and margin
         signal = None
+        breakout_margin = 0.001  # Require 0.1% beyond breakout level
 
-        # BULLISH BREAKOUT - regime gating removed
+        # BULLISH BREAKOUT
         if is_uptrend:
-            if bar.close > high_level and self._is_strong_close(bar, OrderSide.BUY):
-                signal = self._create_long_signal(symbol, bar, market_state, high_level, ema_fast, ema_slow, avg_vol)
+            threshold = high_level * (1.0 + breakout_margin)
+            if bar.close > threshold and self._is_strong_close(bar, OrderSide.BUY):
+                signal = self._create_long_signal(
+                    symbol, bar, symbol_state, market_state, high_level, ema_fast, ema_slow, avg_vol
+                )
 
-        # BEARISH BREAKOUT - regime gating removed
+        # BEARISH BREAKOUT
         if is_downtrend:
-            if bar.close < low_level and self._is_strong_close(bar, OrderSide.SELL):
-                signal = self._create_short_signal(symbol, bar, market_state, low_level, ema_fast, ema_slow, avg_vol)
+            threshold = low_level * (1.0 - breakout_margin)
+            if bar.close < threshold and self._is_strong_close(bar, OrderSide.SELL):
+                signal = self._create_short_signal(
+                    symbol, bar, symbol_state, market_state, low_level, ema_fast, ema_slow, avg_vol
+                )
 
         if signal:
             self._traded_symbols_today.add(symbol)
             self._session_trades[symbol] = self._session_trades.get(symbol, 0) + 1
+            self._entries_per_timestamp[ts_key] = self._entries_per_timestamp.get(ts_key, 0) + 1
 
         return signal
 
@@ -173,43 +207,28 @@ class MomentumContinuationStrategy(BaseStrategy):
             FeatureCalculator.calculate_ema(closes, self.ema_slow),
         )
 
-    def _get_breakout_levels(self, bars: List[Bar], current_bar: Bar) -> tuple[Optional[float], Optional[float]]:
+    def _get_breakout_levels(self, symbol_state: SymbolState) -> tuple[Optional[float], Optional[float]]:
         """
-        Get N-day high and low levels for breakout detection.
-
-        Uses prior days only (not including today).
+        Get high and low levels for breakout detection.
+        Uses prior day levels from SymbolState.meta or multi-day levels from indicators.
         """
-        today = current_bar.time.date()
+        daily_highs = symbol_state.indicators.get("daily_highs")
+        daily_lows = symbol_state.indicators.get("daily_lows")
 
-        # Collect bars from prior days
-        prior_days_bars = [b for b in bars if b.time.date() < today]
+        if daily_highs and daily_lows:
+            lookback = min(len(daily_highs), self.breakout_lookback)
+            lookback_highs = list(daily_highs)[-lookback:]
+            lookback_lows = list(daily_lows)[-lookback:]
+            prior_high = max(lookback_highs)
+            prior_low = min(lookback_lows)
+        else:
+            prior_high = symbol_state.meta.get("prior_day_high")
+            prior_low = symbol_state.meta.get("prior_day_low")
 
-        if len(prior_days_bars) < self.breakout_lookback:
+        if prior_high is None or prior_low is None:
             return None, None
 
-        # Get last N days worth of bars
-        # Group by date
-        days: Dict[str, List[Bar]] = {}
-        for b in prior_days_bars:
-            d = b.time.date().isoformat()
-            if d not in days:
-                days[d] = []
-            days[d].append(b)
-
-        # Get the last N days
-        sorted_days = sorted(days.keys(), reverse=True)[: self.breakout_lookback]
-
-        if len(sorted_days) < self.breakout_lookback:
-            return None, None
-
-        highs = []
-        lows = []
-        for d in sorted_days:
-            day_bars = days[d]
-            highs.append(max(b.high for b in day_bars))
-            lows.append(min(b.low for b in day_bars))
-
-        return max(highs), min(lows)
+        return float(prior_high), float(prior_low)
 
     def _get_average_volume(self, symbol_state: SymbolState) -> Optional[float]:
         """Get 20-bar average volume."""
@@ -244,6 +263,7 @@ class MomentumContinuationStrategy(BaseStrategy):
         self,
         symbol: str,
         bar: Bar,
+        symbol_state: SymbolState,
         market_state: MarketState,
         breakout_level: float,
         ema_fast: float,
@@ -251,14 +271,18 @@ class MomentumContinuationStrategy(BaseStrategy):
         avg_vol: float,
     ) -> Signal:
         """Create long breakout signal."""
-        entry_price = bar.close
+        entry_price = bar.close * (1.0 + self.slippage_allowance)
 
-        # Stop at breakout bar low (or EMA20 if tighter)
-        stop_price = max(bar.low, float(ema_fast) * 0.99)
-        if stop_price >= entry_price:
-            stop_price = entry_price * 0.99  # Fallback 1%
+        # Percentage-based stop loss — guarantees meaningful distance from entry
+        stop_price = entry_price * (1.0 - self.stop_pct)
 
-        # Target based on risk distance (entry-to-stop) for consistent R:R
+        # Widen with ATR if available
+        atr = float(symbol_state.meta.get("atr", 0.0) or 0.0)
+        if atr > 0:
+            atr_stop = entry_price - (atr * 1.5)
+            stop_price = min(stop_price, atr_stop)  # Use wider of the two
+
+        # Risk/reward target
         risk = abs(entry_price - stop_price)
         target_price = entry_price + (risk * self.risk_reward)
 
@@ -282,6 +306,7 @@ class MomentumContinuationStrategy(BaseStrategy):
         self,
         symbol: str,
         bar: Bar,
+        symbol_state: SymbolState,
         market_state: MarketState,
         breakdown_level: float,
         ema_fast: float,
@@ -289,14 +314,18 @@ class MomentumContinuationStrategy(BaseStrategy):
         avg_vol: float,
     ) -> Signal:
         """Create short breakdown signal."""
-        entry_price = bar.close
+        entry_price = bar.close * (1.0 - self.slippage_allowance)
 
-        # Stop at breakout bar high (or EMA20 if tighter)
-        stop_price = min(bar.high, float(ema_fast) * 1.01)
-        if stop_price <= entry_price:
-            stop_price = entry_price * 1.01  # Fallback 1%
+        # Percentage-based stop loss — guarantees meaningful distance from entry
+        stop_price = entry_price * (1.0 + self.stop_pct)
 
-        # Target based on risk distance (entry-to-stop) for consistent R:R
+        # Widen with ATR if available
+        atr = float(symbol_state.meta.get("atr", 0.0) or 0.0)
+        if atr > 0:
+            atr_stop = entry_price + (atr * 1.5)
+            stop_price = max(stop_price, atr_stop)  # Use wider of the two
+
+        # Risk/reward target
         risk = abs(entry_price - stop_price)
         target_price = entry_price - (risk * self.risk_reward)
 
