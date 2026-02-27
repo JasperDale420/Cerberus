@@ -259,6 +259,9 @@ class Position:
     # Regime-aware stop multiplier applied at entry
     regime_stop_multiplier: float = 1.0
 
+    # Bar timestamp at entry — used to skip exit checks on the entry bar
+    entry_bar_time: Optional[datetime] = None
+
 
 @dataclass
 class SymbolState:

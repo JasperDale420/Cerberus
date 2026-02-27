@@ -325,6 +325,7 @@ class PositionManager:
             initial_qty=fill_data["qty"],
             partial_exits_taken=0,
             regime_stop_multiplier=regime_multiplier,
+            entry_bar_time=(getattr(symbol_state.bars[-1], "time", None) if symbol_state.bars else None),
         )
 
         self._apply_costs_to_position(symbol_state.position, fill_data["qty"], fill_data["price"], cfg)
@@ -574,6 +575,10 @@ class PositionManager:
         Only ratchets stop in favorable direction (up for longs, down for shorts).
         Requires trailing_stop_enabled and trailing_stop_pct to be set on position.
         """
+        # Skip trailing stop updates on the entry bar to avoid look-ahead bias
+        bar_time = getattr(last_bar, "time", None)
+        if bar_time is not None and pos.entry_bar_time is not None and bar_time == pos.entry_bar_time:
+            return
         if not pos.trailing_stop_enabled or pos.trailing_stop_pct is None:
             return
 
@@ -632,6 +637,10 @@ class PositionManager:
         Exits a portion of the position (e.g., 50%) when reaching 1R profit.
         Tracks partial_exits_taken to avoid multiple partial exits.
         """
+        # Skip partial exit checks on the entry bar to avoid look-ahead bias
+        bar_time = getattr(last_bar, "time", None)
+        if bar_time is not None and pos.entry_bar_time is not None and bar_time == pos.entry_bar_time:
+            return None
         # Skip if already took partial exit
         if pos.partial_exits_taken >= 1:
             return None
@@ -699,6 +708,12 @@ class PositionManager:
 
     def _check_stop_target_exit(self, pos: Position, last_bar: Any) -> ExitDecision:
         """Check if stop or target was hit on this bar."""
+        # Skip stop/target checks on the entry bar to avoid same-bar look-ahead bias.
+        # Entry fills at bar open; checking the same bar's low/high would use
+        # price data that isn't known at fill time.
+        bar_time = getattr(last_bar, "time", None)
+        if bar_time is not None and pos.entry_bar_time is not None and bar_time == pos.entry_bar_time:
+            return ExitDecision(intent=None, reason=None)
         stop_price = pos.stop_price
         target_price = pos.target_price
 
