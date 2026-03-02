@@ -266,12 +266,46 @@ class Position:
 @dataclass
 class SymbolState:
     symbol: str
-    bars: Deque[Bar]
+    bars_1m: Deque[Bar]
+    bars_5m: Deque[Bar]
+    bars_15m: Deque[Bar]
+    bars_1d: Deque[Bar]
     indicators: Dict[str, Any]
     position: Optional[Position]
     open_orders: Dict[str, Any]  # keyed by broker order ID
     allowed_strategies: List[str]  # set from scanner
     meta: Dict[str, Any]  # e.g. scanner_score, ATR
+
+    def __init__(
+        self,
+        symbol: str,
+        bars: Deque[Bar] = None,
+        indicators: Dict[str, Any] = None,
+        position: Optional[Position] = None,
+        open_orders: Dict[str, Any] = None,
+        allowed_strategies: List[str] = None,
+        meta: Dict[str, Any] = None,
+        bars_1m: Deque[Bar] = None,
+        bars_5m: Deque[Bar] = None,
+        bars_15m: Deque[Bar] = None,
+        bars_1d: Deque[Bar] = None,
+    ):
+        from collections import deque
+
+        self.symbol = symbol
+        self.bars_1m = bars_1m if bars_1m is not None else (bars if bars is not None else deque(maxlen=24 * 60))
+        self.bars_5m = bars_5m if bars_5m is not None else deque(maxlen=24 * 12)
+        self.bars_15m = bars_15m if bars_15m is not None else deque(maxlen=8 * 12)
+        self.bars_1d = bars_1d if bars_1d is not None else deque(maxlen=252)
+        self.indicators = indicators if indicators is not None else {}
+        self.position = position
+        self.open_orders = open_orders if open_orders is not None else {}
+        self.allowed_strategies = allowed_strategies if allowed_strategies is not None else []
+        self.meta = meta if meta is not None else {}
+
+    @property
+    def bars(self) -> Deque[Bar]:
+        return self.bars_1m
 
 
 @dataclass
@@ -323,6 +357,8 @@ class TechnicalFeatures:
     gex_flip_dist: float = 0.0  # Distance to GEX Flip/Pin level (%)
     frac_diff_close: float = 0.0  # Fractionally differentiated close price
     hurst_exponent: float = 0.0  # Hurst Exponent (0-1, <0.5 MR, >0.5 Trend)
+    ofi: float = 0.0  # Order Flow Imbalance (proxy for quote imbalances)
+    high_low_spread: float = 0.0  # Daily bar spread scaled by price
 
     # Fusion Alpha Fields (with defaults, MUST be at the end)
     relative_strength: float = 0.0  # Stock return vs Benchmark (e.g. SPY)
@@ -384,6 +420,10 @@ class SymbolFeatures:
     ma_dist_200: float = 0.0
     alpha_score: float = 0.0
     alpha_rank: int = 0
+
+    # Microstructure Features
+    ofi: float = 0.0  # Order Flow Imbalance (proxy for quote imbalances)
+    high_low_spread: float = 0.0  # Daily bar spread scaled by price
 
     extra: Dict[str, Any] = field(default_factory=dict)
 

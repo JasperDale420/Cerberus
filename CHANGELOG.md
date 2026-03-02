@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Critical: SymbolFeatures Missing Microstructure Fields** (2026-03-02):
+  - Added `ofi` (Order Flow Imbalance) and `high_low_spread` fields to `SymbolFeatures` dataclass in `domain.py`.
+  - `FeaturePipeline` passed these fields but `SymbolFeatures` didn't declare them, crashing every symbol's feature computation.
+  - Updated `ReplayProvider` to populate `ofi` and `high_low_spread` from snapshot data for backtest parity.
+  - Rebuilt Docker containers to pick up all pending code fixes (including `FeatureCalculator()` no-arg constructor).
+
 ### Added
 
 - **Profit-Maximization Metrics Upgrade** (2026-02-27):
