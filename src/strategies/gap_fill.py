@@ -33,6 +33,8 @@ class GapFillStrategy(BaseStrategy):
         self.risk_reward = cfg.risk_reward
         self.or_time_minutes = cfg.or_time_minutes
         self.weak_trend_max_score = cfg.weak_trend_max_score
+        # Gap fill is mean reversion: only trade when higher TF is flat
+        self.tf_alignment_mode = "mean_reversion"
 
     def on_bar(
         self,
@@ -124,6 +126,9 @@ class GapFillStrategy(BaseStrategy):
 
         # Fade gap up (short): breakdown below OR low.
         if gap_up and bar.close < or_low:
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
+                return None
             open_price = float(or_bars[0].open)
             # P0 fix: Guard against division by zero (100% gap down = gap_pct = -1.0)
             if abs(1.0 + gap_pct) < 1e-9:
@@ -149,6 +154,9 @@ class GapFillStrategy(BaseStrategy):
 
         # Fade gap down (long): breakout above OR high.
         if gap_down and bar.close > or_high:
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                return None
             open_price = float(or_bars[0].open)
             # P0 fix: Guard against division by zero
             if abs(1.0 + gap_pct) < 1e-9:

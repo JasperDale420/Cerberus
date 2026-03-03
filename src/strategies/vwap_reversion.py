@@ -34,6 +34,8 @@ class VWAPReversionStrategy(BaseStrategy):
         self.rsi_len = cfg.rsi_len
         self.rsi_oversold = cfg.rsi_oversold
         self.rsi_overbought = cfg.rsi_overbought
+        # Mean reversion: only trade when higher TF is flat
+        self.tf_alignment_mode = "mean_reversion"
 
     def _in_time_window(self, dt: datetime) -> bool:
         """Check if datetime is within configured trading window."""
@@ -190,6 +192,9 @@ class VWAPReversionStrategy(BaseStrategy):
             ok, confirm_meta = self._confirm_reversal(closes, OrderSide.BUY)
             if not ok:
                 return None
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                return None
             # Entry Long (Reversion to mean)
             # Stop: A bit below the recent low or a fixed ATR multiple
             # P0.2 fix: Cap stop distance at 2% to prevent excessive risk
@@ -223,6 +228,9 @@ class VWAPReversionStrategy(BaseStrategy):
         elif current_price > upper:
             ok, confirm_meta = self._confirm_reversal(closes, OrderSide.SELL)
             if not ok:
+                return None
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
                 return None
             # Entry Short (Reversion to mean)
             # P0.2 fix: Cap stop distance at 2% to prevent excessive risk

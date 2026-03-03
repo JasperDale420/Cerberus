@@ -130,7 +130,11 @@ class VixSpikeFadeStrategy(BaseStrategy):
         if target_price <= entry_price:
             return None  # No upside
 
-        # 10. Create signal (LONG only - fading fear)
+        # 10. Higher TF alignment (mean reversion: requires flat higher TF)
+        if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+            return None
+
+        # 11. Create signal (LONG only - fading fear)
         self._traded_today = True
 
         return self._create_signal(

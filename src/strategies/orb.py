@@ -152,6 +152,10 @@ class ORBStrategy(BaseStrategy):
 
         # Long Breakout
         if bar.close > orb_high:
+            # Higher TF alignment: 5m trend must confirm breakout direction
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                return None
+
             # Confirmation 1: VWAP - price should be above VWAP for longs
             if vwap and bar.close < vwap:
                 return None  # Weak long - price below VWAP
@@ -189,6 +193,10 @@ class ORBStrategy(BaseStrategy):
 
         # Short Breakout
         if bar.close < orb_low:
+            # Higher TF alignment: 5m trend must confirm breakout direction
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
+                return None
+
             # Confirmation 1: VWAP - price should be below VWAP for shorts
             if vwap and bar.close > vwap:
                 return None  # Weak short - price above VWAP

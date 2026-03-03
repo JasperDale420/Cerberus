@@ -23,6 +23,8 @@ class IndexMeanReversionStrategy(BaseStrategy):
         self.stop_std = cfg.stop_std
         self.stop_pct = cfg.stop_pct
         self.allowed_symbols = set(cfg.symbols)
+        # Mean reversion: only trade when higher TF is flat
+        self.tf_alignment_mode = "mean_reversion"
 
     def on_bar(
         self,
@@ -68,6 +70,9 @@ class IndexMeanReversionStrategy(BaseStrategy):
 
         # LONG: Price < Lower Band (Oversold)
         if price < current_bbl:
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                return None
             # Revert to Mean
             # Stop: Further deviation or fixed %
             stop_price = price * (1.0 - self.stop_pct)
@@ -87,6 +92,9 @@ class IndexMeanReversionStrategy(BaseStrategy):
 
         # SHORT: Price > Upper Band (Overbought)
         elif price > current_bbu:
+            # Higher TF alignment (mean reversion: requires flat higher TF)
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
+                return None
             # Revert to Mean
             stop_price = price * (1.0 + self.stop_pct)
             target_price = current_bbm

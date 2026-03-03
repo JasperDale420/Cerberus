@@ -142,6 +142,9 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             if cross_up:
                 # Check Volume
                 if current_vol > (avg_vol_f * float(self.vol_mult)):
+                    # Higher TF alignment: 5m trend must confirm direction
+                    if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                        return None
                     # ENTRY LONG
                     stop_loss = min([b.low for b in bars[-3:]])  # Recent swing low match
                     if stop_loss >= bar.close:
@@ -177,6 +180,9 @@ class VWAPTrendRiderStrategy(BaseStrategy):
             if cross_down:
                 # Check Volume
                 if current_vol > (avg_vol_f * float(self.vol_mult)):
+                    # Higher TF alignment: 5m trend must confirm direction
+                    if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
+                        return None
                     # ENTRY SHORT
                     stop_loss = max([b.high for b in bars[-3:]])
                     if stop_loss <= bar.close:

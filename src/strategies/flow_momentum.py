@@ -153,6 +153,9 @@ class FlowMomentumStrategy(BaseStrategy):
 
         # Generate signal if conditions align
         if is_bullish_flow and is_green:
+            # Higher TF alignment: 5m trend must confirm direction
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.BUY):
+                return None
             return self._build_signal(
                 symbol,
                 bar,
@@ -163,6 +166,9 @@ class FlowMomentumStrategy(BaseStrategy):
                 avg_vol_f,
             )
         if not is_bullish_flow and is_red:
+            # Higher TF alignment: 5m trend must confirm direction
+            if not self._check_higher_tf_alignment(symbol_state, OrderSide.SELL):
+                return None
             return self._build_signal(
                 symbol,
                 bar,

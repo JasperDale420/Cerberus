@@ -20,6 +20,9 @@ class BaseStrategy(ABC):
         self.cooldown_bars = int(config.get("cooldown_bars", 5))
         # M5 fix: Configurable bar duration for accurate cooldown across timeframes
         self.bar_duration_minutes = float(config.get("bar_duration_minutes", 1.0))
+        # Multi-timeframe trend alignment gate
+        self.higher_tf_alignment = bool(config.get("higher_tf_alignment", True))
+        self.tf_alignment_mode = str(config.get("tf_alignment_mode", "trend"))  # "trend" or "mean_reversion"
 
     def update_params(self, config: Dict[str, Any]) -> None:
         """
@@ -93,6 +96,48 @@ class BaseStrategy(ABC):
                 )
             return False
         return True
+
+    def _check_higher_tf_alignment(
+        self,
+        symbol_state: SymbolState,
+        side: "OrderSide",
+    ) -> bool:
+        """Check if the 5-minute EMA trend aligns with the proposed signal direction.
+
+        Uses the pre-computed indicator cache populated by ExecutionEngine._resample_bars().
+        Two modes:
+          - "trend": requires 5m EMA fast > slow for BUY, fast < slow for SELL
+          - "mean_reversion": requires EMAs to be within 0.15% of each other (flat/choppy)
+
+        Returns True if aligned (or no data / disabled), False to reject the signal.
+        """
+        if not self.higher_tf_alignment:
+            return True
+
+        ema_fast = symbol_state.indicators.get("ema_close_5m:20")
+        ema_slow = symbol_state.indicators.get("ema_close_5m:50")
+
+        # Not enough data yet — allow signal through
+        if ema_fast is None or ema_slow is None:
+            return True
+
+        ema_fast = float(ema_fast)
+        ema_slow = float(ema_slow)
+
+        if ema_slow == 0:
+            return True
+
+        spread_pct = abs(ema_fast - ema_slow) / ema_slow
+
+        if self.tf_alignment_mode == "mean_reversion":
+            # Mean reversion: only trade when higher TF is flat (EMAs converged)
+            return spread_pct < 0.0015  # 0.15% spread = choppy
+
+        # Trend mode: higher TF must trend in signal direction
+        if side == OrderSide.BUY:
+            return ema_fast > ema_slow
+        else:
+            return ema_fast < ema_slow
 
     def _create_signal(
         self,

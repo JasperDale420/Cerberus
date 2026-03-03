@@ -24,12 +24,20 @@ class SimulatedOrderExecutor:
         clock: Optional[Callable[[], datetime]] = None,
         on_trade_update: Optional[Callable[[Any], None]] = None,
         account: Optional[Any] = None,
+        backtest_cfg: Optional[Dict[str, Any]] = None,
+        risk_cfg: Optional[Dict[str, Any]] = None,
     ):
         self.logger = logger
         self.db = db
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.on_trade_update = on_trade_update
         self.account = account
+
+        # Slippage & cost config
+        rk = risk_cfg or {}
+        self._slippage_bps: float = float(rk.get("slippage_bps", 0.0) or 0.0)
+        self._commission_per_share: float = float(rk.get("commission_per_share", 0.0) or 0.0)
+        self._min_commission: float = float(rk.get("min_commission", 0.0) or 0.0)
 
         # Internal state
         self.open_orders: Dict[str, Dict[str, Any]] = {}
@@ -145,7 +153,13 @@ class SimulatedOrderExecutor:
                     "order_fill",
                     lambda session: session.query(DbOrder)
                     .filter(DbOrder.broker_order_id == order["id"])
-                    .update({"status": "filled", "time_last_update": self.clock()}),
+                    .update(
+                        {
+                            "status": "filled",
+                            "limit_price": fill_price,
+                            "time_last_update": self.clock(),
+                        }
+                    ),
                 )
 
         import asyncio
@@ -190,10 +204,26 @@ class SimulatedOrderExecutor:
         else:
             self.on_trade_update(mock)
 
+    def _apply_slippage(self, price: float, side: str) -> float:
+        """Worsen fill price by slippage_bps. Buys pay more, sells receive less."""
+        if self._slippage_bps <= 0.0 or price <= 0.0:
+            return price
+        slip_frac = self._slippage_bps / 10_000.0
+        if side == "buy":
+            return price * (1.0 + slip_frac)
+        return price * (1.0 - slip_frac)
+
+    def _deduct_commission(self, qty: float) -> float:
+        """Calculate and deduct commission from account cash. Returns commission amount."""
+        commission = max(self._min_commission, self._commission_per_share * qty)
+        if commission > 0.0 and self.account is not None and hasattr(self.account, "cash"):
+            self.account.cash -= commission
+        return commission
+
     def process_bar(self, bar: Any) -> None:
         """
         Evaluate pending orders against the current bar.
-        Market orders fill immediately at bar open.
+        Market orders fill immediately at bar open (with slippage).
         Limit orders fill if bar low <= limit (buy) or bar high >= limit (sell).
         Bracket orders (stop loss / take profit) are evaluated if parent is filled.
         """
@@ -214,33 +244,35 @@ class SimulatedOrderExecutor:
             fill_price = 0.0
             is_filled = False
 
-            # Simplified matching
             if order["type"] == "market":
-                fill_price = open_p  # slippage can be added here
+                fill_price = self._apply_slippage(open_p, order["side"])
                 is_filled = True
             elif order["type"] == "limit":
                 limit = float(order["limit_price"])
                 if order["side"] == "buy" and low_p <= limit:
-                    fill_price = min(limit, open_p)
+                    fill_price = self._apply_slippage(min(limit, open_p), order["side"])
                     is_filled = True
                 elif order["side"] == "sell" and high_p >= limit:
-                    fill_price = max(limit, open_p)
+                    fill_price = self._apply_slippage(max(limit, open_p), order["side"])
                     is_filled = True
             elif order["type"] == "stop":
                 stop = float(order.get("stop_price", 0.0))
                 if order["side"] == "sell" and low_p <= stop:
-                    fill_price = min(stop, open_p)
+                    fill_price = self._apply_slippage(min(stop, open_p), order["side"])
                     is_filled = True
                 elif order["side"] == "buy" and high_p >= stop:
-                    fill_price = max(stop, open_p)
+                    fill_price = self._apply_slippage(max(stop, open_p), order["side"])
                     is_filled = True
 
             if is_filled:
                 order["status"] = "filled"
 
-                # Update mock account cash and position
                 fill_qty = float(order["qty"])
                 fill_val = fill_qty * fill_price
+
+                # Deduct commission from account
+                self._deduct_commission(fill_qty)
+
                 if self.account is not None:
                     if hasattr(self.account, "cash") and hasattr(self.account, "positions_qty"):
                         if order["side"] == "buy":
