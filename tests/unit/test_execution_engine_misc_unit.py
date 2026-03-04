@@ -381,3 +381,84 @@ def test_execution_engine_tracks_session_vwap_and_resets_on_day_boundary() -> No
     assert st.indicators["cum_vol"] == pytest.approx(10.0)
     assert st.indicators["session_vwap"] == pytest.approx(20.0)
     assert b3.vwap == pytest.approx(20.0)
+
+
+@pytest.mark.unit
+def test_indicator_periods_are_cached_when_allowed_strategies_unchanged() -> None:
+    engine = ExecutionEngine(
+        config={
+            "strategies": {
+                "trend_pullback": {"ema_fast": 8, "ema_slow": 21, "rsi_len": 2},
+            }
+        },
+        logger=_logger("test_exec_indicator_period_cache"),
+        alpaca_client=None,
+        db=None,
+    )
+    state = SymbolState(
+        symbol="AAPL",
+        bars=deque(maxlen=100),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=["trend_pullback"],
+        meta={},
+    )
+    bar = Bar(symbol="AAPL", time=datetime(2025, 1, 1, tzinfo=timezone.utc), open=1, high=1, low=1, close=1, volume=1)
+
+    original = engine._collect_indicator_periods
+    calls = 0
+
+    def _wrapped(s: SymbolState):
+        nonlocal calls
+        calls += 1
+        return original(s)
+
+    engine._collect_indicator_periods = _wrapped  # type: ignore[assignment]
+
+    engine._update_indicator_cache(state, bar)
+    engine._update_indicator_cache(state, bar)
+    engine._update_indicator_cache(state, bar)
+
+    assert calls == 1
+
+
+@pytest.mark.unit
+def test_indicator_period_cache_invalidates_when_allowed_strategies_change() -> None:
+    engine = ExecutionEngine(
+        config={
+            "strategies": {
+                "trend_pullback": {"ema_fast": 8, "ema_slow": 21, "rsi_len": 2},
+                "index_mean_reversion": {"bb_len": 20},
+            }
+        },
+        logger=_logger("test_exec_indicator_period_cache_invalidate"),
+        alpaca_client=None,
+        db=None,
+    )
+    state = SymbolState(
+        symbol="AAPL",
+        bars=deque(maxlen=100),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=["trend_pullback"],
+        meta={},
+    )
+    bar = Bar(symbol="AAPL", time=datetime(2025, 1, 1, tzinfo=timezone.utc), open=1, high=1, low=1, close=1, volume=1)
+
+    original = engine._collect_indicator_periods
+    calls = 0
+
+    def _wrapped(s: SymbolState):
+        nonlocal calls
+        calls += 1
+        return original(s)
+
+    engine._collect_indicator_periods = _wrapped  # type: ignore[assignment]
+
+    engine._update_indicator_cache(state, bar)
+    state.allowed_strategies = ["trend_pullback", "index_mean_reversion"]
+    engine._update_indicator_cache(state, bar)
+
+    assert calls == 2
