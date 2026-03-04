@@ -2,8 +2,8 @@ import argparse
 import asyncio
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
@@ -30,9 +30,9 @@ def _should_initialize_alpaca_client(
     """Determine whether Alpaca client initialization is required."""
     normalized_executor = str(order_executor or "").strip().lower()
     normalized_backend = str(data_backend or "").strip().lower()
-    if normalized_backend == "gateway" and normalized_executor in ("noop", "gateway") and not bool(failover_to_legacy):
-        return False
-    return True
+    return not (
+        normalized_backend == "gateway" and normalized_executor in ("noop", "gateway") and not bool(failover_to_legacy)
+    )
 
 
 def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
@@ -80,15 +80,13 @@ def _is_regular_market_session_local(now: datetime) -> bool:
         return False
     if now.hour < 9 or (now.hour == 9 and now.minute < 30):
         return False
-    if now.hour >= 16:
-        return False
-    return True
+    return not now.hour >= 16
 
 
 def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
     """Capture daily screener snapshot for historical backtest replay."""
     snapshot = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "most_actives": [],
         "gainers": [],
         "losers": [],
@@ -109,7 +107,7 @@ def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -
     # Save to data/screener_snapshots/<date>.jsonl
     output_dir = Path("data/screener_snapshots")
     output_dir.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = output_dir / f"{date_str}.jsonl"
 
     with open(output_path, "a") as f:
@@ -127,21 +125,33 @@ def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -
 def _build_strategy_registry() -> dict[str, type]:
     """Build the canonical strategy registry for runtime initialization."""
     from src.strategies.failed_breakout import FailedBreakoutStrategy
+    from src.strategies.flow_alpha import FlowAlphaStrategy
     from src.strategies.flow_momentum import FlowMomentumStrategy
     from src.strategies.fusion_v1 import FusionStrategyV1
     from src.strategies.gap_fill import GapFillStrategy
     from src.strategies.index_mean_reversion import IndexMeanReversionStrategy
     from src.strategies.intraday_momentum import IntradayMomentumStrategy
+    from src.strategies.mean_reversion_pro import MeanReversionProStrategy
     from src.strategies.momentum_continuation import MomentumContinuationStrategy
     from src.strategies.orb import ORBStrategy
+    from src.strategies.orb_v2 import ORBV2Strategy
     from src.strategies.order_flow_imbalance import OrderFlowImbalanceStrategy
     from src.strategies.pair_trading import PairTradingStrategy
+    from src.strategies.pair_trading_v2 import PairTradingV2Strategy
     from src.strategies.trend_pullback import TrendPullbackStrategy
+    from src.strategies.trend_rider_pro import TrendRiderProStrategy
     from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
     from src.strategies.vwap_reversion import VWAPReversionStrategy
     from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
 
     return {
+        # V2 consolidated strategies (enabled by default)
+        "mean_reversion_pro": MeanReversionProStrategy,
+        "trend_rider_pro": TrendRiderProStrategy,
+        "flow_alpha": FlowAlphaStrategy,
+        "orb_v2": ORBV2Strategy,
+        "pair_trading_v2": PairTradingV2Strategy,
+        # Legacy strategies (disabled in config)
         "vwap_reversion": VWAPReversionStrategy,
         "orb": ORBStrategy,
         "vwap_trend_rider": VWAPTrendRiderStrategy,
@@ -313,7 +323,7 @@ async def async_main():
 
     def _utc_now_clock() -> Callable[[], datetime]:
         def _clock() -> datetime:
-            return datetime.now(timezone.utc)
+            return datetime.now(UTC)
 
         return _clock
 
@@ -383,7 +393,7 @@ async def async_main():
     # Initialize Streaming Scanner for live microstructure feature updates
     from src.data.calculator import FeatureCalculator
 
-    feature_calculator = FeatureCalculator(logger)
+    feature_calculator = FeatureCalculator()
     streaming_scanner = StreamingScanner(
         calculator=feature_calculator,
         logger=logger,
@@ -451,17 +461,21 @@ async def async_main():
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
     # 4. Initial Scan — Start bar data streams
-    # Gateway bar stream: always start when using gateway data backend.
-    # This provides the on_bar() callbacks that drive strategy signal generation.
+
+    # Helper to (re-)start the gateway WebSocket stream.
+    # Called at initial startup and after each overnight sleep to ensure a
+    # fresh connection for the new trading session.
     use_gateway_stream = runtime_settings.use_gateway_data
-    gateway_stream_task: asyncio.Task[object] | None = None
-    if use_gateway_stream:
+
+    def _start_gateway_stream_task() -> "asyncio.Task[object] | None":
+        if not use_gateway_stream:
+            return None
         logger.info(
             "Starting gateway bar stream...",
             data_backend=runtime_settings.cerberus_data_backend,
             order_executor=args.order_executor,
         )
-        gateway_stream_task = asyncio.create_task(
+        task = asyncio.create_task(
             gateway_stream_client.start_stream(
                 engine.on_bar,
                 on_reconnect=engine.reconcile_broker_state,
@@ -470,6 +484,20 @@ async def async_main():
             )
         )
         gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
+        return task
+
+    def _restart_gateway_stream(
+        current_task: "asyncio.Task[object] | None",
+    ) -> "asyncio.Task[object] | None":
+        """Tear down the existing gateway stream and start a fresh one."""
+        if current_task is not None and not current_task.done():
+            current_task.cancel()
+        # Reset internal WS state so start_stream creates a new connection
+        gateway_stream_client._running = False
+        gateway_stream_client._ws = None
+        return _start_gateway_stream_task()
+
+    gateway_stream_task = _start_gateway_stream_task()
 
     # Alpaca direct streams: only for direct Alpaca execution mode.
     start_alpaca_stream = _should_start_alpaca_stream(
@@ -530,11 +558,11 @@ async def async_main():
                 if isinstance(t, datetime):
                     try:
                         if t.tzinfo is None:
-                            t = t.replace(tzinfo=timezone.utc)
+                            t = t.replace(tzinfo=UTC)
                         return t.astimezone(tz)
                     except Exception:
                         pass
-            return datetime.now(timezone.utc).astimezone(tz)
+            return datetime.now(UTC).astimezone(tz)
 
         while True:
             now = _session_now_local()
@@ -551,12 +579,16 @@ async def async_main():
                     sleep_seconds=max(1, int((next_open - now).total_seconds())),
                 )
                 while True:
-                    current_local = datetime.now(timezone.utc).astimezone(tz)
+                    current_local = datetime.now(UTC).astimezone(tz)
                     remaining = (next_open - current_local).total_seconds()
                     if remaining <= 0:
                         break
                     await asyncio.sleep(min(300, max(1, int(remaining))))
                 last_warning_min = None
+
+                # Reconnect gateway stream for the new session
+                gateway_stream_task = _restart_gateway_stream(gateway_stream_task)
+                logger.info("Gateway stream reconnected after pre-market sleep")
                 continue
 
             # 1. Market Close Check (Exit at 16:00 ET)
@@ -644,12 +676,16 @@ async def async_main():
                     sleep_seconds=max(1, int((next_open - now).total_seconds())),
                 )
                 while True:
-                    current_local = datetime.now(timezone.utc).astimezone(tz)
+                    current_local = datetime.now(UTC).astimezone(tz)
                     remaining = (next_open - current_local).total_seconds()
                     if remaining <= 0:
                         break
                     await asyncio.sleep(min(300, max(1, int(remaining))))
                 last_warning_min = None
+
+                # Reconnect gateway stream for the new trading session
+                gateway_stream_task = _restart_gateway_stream(gateway_stream_task)
+                logger.info("Gateway stream reconnected after overnight sleep")
                 continue
 
             # 2. Run Scanner (every 5 mins)
