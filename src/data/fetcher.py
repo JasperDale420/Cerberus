@@ -75,6 +75,14 @@ class DataFetcher:
 
         try:
             last_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            if last_ts.tzinfo is None:
+                self.logger.warning(
+                    "Naive cached bar timestamp assumed UTC",
+                    event_type="data_validation",
+                    symbol=symbol,
+                    raw_timestamp=str(raw_ts),
+                )
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
             return last_ts + timedelta(seconds=1), existing
         except Exception as e:
             self.logger.debug(

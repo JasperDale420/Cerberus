@@ -1,3 +1,11 @@
+# Kairos Mechanic Journal
+
+## 2026-03-05 - Naive Cache Timestamp Guard
+**Finding:** Incremental bar fetch could crash when cached bar timestamps lacked timezone info (`TypeError` comparing naive vs aware datetimes).
+**Risk:** One malformed cached timestamp can break feature data refresh and silently reduce trading signal freshness.
+**Fix pattern:** Normalize parsed cache timestamps to UTC when `tzinfo` is missing, and emit structured warning logs with symbol + raw timestamp.
+**Next time:** Treat all parsed timestamps as suspect; normalize at boundaries and add regression tests around cache hydration paths.
+
 ## 2026-03-04 - Gateway Naive Timestamp Guard
 **Finding:** Data-Gateway bar payloads with ISO timestamps that omit timezone were parsed as naive datetimes, creating ambiguous bar time semantics.
 **Risk:** Naive timestamps can skew session logic and diagnostics, especially when comparing or replaying bars across UTC/ET boundaries.
