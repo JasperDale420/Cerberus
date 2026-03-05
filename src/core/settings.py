@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Cerberus runtime environment settings."""
 
-    model_config = {"env_prefix": "", "case_sensitive": False}
+    model_config = {"env_prefix": "", "case_sensitive": False, "env_file": ".env", "extra": "ignore"}
 
     # Alpaca credentials (support both naming conventions)
     alpaca_api_key: str | None = Field(default=None)
@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     cerberus_gateway_timeout_seconds: float = Field(
         default=30.0,
         validation_alias=AliasChoices("CERBERUS_GATEWAY_TIMEOUT_SECONDS"),
+    )
+    cerberus_asset_class: str = Field(
+        default="us_equity",
+        validation_alias=AliasChoices("CERBERUS_ASSET_CLASS"),
     )
 
     # Heber

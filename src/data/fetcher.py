@@ -1,7 +1,8 @@
 import asyncio
 from collections import OrderedDict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from src.core.errors import ErrorCode
 from src.core.logger import StructuredLogger
@@ -21,29 +22,31 @@ class DataFetcher:
 
     def __init__(
         self,
-        alpaca_client: Optional[AlpacaClient],
+        alpaca_client: AlpacaClient | None,
         unusual_whales_client: UnusualWhalesClient,
         logger: StructuredLogger,
-        config: Optional[Dict[str, Any]] = None,
-        clock: Optional[Callable[[], datetime]] = None,
-        central_api_client: Optional[CentralApiClient] = None,
+        config: dict[str, Any] | None = None,
+        clock: Callable[[], datetime] | None = None,
+        central_api_client: CentralApiClient | None = None,
     ):
         self.alpaca_client = alpaca_client
         self.unusual_whales_client = unusual_whales_client
         self.central_api_client = central_api_client
         self.logger = logger
         self.config = config or {}
-        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.clock = clock or (lambda: datetime.now(UTC))
         runtime = get_settings()
         self.use_gateway_data = runtime.use_gateway_data
         self.use_heber_storage = runtime.use_heber_storage
         self.allow_legacy_failover = bool(runtime.cerberus_failover_to_legacy)
         self.enable_dual_compare = bool(runtime.cerberus_data_backend == "dual")
-        self.heber_client: Optional[HeberReadClient] = None
+        self.heber_client: HeberReadClient | None = None
         if self.use_heber_storage and runtime.cerberus_heber_data_root:
+            asset_class = getattr(runtime, "cerberus_asset_class", "us_equity") or "us_equity"
             self.heber_client = HeberReadClient(
                 data_root=runtime.cerberus_heber_data_root,
                 logger=logger,
+                instrument_type=asset_class,
             )
         elif self.use_heber_storage:
             self.logger.warning(
@@ -52,14 +55,14 @@ class DataFetcher:
 
         # H2 Memory Audit Fix: LRU cache with maxsize for bars
         # Uses OrderedDict for LRU ordering; evicts oldest when maxsize exceeded
-        self._bars_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
-        self._trades_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._bars_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._trades_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         try:
             self._cache_maxsize = int(self.config.get("bars_cache_maxsize", 500))
         except (TypeError, ValueError):
             self._cache_maxsize = 500
 
-    def _resolve_fetch_start(self, symbol: str, start: datetime) -> Tuple[datetime, List[Dict[str, Any]]]:
+    def _resolve_fetch_start(self, symbol: str, start: datetime) -> tuple[datetime, list[dict[str, Any]]]:
         cached = self._bars_cache.get(symbol)
         if not cached or cached.get("start") != start:
             return start, []
@@ -87,7 +90,7 @@ class DataFetcher:
 
     async def _fetch_alpaca_bars_internal(
         self, symbol: str, start: datetime, end: datetime, timeframe: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         import asyncio
 
         new_bars = await asyncio.to_thread(
@@ -264,7 +267,7 @@ class DataFetcher:
 
     async def fetch_bars(
         self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min"
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """
         Fetches bars for a symbol, utilizing local cache.
         Returns (bars, metrics_delta).
@@ -315,7 +318,7 @@ class DataFetcher:
 
     async def fetch_trades(
         self, symbol: str, start: datetime, end: datetime
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """
         Fetches historical trades for a symbol.
         Used for Trade Flow Imbalance (TFI) calculation.
@@ -388,7 +391,7 @@ class DataFetcher:
         symbol: str,
         start: datetime,
         end: datetime,
-        gateway_trades: List[Dict[str, Any]],
+        gateway_trades: list[dict[str, Any]],
     ) -> None:
         """Log dual-read parity for trades data."""
         try:
@@ -423,7 +426,101 @@ class DataFetcher:
                 error=str(e),
             )
 
-    def _extract_volume(self, bar: Any) -> Optional[float]:
+    async def fetch_quotes(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        """
+        Fetches historical quotes for a symbol.
+        Used for Order Flow Imbalance (OFI) calculation.
+        """
+        metrics = {"alpaca_quotes_fetch_fail": 0, "alpaca_no_quotes": 0}
+        sym = str(symbol).strip().upper()
+
+        try:
+            import asyncio
+
+            if self.heber_client is not None:
+                self.logger.debug(
+                    "Heber client does not currently support quotes; falling back to gateway/legacy source",
+                    symbol=sym,
+                )
+
+            if self.use_gateway_data and self.central_api_client is not None:
+                try:
+                    quotes = await asyncio.to_thread(
+                        self.central_api_client.get_alpaca_quotes,
+                        sym,
+                        start,
+                        end,
+                    )
+                    if self.enable_dual_compare:
+                        await self._compare_quotes_with_legacy(sym, start, end, quotes)
+                except Exception as e:
+                    if not self.allow_legacy_failover:
+                        raise
+                    if self.alpaca_client is None:
+                        raise RuntimeError(
+                            "Legacy Alpaca quotes fallback requested but Alpaca client is not initialized"
+                        ) from e
+                    quotes = await asyncio.to_thread(self.alpaca_client.get_historical_quotes, sym, start, end)
+            else:
+                if self.alpaca_client is None:
+                    raise RuntimeError("Alpaca quotes requested but Alpaca client is not initialized")
+                quotes = await asyncio.to_thread(self.alpaca_client.get_historical_quotes, sym, start, end)
+            if not quotes:
+                metrics["alpaca_no_quotes"] += 1
+            return quotes, metrics
+        except Exception as e:
+            metrics["alpaca_quotes_fetch_fail"] += 1
+            self.logger.warning(
+                "Alpaca quotes fetch failed",
+                error_code=ErrorCode.ALPACA_TRADES_FETCH_FAILED.value,
+                symbol=sym,
+                error=str(e),
+            )
+            return [], metrics
+
+    async def _compare_quotes_with_legacy(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        gateway_quotes: list[dict[str, Any]],
+    ) -> None:
+        """Log dual-read parity for quotes data."""
+        try:
+            import asyncio
+
+            if self.alpaca_client is None:
+                return
+
+            legacy_quotes = await asyncio.to_thread(self.alpaca_client.get_historical_quotes, symbol, start, end)
+
+            legacy_count = len(legacy_quotes) if isinstance(legacy_quotes, list) else 0
+            gateway_count = len(gateway_quotes) if isinstance(gateway_quotes, list) else 0
+
+            if legacy_count != gateway_count:
+                self.logger.warning(
+                    "Dual read quotes count mismatch",
+                    symbol=symbol,
+                    legacy_count=legacy_count,
+                    gateway_count=gateway_count,
+                    delta=abs(legacy_count - gateway_count),
+                )
+            elif legacy_count > 0:
+                self.logger.info(
+                    "Dual read quotes parity confirmed",
+                    symbol=symbol,
+                    count=legacy_count,
+                )
+        except Exception as e:
+            self.logger.debug(
+                "Dual read quotes comparison error",
+                symbol=symbol,
+                error=str(e),
+            )
+
+    def _extract_volume(self, bar: Any) -> float | None:
         try:
             if isinstance(bar, dict):
                 v = bar.get("v") if bar.get("v") is not None else bar.get("volume")
@@ -438,7 +535,7 @@ class DataFetcher:
             )
             return None
 
-    def fetch_avg_daily_volume(self, symbol: str, end: datetime, lookback_days: int) -> Optional[float]:
+    def fetch_avg_daily_volume(self, symbol: str, end: datetime, lookback_days: int) -> float | None:
         """
         Fetches daily bars to calculate average volume.
         """
@@ -467,7 +564,7 @@ class DataFetcher:
         window = vols[-lookback_days:]
         return float(sum(window) / len(window)) if window else None
 
-    def _parse_bar_time(self, bar: Any) -> Optional[datetime]:
+    def _parse_bar_time(self, bar: Any) -> datetime | None:
         try:
             bd = bar if isinstance(bar, dict) else getattr(bar, "__dict__", {})
             raw_t = bd.get("t") or bd.get("timestamp") or getattr(bar, "t", None)
@@ -477,7 +574,7 @@ class DataFetcher:
                 dt = raw_t
             else:
                 dt = datetime.fromisoformat(str(raw_t).replace("Z", "+00:00"))
-            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+            return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
         except Exception as e:
             self.logger.debug(
                 "Bar time parsing failed",
@@ -486,7 +583,7 @@ class DataFetcher:
             )
             return None
 
-    def _get_bar_field(self, bar: Any, keys: List[str]) -> float:
+    def _get_bar_field(self, bar: Any, keys: list[str]) -> float:
         bd = bar if isinstance(bar, dict) else getattr(bar, "__dict__", {})
         for k in keys:
             val = bd.get(k) or getattr(bar, k, None)
@@ -494,7 +591,7 @@ class DataFetcher:
                 return float(val)
         return 0.0
 
-    def fetch_prior_day_stats(self, symbol: str, current_time: datetime) -> Tuple[float, float, float]:
+    def fetch_prior_day_stats(self, symbol: str, current_time: datetime) -> tuple[float, float, float]:
         """
         Returns (High, Low, Close) from daily bars for the prior complete day.
         """
@@ -530,7 +627,7 @@ class DataFetcher:
             self.logger.warning("Failed to fetch prior day stats", symbol=symbol, error=str(e))
             return (0.0, 0.0, 0.0)
 
-    async def fetch_flow(self, symbol: str, date_str: str) -> List[Any]:
+    async def fetch_flow(self, symbol: str, date_str: str) -> list[Any]:
         """
         Fetches Unusual Whales option flow for a specific date.
         """
@@ -562,7 +659,7 @@ class DataFetcher:
         self,
         symbol: str,
         date_str: str,
-        gateway_flow: List[Any],
+        gateway_flow: list[Any],
     ) -> None:
         """Log dual-read parity for options flow data."""
         try:
@@ -594,7 +691,7 @@ class DataFetcher:
                 error=str(e),
             )
 
-    async def fetch_gex(self, symbol: str) -> List[Dict[str, Any]]:
+    async def fetch_gex(self, symbol: str) -> list[dict[str, Any]]:
         """
         Fetches Unusual Whales greek exposure data.
         Used for Net GEX and Flip distance calculation.
@@ -617,7 +714,7 @@ class DataFetcher:
     async def _compare_gex_with_legacy(
         self,
         symbol: str,
-        gateway_gex: List[Dict[str, Any]],
+        gateway_gex: list[dict[str, Any]],
     ) -> None:
         """Log dual-read parity for GEX data."""
         try:

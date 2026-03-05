@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -21,8 +21,8 @@ class UnusualWhalesClient:
         self,
         config_loader: ConfigLoader,
         logger: StructuredLogger,
-        client: Optional[httpx.AsyncClient] = None,
-        config: Optional[dict] = None,
+        client: httpx.AsyncClient | None = None,
+        config: dict | None = None,
     ):
         self.logger = logger
         self.api_token = str(config_loader.get_env("UW_API_TOKEN", "")).strip()

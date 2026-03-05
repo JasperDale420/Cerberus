@@ -12,9 +12,27 @@ from src.core.logger import StructuredLogger
 class HeberReadClient:
     """Read point-in-time-safe market data from Heber Silver parquet partitions."""
 
-    def __init__(self, data_root: Path | str, logger: StructuredLogger) -> None:
+    # Map CERBERUS_ASSET_CLASS values to Heber partition directory names
+    _ASSET_CLASS_TO_INSTRUMENT_TYPE: dict[str, str] = {
+        "us_equity": "equity",
+        "equity": "equity",
+        "crypto": "crypto",
+        "option": "option",
+        "options": "option",
+    }
+
+    def __init__(
+        self,
+        data_root: Path | str,
+        logger: StructuredLogger,
+        instrument_type: str = "equity",
+    ) -> None:
         self.data_root = Path(data_root)
         self.logger = logger
+        # Resolve asset class alias to the Heber partition name
+        self.instrument_type = self._ASSET_CLASS_TO_INSTRUMENT_TYPE.get(
+            instrument_type.lower().strip(), instrument_type.lower().strip()
+        )
 
     def get_bars(
         self,
@@ -158,7 +176,20 @@ class HeberReadClient:
         end_date = (end + timedelta(days=1)).date()
         files: list[Path] = []
 
-        for parquet_file in dataset_root.rglob("*.parquet"):
+        # Scope to the correct instrument_type partition to avoid scanning
+        # unrelated asset types (e.g. crypto files when looking for equities).
+        instrument_dir = dataset_root / f"instrument_type={self.instrument_type}"
+        if instrument_dir.is_dir():
+            search_root = instrument_dir
+        else:
+            self.logger.debug(
+                "Instrument type partition not found; falling back to full scan",
+                instrument_type=self.instrument_type,
+                expected_path=str(instrument_dir),
+            )
+            search_root = dataset_root
+
+        for parquet_file in search_root.rglob("*.parquet"):
             if not parquet_file.is_file():
                 continue
 
