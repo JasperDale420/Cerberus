@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Scanner flow validation now rejects non-numeric flow z-scores and extra flow metrics instead of letting them pass silently (2026-03-05).
+
 - DataFetcher now normalizes naive cached bar timestamps to UTC before incremental fetch comparisons, preventing offset-naive vs offset-aware datetime crashes and emitting structured validation logs (`event_type=data_validation`) for diagnosis (2026-03-05).
 
 - Position close path now logs debug context when holding-period calculation fails instead of silently swallowing the exception (2026-03-04).

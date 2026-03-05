@@ -111,3 +111,25 @@ def test_validate_flow(validator, valid_features):
 
     valid_features.extra["flow_raw_count"] = -1
     assert validator.validate_flow(valid_features) is False
+
+
+@pytest.mark.unit
+def test_validate_flow_rejects_non_numeric_metrics(validator, valid_features):
+    valid_features.flow_zscore = "bad-zscore"
+    assert validator.validate_flow(valid_features) is False
+    validator.logger.warning.assert_called_with(
+        "Invalid flow_zscore",
+        symbol=valid_features.symbol,
+        flow_zscore="bad-zscore",
+    )
+
+    validator.logger.warning.reset_mock()
+    valid_features.flow_zscore = 1.0
+    valid_features.extra["flow_volume"] = "not-a-number"
+    assert validator.validate_flow(valid_features) is False
+    validator.logger.warning.assert_called_with(
+        "Invalid flow metric",
+        symbol=valid_features.symbol,
+        key="flow_volume",
+        value="not-a-number",
+    )
