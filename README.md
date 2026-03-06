@@ -105,6 +105,32 @@ See:
 - Environment vars: [`docs/environment-variables.md`](docs/environment-variables.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 
+## Hidden Markov Regime Sidecar
+
+Cerberus now has a dedicated HMM sidecar package under `src/regime_models/hmm/`.
+
+- It is additive, not destructive.
+- The current rule-based regime engine stays in place.
+- The HMM layer is intended for shadow-mode A/B testing first.
+- Default config keeps it off until you explicitly train and enable it.
+
+Core pieces:
+
+- `src/regime_models/hmm/config.py`: nested config for runtime, features, and training
+- `src/regime_models/hmm/features.py`: deterministic OHLCV-to-feature preparation
+- `src/regime_models/hmm/service.py`: train, predict, and save/load HMM artifacts
+- `scripts/bootstrap_hmm_regime.py`: bootstrap a model from CSV or parquet OHLCV
+
+Quick start:
+
+```bash
+python -m pip install -r requirements.txt
+python scripts/bootstrap_hmm_regime.py --config config/config.yaml --input /path/to/bars.parquet
+make test-hmm
+```
+
+Artifacts are written under `artifacts/regime_models/hmm/` by default.
+
 ## Backtesting
 
 Run backtest:

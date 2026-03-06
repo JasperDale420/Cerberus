@@ -33,6 +33,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Pomegranate HMM regime sidecar foundation** (2026-03-06):
+  - Added a dedicated package under `src/regime_models/hmm/` for Hidden Markov Model regime experiments without replacing the current rule-based regime engine.
+  - Implemented deterministic OHLCV feature prep, shadow-mode runtime config, state labeling, and artifact save/load helpers.
+  - Added a bootstrap script for training a side-by-side HMM model from CSV/parquet bars and writing artifacts under `artifacts/regime_models/hmm/`.
+  - Added unit coverage for config defaults, feature preparation, shadow-mode predictions, and artifact round-trip.
+  - Added `pomegranate` as the chosen HMM library so Cerberus can become the first shared regime-model proving ground for the rest of the Empire repos.
+
 - **Profit-Maximization Metrics Upgrade** (2026-02-27):
   - Added `profit_factor`, `avg_win_loss_ratio`, `recovery_factor`, `ev_per_trade`, `avg_hold_seconds` to `StrategyStatsDaily` schema with SQLite auto-migration patches.
   - `AnalyticsEngine.run_daily_aggregation()` now computes all 5 new metrics per strategy/regime.

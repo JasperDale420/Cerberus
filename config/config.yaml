@@ -6,6 +6,32 @@ timezone: "US/Eastern"
 index_symbol: "SPY"
 regime:
   vol_symbol: "VXX"
+hmm_regime:
+  enabled: false
+  mode: "shadow"                  # shadow|primary
+  compare_to_rule_based: true
+  artifact_dir: "artifacts/regime_models/hmm/latest"
+  runtime:
+    enabled: false
+    mode: "shadow"
+    compare_to_rule_based: true
+    min_confidence: 0.5
+  training:
+    n_states: 3
+    max_iter: 50
+    random_seed: 7
+    covariance_type: "diag"
+    min_samples: 30
+  features:
+    time_column: "time"
+    open_column: "open"
+    high_column: "high"
+    low_column: "low"
+    close_column: "close"
+    volume_column: "volume"
+    return_windows: [1, 5]
+    realized_vol_window: 20
+    volume_window: 20
 schedule_time: "09:25"   # Daily start time for scheduler (ET)
 log_level: "INFO"
 start_time_utc: ""

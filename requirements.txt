@@ -20,6 +20,7 @@ httpx==0.28.1
 pytz==2025.2
 statsmodels==0.14.6
 structlog>=24.1.0
+pomegranate==1.1.2
 
 # ====================================
 # Development & Testing
