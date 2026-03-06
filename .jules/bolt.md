@@ -5,3 +5,7 @@
 ## 2026-03-04 - Duplicate Routing Strategies Inflate Watchlist Work
 **Learning:** `Scanner._build_watchlist()` accepted duplicate strategy names from `strategy_routing` for survivor-only symbols and used list membership checks in a hot loop, causing avoidable extra work and duplicate strategy output entries.
 **Action:** Normalize routed strategies into a set at watchlist build time and keep strategy accumulation set-based until final sorted output.
+
+## 2026-02-27 - Backtest Volume Lookup Hot Path
+**Learning:** `BacktestFeaturePipeline._avg_daily_volume` was re-sorting historical day keys for every symbol scan, creating repeated O(d log d) overhead in intraday loops.
+**Action:** Keep per-symbol date indexes precomputed during `_build_index` and use binary search for lookups in repeated scan-time helpers.

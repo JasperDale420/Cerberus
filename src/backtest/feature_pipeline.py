@@ -77,6 +77,7 @@ class BacktestFeaturePipeline:
 
         self._series: Dict[str, _Series] = {}
         self._daily_volumes: Dict[str, Dict[Any, float]] = {}
+        self._sorted_volume_days: Dict[str, List[Any]] = {}
         self._build_index(bars_by_symbol)
 
         self.last_run_metrics: Dict[str, int] = {}
@@ -105,6 +106,9 @@ class BacktestFeaturePipeline:
                 dvols[d] = float(dvols.get(d, 0.0)) + float(b.volume)
             self._series[sym] = _Series(times=times, bars=b_sorted)
             self._daily_volumes[sym] = dvols
+            # Performance: _avg_daily_volume runs once per symbol per scan.
+            # Pre-sorting day keys here avoids repeated O(d log d) sorts at runtime.
+            self._sorted_volume_days[sym] = sorted(dvols.keys())
 
     def _calculate_fetch_window(self, as_of: datetime) -> tuple[datetime, datetime]:
         end = as_of
@@ -128,12 +132,15 @@ class BacktestFeaturePipeline:
         vols = self._daily_volumes.get(sym) or {}
         if not vols:
             return None
+        sorted_days = self._sorted_volume_days.get(sym, [])
         as_of_et = as_of.astimezone(US_EASTERN)
         day = as_of_et.date()
-        prior_days = sorted([d for d in vols.keys() if d < day])
         lookback = max(1, int(self.daily_volume_lookback_days))
-        if prior_days:
-            use = prior_days[-lookback:]
+        # Performance: binary search gets "days before today" in O(log d),
+        # then we only average the tail lookback window.
+        cutoff = bisect.bisect_left(sorted_days, day)
+        if cutoff > 0:
+            use = sorted_days[max(0, cutoff - lookback) : cutoff]
             return float(sum(float(vols[d]) for d in use) / float(len(use)))
         # Fallback: use volume accumulated today (partial day).
         return float(vols.get(day, 0.0))
