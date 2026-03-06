@@ -373,22 +373,25 @@ class Scanner:
             pruned.extend(cands_sorted[: max(0, top_k)])
 
         # Group by symbol
-        by_symbol: Dict[str, Tuple[float, List[str], Any]] = {}
+        by_symbol: Dict[str, Tuple[float, set[str], Any]] = {}
 
         # Add global strategies from routing for the current regime
         routing_cfg = self.config.get("strategy_routing", {})
         regime_key = regime.value if hasattr(regime, "value") else str(regime)
         global_strategies = list(routing_cfg.get(regime_key, []))
+        global_strategy_set = set(global_strategies)
 
         for c in pruned:
             if c.symbol not in by_symbol:
-                # Merge profile-selected strategies with global strategies
-                strats = list(set(global_strategies + [c.strategy]))
+                # Optimization: keep strategies as a set while building the watchlist.
+                # This deduplicates once and makes incremental inserts O(1) instead of
+                # repeated linear list membership checks in hot scan loops.
+                strats = set(global_strategy_set)
+                strats.add(c.strategy)
                 by_symbol[c.symbol] = (c.score, strats, c.features)
             else:
                 best, strategies, feats = by_symbol[c.symbol]
-                if c.strategy not in strategies:
-                    strategies.append(c.strategy)
+                strategies.add(c.strategy)
                 by_symbol[c.symbol] = (max(best, c.score), strategies, feats)
 
         # Handle case where some symbols passed baseline but had no profile matches
@@ -404,7 +407,7 @@ class Scanner:
                 if sym not in by_symbol:
                     # Give them a baseline score (relative_strength or 0)
                     score = float(getattr(feats, "relative_strength", 0.0))
-                    by_symbol[sym] = (score, list(global_strategies), feats)
+                    by_symbol[sym] = (score, set(global_strategy_set), feats)
 
         watchlist_all = [
             WatchlistSymbol(

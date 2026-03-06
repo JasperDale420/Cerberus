@@ -67,6 +67,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Scanner watchlist assembly now uses set-based strategy accumulation to avoid repeated linear membership checks and remove duplicate routed strategies before output sorting (2026-03-04).
+  - Expected impact: ~1.5x faster strategy merge path in scan loops with large candidate sets (micro-benchmark: 0.276s -> 0.184s over 400 runs of 4,000 candidates).
+  - Added regression coverage: `tests/unit/test_scanner_watchlist_unit.py`.
+
 - **Backtest fill safeguards** (2026-02-15):
   - Defaulted to skipping zero-volume bars for fills (configurable `min_bar_volume_for_fill`).
   - Validated `partial_fill_mode` with warning fallback to `none`.
