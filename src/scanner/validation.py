@@ -95,7 +95,7 @@ class DataValidator:
         try:
             # Check flow_zscore for NaN/Inf
             if features.flow_zscore is not None:
-                if not math.isfinite(features.flow_zscore):
+                if not self._is_finite(features.flow_zscore):
                     if self.logger:
                         self.logger.warning(
                             "Invalid flow_zscore",
@@ -113,16 +113,15 @@ class DataValidator:
                 # Check for any NaN/Inf in extra numeric fields
                 for key in ("flow_premium", "flow_volume", "call_volume", "put_volume"):
                     val = features.extra.get(key)
-                    if val is not None and isinstance(val, (int, float)):
-                        if not math.isfinite(val):
-                            if self.logger:
-                                self.logger.warning(
-                                    "Invalid flow metric",
-                                    symbol=features.symbol,
-                                    key=key,
-                                    value=val,
-                                )
-                            return False
+                    if val is not None and not self._is_finite(val):
+                        if self.logger:
+                            self.logger.warning(
+                                "Invalid flow metric",
+                                symbol=features.symbol,
+                                key=key,
+                                value=val,
+                            )
+                        return False
 
             return True
 
