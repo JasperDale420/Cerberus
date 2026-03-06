@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Unified V2 strategy routing on multi-axis regime activation** (2026-03-05):
+  - Added explicit activation policies for `trend_rider_pro`, `mean_reversion_pro`, and `flow_alpha` in `config/backtest_v2.yaml` so the V2 batch no longer mixes legacy bull/bear/chop routing with multi-axis activation.
+  - Added regression tests proving `backtest_v2` now builds activation policies for all V2 strategies and that `trend_rider_pro` / `mean_reversion_pro` no longer fall through legacy routing when the live regime snapshot disagrees.
+  - Verified the unified config through the real `ConfigLoader` path used by the optimizer.
+
 - **Walk-forward optimization scoring consistency** (2026-03-05):
   - Fixed a training-window scoring bug where Optuna could keep a short window trial after pruning, then still score it as `-1000` because `composite_objective()` fell back to a hardcoded 30-trade minimum.
   - Training-window minimum trade thresholds now scale consistently with the actual window length before both pruning and scoring.
