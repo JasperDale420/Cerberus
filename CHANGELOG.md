@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
+- Time window checks now log structured warnings/errors when datetimes are naive or parsing fails (2026-02-24).
+
 - **Backtest helper regressions** (2026-02-15):
   - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
   - Restored Alpaca stream gating based on `data_backend` in startup helpers.
