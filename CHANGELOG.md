@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Walk-forward optimization scoring consistency** (2026-03-05):
+  - Fixed a training-window scoring bug where Optuna could keep a short window trial after pruning, then still score it as `-1000` because `composite_objective()` fell back to a hardcoded 30-trade minimum.
+  - Training-window minimum trade thresholds now scale consistently with the actual window length before both pruning and scoring.
+  - Added a regression test covering 3-month windows so valid low-trade windows no longer get poisoned during optimization.
+
 - **Walk-forward optimization isolation and replay performance** (2026-03-05):
   - Added isolated WFO run contexts so new sweeps no longer reuse stale Optuna studies from older date ranges or symbol sets.
   - WFO studies now write into per-run artifact directories under `artifacts/optimization/runs/<strategy>/<run_tag>/`.

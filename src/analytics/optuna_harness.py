@@ -263,6 +263,24 @@ def composite_objective(metrics: dict[str, Any], *, min_trades: int = 30) -> flo
     return float(round(score, 6))
 
 
+def _compute_window_min_trades(
+    start_date: str,
+    end_date: str,
+    *,
+    trades_per_month: int = 3,
+    floor: int = 5,
+    fallback: int = 10,
+) -> int:
+    """Scale the minimum trade threshold to the length of the optimization window."""
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        months = max((end_dt - start_dt).days / 30, 1)
+        return max(int(months * trades_per_month), floor)
+    except Exception:
+        return fallback
+
+
 # ---------------------------------------------------------------------------
 # Backtest runner for optimization
 # ---------------------------------------------------------------------------
@@ -466,15 +484,7 @@ def create_objective(
 
         # 4. Pruning: reject insufficient trade count
         # Compute proportional min based on window length (5 trades/month baseline)
-        try:
-            from datetime import datetime as _dt
-
-            _s = _dt.strptime(start_date, "%Y-%m-%d")
-            _e = _dt.strptime(end_date, "%Y-%m-%d")
-            _months = max((_e - _s).days / 30, 1)
-            _min_trades = max(int(_months * 3), 5)  # 3 trades/month, floor of 5
-        except Exception:
-            _min_trades = 10
+        _min_trades = _compute_window_min_trades(start_date, end_date)
         n_trades = metrics.get("n_trades", 0)
         if n_trades < _min_trades:
             print(
@@ -484,7 +494,7 @@ def create_objective(
             raise optuna.TrialPruned(f"Only {n_trades} trades")
 
         # 5. Compute composite score
-        score = composite_objective(metrics)
+        score = composite_objective(metrics, min_trades=_min_trades)
 
         # Log key metrics for the dashboard
         trial.set_user_attr("n_trades", n_trades)
