@@ -88,6 +88,8 @@ class ExecutionEngine:
         self._set_risk_mode(self.risk_manager.risk_mode)
 
         self.account = None  # Holds Alpaca Account object
+        # BOLT perf: bump this on config updates to invalidate indicator period caches safely.
+        self._indicator_periods_config_version = 0
 
     @property
     def market_state(self):
@@ -181,7 +183,7 @@ class ExecutionEngine:
             if not isinstance(state.indicators, dict):
                 return
 
-            periods = self._collect_indicator_periods(state)
+            periods = self._get_cached_indicator_periods(state)
             close = float(getattr(bar, "close", 0.0) or 0.0)
             volume = float(getattr(bar, "volume", 0.0) or 0.0)
 
@@ -192,7 +194,31 @@ class ExecutionEngine:
         except Exception:
             self._inc_error("execution")
 
-    def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set]:
+    def _get_cached_indicator_periods(self, state: SymbolState) -> Dict[str, set[int]]:
+        """
+        Cache indicator period discovery per symbol state.
+
+        Performance impact:
+        - Avoids rebuilding indicator period sets on every bar when strategy routing is unchanged.
+        - Reduces repeated dict/set allocations on the on_bar hot path.
+        """
+        if not isinstance(state.meta, dict):
+            state.meta = {}
+
+        # Normalize ordering so equivalent allowed-strategy lists share one cache entry.
+        strategy_key = tuple(sorted(str(s) for s in (getattr(state, "allowed_strategies", []) or [])))
+        cache_key = (strategy_key, self._indicator_periods_config_version)
+        cached_key = state.meta.get("_indicator_periods_cache_key")
+        cached_periods = state.meta.get("_indicator_periods")
+        if cached_key == cache_key and isinstance(cached_periods, dict):
+            return cached_periods
+
+        periods = self._collect_indicator_periods(state)
+        state.meta["_indicator_periods_cache_key"] = cache_key
+        state.meta["_indicator_periods"] = periods
+        return periods
+
+    def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set[int]]:
         """Collect required indicator periods from enabled strategies."""
         strategies = list(getattr(state, "allowed_strategies", []) or [])
         strat_cfgs = self.config.get("strategies") if isinstance(self.config.get("strategies"), dict) else {}
@@ -405,6 +431,7 @@ class ExecutionEngine:
         This updates routing and risk controls deterministically without requiring a process restart.
         """
         self.config = config
+        self._indicator_periods_config_version += 1
         self.max_churn_per_scan = config.get("max_churn_per_scan", self.max_churn_per_scan)
         self.health.update_config(config)
         # RiskManager already has raw_config; update individual fields instead

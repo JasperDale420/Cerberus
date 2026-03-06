@@ -64,6 +64,9 @@ All notable changes to this project will be documented in this file.
   - Added unit coverage for invalid fill modes and low-volume fill deferral.
 
 - Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
+  - Execution engine now caches indicator period discovery per symbol state and only recomputes when allowed strategies or runtime config version changes.
+  - Performance impact: removes repeated period-set construction on every bar in the `on_bar` hot path.
+  - Measurement: `tests/benchmark_performance.py::test_execution_on_bar_latency` reported `Avg=0.2978ms, P99=1.0392ms` after change.
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
   - Tightened startup validation test precision:
     - Gateway required-field test now uses explicit empty URL value for deterministic assertions
