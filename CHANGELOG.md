@@ -67,6 +67,8 @@ All notable changes to this project will be documented in this file.
   - Execution engine now caches indicator period discovery per symbol state and only recomputes when allowed strategies or runtime config version changes.
   - Performance impact: removes repeated period-set construction on every bar in the `on_bar` hot path.
   - Measurement: `tests/benchmark_performance.py::test_execution_on_bar_latency` reported `Avg=0.2978ms, P99=1.0392ms` after change.
+
+- Grid search optimization now iterates parameter combinations lazily instead of building a full Cartesian-product list first, reducing peak memory and startup overhead for large search spaces (2026-03-05).
   - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
   - Tightened startup validation test precision:
     - Gateway required-field test now uses explicit empty URL value for deterministic assertions

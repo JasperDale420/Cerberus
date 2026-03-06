@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,15 +41,17 @@ class GridSearchOptimizer(BaseOptimizer):
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         keys = sorted(search_space.keys())
         values = [search_space[k] for k in keys]
-        combinations = list(itertools.product(*values))
+        # Avoid materializing the full Cartesian product; this keeps memory flat
+        # for large search spaces while preserving identical iteration behavior.
+        n_combinations = math.prod(len(v) for v in values) if values else 1
 
         best_params: Optional[Dict[str, Any]] = None
         best_score = -float("inf")
         best_metrics: Dict[str, Any] = {}
 
-        self.logger.info("Starting grid search", n_combinations=len(combinations))
+        self.logger.info("Starting grid search", n_combinations=n_combinations)
 
-        for combo in combinations:
+        for combo in itertools.product(*values):
             params = dict(zip(keys, combo, strict=False))
             try:
                 metrics = evaluate_fn(params)
