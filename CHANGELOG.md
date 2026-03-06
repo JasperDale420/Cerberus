@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Walk-forward optimization isolation and replay performance** (2026-03-05):
+  - Added isolated WFO run contexts so new sweeps no longer reuse stale Optuna studies from older date ranges or symbol sets.
+  - WFO studies now write into per-run artifact directories under `artifacts/optimization/runs/<strategy>/<run_tag>/`.
+  - Added explicit run tagging, resume control, and worker overrides to `scripts/optimize_strategy.py`.
+  - Backtest optimization now honors `config["log_level"]`, suppressing warning spam during Optuna sweeps.
+  - Implemented process-local parquet bar caching so repeated trials in the same worker reuse prepared bar data instead of rereading files each time.
+  - Implemented `backtest.bar_resolution_minutes` in the backtest runner so coarse-bar optimization modes now actually work.
+  - Added unit regression coverage for run isolation, logger level wiring, bar aggregation, and parquet cache reuse.
+
 - **Critical: SymbolFeatures Missing Microstructure Fields** (2026-03-02):
   - Added `ofi` (Order Flow Imbalance) and `high_low_spread` fields to `SymbolFeatures` dataclass in `domain.py`.
   - `FeaturePipeline` passed these fields but `SymbolFeatures` didn't declare them, crashing every symbol's feature computation.
