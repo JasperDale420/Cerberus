@@ -399,7 +399,13 @@ class PositionManager:
         try:
             holding_period_seconds = (exit_time - entry_time_final).total_seconds()
         except Exception:
-            pass
+            _logger.debug(
+                "Holding period calculation failed",
+                symbol=pos.symbol,
+                entry_time=entry_time_final,
+                exit_time=exit_time,
+                exc_info=True,
+            )
 
         # Multi-axis regime tags
         regime_tags_at_entry = pos.regime_tags_at_entry or {}

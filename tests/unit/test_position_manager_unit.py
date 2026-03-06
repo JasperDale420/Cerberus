@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -232,6 +233,60 @@ def test_position_manager_on_fill_closes_position_and_returns_closed_trade_info(
     assert decision.closed_trade.qty == pytest.approx(1.0)
     assert decision.closed_trade.pnl_gross == pytest.approx(1.0)
     assert decision.closed_trade.pnl_r == pytest.approx(0.1)
+
+
+@pytest.mark.unit
+def test_position_manager_logs_when_holding_period_calculation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    mock_logger = MagicMock()
+    monkeypatch.setattr("src.engine.position_manager._logger", mock_logger)
+
+    state = SymbolState(
+        symbol="AAPL",
+        bars=deque(maxlen=10),
+        indicators={},
+        position=Position(
+            symbol="AAPL",
+            side=Side.LONG,
+            qty=1,
+            avg_price=100.0,
+            unrealized_pnl=0.0,
+            realized_pnl=0.0,
+            strategy="s",
+            entry_time="invalid-entry-time",
+            correlation_id="cid",
+            open_risk=10.0,
+            commission=0.01,
+            slippage_estimate=0.0,
+        ),
+        open_orders={},
+        allowed_strategies=[],
+        meta={},
+    )
+    market = MarketState(time=now, regime=Regime.BULL)
+
+    decision = PositionManager().on_fill(
+        state,
+        market,
+        {
+            "symbol": "AAPL",
+            "side": "sell",
+            "qty": 1,
+            "price": 101.0,
+            "timestamp": now,
+            "correlation_id": "cid",
+        },
+        risk_cfg={
+            "commission_per_share": 0.0,
+            "min_commission": 0.0,
+            "slippage_bps": 0.0,
+        },
+    )
+
+    assert decision.event == "closed"
+    assert decision.closed_trade is not None
+    assert decision.closed_trade.holding_period_seconds is None
+    mock_logger.debug.assert_called_once()
 
 
 @pytest.mark.unit

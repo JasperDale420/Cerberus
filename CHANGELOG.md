@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Position close path now logs debug context when holding-period calculation fails instead of silently swallowing the exception (2026-03-04).
+
 - Data-Gateway stream now normalizes timezone-naive ISO bar timestamps to UTC and emits a structured warning event for traceability (2026-03-04).
 
 - Scanner technical validation now rejects non-finite price/volume/ATR values (2026-02-14).
