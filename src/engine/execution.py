@@ -1082,6 +1082,8 @@ class ExecutionEngine:
             "trailing_stop_enabled": trailing_enabled,
             "trailing_stop_pct": trailing_pct if trailing_enabled else None,
             "regime_stop_multiplier": regime_stop_mult,
+            "partial_exit_levels": sig_exit_cfg.get("partial_exits", []),
+            "trail_min_profit_r": sig_exit_cfg.get("trail_min_profit_r"),
         }
 
     def _get_max_hold_seconds(self, strategy_name: str) -> Optional[int]:

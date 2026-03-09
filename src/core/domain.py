@@ -255,6 +255,10 @@ class Position:
     # Partial exit tracking
     initial_qty: float = 0.0  # Original position size at entry
     partial_exits_taken: int = 0  # Number of partial exits completed
+    partial_exit_levels: List[tuple] = field(default_factory=list)  # [(r_mult, fraction), ...]
+
+    # Trail activation gate: min R-profit before trailing starts
+    trail_min_profit_r: Optional[float] = None
 
     # Regime-aware stop multiplier applied at entry
     regime_stop_multiplier: float = 1.0

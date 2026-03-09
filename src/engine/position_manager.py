@@ -324,6 +324,10 @@ class PositionManager:
             initial_stop_price=initial_stop,
             initial_qty=fill_data["qty"],
             partial_exits_taken=0,
+            partial_exit_levels=(entry_ctx.get("partial_exit_levels", []) if isinstance(entry_ctx, dict) else []),
+            trail_min_profit_r=(
+                safe_float(entry_ctx.get("trail_min_profit_r")) if isinstance(entry_ctx, dict) else None
+            ),
             regime_stop_multiplier=regime_multiplier,
             entry_bar_time=(getattr(symbol_state.bars[-1], "time", None) if symbol_state.bars else None),
         )
@@ -574,6 +578,8 @@ class PositionManager:
 
         Only ratchets stop in favorable direction (up for longs, down for shorts).
         Requires trailing_stop_enabled and trailing_stop_pct to be set on position.
+        Respects trail_min_profit_r: trailing only activates after the position
+        reaches the minimum R-profit threshold specified by the strategy.
         """
         # Skip trailing stop updates on the entry bar to avoid look-ahead bias
         bar_time = getattr(last_bar, "time", None)
@@ -583,6 +589,11 @@ class PositionManager:
             return
 
         try:
+            # Profit gate: don't start trailing until position reaches min R-profit
+            if pos.trail_min_profit_r is not None and pos.trail_min_profit_r > 0:
+                if not self._profit_gate_met(pos, last_bar):
+                    return
+
             if pos.side == Side.LONG:
                 # Track highest price seen
                 current_high = float(last_bar.high)
@@ -630,19 +641,39 @@ class PositionManager:
         except Exception:
             _logger.debug("Trailing stop update failed", exc_info=True)
 
+    def _profit_gate_met(self, pos: Position, last_bar: Any) -> bool:
+        """Check if position has reached the minimum R-profit for trailing activation."""
+        if pos.open_risk is None or pos.initial_qty <= 0:
+            return True  # Can't calculate R — allow trailing as fallback
+        risk_per_share = float(pos.open_risk) / float(pos.initial_qty)
+        if risk_per_share <= 0:
+            return True
+
+        if pos.side == Side.LONG:
+            profit_r = (float(last_bar.high) - pos.avg_price) / risk_per_share
+        else:
+            profit_r = (pos.avg_price - float(last_bar.low)) / risk_per_share
+
+        return profit_r >= pos.trail_min_profit_r
+
     def _check_partial_exit(self, pos: Position, last_bar: Any) -> Optional[ExitDecision]:
         """
-        Check if partial profit target was hit.
+        Check if partial profit target was hit using strategy-specific levels.
 
-        Exits a portion of the position (e.g., 50%) when reaching 1R profit.
-        Tracks partial_exits_taken to avoid multiple partial exits.
+        Reads from pos.partial_exit_levels: list of (r_mult, fraction) tuples.
+        Each level fires once in order as profit reaches the R-multiple threshold.
+        Falls back to 1R/50% if no levels configured.
         """
         # Skip partial exit checks on the entry bar to avoid look-ahead bias
         bar_time = getattr(last_bar, "time", None)
         if bar_time is not None and pos.entry_bar_time is not None and bar_time == pos.entry_bar_time:
             return None
-        # Skip if already took partial exit
-        if pos.partial_exits_taken >= 1:
+
+        # Determine which levels to use
+        levels = pos.partial_exit_levels if pos.partial_exit_levels else [(1.0, 0.5)]
+
+        # Skip if all configured partials already taken
+        if pos.partial_exits_taken >= len(levels):
             return None
 
         # Need initial_qty and open_risk to calculate R multiple
@@ -656,19 +687,22 @@ class PositionManager:
 
             # Calculate current profit in R multiples
             if pos.side == Side.LONG:
-                # Use bar high for most favorable check
                 best_price = float(last_bar.high)
                 profit_r = (best_price - pos.avg_price) / risk_per_share
             else:
-                # Use bar low for most favorable check
                 best_price = float(last_bar.low)
                 profit_r = (pos.avg_price - best_price) / risk_per_share
 
-            # Check if 1R target reached (configurable in future)
-            if profit_r >= 1.0:
-                partial_qty = math.floor(pos.qty * 0.5)  # Exit 50%
+            # Check the next level in sequence
+            r_threshold, fraction = levels[pos.partial_exits_taken]
+            r_threshold = float(r_threshold)
+            fraction = float(fraction)
+
+            if profit_r >= r_threshold:
+                partial_qty = math.floor(pos.qty * fraction)
                 if partial_qty > 0:
-                    return self._create_partial_exit_intent(pos, partial_qty, "PARTIAL_1R")
+                    reason = f"PARTIAL_{r_threshold:.1f}R"
+                    return self._create_partial_exit_intent(pos, partial_qty, reason)
 
         except Exception:
             _logger.debug("Partial exit check failed", exc_info=True)
