@@ -1026,13 +1026,31 @@ class ExecutionEngine:
         if not isinstance(pending, dict) or not hasattr(intent0, "qty"):
             return
 
-        # Get max hold from strategy config
-        max_hold_seconds = self._get_max_hold_seconds(signal.strategy)
+        # Strategy's per-signal exit config (primary source)
+        sig_exit_cfg = (signal.meta or {}).get("exit_config", {}) if signal.meta else {}
+        if not isinstance(sig_exit_cfg, dict):
+            sig_exit_cfg = {}
 
-        # Get advanced exits config
+        # max_hold: prefer signal exit_config → fallback to YAML strategy config
+        max_hold_seconds = None
+        sig_max_hold = sig_exit_cfg.get("max_hold_minutes")
+        if sig_max_hold is not None:
+            max_hold_seconds = int(float(sig_max_hold) * 60)
+        else:
+            max_hold_seconds = self._get_max_hold_seconds(signal.strategy)
+
+        # Get global advanced exits config (fallback for trailing)
         adv_exits = self._get_advanced_exits_config()
-        trailing_enabled = adv_exits.get("trailing_stop", {}).get("enabled", False)
-        trailing_pct = adv_exits.get("trailing_stop", {}).get("trail_pct", 0.02)
+
+        # trailing: prefer signal exit_config → fallback to global risk config
+        trailing_enabled = sig_exit_cfg.get(
+            "trailing_enabled",
+            adv_exits.get("trailing_stop", {}).get("enabled", False),
+        )
+        trailing_pct = sig_exit_cfg.get(
+            "trail_pct",
+            adv_exits.get("trailing_stop", {}).get("trail_pct", 0.02),
+        )
 
         # Calculate regime-aware stop multiplier
         regime_stop_mult = self._get_regime_stop_multiplier(signal.regime_tags, adv_exits)
@@ -1859,6 +1877,15 @@ class ExecutionEngine:
                 "z_score": features.extra.get("spread_zscore"),
             }
 
+        # Forward Atlas factor scores from SymbolFeatures.extra → meta
+        if features.extra:
+            for key, val in features.extra.items():
+                if key.startswith("atlas_"):
+                    meta[key] = val
+            # Map composite to ml_prediction for MLDirectionalStrategy
+            if "atlas_composite" in features.extra:
+                meta["ml_prediction"] = features.extra["atlas_composite"]
+
     def _update_retained_strategies(
         self,
         scan_results: List[Any],
@@ -1890,6 +1917,14 @@ class ExecutionEngine:
                     self.symbol_states[sym].meta["features_snapshot"] = self._sanitize_features_snapshot(
                         asdict(features)
                     )
+
+                    # Forward Atlas factor scores for retained symbols
+                    if features.extra:
+                        for key, val in features.extra.items():
+                            if key.startswith("atlas_"):
+                                self.symbol_states[sym].meta[key] = val
+                        if "atlas_composite" in features.extra:
+                            self.symbol_states[sym].meta["ml_prediction"] = features.extra["atlas_composite"]
 
     async def reconcile_broker_state(self) -> None:
         """
