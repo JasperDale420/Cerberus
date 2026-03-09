@@ -46,7 +46,7 @@ strategies:
       vol: [low, normal, high]
       liquidity: [good, thin]
       risk: [risk_on, neutral]
-      min_confidence: 0.5
+      min_confidence: 0.6
   flow_alpha:
     enabled: true
     confluence_threshold: 50.0

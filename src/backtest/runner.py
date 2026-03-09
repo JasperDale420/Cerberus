@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.analysis.db import DatabaseDatabase
 from src.analysis.schema import Order as DbOrder
+from src.analysis.schema import Signal as DbSignal
 from src.backtest.backtest_report import BacktestReportCard, TradeRecord
 from src.backtest.executor import SimulatedOrderExecutor
 from src.core.config import ConfigLoader
@@ -278,9 +279,14 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
                 "qty": float(f.qty),
                 "limit_price": float(f.limit_price) if f.limit_price else 0.0,
                 "time_placed": f.time_placed,
+                "correlation_id": f.correlation_id or "",
             }
             for f in fills
         ]
+
+        # Build correlation_id → strategy lookup from Signal table
+        sig_rows = session.query(DbSignal.correlation_id, DbSignal.strategy).all()
+        corr_to_strategy: dict[str, str] = {s.correlation_id: s.strategy for s in sig_rows}
 
     # Group by symbol
     by_symbol: dict[str, list[dict]] = {}
@@ -305,11 +311,27 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
             while remaining > QTY_EPSILON:
                 if not stack:
                     # No existing position -- open a new one
-                    stack.append({"side": fill_side, "qty": remaining, "price": fill_price, "time": fill_time})
+                    stack.append(
+                        {
+                            "side": fill_side,
+                            "qty": remaining,
+                            "price": fill_price,
+                            "time": fill_time,
+                            "correlation_id": fill.get("correlation_id", ""),
+                        }
+                    )
                     remaining = 0.0
                 elif stack[0]["side"] == fill_side:
                     # Same direction -- add to position
-                    stack.append({"side": fill_side, "qty": remaining, "price": fill_price, "time": fill_time})
+                    stack.append(
+                        {
+                            "side": fill_side,
+                            "qty": remaining,
+                            "price": fill_price,
+                            "time": fill_time,
+                            "correlation_id": fill.get("correlation_id", ""),
+                        }
+                    )
                     remaining = 0.0
                 else:
                     # Opposite direction -- close/reduce the oldest entry
@@ -324,6 +346,13 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
                     else:
                         pnl = (entry_price - exit_price) * match_qty
 
+                    # Resolve strategy from entry order's correlation_id
+                    entry_corr = head.get("correlation_id", "")
+                    if entry_corr.startswith("flatten-"):
+                        strategy = "_flatten"
+                    else:
+                        strategy = corr_to_strategy.get(entry_corr, "")
+
                     trades.append(
                         TradeRecord(
                             symbol=sym,
@@ -334,6 +363,7 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
                             entry_time=head["time"],
                             exit_time=fill_time,
                             pnl=round(pnl, 2),
+                            strategy=strategy,
                         )
                     )
 
