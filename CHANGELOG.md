@@ -69,6 +69,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Execution engine indicator updates now reuse cached, pre-sorted strategy/period tuples on `on_bar` cache hits instead of re-sorting each bar (2026-03-09).
+  - Performance impact: eliminates repeated sort work in the per-bar hot path (regression test shows `sorted` calls drop from 5 to 0 on cache-hit updates).
+  - Measurement: `tests/benchmark_performance.py::test_execution_on_bar_latency` reports `Avg=0.2388ms, P99=0.5010ms`.
+  - Added regression coverage: `tests/unit/test_execution_engine_misc_unit.py::test_indicator_period_cache_avoids_resorting_on_cache_hits`.
+
 - Scanner watchlist assembly now uses set-based strategy accumulation to avoid repeated linear membership checks and remove duplicate routed strategies before output sorting (2026-03-04).
   - Expected impact: ~1.5x faster strategy merge path in scan loops with large candidate sets (micro-benchmark: 0.276s -> 0.184s over 400 runs of 4,000 candidates).
   - Added regression coverage: `tests/unit/test_scanner_watchlist_unit.py`.
