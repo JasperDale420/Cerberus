@@ -12,6 +12,7 @@ from src.data.fetcher import DataFetcher
 from src.data.unusual_whales import UnusualWhalesClient
 
 if TYPE_CHECKING:
+    from src.data.atlas_reader import AtlasFactorReader
     from src.data.snapshot_manager import SnapshotManager
 
 US_EASTERN = ZoneInfo("America/New_York")
@@ -32,12 +33,14 @@ class FeaturePipeline:
         clock: Optional[Callable[[], datetime]] = None,
         snapshot_manager: Optional["SnapshotManager"] = None,
         central_api_client: Optional[CentralApiClient] = None,
+        atlas_reader: Optional["AtlasFactorReader"] = None,
     ):
         self.alpaca_client = alpaca_client
         self.unusual_whales_client = unusual_whales_client
         self.logger = logger
         self.config = config or {}
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.atlas_reader = atlas_reader
         self.snapshot_manager = snapshot_manager
 
         fp_cfg = (self.config.get("feature_pipeline") or {}) if isinstance(self.config, dict) else {}
@@ -420,6 +423,10 @@ class FeaturePipeline:
         # Using a copy of keys to pass list is implied by append_flow_features taking the dict
         await self.append_flow_features(features)
 
+        # Run Stage 3: Atlas factor scores
+        if self.atlas_reader is not None:
+            self._append_atlas_factors(features)
+
         # Persist feature snapshots if enabled
         if self.snapshots_enabled and self.snapshot_manager:
             now = as_of or self.clock()
@@ -431,3 +438,25 @@ class FeaturePipeline:
             self.logger.info("FeaturePipeline summary", **self.last_run_metrics)
 
         return features
+
+    def _append_atlas_factors(self, features_map: Dict[str, SymbolFeatures]) -> None:
+        """Stage 3: Append Atlas factor scores to each symbol's features.
+
+        Reads pre-computed daily factor scores from Heber Gold and writes
+        them into ``SymbolFeatures.extra`` as ``atlas_{family}_{hyp_id}``
+        keys plus an ``atlas_composite`` composite score.
+        """
+        from datetime import date
+
+        today = date.today()
+        for symbol, feat in features_map.items():
+            try:
+                scores = self.atlas_reader.get_scores(symbol, today)
+                for key, val in scores.items():
+                    feat.extra[key] = val
+
+                composite = self.atlas_reader.get_composite_score(symbol, today)
+                if composite != 0.0 or scores:
+                    feat.extra["atlas_composite"] = composite
+            except Exception:
+                self.logger.debug(f"Atlas factor append failed for {symbol}", exc_info=True)

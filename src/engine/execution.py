@@ -682,6 +682,11 @@ class ExecutionEngine:
     def _get_or_create_symbol_state(self, symbol: str) -> SymbolState:
         """Get existing or create new symbol state."""
         if symbol not in self.symbol_states:
+            # In backtest mode, set scanner_bypass so V2 strategies with
+            # activation policies can fire without a live HMM regime detector.
+            meta = {}
+            if getattr(self, "backtest_mode", False):
+                meta["scanner_bypass"] = True
             self.symbol_states[symbol] = SymbolState(
                 symbol=symbol,
                 bars=deque(maxlen=100),
@@ -689,7 +694,7 @@ class ExecutionEngine:
                 indicators={},
                 open_orders={},
                 allowed_strategies=list(self.strategies.keys()),
-                meta={},
+                meta=meta,
             )
         return self.symbol_states[symbol]
 

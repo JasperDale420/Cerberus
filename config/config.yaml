@@ -110,6 +110,14 @@ agent:
     # PRD 9.3: deterministic offline backtest source (no live network).
     offline_bars_dir: ""
 
+# Atlas factor bridge (self-learning research loop → live trading)
+# Factors are pre-computed daily scores published by Atlas to Heber Gold.
+atlas_factors:
+  enabled: false                    # OFF by default — explicit opt-in required
+  factor_dir: "/Volumes/heber/data/gold/atlas_factors"
+  max_staleness_days: 3             # Skip factors with no scores newer than N days
+  min_soft_score: 0.3               # Minimum decision quality score to include
+
 # Unusual Whales flow configuration (PRD 10.6)
 unusual_whales:
   # PRD 10.6: Toggle to enable/disable external flow data integration.

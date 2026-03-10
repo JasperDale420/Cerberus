@@ -6,63 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Unified V2 strategy routing on multi-axis regime activation** (2026-03-05):
-  - Added explicit activation policies for `trend_rider_pro`, `mean_reversion_pro`, and `flow_alpha` in `config/backtest_v2.yaml` so the V2 batch no longer mixes legacy bull/bear/chop routing with multi-axis activation.
-  - Added regression tests proving `backtest_v2` now builds activation policies for all V2 strategies and that `trend_rider_pro` / `mean_reversion_pro` no longer fall through legacy routing when the live regime snapshot disagrees.
-  - Verified the unified config through the real `ConfigLoader` path used by the optimizer.
-
-- **Walk-forward optimization scoring consistency** (2026-03-05):
-  - Fixed a training-window scoring bug where Optuna could keep a short window trial after pruning, then still score it as `-1000` because `composite_objective()` fell back to a hardcoded 30-trade minimum.
-  - Training-window minimum trade thresholds now scale consistently with the actual window length before both pruning and scoring.
-  - Added a regression test covering 3-month windows so valid low-trade windows no longer get poisoned during optimization.
-
-- **Walk-forward optimization isolation and replay performance** (2026-03-05):
-  - Added isolated WFO run contexts so new sweeps no longer reuse stale Optuna studies from older date ranges or symbol sets.
-  - WFO studies now write into per-run artifact directories under `artifacts/optimization/runs/<strategy>/<run_tag>/`.
-  - Added explicit run tagging, resume control, and worker overrides to `scripts/optimize_strategy.py`.
-  - Backtest optimization now honors `config["log_level"]`, suppressing warning spam during Optuna sweeps.
-  - Implemented process-local parquet bar caching so repeated trials in the same worker reuse prepared bar data instead of rereading files each time.
-  - Implemented `backtest.bar_resolution_minutes` in the backtest runner so coarse-bar optimization modes now actually work.
-  - Added unit regression coverage for run isolation, logger level wiring, bar aggregation, and parquet cache reuse.
-
-- **Critical: SymbolFeatures Missing Microstructure Fields** (2026-03-02):
-  - Added `ofi` (Order Flow Imbalance) and `high_low_spread` fields to `SymbolFeatures` dataclass in `domain.py`.
-  - `FeaturePipeline` passed these fields but `SymbolFeatures` didn't declare them, crashing every symbol's feature computation.
-  - Updated `ReplayProvider` to populate `ofi` and `high_low_spread` from snapshot data for backtest parity.
-  - Rebuilt Docker containers to pick up all pending code fixes (including `FeatureCalculator()` no-arg constructor).
-
-### Added
-
-- **Pomegranate HMM regime sidecar foundation** (2026-03-06):
-  - Added a dedicated package under `src/regime_models/hmm/` for Hidden Markov Model regime experiments without replacing the current rule-based regime engine.
-  - Implemented deterministic OHLCV feature prep, shadow-mode runtime config, state labeling, and artifact save/load helpers.
-  - Added a bootstrap script for training a side-by-side HMM model from CSV/parquet bars and writing artifacts under `artifacts/regime_models/hmm/`.
-  - Added unit coverage for config defaults, feature preparation, shadow-mode predictions, and artifact round-trip.
-  - Added `pomegranate` as the chosen HMM library so Cerberus can become the first shared regime-model proving ground for the rest of the Empire repos.
-
-- **Profit-Maximization Metrics Upgrade** (2026-02-27):
-  - Added `profit_factor`, `avg_win_loss_ratio`, `recovery_factor`, `ev_per_trade`, `avg_hold_seconds` to `StrategyStatsDaily` schema with SQLite auto-migration patches.
-  - `AnalyticsEngine.run_daily_aggregation()` now computes all 5 new metrics per strategy/regime.
-  - Daily report now includes regime-axis breakdowns (trend/vol/session PnL) and hold-time summary by strategy.
-  - Stage 2 `_score_fn` upgraded from naive expectancy-based scoring to composite formula: `PF × √trades × (1 - DD_penalty)`.
-  - `Stage2Metrics` expanded with `profit_factor` and `win_rate` fields.
-  - 8 new unit tests covering edge cases (all winners, all losers, hold time, Stage2Metrics).
-
-- **Regime-Aware Risk Management & Routing** (2026-02-26):
-  - **Dynamic ATR Trailing Stops**: Modified `BaseStrategy._apply_regime_volatility_multiplier` to apply trailing volatility stops dynamically linked to `MarketRegimeSnapshot.vol`.
-  - **Regime-Based Capital Sizing**: Implemented `_get_regime_multiplier` within the `RiskManager` to scale order sizes inversely with market volatility, liquidity, and risk state axes.
-  - **VWAP Reversion Strategy Upgrade**: Updated strategy to use the dynamic stop logic, automatically widening/tightening relative to the active volatility regime.
-
-### Fixed
-
-- **Data Flow Integrity: Fill dedup guard** (2026-02-22):
-  - Added `_processed_fill_ids` set to `ExecutionEngine` to prevent duplicate fill processing on reconnect/restart. Uses composite key (`correlation_id|side|price|qty`) to distinguish entry from exit fills sharing the same correlation ID.
-- **Cross-Repo Audit: Retry standardization** (2026-02-22):
-  - Migrated `CentralApiClient` in `src/data/api_client.py` from raw `httpx.Client` to `create_http_client()` for structured logging hooks.
-  - Raised default retry count from 1 → 3 (`CERBERUS_GATEWAY_MAX_RETRIES`) and backoff from 0.25s → 1.0s (`CERBERUS_GATEWAY_RETRY_BACKOFF_SECONDS`) to match Empire standard.
-- **Cross-Repo Audit: pytz → zoneinfo Migration** (2026-02-22):
-  - Migrated `src/core/time_utils.py` (central timezone module), `src/data/calculator.py`, `src/analysis/analytics.py`, `src/scheduler.py`, `src/strategies/gap_fill.py`, `src/main.py`, `src/data/pipeline.py`, and `src/backtest/feature_pipeline.py` from deprecated `pytz` to stdlib `zoneinfo`.
-  - Replaced `pytz.timezone()` with `ZoneInfo()`, `.localize()` with `datetime(..., tzinfo=)` pattern, and `US/Eastern` with canonical `America/New_York`.
+- **Deterministic WFO result discovery and per-run result labeling** (2026-03-06):
+  - Updated `scripts/wfo_dashboard.py` to discover completed WFO runs from `artifacts/optimization/runs/<strategy>/<run-tag>/` instead of relying on the old flat artifact layout.
+  - Added deterministic summary export to `artifacts/optimization/wfo_dashboard_summary.json` so finished WFO runs can be checked programmatically.
+  - Added per-run labeled result files alongside `wfo_results.json`, for example `trend_rider_pro_<run-tag>_wfo_results.json`, so each run is stored separately even outside its run directory.
+  - Added a no-`plotly` fallback so result processing still writes the HTML shell and summary JSON even when chart dependencies are missing.
+  - Added regression coverage for run discovery ordering, summary payload generation, and labeled WFO result paths.
 
 - **Backtest helper regressions** (2026-02-15):
   - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
