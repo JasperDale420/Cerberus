@@ -45,3 +45,8 @@ vectors.db
 .env.*.local
 .aider*
 .env
+
+# Cerberus agent temp outputs
+.agents/tmp/**/*.db
+.agents/tmp/**/*.db-journal
+.agents/tmp/**/*.db-wal

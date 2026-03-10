@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Ignore temp agent DB artifacts** (2026-03-10):
+  - Added `.agents/tmp/**/*.db`, `.agents/tmp/**/*.db-journal`, and `.agents/tmp/**/*.db-wal` to `.gitignore`.
+  - Removed committed temporary optimization/trial SQLite databases from `.agents/tmp/` so future runs do not accumulate in git history.
+
 - **Deterministic WFO result discovery and per-run result labeling** (2026-03-06):
   - Updated `scripts/wfo_dashboard.py` to discover completed WFO runs from `artifacts/optimization/runs/<strategy>/<run-tag>/` instead of relying on the old flat artifact layout.
   - Added deterministic summary export to `artifacts/optimization/wfo_dashboard_summary.json` so finished WFO runs can be checked programmatically.
