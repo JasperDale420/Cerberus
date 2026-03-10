@@ -351,6 +351,13 @@ def run_backtest_for_optimization(
         print(f"[optuna] Backtest trial failed: {e}", file=sys.stderr)
         return {"n_trades": 0}
     finally:
+        # Free pre-computed indicator arrays to prevent memory buildup across trials
+        try:
+            from src.backtest.indicator_precompute import clear_precomputed
+
+            clear_precomputed()
+        except Exception:
+            pass
         # Clean up trial DB
         for suffix in ("", "-journal", "-wal", "-shm"):
             p = db_path + suffix

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import os
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,8 +12,13 @@ from src.analysis.schema import Order as DbOrder
 from src.analysis.schema import Signal as DbSignal
 from src.backtest.backtest_report import BacktestReportCard, TradeRecord
 from src.backtest.executor import SimulatedOrderExecutor
+from src.backtest.indicator_precompute import (
+    clear_precomputed,
+    install_precomputed,
+    precompute_symbol_indicators,
+)
 from src.core.config import ConfigLoader
-from src.core.domain import Bar
+from src.core.domain import Bar, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.api_client import CentralApiClient
 from src.engine.execution import ExecutionEngine
@@ -376,6 +382,57 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
     return trades
 
 
+def _maybe_aggregate_bar(
+    state: SymbolState,
+    bar: Bar,
+    tf_minutes: int,
+    target_deque: deque[Bar],
+) -> None:
+    """Aggregate 1m bars into higher-TF bars and append completed bars.
+
+    Accumulates incoming 1m bars in ``state.indicators["_agg_{tf}m"]``.
+    When a new TF boundary is crossed, the accumulated bars are flushed
+    into a single OHLCV bar and appended to *target_deque*.
+    """
+    key = f"_agg_{tf_minutes}m"
+    accum = state.indicators.get(key)
+    if accum is None:
+        accum = {"bars": [], "boundary": None}
+        state.indicators[key] = accum
+
+    bar_time = bar.time
+    minute = bar_time.minute
+    boundary_minute = (minute // tf_minutes) * tf_minutes
+    boundary = bar_time.replace(minute=boundary_minute, second=0, microsecond=0)
+
+    if accum["boundary"] is not None and boundary != accum["boundary"] and accum["bars"]:
+        # Emit the completed higher-TF bar
+        agg_bars = accum["bars"]
+        total_volume = sum(float(b.volume) for b in agg_bars)
+        # Volume-weighted VWAP if available
+        vwap_val = None
+        if total_volume > 0:
+            vwap_sum = sum(float(b.vwap or ((b.high + b.low + b.close) / 3.0)) * float(b.volume) for b in agg_bars)
+            vwap_val = vwap_sum / total_volume
+
+        agg_bar = Bar(
+            symbol=bar.symbol,
+            time=accum["boundary"],
+            open=float(agg_bars[0].open),
+            high=max(float(b.high) for b in agg_bars),
+            low=min(float(b.low) for b in agg_bars),
+            close=float(agg_bars[-1].close),
+            volume=total_volume,
+            vwap=vwap_val,
+        )
+        target_deque.append(agg_bar)
+        accum["bars"] = [bar]
+    else:
+        accum["bars"].append(bar)
+
+    accum["boundary"] = boundary
+
+
 async def run_backtest(start_date: str, end_date: str, config_path: str, data_dir: str | None = None):
     import dotenv
 
@@ -486,6 +543,39 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     # Survivorship bias check
     _validate_survivorship(bars_df, symbols, start_dt, end_dt, logger, bar_resolution_minutes)
 
+    # ── Pre-compute multi-timeframe indicators ───────────────────────
+    # V2 strategies depend on 5m/15m EMA, ATR, RSI, ADX etc. via
+    # MultiTimeframeAnalyzer.  Pre-computing them in batch (Numba) and
+    # installing into the module-level cache activates the fast-path
+    # in _compute_tf() so strategies get valid indicator values.
+    clear_precomputed()
+    for _sym in sorted(symbols):
+        _sym_df = bars_df[bars_df["symbol"] == _sym].sort_values("timestamp")
+        if _sym_df.empty:
+            continue
+        try:
+            _precomp = precompute_symbol_indicators(
+                timestamps=_sym_df["timestamp"].values,
+                opens=_sym_df["open"].values,
+                highs=_sym_df["high"].values,
+                lows=_sym_df["low"].values,
+                closes=_sym_df["close"].values,
+                volumes=_sym_df["volume"].values,
+                vwaps=_sym_df["vwap"].values,
+            )
+            install_precomputed(_sym, _precomp)
+            logger.info(
+                "Pre-computed MTF indicators",
+                symbol=_sym,
+                tf_1m_bars=len(_sym_df),
+            )
+        except Exception as e:
+            logger.warning(
+                "MTF indicator pre-computation failed for symbol — falling back to slow path",
+                symbol=_sym,
+                error=str(e),
+            )
+
     engine = ExecutionEngine(
         config=config,
         logger=logger,
@@ -518,6 +608,7 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     # Wire advanced exits config so executor delegates stop/TP to PositionManager
     executor.configure_advanced_exits(risk_cfg)
     engine.order_executor = executor
+    engine.backtest_mode = True  # Enable scanner_bypass for V2 strategies
 
     # Register strategies
     from src.main import _build_strategy_registry
@@ -654,6 +745,15 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             volume=row.volume,
             vwap=row.vwap,
         )
+
+        # Aggregate 1m bars into 5m/15m deques so the MTF analyzer's
+        # slow-path (Rolling* Python objects) also has data to work with.
+        _sym_state = engine.symbol_states.get(row.symbol)
+        if _sym_state is None:
+            # Force creation so we can append aggregated bars
+            _sym_state = engine._get_or_create_symbol_state(row.symbol)
+        _maybe_aggregate_bar(_sym_state, mock_bar, 5, _sym_state.bars_5m)
+        _maybe_aggregate_bar(_sym_state, mock_bar, 15, _sym_state.bars_15m)
 
         # Track the latest price for equity calculation
         latest_prices[row.symbol] = row.close
