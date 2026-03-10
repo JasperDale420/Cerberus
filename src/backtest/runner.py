@@ -569,7 +569,10 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             exit_side = "sell" if qty > 0 else "buy"
             exit_qty = abs(qty)
             fill_val = exit_qty * last_price
-            commission = executor._calc_commission(exit_qty)
+            commission = max(
+                getattr(executor, "_min_commission", 0.0),
+                getattr(executor, "_commission_per_share", 0.0) * exit_qty,
+            )
 
             # Update cash: selling adds cash, buying subtracts
             if exit_side == "sell":
