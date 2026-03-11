@@ -158,6 +158,15 @@ class GatewayStreamClient:
                 return feed, payload
         return feed, None
 
+    def _extract_bar_payload(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        """Extract the bar payload from a gateway data message.
+
+        Convenience wrapper around _extract_data_payload that returns just the
+        payload dict (without the feed name).
+        """
+        _, payload = self._extract_data_payload(message)
+        return payload
+
     # ── WebSocket Wire Protocol ──
 
     async def _send_json(self, payload: dict[str, Any]) -> None:

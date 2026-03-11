@@ -311,6 +311,10 @@ class SymbolState:
     def bars(self) -> Deque[Bar]:
         return self.bars_1m
 
+    @bars.setter
+    def bars(self, value: Deque[Bar]) -> None:
+        self.bars_1m = value
+
 
 @dataclass
 class MarketState:

@@ -418,10 +418,11 @@ class Stage2Tuner:
             pf = float(metrics.get("profit_factor", 0.0))
             n = int(metrics.get("n_trades", 0))
             dd = float(metrics.get("max_drawdown_r", 0.0))
-            # Composite: PF × √trades × (1 - drawdown_penalty)
+            expectancy = float(metrics.get("expectancy", 0.0))
+            # Composite: PF × √trades × (1 - drawdown_penalty) + expectancy tiebreaker
             # DD penalty caps at 1.0 (100% penalty) when DD reaches 10R
             dd_penalty = 1.0 - min(dd / 10.0, 1.0)
-            return pf * (n**0.5) * dd_penalty
+            return pf * (n**0.5) * dd_penalty + expectancy
 
         # Baseline Evaluation
         baseline_metrics = _evaluate_params({})

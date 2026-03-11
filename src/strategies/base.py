@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime
 from src.core.logger import StructuredLogger
 
 
@@ -124,7 +124,7 @@ class BaseStrategy(ABC):
         ema_fast = float(ema_fast)
         ema_slow = float(ema_slow)
 
-        if ema_slow == 0:
+        if abs(ema_slow) < 1e-9:
             return True
 
         spread_pct = abs(ema_fast - ema_slow) / ema_slow
@@ -213,6 +213,30 @@ class BaseStrategy(ABC):
 
         mult = multipliers.get(vol_name, 1.0)
         return base_distance * mult
+
+    def _get_dynamic_risk_reward(self, base_rr: float, market_state: MarketState) -> float:
+        """
+        Adjust the risk-reward ratio based on the current trend regime.
+
+        In strongly trending markets a higher RR is achievable; in flat/choppy
+        markets a lower RR reflects reduced follow-through probability.
+
+        Returns the base_rr unchanged when no regime snapshot is available.
+        """
+        snapshot = market_state.regime_snapshot
+        if not snapshot or not snapshot.trend:
+            return base_rr
+
+        trend_name = str(snapshot.trend.value).lower()
+
+        multipliers = {
+            TrendRegime.UP.value: 1.1,
+            TrendRegime.DOWN.value: 1.1,
+            TrendRegime.FLAT.value: 0.8,
+        }
+
+        mult = multipliers.get(trend_name, 1.0)
+        return base_rr * mult
 
     @abstractmethod
     def on_bar(
