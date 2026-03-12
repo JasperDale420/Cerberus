@@ -15,7 +15,6 @@ class MockFeatures:
     atr: float = 2.0
 
 
-
 @pytest.fixture
 def strategy():
     config = {

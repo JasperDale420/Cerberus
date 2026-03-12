@@ -45,9 +45,7 @@ class TestBatchEMA:
             rolling = RollingEMA.from_period(period)
             for i, c in enumerate(closes):
                 rolling.update(c)
-                assert batch_result[i] == pytest.approx(rolling.value, abs=TOL), (
-                    f"EMA({period}) mismatch at index {i}"
-                )
+                assert batch_result[i] == pytest.approx(rolling.value, abs=TOL), f"EMA({period}) mismatch at index {i}"
 
     def test_empty_array(self):
         result = batch_ema(np.array([], dtype=np.float64), 20)
@@ -70,9 +68,7 @@ class TestBatchRSI:
                 if rv is None:
                     assert np.isnan(batch_result[i]), f"RSI({period}) should be NaN at index {i}"
                 else:
-                    assert batch_result[i] == pytest.approx(rv, abs=TOL), (
-                        f"RSI({period}) mismatch at index {i}"
-                    )
+                    assert batch_result[i] == pytest.approx(rv, abs=TOL), f"RSI({period}) mismatch at index {i}"
 
     def test_all_same_price_gives_100(self):
         c = np.full(20, 100.0, dtype=np.float64)
@@ -93,9 +89,7 @@ class TestBatchATR:
             if rv is None:
                 assert np.isnan(batch_result[i])
             else:
-                assert batch_result[i] == pytest.approx(rv, abs=TOL), (
-                    f"ATR mismatch at index {i}"
-                )
+                assert batch_result[i] == pytest.approx(rv, abs=TOL), f"ATR mismatch at index {i}"
 
 
 @pytest.mark.unit
@@ -109,9 +103,7 @@ class TestBatchADX:
             if rv is None:
                 assert np.isnan(batch_result[i])
             else:
-                assert batch_result[i] == pytest.approx(rv, abs=TOL), (
-                    f"ADX mismatch at index {i}"
-                )
+                assert batch_result[i] == pytest.approx(rv, abs=TOL), f"ADX mismatch at index {i}"
 
 
 @pytest.mark.unit
@@ -122,12 +114,8 @@ class TestBatchBB:
         rolling = RollingStd.create(20)
         for i, c in enumerate(closes):
             mean, std = rolling.update(c)
-            assert batch_means[i] == pytest.approx(mean, abs=TOL), (
-                f"BB mean mismatch at index {i}"
-            )
-            assert batch_stds[i] == pytest.approx(std, abs=TOL), (
-                f"BB std mismatch at index {i}"
-            )
+            assert batch_means[i] == pytest.approx(mean, abs=TOL), f"BB mean mismatch at index {i}"
+            assert batch_stds[i] == pytest.approx(std, abs=TOL), f"BB std mismatch at index {i}"
 
 
 @pytest.mark.unit
@@ -139,9 +127,7 @@ class TestBatchSMA:
             rolling = RollingSMA.create(period)
             for i, c in enumerate(closes):
                 rv = rolling.update(c)
-                assert batch_result[i] == pytest.approx(rv, abs=TOL), (
-                    f"SMA({period}) mismatch at index {i}"
-                )
+                assert batch_result[i] == pytest.approx(rv, abs=TOL), f"SMA({period}) mismatch at index {i}"
 
 
 @pytest.mark.unit

@@ -1,11 +1,8 @@
 """Tests for Atlas factor integration in Cerberus FeaturePipeline."""
 
 from datetime import date, datetime, timezone
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import MagicMock, patch
-
-import pytest
+from typing import Dict
+from unittest.mock import MagicMock
 
 from src.core.domain import SymbolFeatures
 
@@ -71,8 +68,8 @@ class TestAppendAtlasFactors:
         )
 
         feat = _make_features("AAPL")
-        features_map = {"AAPL": feat}
-        pipeline._append_atlas_factors(features_map)
+        _features_map = {"AAPL": feat}
+        pipeline._append_atlas_factors(_features_map)
 
         assert feat.extra["atlas_momentum_HYP_a"] == 0.72
         assert feat.extra["atlas_flow_HYP_b"] == -0.3
@@ -90,7 +87,6 @@ class TestAppendAtlasFactors:
         )
 
         feat = _make_features("AAPL")
-        features_map = {"AAPL": feat}
 
         # _append_atlas_factors shouldn't exist in the flow without reader
         assert pipeline.atlas_reader is None

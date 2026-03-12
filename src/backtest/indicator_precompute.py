@@ -60,9 +60,7 @@ def compute_tf_indicators(
     result["bb_std_20"] = bb_std
 
     # VWAP distance (resets daily when timestamps are available)
-    result["vwap_distance"] = batch_vwap_distance(
-        highs, lows, closes, volumes, vwaps, timestamps
-    )
+    result["vwap_distance"] = batch_vwap_distance(highs, lows, closes, volumes, vwaps, timestamps)
 
     return result
 
@@ -89,27 +87,35 @@ def aggregate_bars(
     Also returns a mapping from 1m bar index → aggregated bar index so
     we can look up the "current" higher-TF indicator value at each 1m bar.
     """
-    df = pd.DataFrame({
-        "timestamp": timestamps,
-        "open": opens,
-        "high": highs,
-        "low": lows,
-        "close": closes,
-        "volume": volumes,
-        "vwap": vwaps,
-    })
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": volumes,
+            "vwap": vwaps,
+        }
+    )
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.set_index("timestamp")
 
     rule = f"{tf_minutes}min"
-    agg = df.resample(rule).agg({
-        "open": "first",
-        "high": "max",
-        "low": "min",
-        "close": "last",
-        "volume": "sum",
-        "vwap": "mean",
-    }).dropna(subset=["open"])
+    agg = (
+        df.resample(rule)
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+                "vwap": "mean",
+            }
+        )
+        .dropna(subset=["open"])
+    )
 
     return (
         agg.index.values,
@@ -157,7 +163,14 @@ def precompute_symbol_indicators(
     # Higher TFs
     for tf_minutes, tf_label in ((5, "5m"), (15, "15m")):
         agg_ts, agg_o, agg_h, agg_l, agg_c, agg_v, agg_vw = aggregate_bars(
-            timestamps, opens, highs, lows, closes, volumes, vwaps, tf_minutes,
+            timestamps,
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            vwaps,
+            tf_minutes,
         )
 
         if len(agg_c) == 0:

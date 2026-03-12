@@ -68,9 +68,7 @@ class MultiTimeframeAnalyzer:
             ema50 = self.get_ema(tf, 50)
             if ema20 is None or ema50 is None:
                 continue
-            if (side == OrderSide.BUY and ema20 > ema50) or (
-                side == OrderSide.SELL and ema20 < ema50
-            ):
+            if (side == OrderSide.BUY and ema20 > ema50) or (side == OrderSide.SELL and ema20 < ema50):
                 score += _TF_WEIGHTS[tf]
         return score
 
@@ -88,7 +86,7 @@ class MultiTimeframeAnalyzer:
             ema50 = self.get_ema(tf, 50)
             if ema20 is None or ema50 is None:
                 continue
-            if ema50 == 0.0:
+            if abs(ema50) < 1e-9:
                 continue
             spread_pct = abs(ema20 - ema50) / abs(ema50)
             if spread_pct < 0.0015:  # 0.15%
@@ -142,9 +140,7 @@ class MultiTimeframeAnalyzer:
             return None
         return cache.vwap_distance
 
-    def get_bb_position(
-        self, timeframe: str, period: int = 20, std_mult: float = 2.0
-    ) -> float | None:
+    def get_bb_position(self, timeframe: str, period: int = 20, std_mult: float = 2.0) -> float | None:
         """Get position within Bollinger Bands as -1.0 to 1.0.
 
         -1.0 = at/below lower band
@@ -236,6 +232,7 @@ class MultiTimeframeAnalyzer:
         # --- Fast path: pre-computed arrays (backtest acceleration) ---
         try:
             from src.backtest.indicator_precompute import get_precomputed
+
             precomp = get_precomputed(self._state.symbol, timeframe)
         except ImportError:
             precomp = None
@@ -369,7 +366,7 @@ class MultiTimeframeAnalyzer:
         if n_bb > 0:
             bb_mean = bb_obj.sum / n_bb
             bb_var = max(0.0, (bb_obj.sumsq / n_bb) - (bb_mean * bb_mean))
-            cache.bb[bb_period] = (bb_mean, bb_var ** 0.5)
+            cache.bb[bb_period] = (bb_mean, bb_var**0.5)
         else:
             cache.bb[bb_period] = (0.0, 0.0)
 
@@ -385,9 +382,7 @@ class MultiTimeframeAnalyzer:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _detect_swings(
-        bars: deque[Bar], lookback: int, mode: str
-    ) -> list[float]:
+    def _detect_swings(bars: deque[Bar], lookback: int, mode: str) -> list[float]:
         """Detect swing highs or lows from a bar deque (backward-only).
 
         A swing high at index *i* means ``bar[i].high`` is >= the high of
@@ -403,14 +398,10 @@ class MultiTimeframeAnalyzer:
         for i in range(lookback, n):
             if mode == "high":
                 val = float(bars[i].high)
-                is_swing = all(
-                    val >= float(bars[i - j].high) for j in range(1, lookback + 1)
-                )
+                is_swing = all(val >= float(bars[i - j].high) for j in range(1, lookback + 1))
             else:
                 val = float(bars[i].low)
-                is_swing = all(
-                    val <= float(bars[i - j].low) for j in range(1, lookback + 1)
-                )
+                is_swing = all(val <= float(bars[i - j].low) for j in range(1, lookback + 1))
             if is_swing:
                 results.append((i, val))
 

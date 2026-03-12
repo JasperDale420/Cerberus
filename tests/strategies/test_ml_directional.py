@@ -15,7 +15,6 @@ class MockFeatures:
     atr: float = 2.0
 
 
-
 @pytest.fixture
 def strategy():
     config = {
@@ -120,7 +119,9 @@ def test_ml_directional_no_signal_trend_mismatch(strategy, bar, market_state):
         position=None,
         open_orders={},
         allowed_strategies=["ml_directional"],
-        meta={"features": MockFeatures(ml_prediction=0.8, ema_trend_strength=-1.0, atr=2.0)},  # ML says long, trend says short
+        meta={
+            "features": MockFeatures(ml_prediction=0.8, ema_trend_strength=-1.0, atr=2.0)
+        },  # ML says long, trend says short
     )
 
     signal = strategy.on_bar("AAPL", bar, symbol_state, market_state)

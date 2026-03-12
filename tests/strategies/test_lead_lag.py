@@ -18,6 +18,7 @@ class MockFeatures:
 def logger():
     return StructuredLogger("TestLeadLag")
 
+
 @pytest.fixture
 def strategy(logger):
     config = {
@@ -27,6 +28,7 @@ def strategy(logger):
         "target_atr_multiplier": 3.0,
     }
     return LeadLagStrategy(config, logger)
+
 
 @pytest.fixture
 def sample_bar():
@@ -40,13 +42,14 @@ def sample_bar():
         volume=1000000,
     )
 
+
 def test_lead_lag_bullish_spike(strategy, sample_bar):
     market_state = MarketState(
         time=sample_bar.time,
         regime=None,
         index_symbol="SPY",
         index_price=500.0,
-        index_return=0.003, # +0.3% impulse
+        index_return=0.003,  # +0.3% impulse
     )
 
     mock_features = MockFeatures(correlation_to_index=0.85)
@@ -65,13 +68,14 @@ def test_lead_lag_bullish_spike(strategy, sample_bar):
     assert signal.target_price == 151.0 + (3.0 * 2.0)
     assert signal.symbol == "AAPL"
 
+
 def test_lead_lag_bearish_spike(strategy, sample_bar):
     market_state = MarketState(
         time=sample_bar.time,
         regime=None,
         index_symbol="SPY",
         index_price=500.0,
-        index_return=-0.004, # -0.4% impulse
+        index_return=-0.004,  # -0.4% impulse
     )
 
     mock_features = MockFeatures(correlation_to_index=0.85)
@@ -89,6 +93,7 @@ def test_lead_lag_bearish_spike(strategy, sample_bar):
     assert signal.stop_price == 151.0 + (1.5 * 2.0)
     assert signal.target_price == 151.0 - (3.0 * 2.0)
 
+
 def test_lead_lag_insufficient_correlation(strategy, sample_bar):
     market_state = MarketState(
         time=sample_bar.time,
@@ -98,7 +103,7 @@ def test_lead_lag_insufficient_correlation(strategy, sample_bar):
         index_return=0.005,
     )
 
-    mock_features = MockFeatures(correlation_to_index=0.50) # Too low
+    mock_features = MockFeatures(correlation_to_index=0.50)  # Too low
 
     symbol_state = SymbolState("AAPL")
     symbol_state.meta = {
@@ -109,13 +114,14 @@ def test_lead_lag_insufficient_correlation(strategy, sample_bar):
     signal = strategy.on_bar("AAPL", sample_bar, symbol_state, market_state)
     assert signal is None
 
+
 def test_lead_lag_insufficient_spike(strategy, sample_bar):
     market_state = MarketState(
         time=sample_bar.time,
         regime=None,
         index_symbol="SPY",
         index_price=500.0,
-        index_return=0.001, # Too low
+        index_return=0.001,  # Too low
     )
 
     mock_features = MockFeatures(correlation_to_index=0.90)

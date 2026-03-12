@@ -30,20 +30,22 @@ from dataclasses import dataclass
 # Data
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ConfluenceFactor:
     """A single scored factor in the confluence assessment."""
 
     name: str
     raw_value: float  # The actual indicator value (for logging)
-    score: float      # Normalized 0-100 score
-    weight: float     # 0.0-1.0 weight in final score
-    passed: bool      # Whether this factor individually "passed" its threshold
+    score: float  # Normalized 0-100 score
+    weight: float  # 0.0-1.0 weight in final score
+    passed: bool  # Whether this factor individually "passed" its threshold
 
 
 # ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
+
 
 class ConfluenceScorer:
     """
@@ -97,7 +99,7 @@ class ConfluenceScorer:
         Returns 0.0 when no factors have been added.
         """
         total_weight = sum(f.weight for f in self.factors)
-        if total_weight == 0.0:
+        if abs(total_weight) < 1e-9:
             return 0.0
         return sum(f.score * f.weight for f in self.factors) / total_weight
 
@@ -157,6 +159,7 @@ class ConfluenceScorer:
 # ---------------------------------------------------------------------------
 # Scoring helper functions
 # ---------------------------------------------------------------------------
+
 
 def score_deviation(value: float, min_threshold: float, max_value: float) -> float:
     """Score a deviation on 0-100 (linear between *min_threshold* and *max_value*).

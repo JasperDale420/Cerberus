@@ -12,9 +12,11 @@ from src.strategies.options_flow_momentum import OptionsFlowMomentumStrategy
 def logger():
     return StructuredLogger("TestLogger")
 
+
 @pytest.fixture
 def strategy(logger):
     return OptionsFlowMomentumStrategy({}, logger)
+
 
 @pytest.fixture
 def bar():
@@ -28,6 +30,7 @@ def bar():
         volume=1000,
     )
 
+
 @pytest.fixture
 def market_state():
     return MarketState(
@@ -37,8 +40,10 @@ def market_state():
         meta={},
     )
 
+
 def create_symbol_state(features: Mock):
     from collections import deque
+
     return SymbolState(
         symbol="SPY",
         bars=deque(),
@@ -48,6 +53,7 @@ def create_symbol_state(features: Mock):
         allowed_strategies=["options_flow_momentum"],
         meta={"features": features},
     )
+
 
 def test_options_flow_no_signal_low_zscore(strategy, bar, market_state):
     features = Mock()

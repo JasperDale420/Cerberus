@@ -21,7 +21,7 @@ class LiquidityVoidStrategy(BaseStrategy):
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
         self.volume_spike_multiplier = float(config.get("volume_spike_multiplier", 3.0))
-        self.deviation_threshold = float(config.get("deviation_threshold", 0.02)) # 2% deviation
+        self.deviation_threshold = float(config.get("deviation_threshold", 0.02))  # 2% deviation
         self.stop_atr_multiplier = float(config.get("stop_atr_multiplier", 1.0))
         self.target_atr_multiplier = float(config.get("target_atr_multiplier", 2.0))
 
@@ -50,9 +50,9 @@ class LiquidityVoidStrategy(BaseStrategy):
 
         # We fade (mean-revert) the sudden flash impulse
         if deviation > self.deviation_threshold:
-            side = OrderSide.SELL # Spiked up, we fade by shorting to capture reversion
+            side = OrderSide.SELL  # Spiked up, we fade by shorting to capture reversion
         elif deviation < -self.deviation_threshold:
-            side = OrderSide.BUY # Spiked down, we fade by going long
+            side = OrderSide.BUY  # Spiked down, we fade by going long
         else:
             return None
 

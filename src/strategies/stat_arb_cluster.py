@@ -11,6 +11,7 @@ class StatArbClusterStrategy(BaseStrategy):
     Identifies symbols that have deviated significantly from their cluster's
     mean behavior (represented by cluster_residual) and trades the reversion.
     """
+
     name = "stat_arb_cluster"
 
     def __init__(self, config: dict[str, Any], logger: Any):
@@ -73,7 +74,7 @@ class StatArbClusterStrategy(BaseStrategy):
             stop_price=stop_price,
             target_price=target_price,
             entry_price=bar.close,
-            meta={"cluster_residual": cluster_residual, "cluster_id": cluster_id}
+            meta={"cluster_residual": cluster_residual, "cluster_id": cluster_id},
         )
 
         self.logger.info(
@@ -81,6 +82,6 @@ class StatArbClusterStrategy(BaseStrategy):
             symbol=symbol,
             side=side.value,
             residual=cluster_residual,
-            cluster_id=cluster_id
+            cluster_id=cluster_id,
         )
         return signal

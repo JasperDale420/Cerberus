@@ -48,8 +48,8 @@ def test_pead_bullish_drift(strategy, sample_bar):
 
     mock_features = MockFeatures(
         days_since_earnings=2,
-        earnings_surprise=0.20, # 20% beat
-        ema20_slope=0.01 # Upward momentum
+        earnings_surprise=0.20,  # 20% beat
+        ema20_slope=0.01,  # Upward momentum
     )
 
     symbol_state = SymbolState("META")
@@ -65,13 +65,14 @@ def test_pead_bullish_drift(strategy, sample_bar):
     assert signal.stop_price == 204.0 - (2.0 * 5.0)
     assert signal.target_price == 204.0 + (4.0 * 5.0)
 
+
 def test_pead_bearish_drift(strategy, sample_bar):
     market_state = MarketState(time=sample_bar.time, regime=None)
 
     mock_features = MockFeatures(
         days_since_earnings=3,
-        earnings_surprise=-0.25, # 25% miss
-        ema20_slope=-0.01 # Downward momentum
+        earnings_surprise=-0.25,  # 25% miss
+        ema20_slope=-0.01,  # Downward momentum
     )
 
     symbol_state = SymbolState("META")
@@ -85,13 +86,14 @@ def test_pead_bearish_drift(strategy, sample_bar):
     assert signal is not None
     assert signal.side == OrderSide.SELL
 
+
 def test_pead_insufficient_surprise(strategy, sample_bar):
     market_state = MarketState(time=sample_bar.time, regime=None)
 
     mock_features = MockFeatures(
         days_since_earnings=2,
-        earnings_surprise=0.10, # 10% beat (too low)
-        ema20_slope=0.01
+        earnings_surprise=0.10,  # 10% beat (too low)
+        ema20_slope=0.01,
     )
 
     symbol_state = SymbolState("META")
@@ -103,13 +105,14 @@ def test_pead_insufficient_surprise(strategy, sample_bar):
     signal = strategy.on_bar("META", sample_bar, symbol_state, market_state)
     assert signal is None
 
+
 def test_pead_outside_days_window(strategy, sample_bar):
     market_state = MarketState(time=sample_bar.time, regime=None)
 
     mock_features = MockFeatures(
-        days_since_earnings=10, # Out of 1-5 day window
+        days_since_earnings=10,  # Out of 1-5 day window
         earnings_surprise=0.50,
-        ema20_slope=0.01
+        ema20_slope=0.01,
     )
 
     symbol_state = SymbolState("META")

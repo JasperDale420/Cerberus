@@ -12,6 +12,7 @@ from src.strategies.alpaca_options_arbitrage import AlpacaOptionsArbitrage
 def logger():
     return StructuredLogger("TestLogger")
 
+
 @pytest.fixture
 def market_state():
     return MarketState(
@@ -20,6 +21,7 @@ def market_state():
         regime=Regime.BULL,
         meta={},
     )
+
 
 @pytest.fixture
 def bar():
@@ -33,8 +35,10 @@ def bar():
         volume=1000,
     )
 
+
 def create_symbol_state():
     from collections import deque
+
     return SymbolState(
         symbol="SPY",
         bars=deque(),
@@ -45,6 +49,7 @@ def create_symbol_state():
         meta={},
     )
 
+
 @patch("src.strategies.alpaca_options_arbitrage.AlpacaClient")
 def test_options_arbitrage_no_signal_low_vol(mock_alpaca_client_class, logger, bar, market_state):
     # Setup mock AlpacaClient and chain data
@@ -52,7 +57,7 @@ def test_options_arbitrage_no_signal_low_vol(mock_alpaca_client_class, logger, b
     mock_client_instance.get_historical_option_chain.return_value = {"SPY230120C00400000": Mock()}
 
     strategy = AlpacaOptionsArbitrage({}, logger)
-    market_state.realized_vol = 0.10 # Low vol, below 0.15 threshold
+    market_state.realized_vol = 0.10  # Low vol, below 0.15 threshold
 
     signal = strategy.on_bar("SPY", bar, create_symbol_state(), market_state)
     assert signal is None
@@ -66,7 +71,7 @@ def test_options_arbitrage_creates_signal_high_vol(mock_alpaca_client_class, log
     mock_client_instance.get_historical_option_chain.return_value = {"SPY230120C00400000": Mock()}
 
     strategy = AlpacaOptionsArbitrage({}, logger)
-    market_state.realized_vol = 0.20 # High vol, above 0.15 threshold
+    market_state.realized_vol = 0.20  # High vol, above 0.15 threshold
 
     signal = strategy.on_bar("SPY", bar, create_symbol_state(), market_state)
 
@@ -85,7 +90,7 @@ def test_options_arbitrage_no_chain_data(mock_alpaca_client_class, logger, bar, 
     mock_client_instance.get_historical_option_chain.return_value = {}
 
     strategy = AlpacaOptionsArbitrage({}, logger)
-    market_state.realized_vol = 0.20 # High vol, but no chain data
+    market_state.realized_vol = 0.20  # High vol, but no chain data
 
     signal = strategy.on_bar("SPY", bar, create_symbol_state(), market_state)
     assert signal is None

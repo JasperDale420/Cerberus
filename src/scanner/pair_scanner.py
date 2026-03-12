@@ -160,7 +160,7 @@ class PairScanner:
         spread_mean = float(np.mean(spread))
         spread_std = float(np.std(spread))
 
-        if spread_std == 0:
+        if abs(spread_std) < 1e-9:
             return None
 
         # Half-life calculation for mean reversion speed

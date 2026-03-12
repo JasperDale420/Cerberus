@@ -354,19 +354,13 @@ def suggest_params(
     for p in space:
         if p.param_type == "float":
             if p.step:
-                params[p.name] = trial.suggest_float(
-                    p.name, p.low, p.high, step=p.step
-                )
+                params[p.name] = trial.suggest_float(p.name, p.low, p.high, step=p.step)
             elif p.log_scale:
-                params[p.name] = trial.suggest_float(
-                    p.name, p.low, p.high, log=True
-                )
+                params[p.name] = trial.suggest_float(p.name, p.low, p.high, log=True)
             else:
                 params[p.name] = trial.suggest_float(p.name, p.low, p.high)
         elif p.param_type == "int":
-            params[p.name] = trial.suggest_int(
-                p.name, int(p.low), int(p.high), step=int(p.step or 1)
-            )
+            params[p.name] = trial.suggest_int(p.name, int(p.low), int(p.high), step=int(p.step or 1))
         elif p.param_type == "categorical":
             params[p.name] = trial.suggest_categorical(p.name, p.choices)
     return params

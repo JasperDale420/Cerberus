@@ -16,9 +16,7 @@ class AlpacaOptionsArbitrage(BaseStrategy):
         # Initialize AlpacaClient to fetch options data directly
         self.alpaca_client = AlpacaClient(ConfigLoader(), logger)
 
-    def on_bar(
-        self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState
-    ) -> Signal | None:
+    def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Signal | None:
         if not self._check_cooldown(symbol, bar.time):
             return None
 
@@ -29,7 +27,9 @@ class AlpacaOptionsArbitrage(BaseStrategy):
 
             # Simulated arbitrage logic based on fetched snapshots
             if chain_snapshots:
-                self.logger.info("Successfully fetched option chain for arbitrage", symbol=symbol, chain_length=len(chain_snapshots))
+                self.logger.info(
+                    "Successfully fetched option chain for arbitrage", symbol=symbol, chain_length=len(chain_snapshots)
+                )
 
                 # Assume we find a pricing inefficiency using Alpaca's data
                 if market_state.realized_vol > 0.15:
@@ -48,7 +48,7 @@ class AlpacaOptionsArbitrage(BaseStrategy):
                         stop_price=stop,
                         target_price=target,
                         size_hint=0.1,
-                        meta={"arb_type": "volatility_dispersion"}
+                        meta={"arb_type": "volatility_dispersion"},
                     )
         except Exception as e:
             self.logger.warning("Failed to fetch option chain for arbitrage", symbol=symbol, error=str(e))

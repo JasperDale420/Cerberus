@@ -46,18 +46,12 @@ class ORBV2Strategy(BaseStrategy):
         self.tf_alignment_mode = "trend"
 
         # Breakout-specific tunable params
-        self.vol_gate_mult: float = float(
-            overrides.get("vol_gate_mult", config.get("vol_gate_mult", 1.2))
-        )
-        self.target_range_mult: float = float(
-            overrides.get("target_range_mult", config.get("target_range_mult", 2.0))
-        )
+        self.vol_gate_mult: float = float(overrides.get("vol_gate_mult", config.get("vol_gate_mult", 1.2)))
+        self.target_range_mult: float = float(overrides.get("target_range_mult", config.get("target_range_mult", 2.0)))
         self.trail_min_profit_r: float = float(
             overrides.get("trail_min_profit_r", config.get("trail_min_profit_r", 1.0))
         )
-        self.max_hold_minutes: int = int(
-            overrides.get("max_hold_minutes", config.get("max_hold_minutes", 60))
-        )
+        self.max_hold_minutes: int = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 60)))
 
     # -- regime gate -------------------------------------------------------
 
@@ -80,10 +74,14 @@ class ORBV2Strategy(BaseStrategy):
     @staticmethod
     def _empty_state() -> dict[str, Any]:
         return {
-            "date": None, "range_minutes": 10,
-            "range_high": float("-inf"), "range_low": float("inf"),
-            "range_complete": False, "range_bars": 0,
-            "breakout_fired": False, "gap_pct": 0.0,
+            "date": None,
+            "range_minutes": 10,
+            "range_high": float("-inf"),
+            "range_low": float("inf"),
+            "range_complete": False,
+            "range_bars": 0,
+            "breakout_fired": False,
+            "gap_pct": 0.0,
         }
 
     # -- gap / adaptive range ----------------------------------------------
@@ -155,8 +153,12 @@ class ORBV2Strategy(BaseStrategy):
     # -- confluence scoring ------------------------------------------------
 
     def _score_entry(
-        self, side: OrderSide, bar: Bar, state: dict[str, Any],
-        avg_vol: float, mtf: MultiTimeframeAnalyzer,
+        self,
+        side: OrderSide,
+        bar: Bar,
+        state: dict[str, Any],
+        avg_vol: float,
+        mtf: MultiTimeframeAnalyzer,
     ) -> ConfluenceScorer:
         scorer = ConfluenceScorer(threshold=self.confluence_threshold)
         rh: float = state["range_high"]
@@ -199,7 +201,10 @@ class ORBV2Strategy(BaseStrategy):
     # -- stop / target -----------------------------------------------------
 
     def _compute_stop(
-        self, side: OrderSide, state: dict[str, Any], ms: MarketState,
+        self,
+        side: OrderSide,
+        state: dict[str, Any],
+        ms: MarketState,
     ) -> float:
         base = state["range_high"] - state["range_low"]
         adj = self._apply_regime_volatility_multiplier(base, ms)
@@ -208,8 +213,11 @@ class ORBV2Strategy(BaseStrategy):
         return state["range_low"] + adj
 
     def _compute_target(
-        self, side: OrderSide, bar: Bar,
-        state: dict[str, Any], ss: SymbolState,
+        self,
+        side: OrderSide,
+        bar: Bar,
+        state: dict[str, Any],
+        ss: SymbolState,
     ) -> float:
         rw = state["range_high"] - state["range_low"]
         if side == OrderSide.BUY:
@@ -233,17 +241,23 @@ class ORBV2Strategy(BaseStrategy):
 
     def _exit_config(self) -> dict[str, Any]:
         return {
-            "trailing_enabled": True, "trail_timeframe": "5m",
-            "trail_lookback": 3, "trail_min_profit_r": self.trail_min_profit_r,
+            "trailing_enabled": True,
+            "trail_timeframe": "5m",
+            "trail_lookback": 3,
+            "trail_min_profit_r": self.trail_min_profit_r,
             "partial_exits": [(2.0, 0.5)],
-            "max_hold_minutes": self.max_hold_minutes, "vol_adaptive": True,
+            "max_hold_minutes": self.max_hold_minutes,
+            "vol_adaptive": True,
         }
 
     # -- on_bar ------------------------------------------------------------
 
     def on_bar(
-        self, symbol: str, bar: Bar,
-        symbol_state: SymbolState, market_state: MarketState,
+        self,
+        symbol: str,
+        bar: Bar,
+        symbol_state: SymbolState,
+        market_state: MarketState,
     ) -> Signal | None:
         if not bar:
             return None
@@ -290,8 +304,10 @@ class ORBV2Strategy(BaseStrategy):
         scorer = self._score_entry(side, bar, state, avg_vol, mtf)
         if not scorer.passes_threshold():
             self.logger.debug(
-                "orb_v2: below threshold", symbol=symbol,
-                score=round(scorer.score(), 2), threshold=self.confluence_threshold,
+                "orb_v2: below threshold",
+                symbol=symbol,
+                score=round(scorer.score(), 2),
+                threshold=self.confluence_threshold,
             )
             return None
 
@@ -318,7 +334,12 @@ class ORBV2Strategy(BaseStrategy):
         state["breakout_fired"] = True
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
-            symbol=symbol, side=side, bar=bar, market_state=market_state,
-            stop_price=stop_price, target_price=target_price,
-            size_hint=scorer.conviction_multiplier(), meta=meta,
+            symbol=symbol,
+            side=side,
+            bar=bar,
+            market_state=market_state,
+            stop_price=stop_price,
+            target_price=target_price,
+            size_hint=scorer.conviction_multiplier(),
+            meta=meta,
         )

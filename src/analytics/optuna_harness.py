@@ -207,7 +207,7 @@ def composite_objective(metrics: dict[str, Any], *, min_trades: int = 30) -> flo
     trade_sharpe = metrics.get("trade_sharpe_ratio", 0.0)
     avg_hold_min = metrics.get("avg_hold_minutes", 999)
 
-    if trade_sharpe != 0.0:
+    if not math.isclose(trade_sharpe, 0.0, abs_tol=1e-9):
         if avg_hold_min < 60:
             sharpe = 0.7 * trade_sharpe + 0.3 * daily_sharpe
         elif avg_hold_min > 120:

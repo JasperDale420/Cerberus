@@ -9,7 +9,6 @@ just convenience parsers for the reader.
 """
 
 from datetime import date, datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 

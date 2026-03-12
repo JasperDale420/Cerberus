@@ -19,7 +19,7 @@ class PEADStrategy(BaseStrategy):
 
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
-        self.surprise_threshold = float(config.get("surprise_threshold", 0.15)) # 15% surprise
+        self.surprise_threshold = float(config.get("surprise_threshold", 0.15))  # 15% surprise
         self.max_days_post_earnings = int(config.get("max_days_post_earnings", 5))
         self.min_days_post_earnings = int(config.get("min_days_post_earnings", 1))
         self.stop_atr_multiplier = float(config.get("stop_atr_multiplier", 2.0))

@@ -1,3 +1,4 @@
+import math
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -1849,7 +1850,7 @@ class ExecutionEngine:
             meta["iv_rank"] = float(features.extra.get("iv_rank") or 0.0)
             meta["short_interest"] = float(features.extra.get("short_interest") or 0.0)
             # Fetch ATR from extra if available (legacy fallback)
-            if "atr" in features.extra and meta.get("atr") == 0.0:
+            if "atr" in features.extra and math.isclose(float(meta.get("atr") or 0.0), 0.0, abs_tol=1e-9):
                 meta["atr"] = float(features.extra.get("atr") or 0.0)
 
         meta["call_put_ratio"] = features.call_put_ratio

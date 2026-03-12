@@ -110,7 +110,7 @@ class RollingRSI:
 
         self.prev_close = close
 
-        if (self.avg_loss or 0.0) == 0.0:
+        if abs(self.avg_loss or 0.0) < 1e-9:
             self.value = 100.0
             return 100.0
 

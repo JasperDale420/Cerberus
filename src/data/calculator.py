@@ -68,7 +68,7 @@ class FeatureCalculator:
             avg_loss = (avg_loss * (p - 1) + losses[i]) / p
 
         # Calculate RSI
-        if avg_loss == 0.0:
+        if abs(avg_loss) < 1e-9:
             return 100.0
 
         rs = avg_gain / avg_loss

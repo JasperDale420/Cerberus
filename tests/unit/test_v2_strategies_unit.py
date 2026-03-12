@@ -51,9 +51,14 @@ def _make_bar(
 ) -> Bar:
     t = time or datetime(2024, 3, 15, 10, 30, tzinfo=UTC)
     return Bar(
-        symbol=symbol, time=t,
-        open=open_, high=high, low=low, close=close,
-        volume=volume, vwap=vwap,
+        symbol=symbol,
+        time=t,
+        open=open_,
+        high=high,
+        low=low,
+        close=close,
+        volume=volume,
+        vwap=vwap,
     )
 
 
@@ -319,23 +324,22 @@ class TestMeanReversionPro:
     @pytest.mark.unit
     def test_prefers_flat_trend(self, strategy):
         """MRP prefers FLAT trend for mean reversion."""
-        assert MeanReversionProStrategy._regime_ok(
-            _make_market_state(trend=TrendRegime.FLAT, vol=VolRegime.NORMAL)
-        ) is True
+        assert (
+            MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.FLAT, vol=VolRegime.NORMAL))
+            is True
+        )
 
     @pytest.mark.unit
     def test_allows_trending_in_low_vol(self, strategy):
         """MRP allows trending regimes only when volatility is LOW."""
-        assert MeanReversionProStrategy._regime_ok(
-            _make_market_state(trend=TrendRegime.UP, vol=VolRegime.LOW)
-        ) is True
+        assert MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.UP, vol=VolRegime.LOW)) is True
 
     @pytest.mark.unit
     def test_rejects_trending_in_normal_vol(self, strategy):
         """MRP should not trade trends unless vol is LOW."""
-        assert MeanReversionProStrategy._regime_ok(
-            _make_market_state(trend=TrendRegime.UP, vol=VolRegime.NORMAL)
-        ) is False
+        assert (
+            MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.UP, vol=VolRegime.NORMAL)) is False
+        )
 
     @pytest.mark.unit
     def test_detect_side_buy(self, strategy):
@@ -414,16 +418,12 @@ class TestORBV2:
     @pytest.mark.unit
     def test_rejects_close_session(self, strategy):
         """ORB V2 should not trade during CLOSE session."""
-        assert ORBV2Strategy._regime_ok(
-            _make_market_state(session=SessionRegime.CLOSE)
-        ) is False
+        assert ORBV2Strategy._regime_ok(_make_market_state(session=SessionRegime.CLOSE)) is False
 
     @pytest.mark.unit
     def test_allows_opening_session(self, strategy):
         """ORB V2 allows OPENING session."""
-        assert ORBV2Strategy._regime_ok(
-            _make_market_state(session=SessionRegime.OPENING)
-        ) is True
+        assert ORBV2Strategy._regime_ok(_make_market_state(session=SessionRegime.OPENING)) is True
 
     @pytest.mark.unit
     def test_adaptive_range_small_gap(self, strategy):
@@ -476,8 +476,7 @@ class TestORBV2:
         state["breakout_fired"] = False
 
         # Bar within range (no breakout)
-        bar = _make_bar(close=100.0, high=100.5, low=99.5,
-                        time=datetime(2024, 3, 15, 14, 45, tzinfo=UTC))
+        bar = _make_bar(close=100.0, high=100.5, low=99.5, time=datetime(2024, 3, 15, 14, 45, tzinfo=UTC))
         ss = _make_symbol_state()
         ms = _make_market_state()
 
@@ -495,8 +494,9 @@ class TestORBV2:
         state["range_bars"] = 10
         state["breakout_fired"] = True  # Already fired
 
-        bar = _make_bar(close=102.0, high=102.5, low=101.5, volume=100000,
-                        time=datetime(2024, 3, 15, 14, 45, tzinfo=UTC))
+        bar = _make_bar(
+            close=102.0, high=102.5, low=101.5, volume=100000, time=datetime(2024, 3, 15, 14, 45, tzinfo=UTC)
+        )
         ss = _make_symbol_state()
         ms = _make_market_state()
 

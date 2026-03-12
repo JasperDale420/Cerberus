@@ -1,4 +1,3 @@
-
 import pdfplumber
 
 
@@ -18,6 +17,7 @@ def extract_pdf_preview(pdf_path, out_path, num_pages=50):
         f.write(text)
 
     print(f"Extracted {pages_to_extract} pages to {out_path}")
+
 
 if __name__ == "__main__":
     extract_pdf_preview("151 trading strategies.pdf", "artifacts/151_strategies_preview.txt")

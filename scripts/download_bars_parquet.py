@@ -20,10 +20,41 @@ import pandas as pd
 
 # Default universe — same 35 symbols used across all backtest configs
 DEFAULT_SYMBOLS = [
-    "SPY", "QQQ", "AAPL", "AMD", "AMZN", "AVGO", "BAC", "CCL", "COIN", "CRM",
-    "CVX", "DAL", "F", "GM", "GOOGL", "GS", "HOOD", "INTC", "JPM", "LYFT",
-    "META", "MSFT", "MS", "MU", "NFLX", "NVDA", "ORCL", "PLTR", "QCOM", "SOFI",
-    "TSLA", "UBER", "VXX", "XOM", "AAL",
+    "SPY",
+    "QQQ",
+    "AAPL",
+    "AMD",
+    "AMZN",
+    "AVGO",
+    "BAC",
+    "CCL",
+    "COIN",
+    "CRM",
+    "CVX",
+    "DAL",
+    "F",
+    "GM",
+    "GOOGL",
+    "GS",
+    "HOOD",
+    "INTC",
+    "JPM",
+    "LYFT",
+    "META",
+    "MSFT",
+    "MS",
+    "MU",
+    "NFLX",
+    "NVDA",
+    "ORCL",
+    "PLTR",
+    "QCOM",
+    "SOFI",
+    "TSLA",
+    "UBER",
+    "VXX",
+    "XOM",
+    "AAL",
 ]
 
 ALPACA_DATA_URL = "https://data.alpaca.markets"
@@ -44,7 +75,12 @@ def _load_env(env_path: str = ".env") -> None:
 def _get_alpaca_creds() -> tuple[str, str]:
     """Get Alpaca credentials from env — tries multiple naming conventions."""
     key = os.environ.get("APCA_API_KEY_ID") or os.environ.get("ALPACA_API_KEY") or ""
-    secret = os.environ.get("APCA_API_SECRET_KEY") or os.environ.get("ALPACA_API_SECRET") or os.environ.get("ALPACA_SECRET_KEY") or ""
+    secret = (
+        os.environ.get("APCA_API_SECRET_KEY")
+        or os.environ.get("ALPACA_API_SECRET")
+        or os.environ.get("ALPACA_SECRET_KEY")
+        or ""
+    )
     return key, secret
 
 
@@ -132,7 +168,16 @@ def fetch_bars_alpaca(
     df["symbol"] = symbol
 
     # Normalize Alpaca column names
-    rename_map = {"t": "timestamp", "o": "open", "h": "high", "l": "low", "c": "close", "v": "volume", "vw": "vwap", "n": "trade_count"}
+    rename_map = {
+        "t": "timestamp",
+        "o": "open",
+        "h": "high",
+        "l": "low",
+        "c": "close",
+        "v": "volume",
+        "vw": "vwap",
+        "n": "trade_count",
+    }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
     if "timestamp" in df.columns:
@@ -218,7 +263,7 @@ def main():
         size = combined_path.stat().st_size / 1024 / 1024
         print(f"\nCombined: {combined_path.name} ({len(combined):,} bars, {size:.1f} MB)", flush=True)
 
-    print(f"\n{'='*50}", flush=True)
+    print(f"\n{'=' * 50}", flush=True)
     print(f"Done! {len(symbols) - len(failed)}/{len(symbols)} symbols downloaded.", flush=True)
     if failed:
         print(f"Failed: {', '.join(failed)}", flush=True)

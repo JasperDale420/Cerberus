@@ -92,4 +92,3 @@ async def test_handle_message_invokes_callback_with_symbol_and_bar() -> None:
     symbol, bar = callback.call_args.args
     assert symbol == "QQQ"
     assert bar.symbol == "QQQ"
-

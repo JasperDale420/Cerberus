@@ -20,7 +20,7 @@ class LeadLagStrategy(BaseStrategy):
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_correlation = float(config.get("min_correlation", 0.80))
-        self.index_spike_threshold = float(config.get("index_spike_threshold", 0.002)) # 0.2% jump
+        self.index_spike_threshold = float(config.get("index_spike_threshold", 0.002))  # 0.2% jump
         self.stop_atr_multiplier = float(config.get("stop_atr_multiplier", 1.5))
         self.target_atr_multiplier = float(config.get("target_atr_multiplier", 3.0))
 

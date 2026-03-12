@@ -12,9 +12,11 @@ from src.strategies.gamma_pinning import GammaPinningStrategy
 def logger():
     return StructuredLogger("TestLogger")
 
+
 @pytest.fixture
 def strategy(logger):
     return GammaPinningStrategy({}, logger)
+
 
 @pytest.fixture
 def bar():
@@ -28,6 +30,7 @@ def bar():
         volume=1000,
     )
 
+
 @pytest.fixture
 def market_state():
     return MarketState(
@@ -37,8 +40,10 @@ def market_state():
         meta={},
     )
 
+
 def create_symbol_state(features: Mock):
     from collections import deque
+
     return SymbolState(
         symbol="SPY",
         bars=deque(),
@@ -48,6 +53,7 @@ def create_symbol_state(features: Mock):
         allowed_strategies=["gamma_pinning"],
         meta={"features": features},
     )
+
 
 def test_gamma_pinning_no_signal_low_gex(strategy, bar, market_state):
     features = Mock()

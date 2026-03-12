@@ -10,6 +10,7 @@ class OptionsFlowMomentumStrategy(BaseStrategy):
     Trades alongside massive institutional options activity.
     Enters long/short positions mapping the targeted directional options flow.
     """
+
     name: str = "options_flow_momentum"
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
@@ -81,6 +82,6 @@ class OptionsFlowMomentumStrategy(BaseStrategy):
                 "flow_zscore": flow_zscore,
                 "dof_score": dof_score,
                 "flow_bias": flow_bias,
-                "call_put_ratio": call_put_ratio
-            }
+                "call_put_ratio": call_put_ratio,
+            },
         )

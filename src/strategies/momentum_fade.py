@@ -51,12 +51,8 @@ class MomentumFadeStrategy(BaseStrategy):
         super()._set_params(config)
 
         # Time window
-        self.time_window_start = time_utils.parse_time_string(
-            str(config.get("time_window_start", "09:45"))
-        )
-        self.time_window_end = time_utils.parse_time_string(
-            str(config.get("time_window_end", "15:45"))
-        )
+        self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:45")))
+        self.time_window_end = time_utils.parse_time_string(str(config.get("time_window_end", "15:45")))
         self.min_bars = int(config.get("min_bars", 30))
 
         # Tunable params — support Optuna overrides for optimization

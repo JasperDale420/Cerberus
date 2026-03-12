@@ -16,9 +16,7 @@ class AlpacaOptionsTrend(BaseStrategy):
         self.trend_threshold = float(config.get("trend_threshold", 1.5))
         self.alpaca_client = AlpacaClient(ConfigLoader(), logger)
 
-    def on_bar(
-        self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState
-    ) -> Signal | None:
+    def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Signal | None:
         if not self._check_cooldown(symbol, bar.time):
             return None
 
@@ -33,9 +31,15 @@ class AlpacaOptionsTrend(BaseStrategy):
                 # Fetch recent trades for this specific option contract
                 end_time = bar.time
                 start_time = end_time - timedelta(minutes=5)
-                trades = self.alpaca_client.get_historical_option_trades(first_option_symbol, start=start_time, end=end_time)
+                trades = self.alpaca_client.get_historical_option_trades(
+                    first_option_symbol, start=start_time, end=end_time
+                )
 
-                self.logger.info("Fetched recent option trades for trend analysis", option_symbol=first_option_symbol, num_trades=len(trades))
+                self.logger.info(
+                    "Fetched recent option trades for trend analysis",
+                    option_symbol=first_option_symbol,
+                    num_trades=len(trades),
+                )
 
                 # Simulate trend detection from massive option trades
                 if len(trades) > 50:
@@ -43,7 +47,11 @@ class AlpacaOptionsTrend(BaseStrategy):
                     stop = entry * 0.95
                     target = entry * 1.05
 
-                    self.logger.info("Bullish options trend detected from Trade Tape", symbol=symbol, option_symbol=first_option_symbol)
+                    self.logger.info(
+                        "Bullish options trend detected from Trade Tape",
+                        symbol=symbol,
+                        option_symbol=first_option_symbol,
+                    )
 
                     self.last_signal_time[symbol] = bar.time
                     return self._create_signal(
@@ -54,7 +62,7 @@ class AlpacaOptionsTrend(BaseStrategy):
                         stop_price=stop,
                         target_price=target,
                         size_hint=0.1,
-                        meta={"tape_signal": "bull_sweeps"}
+                        meta={"tape_signal": "bull_sweeps"},
                     )
         except Exception as e:
             self.logger.warning("Failed to fetch option trades for trend", symbol=symbol, error=str(e))

@@ -67,7 +67,7 @@ class GapFillStrategy(BaseStrategy):
 
         # Requires scanner/pipeline-provided `gap_pct` in `symbol_state.meta`.
         gap_pct = float(symbol_state.meta.get("gap_pct", 0.0) or 0.0)
-        if gap_pct == 0.0:
+        if abs(gap_pct) < 1e-9:
             # Debug: Log periodically when gap_pct is missing
             if len(symbol_state.bars) >= 20 and len(symbol_state.bars) % 100 == 0:
                 self.logger.debug(

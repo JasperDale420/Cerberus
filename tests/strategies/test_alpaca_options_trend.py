@@ -12,6 +12,7 @@ from src.strategies.alpaca_options_trend import AlpacaOptionsTrend
 def logger():
     return StructuredLogger("TestLogger")
 
+
 @pytest.fixture
 def market_state():
     return MarketState(
@@ -20,6 +21,7 @@ def market_state():
         regime=Regime.BULL,
         meta={},
     )
+
 
 @pytest.fixture
 def bar():
@@ -33,8 +35,10 @@ def bar():
         volume=1000,
     )
 
+
 def create_symbol_state():
     from collections import deque
+
     return SymbolState(
         symbol="SPY",
         bars=deque(),
@@ -45,12 +49,15 @@ def create_symbol_state():
         meta={},
     )
 
+
 @patch("src.strategies.alpaca_options_trend.AlpacaClient")
 def test_options_trend_no_signal_few_trades(mock_alpaca_client_class, logger, bar, market_state):
     # Setup mock AlpacaClient with chain and few trades
     mock_client_instance = mock_alpaca_client_class.return_value
     mock_client_instance.get_historical_option_chain.return_value = {"SPY230120C00400000": Mock()}
-    mock_client_instance.get_historical_option_trades.return_value = [Mock() for _ in range(10)] # Only 10 trades, threshold is 50
+    mock_client_instance.get_historical_option_trades.return_value = [
+        Mock() for _ in range(10)
+    ]  # Only 10 trades, threshold is 50
 
     strategy = AlpacaOptionsTrend({}, logger)
 
@@ -59,12 +66,15 @@ def test_options_trend_no_signal_few_trades(mock_alpaca_client_class, logger, ba
     mock_client_instance.get_historical_option_chain.assert_called_once_with("SPY")
     mock_client_instance.get_historical_option_trades.assert_called_once()
 
+
 @patch("src.strategies.alpaca_options_trend.AlpacaClient")
 def test_options_trend_creates_signal_many_trades(mock_alpaca_client_class, logger, bar, market_state):
     # Setup mock AlpacaClient with chain and many trades
     mock_client_instance = mock_alpaca_client_class.return_value
     mock_client_instance.get_historical_option_chain.return_value = {"SPY230120C00400000": Mock()}
-    mock_client_instance.get_historical_option_trades.return_value = [Mock() for _ in range(60)] # 60 trades, above 50 threshold
+    mock_client_instance.get_historical_option_trades.return_value = [
+        Mock() for _ in range(60)
+    ]  # 60 trades, above 50 threshold
 
     strategy = AlpacaOptionsTrend({}, logger)
 
@@ -77,6 +87,7 @@ def test_options_trend_creates_signal_many_trades(mock_alpaca_client_class, logg
     assert signal.meta["tape_signal"] == "bull_sweeps"
     mock_client_instance.get_historical_option_chain.assert_called_once_with("SPY")
     mock_client_instance.get_historical_option_trades.assert_called_once()
+
 
 @patch("src.strategies.alpaca_options_trend.AlpacaClient")
 def test_options_trend_no_chain_data(mock_alpaca_client_class, logger, bar, market_state):

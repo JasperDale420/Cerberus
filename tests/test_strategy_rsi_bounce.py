@@ -49,12 +49,7 @@ def _make_bar(
 
 def _make_symbol_state(n_bars: int = 50, base_price: float = 100.0) -> SymbolState:
     """Create a SymbolState with enough bars for most strategies."""
-    bars_1m = deque(
-        [
-            _make_bar(close=base_price + i * 0.1, minutes_offset=i)
-            for i in range(n_bars)
-        ]
-    )
+    bars_1m = deque([_make_bar(close=base_price + i * 0.1, minutes_offset=i) for i in range(n_bars)])
     # Build 5m bars (every 5 bars aggregated)
     bars_5m: deque[Bar] = deque()
     for i in range(0, n_bars, 5):

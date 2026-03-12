@@ -5,6 +5,7 @@ Usage:
     python scripts/run_holdout.py                     # all strategies
     python scripts/run_holdout.py --strategy orb_v2  # single strategy
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,6 +53,7 @@ def run_holdout(strategy_name: str, config_path: str = "config/backtest_v2.yaml"
         return {}
 
     import yaml
+
     with open(config_path) as f:
         base_config = yaml.safe_load(f)
 
@@ -62,11 +64,11 @@ def run_holdout(strategy_name: str, config_path: str = "config/backtest_v2.yaml"
         if sname != strategy_name:
             cfg["strategies"][sname]["enabled"] = False
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Holdout Validation: {strategy_name}")
     print(f"Period: {HOLDOUT_START} → {HOLDOUT_END}")
     print(f"Params: {params}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     metrics = run_backtest_for_optimization(
         start_date=HOLDOUT_START,
@@ -77,9 +79,17 @@ def run_holdout(strategy_name: str, config_path: str = "config/backtest_v2.yaml"
     )
 
     display_keys = [
-        "n_trades", "winrate", "net_pnl", "profit_factor",
-        "sharpe_ratio", "trade_sharpe_ratio", "calmar_ratio",
-        "max_drawdown_pct", "avg_pnl", "avg_hold_minutes", "total_return_pct",
+        "n_trades",
+        "winrate",
+        "net_pnl",
+        "profit_factor",
+        "sharpe_ratio",
+        "trade_sharpe_ratio",
+        "calmar_ratio",
+        "max_drawdown_pct",
+        "avg_pnl",
+        "avg_hold_minutes",
+        "total_return_pct",
     ]
     print("\nResults:")
     for k in display_keys:
@@ -98,8 +108,9 @@ def run_holdout(strategy_name: str, config_path: str = "config/backtest_v2.yaml"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run holdout validation for WFO strategies")
-    parser.add_argument("--strategy", type=str, default=None,
-                        help="Strategy to validate (default: all with params defined)")
+    parser.add_argument(
+        "--strategy", type=str, default=None, help="Strategy to validate (default: all with params defined)"
+    )
     parser.add_argument("--config", type=str, default="config/backtest_v2.yaml")
     args = parser.parse_args()
 
@@ -111,10 +122,10 @@ def main() -> None:
         results[strat] = m
 
     if len(results) > 1:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("HOLDOUT SUMMARY")
         print(f"{'Strategy':>25} {'Trades':>7} {'PnL':>10} {'Sharpe':>8} {'PF':>6} {'WR':>6}")
-        print("-"*65)
+        print("-" * 65)
         for strat, m in results.items():
             nt = m.get("n_trades", 0)
             pnl = m.get("net_pnl", 0)

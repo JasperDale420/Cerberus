@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Tuple
 
+from src.analysis.causal_filter import CausalSignalFilter
 from src.core.domain import Bar, MarketState, Regime, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -85,11 +86,13 @@ class StrategyEngine:
         routing: StrategyRouting,
         logger: StructuredLogger,
         on_error: Optional[Callable[[], None]] = None,
+        causal_filter: Optional[CausalSignalFilter] = None,
     ) -> None:
         self.strategies_by_name = strategies_by_name
         self.routing = routing
         self.logger = logger
         self.on_error = on_error
+        self.causal_filter = causal_filter
 
     def on_bar(
         self,
@@ -102,6 +105,16 @@ class StrategyEngine:
         out: List[Signal] = []
 
         for name in active:
+            # Causal filter gate: suppress signals from strategies without causal evidence
+            if self.causal_filter is not None and not self.causal_filter.should_allow(name):
+                self.logger.debug(
+                    "Signal suppressed by causal filter",
+                    strategy=name,
+                    symbol=symbol,
+                    causal_strength=round(self.causal_filter.get_causal_strength(name), 4),
+                )
+                continue
+
             sig = self._safe_run_strategy(name, symbol, bar, symbol_state, market_state)
             if sig:
                 out.append(sig)

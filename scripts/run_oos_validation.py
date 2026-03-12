@@ -4,6 +4,7 @@
 Tests both trend_rider_pro and mean_reversion_pro with their best params
 from the H1 2024 Optuna optimization, on Jul-Dec 2024 data.
 """
+
 import json
 import os
 import sys
@@ -40,12 +41,12 @@ def run_validation(
         if s != strategy_name:
             test_cfg["strategies"][s]["enabled"] = False
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {label}")
     print(f"  Strategy: {strategy_name}")
     print(f"  Period: {start_date} → {end_date}")
     print(f"  Params: {json.dumps(params, indent=4)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     start = time.time()
     metrics = run_backtest_for_optimization(
@@ -99,42 +100,54 @@ def main():
 
     # 1. In-sample replay (sanity check — should match optimization)
     r1 = run_validation(
-        "trend_rider_pro", trp_params,
-        "2024-01-02", "2024-06-30", symbols,
+        "trend_rider_pro",
+        trp_params,
+        "2024-01-02",
+        "2024-06-30",
+        symbols,
         "TRP In-Sample (H1 2024) — Sanity Check",
     )
     results.append(r1)
 
     # 2. Out-of-sample (the real test)
     r2 = run_validation(
-        "trend_rider_pro", trp_params,
-        "2024-07-01", "2024-12-31", symbols,
+        "trend_rider_pro",
+        trp_params,
+        "2024-07-01",
+        "2024-12-31",
+        symbols,
         "TRP Out-of-Sample (H2 2024) — VALIDATION",
     )
     results.append(r2)
 
     # 3. MRP in-sample
     r3 = run_validation(
-        "mean_reversion_pro", mrp_params,
-        "2024-01-02", "2024-06-30", symbols,
+        "mean_reversion_pro",
+        mrp_params,
+        "2024-01-02",
+        "2024-06-30",
+        symbols,
         "MRP In-Sample (H1 2024) — Sanity Check",
     )
     results.append(r3)
 
     # 4. MRP out-of-sample
     r4 = run_validation(
-        "mean_reversion_pro", mrp_params,
-        "2024-07-01", "2024-12-31", symbols,
+        "mean_reversion_pro",
+        mrp_params,
+        "2024-07-01",
+        "2024-12-31",
+        symbols,
         "MRP Out-of-Sample (H2 2024) — VALIDATION",
     )
     results.append(r4)
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("  WALK-FORWARD VALIDATION SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  {'Label':<45s} {'Score':>8s} {'Sharpe':>8s} {'PF':>6s} {'WR':>6s} {'DD':>6s} {'Trades':>7s}")
-    print(f"  {'-'*45} {'-'*8} {'-'*8} {'-'*6} {'-'*6} {'-'*6} {'-'*7}")
+    print(f"  {'-' * 45} {'-' * 8} {'-' * 8} {'-' * 6} {'-' * 6} {'-' * 6} {'-' * 7}")
     for r in results:
         m = r["metrics"]
         print(

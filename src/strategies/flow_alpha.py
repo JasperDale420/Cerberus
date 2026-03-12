@@ -70,15 +70,9 @@ class FlowAlphaStrategy(BaseStrategy):
 
         # Tunable params (also settable via _optuna_overrides)
         overrides = config.get("_optuna_overrides", {})
-        self.stop_atr_mult = float(
-            overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5))
-        )
-        self.target_r_mult = float(
-            overrides.get("target_r_mult", config.get("target_r_mult", 3.0))
-        )
-        self.max_hold_minutes = int(
-            overrides.get("max_hold_minutes", config.get("max_hold_minutes", 45))
-        )
+        self.stop_atr_mult = float(overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5)))
+        self.target_r_mult = float(overrides.get("target_r_mult", config.get("target_r_mult", 3.0)))
+        self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 45)))
 
     # ------------------------------------------------------------------
     # Flow computation
@@ -160,7 +154,9 @@ class FlowAlphaStrategy(BaseStrategy):
             return None
 
         if not time_utils.in_time_window_str(
-            bar.time, self.time_window_start, self.time_window_end,
+            bar.time,
+            self.time_window_start,
+            self.time_window_end,
         ):
             return None
 
@@ -243,7 +239,11 @@ class FlowAlphaStrategy(BaseStrategy):
 
         # 5. Candle quality (weight 0.10)
         candle_score = score_candle_quality(
-            bar.open, bar.high, bar.low, bar.close, side_str,
+            bar.open,
+            bar.high,
+            bar.low,
+            bar.close,
+            side_str,
         )
         scorer.add_factor(
             "candle_quality",
@@ -274,7 +274,8 @@ class FlowAlphaStrategy(BaseStrategy):
         # --- Stop / Target ---
         raw_risk = self.stop_atr_mult * atr_5m
         stop_distance = self._apply_regime_volatility_multiplier(
-            raw_risk, market_state,
+            raw_risk,
+            market_state,
         )
         target_distance = self.target_r_mult * raw_risk
 

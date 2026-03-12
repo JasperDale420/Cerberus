@@ -11,6 +11,7 @@ class GammaPinningStrategy(BaseStrategy):
     When price drifts far from ZGL, assume it will be pinned back.
     Requires high overall net_gex to ensure MMs are active.
     """
+
     name: str = "gamma_pinning"
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
@@ -77,10 +78,5 @@ class GammaPinningStrategy(BaseStrategy):
             stop_price=stop_price,
             target_price=target_price,
             size_hint=confidence,
-            meta={
-                "net_gex": net_gex,
-                "gex_flip_dist": gex_flip_dist,
-                "zgl": zgl,
-                "deviation": deviation
-            }
+            meta={"net_gex": net_gex, "gex_flip_dist": gex_flip_dist, "zgl": zgl, "deviation": deviation},
         )

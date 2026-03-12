@@ -11,6 +11,7 @@ class MLDirectionalStrategy(BaseStrategy):
     Uses standard trend alignment but requires a Machine Learning prediction
     score above a certain threshold to generate a valid signal.
     """
+
     name = "ml_directional"
 
     def __init__(self, config: dict[str, Any], logger: Any):
@@ -76,7 +77,7 @@ class MLDirectionalStrategy(BaseStrategy):
             stop_price=stop_price,
             target_price=target_price,
             entry_price=bar.close,
-            meta={"ml_prediction": ml_prediction, "dynamic_rr": dynamic_rr}
+            meta={"ml_prediction": ml_prediction, "dynamic_rr": dynamic_rr},
         )
 
         self.logger.info("ML Directional signal generated", symbol=symbol, side=side.value, prediction=ml_prediction)

@@ -414,7 +414,7 @@ class PositionManager:
 
         # H2 fix: Safe R-multiple calculation
         pnl_r = None
-        if pos.open_risk is not None and float(pos.open_risk) != 0.0:
+        if pos.open_risk is not None and not math.isclose(float(pos.open_risk), 0.0, abs_tol=1e-9):
             pnl_r = float(pnl) / float(pos.open_risk)
 
         return ClosedTradeInfo(
@@ -555,7 +555,7 @@ class PositionManager:
         """Update MAE/MFE tracking for a position (best-effort)."""
         try:
             open_risk = pos.open_risk
-            if open_risk is None or open_risk == 0.0 or pos.qty <= 0:
+            if open_risk is None or math.isclose(float(open_risk), 0.0, abs_tol=1e-9) or pos.qty <= 0:
                 return
             risk_per_share = float(open_risk) / float(pos.qty)
             if risk_per_share <= 0:

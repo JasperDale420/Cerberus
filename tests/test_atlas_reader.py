@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.data.atlas_schema import FactorCatalogEntry, FactorScore
 from src.data.atlas_reader import AtlasFactorReader
+from src.data.atlas_schema import FactorCatalogEntry, FactorScore
 
 
 @pytest.fixture()
@@ -185,12 +185,20 @@ class TestGetScores:
         _write_catalog(factor_dir, [e1, e2])
 
         _write_scores(
-            factor_dir, "HYP_mom", today,
+            factor_dir,
+            "HYP_mom",
+            today,
             [_make_score(hypothesis_id="HYP_mom", symbol="AAPL", score=0.5, score_date=today)],
         )
         _write_scores(
-            factor_dir, "HYP_flow", today,
-            [_make_score(hypothesis_id="HYP_flow", symbol="AAPL", score=-0.3, family="flow_momentum", score_date=today)],
+            factor_dir,
+            "HYP_flow",
+            today,
+            [
+                _make_score(
+                    hypothesis_id="HYP_flow", symbol="AAPL", score=-0.3, family="flow_momentum", score_date=today
+                )
+            ],
         )
 
         reader = AtlasFactorReader(factor_dir=factor_dir)
@@ -210,7 +218,9 @@ class TestGetCompositeScore:
         entry = _make_entry(soft_score=0.8)
         _write_catalog(factor_dir, [entry])
         _write_scores(
-            factor_dir, "HYP_abc123", today,
+            factor_dir,
+            "HYP_abc123",
+            today,
             [_make_score(symbol="AAPL", score=0.6, score_date=today)],
         )
 
@@ -226,11 +236,15 @@ class TestGetCompositeScore:
         _write_catalog(factor_dir, [e1, e2])
 
         _write_scores(
-            factor_dir, "HYP_a", today,
+            factor_dir,
+            "HYP_a",
+            today,
             [_make_score(hypothesis_id="HYP_a", symbol="AAPL", score=0.6, score_date=today)],
         )
         _write_scores(
-            factor_dir, "HYP_b", today,
+            factor_dir,
+            "HYP_b",
+            today,
             [_make_score(hypothesis_id="HYP_b", symbol="AAPL", score=-0.2, family="flow", score_date=today)],
         )
 

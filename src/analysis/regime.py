@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 import numpy as np
 
-from src.core.domain import Bar, Regime
+from src.analysis.bocpd import BOCPDDetector
+from src.analysis.entropy import EntropyAnalyzer
+from src.analysis.vrp import VRPCalculator
+from src.core.domain import Bar, ComplexityRegime, Regime
 from src.core.logger import StructuredLogger
 
 if TYPE_CHECKING:
@@ -107,6 +110,31 @@ class MarketContextService:
         self.trend_history: deque[TrendRegime] = deque(maxlen=smooth_k)
         self.vol_regime_history: deque[VolRegime] = deque(maxlen=smooth_k)
 
+        # BOCPD changepoint detector
+        self._bocpd = BOCPDDetector(logger=logger)
+
+        # Permutation entropy analyzer
+        self._entropy = EntropyAnalyzer(logger=logger)
+
+        # Last BOCPD/entropy results (for snapshot construction)
+        self._last_cp_prob: float = 0.0
+        self._last_bars_since_cp: int = 0
+        self._last_complexity: Optional[ComplexityRegime] = None
+        self._last_entropy_score: float = 0.0
+
+        # VRP calculator for risk axis
+        self._vrp = VRPCalculator(logger=logger)
+        self._last_vrp_score: float = 0.0
+        self._vrp_enabled: bool = True  # On by default since it enhances existing VXX data
+
+        # GEX analyzer for dealer positioning regime
+        from src.analysis.gex import GEXAnalyzer
+
+        self._gex = GEXAnalyzer(logger=logger)
+        self._last_gex_regime: Optional[str] = None
+        self._last_net_gex: float = 0.0
+        self._last_gamma_flip_dist: float = 0.0
+
         # Current snapshot
         self.current_snapshot: Optional[MarketRegimeSnapshot] = None
 
@@ -122,6 +150,22 @@ class MarketContextService:
         self._risk_regime = RiskRegime
         self._session_regime = SessionRegime
         self._market_regime_snapshot = MarketRegimeSnapshot
+
+    def update_gex(self, current_price: float, chain_data: list) -> None:
+        """Update GEX from options chain data. Call when chain data refreshes (typically EOD)."""
+        result = self._gex.update(current_price, chain_data)
+        if result is not None:
+            self._last_gex_regime = result.gex_regime
+            self._last_net_gex = result.net_gex
+            self._last_gamma_flip_dist = result.gamma_flip_distance
+
+    def update_gex_normalized(self, current_price: float, gex_data: dict) -> None:
+        """Update GEX from Data-Gateway NormalizedGreekExposure format."""
+        result = self._gex.update_from_normalized(current_price, gex_data)
+        if result is not None:
+            self._last_gex_regime = result.gex_regime
+            self._last_net_gex = result.net_gex
+            self._last_gamma_flip_dist = result.gamma_flip_distance
 
     def update_vol(self, bar: Bar) -> None:
         """
@@ -177,6 +221,26 @@ class MarketContextService:
             if len(returns_array) > 0:
                 self.sq_returns.append(returns_array[-1] ** 2)
 
+            # BOCPD: feed log return to changepoint detector
+            if len(returns_array) > 0:
+                bocpd_result = self._bocpd.update(float(returns_array[-1]))
+                self._last_cp_prob = bocpd_result.changepoint_probability
+                self._last_bars_since_cp = bocpd_result.map_run_length
+
+            # Entropy: feed log return to entropy analyzer
+            if len(returns_array) > 0:
+                entropy_result = self._entropy.update(float(returns_array[-1]))
+                if entropy_result is not None:
+                    self._last_entropy_score = entropy_result.pe_normalized
+                    self._last_complexity = entropy_result.regime
+
+            # VRP: update if we have VXX price and realized vol
+            if len(self.vol_prices) > 0 and self.last_vol is not None:
+                vxx_price = self.vol_prices[-1]
+                vrp_result = self._vrp.update(vxx_price, self.last_vol)
+                if vrp_result is not None:
+                    self._last_vrp_score = vrp_result.vrp_zscore
+
             # Classify each axis
             trend = self._classify_trend(cum_ret, hurst_exp)
             vol = self._classify_vol(current_var, baseline_var)
@@ -192,9 +256,18 @@ class MarketContextService:
             smoothed_vol = self._smooth_axis(self.vol_regime_history, self._vol_regime.NORMAL)
 
             # Compute confidence (simple: agreement ratio)
+            trend_conf = self._axis_confidence(self.trend_history, smoothed_trend)
+            vol_conf = self._axis_confidence(self.vol_regime_history, smoothed_vol)
+
+            # BOCPD: reduce regime confidence when changepoint probability is high
+            if self._last_cp_prob > 0.7:
+                cp_reduction = min(self._last_cp_prob, 0.5)
+                trend_conf = max(0.0, trend_conf - cp_reduction)
+                vol_conf = max(0.0, vol_conf - cp_reduction)
+
             confidence = {
-                "trend": self._axis_confidence(self.trend_history, smoothed_trend),
-                "vol": self._axis_confidence(self.vol_regime_history, smoothed_vol),
+                "trend": trend_conf,
+                "vol": vol_conf,
                 "liquidity": 1.0,  # No hysteresis yet
                 "risk": 1.0,
                 "session": 1.0,
@@ -215,6 +288,14 @@ class MarketContextService:
                 vol_of_vol=self._compute_vol_of_vol(),
                 liquidity_score=self._compute_liquidity_score(bar),
                 risk_score=0.0,  # Requires VXX data
+                changepoint_probability=self._last_cp_prob,
+                bars_since_changepoint=self._last_bars_since_cp,
+                complexity=self._last_complexity,
+                entropy_score=self._last_entropy_score,
+                vrp_score=self._last_vrp_score,
+                gex_regime=self._last_gex_regime,
+                net_gex=self._last_net_gex,
+                gamma_flip_distance=self._last_gamma_flip_dist,
                 confidence=confidence,
             )
 
@@ -363,20 +444,27 @@ class MarketContextService:
 
     def _classify_risk(self) -> "RiskRegime":
         """
-        RISK_ON/NEUTRAL/RISK_OFF based on VXX momentum.
-        Rising VXX = fear increasing = RISK_OFF
-        Falling VXX = fear decreasing = RISK_ON
-        Falls back to SPY cumulative return if VXX data unavailable.
+        RISK_ON/NEUTRAL/RISK_OFF based on Variance Risk Premium (VRP).
+        VRP = IV² - RV². High VRP z-score = market compensating for fear = RISK_ON.
+        Falls back to VXX momentum if VRP unavailable, then SPY cumulative return.
         """
-        # Use VXX momentum if available (preferred)
-        if self.last_vol_ret is not None:
-            if self.last_vol_ret > 0.005:  # VXX rising >0.5% = fear up
+        # Primary: VRP-based classification
+        if self._vrp_enabled and abs(self._last_vrp_score) > 0:
+            if self._last_vrp_score > 1.0:
+                return self._risk_regime.RISK_ON
+            if self._last_vrp_score < -1.0:
                 return self._risk_regime.RISK_OFF
-            if self.last_vol_ret < -0.005:  # VXX falling <-0.5% = fear down
+            return self._risk_regime.NEUTRAL
+
+        # Fallback: VXX momentum
+        if self.last_vol_ret is not None:
+            if self.last_vol_ret > 0.005:
+                return self._risk_regime.RISK_OFF
+            if self.last_vol_ret < -0.005:
                 return self._risk_regime.RISK_ON
             return self._risk_regime.NEUTRAL
 
-        # Fallback: use SPY trend direction as proxy
+        # Last resort: SPY trend direction
         if self.last_cum_ret is not None:
             if self.last_cum_ret > 0.005:
                 return self._risk_regime.RISK_ON

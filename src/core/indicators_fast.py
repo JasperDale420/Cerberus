@@ -19,6 +19,7 @@ import numpy as np
 # EMA  (Exponential Moving Average)
 # ---------------------------------------------------------------------------
 
+
 @numba.njit(cache=True)
 def batch_ema(closes: np.ndarray, period: int) -> np.ndarray:
     """Compute EMA over an array of close prices.
@@ -42,6 +43,7 @@ def batch_ema(closes: np.ndarray, period: int) -> np.ndarray:
 # RSI  (Relative Strength Index)
 # ---------------------------------------------------------------------------
 
+
 @numba.njit(cache=True)
 def batch_rsi(closes: np.ndarray, period: int) -> np.ndarray:
     """Compute RSI over an array of close prices.
@@ -63,7 +65,7 @@ def batch_rsi(closes: np.ndarray, period: int) -> np.ndarray:
     avg_gain = max(0.0, change)
     avg_loss = max(0.0, -change)
 
-    if avg_loss == 0.0:
+    if abs(avg_loss) < 1e-9:
         out[1] = 100.0
     else:
         rs = avg_gain / avg_loss
@@ -78,7 +80,7 @@ def batch_rsi(closes: np.ndarray, period: int) -> np.ndarray:
         avg_gain = ((avg_gain * (p - 1)) + gain) / p
         avg_loss = ((avg_loss * (p - 1)) + loss) / p
 
-        if avg_loss == 0.0:
+        if abs(avg_loss) < 1e-9:
             out[i] = 100.0
         else:
             rs = avg_gain / avg_loss
@@ -90,6 +92,7 @@ def batch_rsi(closes: np.ndarray, period: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # ATR  (Average True Range)
 # ---------------------------------------------------------------------------
+
 
 @numba.njit(cache=True)
 def batch_atr(
@@ -137,6 +140,7 @@ def batch_atr(
 # ---------------------------------------------------------------------------
 # ADX  (Average Directional Index)
 # ---------------------------------------------------------------------------
+
 
 @numba.njit(cache=True)
 def batch_adx(
@@ -224,6 +228,7 @@ def batch_adx(
 # Bollinger Bands  (rolling mean + std)
 # ---------------------------------------------------------------------------
 
+
 @numba.njit(cache=True)
 def batch_bb(
     closes: np.ndarray,
@@ -257,7 +262,7 @@ def batch_bb(
         mean = running_sum / count
         var = max(0.0, (running_sumsq / count) - (mean * mean))
         means[i] = mean
-        stds[i] = var ** 0.5
+        stds[i] = var**0.5
 
     return means, stds
 
@@ -265,6 +270,7 @@ def batch_bb(
 # ---------------------------------------------------------------------------
 # VWAP distance
 # ---------------------------------------------------------------------------
+
 
 @numba.njit(cache=True)
 def _vwap_core(
@@ -302,7 +308,7 @@ def _vwap_core(
                 prev_day = day
 
         vol = volumes[i]
-        if vwaps[i] != 0.0 and vol > 0:
+        if abs(vwaps[i]) >= 1e-9 and vol > 0:
             cum_pv += vwaps[i] * vol
         elif vol > 0:
             tp = (highs[i] + lows[i] + closes[i]) / 3.0
@@ -348,6 +354,7 @@ def batch_vwap_distance(
 # ---------------------------------------------------------------------------
 # SMA  (Simple Moving Average)
 # ---------------------------------------------------------------------------
+
 
 @numba.njit(cache=True)
 def batch_sma(closes: np.ndarray, period: int) -> np.ndarray:

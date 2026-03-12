@@ -5,13 +5,13 @@ Atlas's AtlasFactorPublisher.  Provides per-symbol scores and a
 composite signal for integration into Cerberus's FeaturePipeline.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import structlog
 
-from src.data.atlas_schema import FactorCatalogEntry, FactorScore
+from src.data.atlas_schema import FactorCatalogEntry
 
 logger = structlog.get_logger(__name__)
 
@@ -70,10 +70,7 @@ class AtlasFactorReader:
             return []
 
         # Filter: quality threshold + not expired
-        active = [
-            e for e in entries
-            if e.soft_score >= self.min_soft_score and not e.is_expired
-        ]
+        active = [e for e in entries if e.soft_score >= self.min_soft_score and not e.is_expired]
 
         self._catalog_cache = active
         self._catalog_cache_date = today
@@ -131,7 +128,7 @@ class AtlasFactorReader:
                 weighted_sum += score * entry.soft_score
                 weight_total += entry.soft_score
 
-        if weight_total == 0.0:
+        if abs(weight_total) < 1e-9:
             return 0.0
 
         return weighted_sum / weight_total
@@ -161,6 +158,7 @@ class AtlasFactorReader:
                 # Handle list conversion for symbols
                 if isinstance(row_dict.get("symbols"), str):
                     import json
+
                     try:
                         row_dict["symbols"] = json.loads(row_dict["symbols"])
                     except (json.JSONDecodeError, TypeError):

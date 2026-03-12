@@ -26,7 +26,10 @@ def _pair_key(leg_a: str, leg_b: str) -> str:
 
 
 def _make_pair_state(
-    leg_a: str, leg_b: str, hedge_ema_period: int, spread_lookback: int,
+    leg_a: str,
+    leg_b: str,
+    hedge_ema_period: int,
+    spread_lookback: int,
 ) -> dict[str, Any]:
     return {
         "leg_a": leg_a,
@@ -79,7 +82,10 @@ class PairTradingV2Strategy(BaseStrategy):
             if key in self._pair_state:
                 continue
             self._pair_state[key] = _make_pair_state(
-                leg_a, leg_b, self.hedge_ema_period, self.spread_lookback,
+                leg_a,
+                leg_b,
+                self.hedge_ema_period,
+                self.spread_lookback,
             )
             self._symbol_to_pairs.setdefault(leg_a, []).append(key)
             self._symbol_to_pairs.setdefault(leg_b, []).append(key)
@@ -145,8 +151,10 @@ class PairTradingV2Strategy(BaseStrategy):
 
         # 1. Spread z-score (0.35)
         scorer.add_factor(
-            "spread_z_score", raw_value=z_score,
-            score=score_deviation(z_abs, 2.0, 4.0), weight=0.35,
+            "spread_z_score",
+            raw_value=z_score,
+            score=score_deviation(z_abs, 2.0, 4.0),
+            weight=0.35,
             passed=z_abs >= self.entry_z_threshold,
         )
 
@@ -156,22 +164,30 @@ class PairTradingV2Strategy(BaseStrategy):
         if len(history) >= 5:
             stat_score = 70.0 if z_abs > abs(history[-5]) else 50.0
         scorer.add_factor(
-            "spread_stationarity", raw_value=stat_score,
-            score=stat_score, weight=0.25,
+            "spread_stationarity",
+            raw_value=stat_score,
+            score=stat_score,
+            weight=0.25,
         )
 
         # 3. Volume (0.15)
         avg_vol = float(symbol_state.meta.get("avg_volume_20", 0) or 0)
         vol_sc = score_volume(bar.volume, avg_vol, 1.0, 2.5) if avg_vol > 0 else 50.0
         scorer.add_factor(
-            "volume", raw_value=bar.volume, score=vol_sc, weight=0.15,
+            "volume",
+            raw_value=bar.volume,
+            score=vol_sc,
+            weight=0.15,
             passed=vol_sc > 0.0,
         )
 
         # 4. Regime flatness (0.15)
         flat_sc = self._regime_flatness_score(market_state)
         scorer.add_factor(
-            "regime_flatness", raw_value=flat_sc, score=flat_sc, weight=0.15,
+            "regime_flatness",
+            raw_value=flat_sc,
+            score=flat_sc,
+            weight=0.15,
             passed=flat_sc >= 50.0,
         )
 
@@ -215,7 +231,11 @@ class PairTradingV2Strategy(BaseStrategy):
     # -- side determination -----------------------------------------------
 
     def _determine_side(
-        self, z_score: float, symbol: str, leg_a: str, leg_b: str,
+        self,
+        z_score: float,
+        symbol: str,
+        leg_a: str,
+        leg_b: str,
     ) -> OrderSide | None:
         """z < -threshold => BUY leg_a / SELL leg_b (spread too low).
         z >  threshold => SELL leg_a / BUY leg_b (spread too high)."""
@@ -305,14 +325,20 @@ class PairTradingV2Strategy(BaseStrategy):
         if not scorer.passes_threshold():
             self.logger.debug(
                 "pair_trading_v2: below confluence threshold",
-                symbol=symbol, pair=key,
+                symbol=symbol,
+                pair=key,
                 score=round(scorer.score(), 2),
                 z_score=round(z_score, 4),
             )
             return None
 
         stop_price, target_price = self._compute_stop_target(
-            side, bar, symbol_state, z_score, std, hedge_ratio,
+            side,
+            bar,
+            symbol_state,
+            z_score,
+            std,
+            hedge_ratio,
         )
         if side == OrderSide.BUY and stop_price >= bar.close:
             return None
@@ -338,16 +364,23 @@ class PairTradingV2Strategy(BaseStrategy):
 
         self.logger.info(
             "pair_trading_v2: entry signal",
-            symbol=symbol, pair=key, side=side.value,
+            symbol=symbol,
+            pair=key,
+            side=side.value,
             z_score=round(z_score, 4),
             hedge_ratio=round(hedge_ratio, 6),
             confluence=round(scorer.score(), 2),
         )
 
         return self._create_signal(
-            symbol=symbol, side=side, bar=bar, market_state=market_state,
-            stop_price=stop_price, target_price=target_price,
-            size_hint=scorer.conviction_multiplier(), meta=meta,
+            symbol=symbol,
+            side=side,
+            bar=bar,
+            market_state=market_state,
+            stop_price=stop_price,
+            target_price=target_price,
+            size_hint=scorer.conviction_multiplier(),
+            meta=meta,
         )
 
     # -- external helpers -------------------------------------------------

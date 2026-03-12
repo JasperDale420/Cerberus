@@ -256,14 +256,14 @@ def build_is_scores_chart(all_data: dict[str, dict]) -> go.Figure:
     """Bar chart of IS scores per window per strategy."""
     fig = go.Figure()
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         windows = data.get("windows", [])
         if not windows:
             continue
         label = data["display_label"]
         color = _strategy_color(data)
 
-        x = [f"W{w['window_idx']+1}" for w in windows]
+        x = [f"W{w['window_idx'] + 1}" for w in windows]
         y = [w["is_score"] for w in windows]
 
         fig.add_trace(
@@ -298,7 +298,7 @@ def build_oos_comparison_chart(all_data: dict[str, dict]) -> go.Figure | None:
         subplot_titles=["IS vs OOS Score (closer to diagonal = less overfit)"],
     )
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         wfo_result = data.get("wfo_result")
         if not wfo_result:
             continue
@@ -316,7 +316,7 @@ def build_oos_comparison_chart(all_data: dict[str, dict]) -> go.Figure | None:
                 mode="markers+text",
                 name=label,
                 marker={"color": color, "size": 10},
-                text=[f"W{i+1}" for i in range(len(is_scores))],
+                text=[f"W{i + 1}" for i in range(len(is_scores))],
                 textposition="top center",
             )
         )
@@ -359,20 +359,20 @@ def build_metrics_table(all_data: dict[str, dict]) -> go.Figure:
     ]
     rows: list[list[str]] = []
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         label = data["display_label"]
         for w in data.get("windows", []):
             a = w.get("attrs", {})
             rows.append(
                 [
                     label,
-                    f"W{w['window_idx']+1}",
+                    f"W{w['window_idx'] + 1}",
                     f"{w['is_score']:.2f}",
                     str(int(a.get("n_trades", 0))),
                     f"{a.get('sharpe', 0):.3f}",
                     f"{a.get('trade_sharpe', 0):.3f}",
                     f"{a.get('profit_factor', 0):.2f}",
-                    f"{a.get('winrate', 0)*100:.1f}",
+                    f"{a.get('winrate', 0) * 100:.1f}",
                     f"{a.get('max_dd_pct', 0):.1f}",
                     f"{a.get('avg_hold_min', 0):.0f}",
                 ]
@@ -431,7 +431,7 @@ def build_param_stability_chart(all_data: dict[str, dict]) -> go.Figure:
     strategies_with_params: list[str] = []
     all_params: dict[str, dict[str, float]] = {}
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         windows = data.get("windows", [])
         if len(windows) < 2:
             continue
@@ -517,7 +517,7 @@ def build_efficiency_chart(all_data: dict[str, dict]) -> go.Figure | None:
     ratios: list[float] = []
     colors: list[str] = []
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         wfo = data.get("wfo_result")
         if not wfo:
             continue
@@ -555,7 +555,7 @@ def build_score_distribution_chart(all_data: dict[str, dict]) -> go.Figure:
     """Box plots of all trial scores per strategy per window."""
     fig = go.Figure()
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         label = data["display_label"]
         color = _strategy_color(data)
         for w in data.get("windows", []):
@@ -567,7 +567,7 @@ def build_score_distribution_chart(all_data: dict[str, dict]) -> go.Figure:
             fig.add_trace(
                 go.Box(
                     y=scores,
-                    name=f"{label} W{w['window_idx']+1}",
+                    name=f"{label} W{w['window_idx'] + 1}",
                     marker_color=color,
                     boxmean=True,
                 )
@@ -598,7 +598,7 @@ def build_summary_card(all_data: dict[str, dict]) -> str:
         "</tr>",
     ]
 
-    for strategy_name, data in all_data.items():
+    for _strategy_name, data in all_data.items():
         label = data["display_label"]
         color = _strategy_color(data)
         windows = data.get("windows", [])
@@ -607,7 +607,9 @@ def build_summary_card(all_data: dict[str, dict]) -> str:
         expected_windows = len(wfo.get("windows", [])) if wfo else n_windows
 
         # Status
-        status = f"✅ Complete ({n_windows}/{expected_windows})" if wfo else f"🔄 Running ({n_windows}/{expected_windows})"
+        status = (
+            f"✅ Complete ({n_windows}/{expected_windows})" if wfo else f"🔄 Running ({n_windows}/{expected_windows})"
+        )
 
         # Avg IS
         is_scores = [w["is_score"] for w in windows if w["is_score"] > -200]
@@ -735,7 +737,7 @@ def main() -> None:
 </head>
 <body>
 {summary_html}
-{''.join(f'<div class="chart-container">{ch}</div>' for ch in chart_htmls)}
+{"".join(f'<div class="chart-container">{ch}</div>' for ch in chart_htmls)}
 <p style="color:#666; text-align:center;">
     {"Interactive charts skipped because plotly is not installed in this environment." if not PLOTLY_AVAILABLE else ""}
 </p>

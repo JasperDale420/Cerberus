@@ -1,6 +1,15 @@
+from enum import Enum
 from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class ConvexityClass(str, Enum):
+    """Strategy convexity classification for antifragile regime overrides."""
+
+    CONVEX = "convex"
+    LINEAR = "linear"
+    CONCAVE = "concave"
 
 
 class TrailingStopConfig(BaseModel):
@@ -51,6 +60,7 @@ class RegimeConfig(BaseModel):
 class StrategyConfig(BaseModel):
     enabled: bool = True
     max_risk_per_trade: Optional[float] = None
+    convexity_class: str = Field(default="linear", description="Convexity class: convex, linear, concave")
     regimes: Dict[str, RegimeConfig] = Field(default_factory=dict)
     parameters: Dict[str, float] = Field(default_factory=dict)
 
@@ -80,6 +90,40 @@ class KellyConfig(BaseModel):
     )
     max_equity_pct: float = Field(default=0.30, description="Upper bound on Kelly-computed equity fraction")
     min_equity_pct: float = Field(default=0.05, description="Lower bound on Kelly-computed equity fraction")
+
+
+class CPPIConfig(BaseModel):
+    """CPPI drawdown-controlled position sizing configuration."""
+
+    enabled: bool = Field(default=False, description="Enable CPPI drawdown control")
+    multiplier: float = Field(default=3.0, description="CPPI multiplier (3-5 typical)")
+    max_drawdown: float = Field(default=0.05, description="Maximum drawdown before floor locks (5%)")
+    min_exposure: float = Field(default=0.1, description="Minimum exposure fraction (never go below 10%)")
+    max_exposure: float = Field(default=1.0, description="Maximum exposure fraction")
+    floor_decay_rate: float = Field(default=0.0, description="Daily floor decay rate (0 = no decay, ratchet only up)")
+
+
+class HRPConfig(BaseModel):
+    """Hierarchical Risk Parity cross-strategy allocation configuration."""
+
+    enabled: bool = Field(default=False, description="Enable HRP cross-strategy allocation")
+    lookback_days: int = Field(default=60, description="Rolling window for strategy returns")
+    min_strategies: int = Field(default=3, description="Minimum active strategies to run HRP")
+    rebalance_interval: int = Field(default=5, description="Recompute weights every N days")
+    min_weight: float = Field(default=0.05, description="Minimum per-strategy weight")
+    max_weight: float = Field(default=0.40, description="Maximum per-strategy weight")
+
+
+class CVaRConfig(BaseModel):
+    """CVaR tail-risk position sizing configuration."""
+
+    enabled: bool = Field(default=False, description="Enable CVaR-based position sizing")
+    confidence_level: float = Field(default=0.95, description="CVaR confidence level (e.g., 0.95 = 95%)")
+    lookback_bars: int = Field(default=500, description="Rolling window of bars for return distribution")
+    min_bars: int = Field(default=100, description="Minimum bars before CVaR activates")
+    max_acceptable_cvar: float = Field(default=0.03, description="Maximum acceptable CVaR per position (3%)")
+    use_evt: bool = Field(default=True, description="Use Extreme Value Theory (GPD) for tail estimation")
+    tail_threshold_pct: float = Field(default=10.0, description="Top X% of losses for EVT fitting")
 
 
 class RiskConfig(BaseModel):
@@ -120,6 +164,11 @@ class RiskConfig(BaseModel):
                 "neutral": 0.85,
                 "risk_off": 0.50,
             },
+            "complexity": {
+                "structured": 1.20,
+                "normal": 1.00,
+                "random": 0.60,
+            },
         },
         description="Multipliers applied to position sizing based on regime axes",
     )
@@ -143,6 +192,30 @@ class RiskConfig(BaseModel):
 
     # Kelly Criterion position sizing
     kelly: KellyConfig = Field(default_factory=KellyConfig)
+
+    # CPPI drawdown-controlled sizing
+    cppi: CPPIConfig = Field(default_factory=CPPIConfig)
+
+    # HRP cross-strategy allocation
+    hrp: HRPConfig = Field(default_factory=HRPConfig)
+
+    # CVaR tail risk sizing
+    cvar: CVaRConfig = Field(default_factory=CVaRConfig)
+
+    # Antifragile per-class regime overrides
+    antifragile_overrides: Dict[str, Dict[str, Dict[str, float]]] = Field(
+        default_factory=lambda: {
+            "convex": {
+                "vol": {"low": 0.80, "normal": 1.00, "high": 1.30, "shock": 1.50},
+                "risk": {"risk_on": 1.00, "neutral": 1.00, "risk_off": 1.20},
+            },
+            "concave": {
+                "vol": {"low": 1.10, "normal": 1.00, "high": 0.40, "shock": 0.00},
+                "risk": {"risk_on": 1.00, "neutral": 0.80, "risk_off": 0.30},
+            },
+        },
+        description="Per-convexity-class regime multiplier overrides (linear uses global defaults)",
+    )
 
     # L5 fix: Bounds validation for critical risk parameters
     @field_validator("max_daily_loss")

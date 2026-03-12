@@ -80,6 +80,14 @@ class SessionRegime(str, Enum):
     CLOSE = "close"
 
 
+class ComplexityRegime(str, Enum):
+    """Market complexity regime derived from entropy metrics."""
+
+    STRUCTURED = "structured"  # low entropy, predictable patterns forming
+    NORMAL = "normal"  # typical market noise
+    RANDOM = "random"  # high entropy, pure noise
+
+
 @dataclass(frozen=True)
 class MarketRegimeSnapshot:
     """
@@ -114,11 +122,27 @@ class MarketRegimeSnapshot:
     liquidity_score: float = 0.0
     risk_score: float = 0.0
 
+    # BOCPD changepoint detection
+    changepoint_probability: float = 0.0
+    bars_since_changepoint: int = 0
+
+    # Permutation entropy / complexity
+    complexity: Optional["ComplexityRegime"] = None
+    entropy_score: float = 0.0
+
+    # Variance Risk Premium
+    vrp_score: float = 0.0
+
+    # GEX (Gamma Exposure) regime
+    gex_regime: Optional[str] = None  # "positive", "negative", "neutral"
+    net_gex: float = 0.0
+    gamma_flip_distance: float = 0.0  # % distance to gamma flip level
+
     # Per-axis confidence (0.0 to 1.0)
     confidence: Dict[str, float] = field(default_factory=dict)
 
     # Schema versioning for analytics
-    model_version: str = "1.0"
+    model_version: str = "2.2"
 
     @property
     def regime_tags(self) -> Dict[str, str]:

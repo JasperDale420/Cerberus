@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from src.analysis.ou_estimator import OUEstimator, OUResult
+from src.analysis.vpin import VPINCalculator
 from src.core import time_utils
 from src.core.domain import (
     Bar,
@@ -46,6 +48,13 @@ class MeanReversionProStrategy(BaseStrategy):
         # Daily loss tracking: {date_str: consecutive_losers}
         self._daily_losers: dict[str, int] = {}
         self._daily_trade_results: dict[str, list[float]] = {}
+        # Per-symbol VPIN calculators for toxicity filtering
+        self._vpin: dict[str, VPINCalculator] = {}
+        self._vpin_threshold: float = float(config.get("vpin_threshold", 0.7))
+        # Per-symbol OU estimators for dynamic thresholds
+        self._ou: dict[str, OUEstimator] = {}
+        self._ou_enabled: bool = bool(config.get("ou_enabled", False))
+        self._ou_lookback: int = int(config.get("ou_lookback", 60))
 
     # ------------------------------------------------------------------
     # Config
@@ -53,9 +62,7 @@ class MeanReversionProStrategy(BaseStrategy):
 
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
-        self.confluence_threshold: float = float(
-            config.get("confluence_threshold", 65.0)
-        )
+        self.confluence_threshold: float = float(config.get("confluence_threshold", 65.0))
         self.time_window_start: str = str(config.get("time_window_start", "09:35"))
         self.time_window_end: str = str(config.get("time_window_end", "15:30"))
         self.min_bars: int = int(config.get("min_bars", 30))
@@ -67,18 +74,10 @@ class MeanReversionProStrategy(BaseStrategy):
 
         # Tunable params (also settable via _optuna_overrides)
         overrides = config.get("_optuna_overrides", {})
-        self.vwap_dist_threshold = float(
-            overrides.get("vwap_dist_threshold", config.get("vwap_dist_threshold", 0.003))
-        )
-        self.bb_pos_threshold = float(
-            overrides.get("bb_pos_threshold", config.get("bb_pos_threshold", 0.3))
-        )
-        self.stop_atr_mult = float(
-            overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5))
-        )
-        self.max_hold_minutes = int(
-            overrides.get("max_hold_minutes", config.get("max_hold_minutes", 20))
-        )
+        self.vwap_dist_threshold = float(overrides.get("vwap_dist_threshold", config.get("vwap_dist_threshold", 0.003)))
+        self.bb_pos_threshold = float(overrides.get("bb_pos_threshold", config.get("bb_pos_threshold", 0.3)))
+        self.stop_atr_mult = float(overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5)))
+        self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 20)))
 
     # ------------------------------------------------------------------
     # Daily loss throttle
@@ -142,14 +141,18 @@ class MeanReversionProStrategy(BaseStrategy):
         self,
         vwap_dist: float,
         bb_pos: float,
+        vwap_threshold: float | None = None,
+        bb_threshold: float | None = None,
     ) -> OrderSide | None:
         """Determine trade direction from VWAP distance and BB position.
 
         Returns OrderSide.BUY, OrderSide.SELL, or None.
         """
-        if vwap_dist < -self.vwap_dist_threshold and bb_pos < -self.bb_pos_threshold:
+        vt = vwap_threshold if vwap_threshold is not None else self.vwap_dist_threshold
+        bt = bb_threshold if bb_threshold is not None else self.bb_pos_threshold
+        if vwap_dist < -vt and bb_pos < -bt:
             return OrderSide.BUY
-        if vwap_dist > self.vwap_dist_threshold and bb_pos > self.bb_pos_threshold:
+        if vwap_dist > vt and bb_pos > bt:
             return OrderSide.SELL
         return None
 
@@ -211,9 +214,7 @@ class MeanReversionProStrategy(BaseStrategy):
 
         # 4. Candle quality (weight 0.15)
         side_str = "buy" if side == OrderSide.BUY else "sell"
-        candle_score = score_candle_quality(
-            bar.open, bar.high, bar.low, bar.close, side_str
-        )
+        candle_score = score_candle_quality(bar.open, bar.high, bar.low, bar.close, side_str)
         scorer.add_factor(
             "candle_quality",
             raw_value=candle_score,
@@ -336,9 +337,7 @@ class MeanReversionProStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        if not time_utils.in_time_window_str(
-            bar.time, self.time_window_start, self.time_window_end
-        ):
+        if not time_utils.in_time_window_str(bar.time, self.time_window_start, self.time_window_end):
             return None
 
         if not self._regime_ok(market_state):
@@ -346,6 +345,19 @@ class MeanReversionProStrategy(BaseStrategy):
 
         # --- Daily loss throttle ---
         if not self._daily_throttle_ok(bar):
+            return None
+
+        # --- VPIN toxicity gate ---
+        if symbol not in self._vpin:
+            self._vpin[symbol] = VPINCalculator(logger=self.logger)
+        vpin_result = self._vpin[symbol].update(bar)
+        if vpin_result is not None and vpin_result.vpin > self._vpin_threshold:
+            self.logger.debug(
+                "mean_reversion_pro: VPIN toxic, skipping",
+                symbol=symbol,
+                vpin=round(vpin_result.vpin, 4),
+                threshold=self._vpin_threshold,
+            )
             return None
 
         # --- Multi-timeframe analysis ---
@@ -359,8 +371,20 @@ class MeanReversionProStrategy(BaseStrategy):
         if bb_pos is None:
             return None
 
+        # --- OU dynamic thresholds ---
+        dynamic_vwap_threshold = self.vwap_dist_threshold
+        dynamic_bb_threshold = self.bb_pos_threshold
+        ou_result: OUResult | None = None
+        if self._ou_enabled:
+            if symbol not in self._ou:
+                self._ou[symbol] = OUEstimator(lookback=self._ou_lookback)
+            ou_result = self._ou[symbol].update(vwap_dist)
+            if ou_result is not None:
+                dynamic_vwap_threshold = self.vwap_dist_threshold * ou_result.scaling_factor
+                dynamic_bb_threshold = self.bb_pos_threshold * ou_result.scaling_factor
+
         # --- Direction ---
-        side = self._detect_side(vwap_dist, bb_pos)
+        side = self._detect_side(vwap_dist, bb_pos, dynamic_vwap_threshold, dynamic_bb_threshold)
         if side is None:
             return None
 
@@ -404,6 +428,12 @@ class MeanReversionProStrategy(BaseStrategy):
         meta["vwap_distance"] = vwap_dist
         meta["bb_position"] = bb_pos
         meta["mr_alignment"] = mr_alignment
+        if vpin_result is not None:
+            meta["vpin_score"] = round(vpin_result.vpin, 4)
+        if self._ou_enabled and ou_result is not None:
+            meta["ou_theta"] = round(ou_result.theta, 4)
+            meta["ou_half_life"] = round(ou_result.half_life, 2)
+            meta["ou_scaling"] = round(ou_result.scaling_factor, 3)
 
         # --- Record cooldown ---
         self.last_signal_time[symbol] = bar.time

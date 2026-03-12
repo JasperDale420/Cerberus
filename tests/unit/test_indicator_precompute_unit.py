@@ -36,10 +36,16 @@ class TestComputeTFIndicators:
         result = compute_tf_indicators(highs, lows, closes, volumes, vwaps)
 
         expected_keys = {
-            "ema_9", "ema_20", "ema_50", "ema_200",
-            "rsi_2", "rsi_14",
-            "atr_14", "adx_14",
-            "bb_mean_20", "bb_std_20",
+            "ema_9",
+            "ema_20",
+            "ema_50",
+            "ema_200",
+            "rsi_2",
+            "rsi_14",
+            "atr_14",
+            "adx_14",
+            "bb_mean_20",
+            "bb_std_20",
             "vwap_distance",
         }
         assert expected_keys == set(result.keys())
@@ -63,7 +69,14 @@ class TestAggregateBars:
     def test_5m_aggregation(self):
         ts, opens, highs, lows, closes, volumes, vwaps = _make_1m_data(100)
         agg_ts, agg_o, agg_h, agg_l, agg_c, agg_v, agg_vw = aggregate_bars(
-            ts, opens, highs, lows, closes, volumes, vwaps, 5,
+            ts,
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            vwaps,
+            5,
         )
         # 100 1-min bars → 20 5-min bars
         assert len(agg_c) == 20
@@ -73,7 +86,14 @@ class TestAggregateBars:
     def test_15m_aggregation(self):
         ts, opens, highs, lows, closes, volumes, vwaps = _make_1m_data(150)
         agg_ts, agg_o, agg_h, agg_l, agg_c, agg_v, agg_vw = aggregate_bars(
-            ts, opens, highs, lows, closes, volumes, vwaps, 15,
+            ts,
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            vwaps,
+            15,
         )
         assert len(agg_c) == 10  # 150 / 15
 

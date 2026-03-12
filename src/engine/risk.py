@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 from src.config.models import RiskConfig, StrategyConfig
 from src.core.domain import MarketState, OrderIntent, OrderType, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.engine.cppi import CPPISizer
+from src.engine.cvar_sizer import CVaRSizer
 from src.engine.kelly import KellySizer
 
 
@@ -67,6 +69,17 @@ class RiskManager:
 
         # Kelly Criterion position sizer
         self.kelly_sizer = KellySizer(self.risk_cfg.kelly, self.logger)
+
+        # CPPI drawdown-controlled sizer
+        self.cppi_sizer = CPPISizer(config=self.risk_cfg.cppi, logger=self.logger)
+
+        # HRP cross-strategy allocator
+        from src.engine.hrp import HRPAllocator
+
+        self.hrp_allocator = HRPAllocator(config=self.risk_cfg.hrp, logger=self.logger)
+
+        # CVaR tail-risk sizer
+        self.cvar_sizer = CVaRSizer(config=self.risk_cfg.cvar, logger=self.logger)
 
     def _session_date_for(self, as_of: datetime) -> date:
         tz_name = str(self.raw_config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE)
@@ -178,12 +191,15 @@ class RiskManager:
             return effective_max_risk * 0.5
         return effective_max_risk
 
-    def _get_regime_multiplier(self, market_state: MarketState) -> float:
+    def _get_regime_multiplier(self, market_state: MarketState, strategy_name: Optional[str] = None) -> float:
         """
         Compute combined regime risk multiplier from multi-axis regime snapshot.
 
         Returns product of vol, liquidity, and risk axis multipliers.
         Returns 1.0 if no regime snapshot available.
+
+        If strategy_name is provided and the strategy has a non-linear convexity class,
+        antifragile per-class overrides are applied instead of the global defaults.
         """
         snapshot = market_state.regime_snapshot
         if snapshot is None:
@@ -201,8 +217,46 @@ class RiskManager:
         else:
             risk_mult = 1.0
 
-        combined = vol_mult * liq_mult * risk_mult
+        # Complexity axis from entropy overlay
+        complexity_mult = 1.0
+        if snapshot.complexity is not None:
+            complexity_mult = multipliers.get("complexity", {}).get(snapshot.complexity.value, 1.0)
+
+        combined = vol_mult * liq_mult * risk_mult * complexity_mult
+
+        # Antifragile: apply per-class overrides if strategy has a convexity class
+        if strategy_name:
+            convexity = self._get_convexity_class(strategy_name)
+            if convexity != "linear":
+                combined = self._apply_antifragile_overrides(combined, snapshot, convexity)
+
         return max(combined, 0.0)
+
+    def _get_convexity_class(self, strategy_name: str) -> str:
+        """Get the convexity class for a strategy. Defaults to 'linear'."""
+        strat_cfg = self._get_strategy_config(strategy_name)
+        if strat_cfg is None:
+            return "linear"
+        return getattr(strat_cfg, "convexity_class", "linear")
+
+    def _apply_antifragile_overrides(self, base_combined: float, snapshot, convexity: str) -> float:
+        """Apply antifragile per-class regime overrides to the base multiplier."""
+        overrides = self.risk_cfg.antifragile_overrides.get(convexity)
+        if not overrides:
+            return base_combined
+
+        # Compute the override multiplier from vol and risk axes
+        override_mult = 1.0
+
+        vol_overrides = overrides.get("vol", {})
+        if vol_overrides:
+            override_mult *= vol_overrides.get(snapshot.vol.value, 1.0)
+
+        risk_overrides = overrides.get("risk", {})
+        if risk_overrides and getattr(snapshot, "vol_symbol", None):
+            override_mult *= risk_overrides.get(snapshot.risk.value, 1.0)
+
+        return max(override_mult, 0.0)
 
     def _apply_strategy_limits(
         self,
@@ -327,7 +381,7 @@ class RiskManager:
 
         # PRD Addendum: Apply regime-based risk multiplier
         if market_state is not None:
-            regime_mult = self._get_regime_multiplier(market_state)
+            regime_mult = self._get_regime_multiplier(market_state, strategy_name=signal.strategy)
             if regime_mult < 1e-9:
                 self.last_rejection_reason = "REGIME_RISK_ZERO"
                 self.logger.info(
@@ -361,6 +415,61 @@ class RiskManager:
                         orig_qty=orig_qty,
                         adjusted_qty=qty,
                         regime_mult=round(regime_mult, 3),
+                    )
+
+        # CPPI drawdown-controlled sizing
+        if self.risk_cfg.cppi.enabled and qty > 0:
+            cppi_mult = self.cppi_sizer.get_cppi_multiplier()
+            if cppi_mult < 1.0:
+                orig_qty = qty
+                qty = max(1, int(qty * cppi_mult))
+                if qty != orig_qty:
+                    self.logger.debug(
+                        "Qty adjusted by CPPI",
+                        symbol=signal.symbol,
+                        orig_qty=orig_qty,
+                        adjusted_qty=qty,
+                        cppi_mult=round(cppi_mult, 3),
+                    )
+
+        # HRP cross-strategy allocation scaling
+        if self.risk_cfg.hrp.enabled and qty > 0:
+            hrp_weight = self.hrp_allocator.get_strategy_weight(signal.strategy)
+            # HRP weight represents capital allocation fraction relative to equal-weight
+            # If N strategies, equal weight = 1/N. HRP weight adjusts this.
+            # Scale qty proportionally: if HRP gives 2x the equal weight, double qty
+            n_strategies = max(len(self.risk_cfg.strategies), 1)
+            equal_weight = 1.0 / n_strategies
+            if equal_weight > 0:
+                hrp_scale = hrp_weight / equal_weight
+                hrp_scale = max(0.5, min(2.0, hrp_scale))  # Clamp scaling factor
+                if abs(hrp_scale - 1.0) > 0.01:
+                    orig_qty = qty
+                    qty = max(1, int(qty * hrp_scale))
+                    if qty != orig_qty:
+                        self.logger.debug(
+                            "Qty adjusted by HRP allocation",
+                            symbol=signal.symbol,
+                            strategy=signal.strategy,
+                            orig_qty=orig_qty,
+                            adjusted_qty=qty,
+                            hrp_weight=round(hrp_weight, 4),
+                            hrp_scale=round(hrp_scale, 3),
+                        )
+
+        # CVaR tail-risk sizing
+        if self.risk_cfg.cvar.enabled and qty > 0:
+            cvar_mult = self.cvar_sizer.get_cvar_multiplier()
+            if cvar_mult < 1.0:
+                orig_qty = qty
+                qty = max(1, int(qty * cvar_mult))
+                if qty != orig_qty:
+                    self.logger.debug(
+                        "Qty adjusted by CVaR tail risk",
+                        symbol=signal.symbol,
+                        orig_qty=orig_qty,
+                        adjusted_qty=qty,
+                        cvar_mult=round(cvar_mult, 3),
                     )
 
         return qty
@@ -579,12 +688,18 @@ class RiskManager:
             reason_code=self.last_rejection_reason,
         )
 
-    def update_pnl(self, pnl: float, *, as_of: Optional[datetime] = None) -> None:
+    def update_pnl(
+        self, pnl: float, *, as_of: Optional[datetime] = None, account_equity: Optional[float] = None
+    ) -> None:
         """
-        Updates the current daily PnL.
+        Updates the current daily PnL and CPPI equity tracker.
         """
         self._maybe_rollover(as_of)
         self.current_daily_pnl += pnl
+
+        # Update CPPI with current equity if provided
+        if self.risk_cfg.cppi.enabled and account_equity is not None:
+            self.cppi_sizer.update_equity(account_equity)
 
     def record_completed_trade(
         self,
@@ -601,3 +716,11 @@ class RiskManager:
         # Feed trade result to Kelly sizer for dynamic position sizing
         if pnl_net is not None:
             self.kelly_sizer.record_trade(strategy, pnl_net)
+
+        # Feed daily return to HRP for cross-strategy allocation
+        if self.risk_cfg.hrp.enabled and pnl_net is not None:
+            from datetime import date as date_type
+
+            trade_date = as_of.date() if as_of else date_type.today()
+            # Approximate daily return from PnL (HRP accumulates these)
+            self.hrp_allocator.record_daily_return(strategy, trade_date, pnl_net)

@@ -59,10 +59,7 @@ class CointegrationPairsStrategy(BaseStrategy):
         atr = float(symbol_state.meta.get("atr", bar.close * 0.02) or bar.close * 0.02)
 
         # Stop and Target distances
-        stop_dist = max(
-            (self.stop_z_threshold - self.entry_z_threshold) * (atr / 2.0),
-            atr
-        )
+        stop_dist = max((self.stop_z_threshold - self.entry_z_threshold) * (atr / 2.0), atr)
         target_dist = abs(z_score) * (atr / 2.0)
 
         if side == OrderSide.BUY:

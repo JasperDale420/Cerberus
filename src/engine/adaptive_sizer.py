@@ -139,9 +139,7 @@ class AdaptiveSizer:
         risk_pct = self._get_base_risk_pct(signal.strategy)
 
         # 2. Conviction multiplier
-        conviction_mult = self._get_conviction_multiplier(
-            confluence_score, confluence_threshold
-        )
+        conviction_mult = self._get_conviction_multiplier(confluence_score, confluence_threshold)
         if conviction_mult <= 0.0:
             return 0.0  # Below threshold -- do not trade
         risk_pct *= conviction_mult
@@ -166,9 +164,7 @@ class AdaptiveSizer:
             return float(override)
         return self.config.base_risk_pct
 
-    def _get_conviction_multiplier(
-        self, score: float | None, threshold: float
-    ) -> float:
+    def _get_conviction_multiplier(self, score: float | None, threshold: float) -> float:
         """Map a confluence score to a conviction multiplier.
 
         Linear interpolation between ``conviction_floor`` (at *threshold*) and
@@ -215,9 +211,7 @@ class AdaptiveSizer:
 
         correlated_count = 0
         for pos in open_positions:
-            if self._are_correlated(
-                signal.symbol, signal.strategy, pos.symbol, pos.strategy
-            ):
+            if self._are_correlated(signal.symbol, signal.strategy, pos.symbol, pos.strategy):
                 correlated_count += 1
 
         if correlated_count == 0:

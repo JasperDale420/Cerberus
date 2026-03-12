@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -456,7 +457,7 @@ class FeaturePipeline:
                     feat.extra[key] = val
 
                 composite = self.atlas_reader.get_composite_score(symbol, today)
-                if composite != 0.0 or scores:
+                if not math.isclose(composite, 0.0, abs_tol=1e-9) or scores:
                     feat.extra["atlas_composite"] = composite
             except Exception:
                 self.logger.debug(f"Atlas factor append failed for {symbol}", exc_info=True)

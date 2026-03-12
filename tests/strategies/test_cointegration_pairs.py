@@ -17,6 +17,7 @@ class MockFeatures:
 def logger():
     return StructuredLogger("TestCointegrationPairs")
 
+
 @pytest.fixture
 def strategy(logger):
     config = {
@@ -60,6 +61,7 @@ def test_cointegration_short_outperformer(strategy, sample_bar):
     # target_dist = 2.5 * (2.0/2) = 2.5
     assert signal.target_price == 100.5 - 2.5
 
+
 def test_cointegration_long_underperformer(strategy, sample_bar):
     market_state = MarketState(time=sample_bar.time, regime=None)
 
@@ -79,10 +81,11 @@ def test_cointegration_long_underperformer(strategy, sample_bar):
     assert signal.stop_price == 100.5 - 2.0
     assert signal.target_price == 100.5 + 2.5
 
+
 def test_cointegration_insufficient_deviation(strategy, sample_bar):
     market_state = MarketState(time=sample_bar.time, regime=None)
 
-    mock_features = MockFeatures(cluster_residual=1.5) # Below 2.0
+    mock_features = MockFeatures(cluster_residual=1.5)  # Below 2.0
 
     symbol_state = SymbolState("XOM")
     symbol_state.meta = {
