@@ -25,4 +25,3 @@ def test_requirements_include_pydantic_settings_runtime_dependency() -> None:
 
 def test_requirements_include_pyarrow_runtime_dependency() -> None:
     assert "pyarrow" in _requirement_names()
-
