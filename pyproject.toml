@@ -51,7 +51,10 @@ dev = [
 
 [tool.ruff]
 extend = "ruff-base.toml"
-# Exclude a variety of commonly ignored directories.
+# Exclude vendored third-party packages from linting.
+exclude = [
+    "unusualwhales_python_client-5.0.1",
+]
 
 line-length = 120
 

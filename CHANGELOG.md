@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Health check: dev dependencies not installed, test suite broken** (2026-03-13):
+  - Ran `uv sync --all-extras` to install dev dependencies (`pytest`, `pytest-asyncio`, `ruff`, etc.) which were missing from the virtualenv, causing all 109 test collection errors with `ModuleNotFoundError: No module named 'empire_core'`.
+  - Fixed `test_structured_logger_emits_json_with_extra_fields` in `tests/unit/test_structured_logger_unit.py`: switched from `capsys` to `caplog` fixture because pytest's log capture plugin intercepts stdlib logging records before they reach the stdout handler, making `capsys` unable to see the output.
+  - Added `__all__` to `src/core/logger.py` to declare the public re-export surface and fix five `F401` (unused import) ruff violations.
+  - Excluded `unusualwhales_python_client-5.0.1/` (vendored third-party package) from ruff linting in `pyproject.toml` to suppress 33 spurious `UP042`/`UP046` violations in library code we do not own.
+  - Result: 915 tests pass, 0 failures; ruff reports no violations.
+
 - **Ignore temp agent DB artifacts** (2026-03-10):
   - Added `.agents/tmp/**/*.db`, `.agents/tmp/**/*.db-journal`, and `.agents/tmp/**/*.db-wal` to `.gitignore`.
   - Removed committed temporary optimization/trial SQLite databases from `.agents/tmp/` so future runs do not accumulate in git history.
