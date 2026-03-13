@@ -66,6 +66,9 @@ class PositionManager:
     Best-effort, deterministic exit logic when stop/target are not broker-managed.
     """
 
+    def __init__(self, ledger_adapter: Optional[Any] = None) -> None:
+        self._ledger_adapter = ledger_adapter
+
     def _validate_fill(self, fill: Dict[str, Any]) -> Optional[str]:
         """
         Validate fill event data for safety and correctness.
@@ -343,6 +346,23 @@ class PositionManager:
         # H1 fix: Mark position as updated to prevent reconciliation races
         symbol_state.position.last_updated = datetime.now(timezone.utc)
 
+        # Record trade open in ledger (best-effort)
+        if self._ledger_adapter is not None:
+            try:
+                self._ledger_adapter.on_trade_opened(
+                    symbol=fill_data["symbol"],
+                    side=fill_data["side"],
+                    qty=fill_data["qty"],
+                    entry_price=fill_data["price"],
+                    entry_time=symbol_state.position.entry_time or fill_data["timestamp"],
+                    strategy=str(strategy),
+                    correlation_id=fill_data["correlation_id"],
+                    regime_tags=(market_state.regime_snapshot.regime_tags if market_state.regime_snapshot else None),
+                    initial_risk=symbol_state.position.open_risk,
+                )
+            except Exception:
+                _logger.debug("Ledger open_trade call failed", exc_info=True)
+
         return FillDecision(
             event="opened",
             realized_pnl_delta=0.0,
@@ -488,6 +508,14 @@ class PositionManager:
         # Position fully closed
         closed = self._build_closed_trade_info(pos, fill_data, market_state, pnl, close_qty)
         symbol_state.position = None
+
+        # Record trade close in ledger (best-effort)
+        if self._ledger_adapter is not None:
+            try:
+                self._ledger_adapter.on_trade_closed(closed)
+            except Exception:
+                _logger.debug("Ledger close_trade call failed", exc_info=True)
+
         return FillDecision(
             event="closed",
             realized_pnl_delta=float(pnl),

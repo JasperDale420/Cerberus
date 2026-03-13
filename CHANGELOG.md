@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Ledger Adapter**: Added `CerberusLedgerAdapter` (`src/core/ledger_adapter.py`) to record all trade opens and closes in the unified empire-core ledger. Maps Cerberus-specific fields (regime tags, R-multiples, MAE/MFE, features) to the standardized ledger schema. Back-fills open records for trades that started before the adapter was initialized. Integrated into `PositionManager` with best-effort try/except so ledger failures never interrupt trading.
+
 ### Removed
 
 - **Scanner Profiles**: Deleted `src/scanner/profiles.py` and all ScannerProfile classes (VWAPReversion, ORB, GapFill, FlowMomentum, TrendPullback, FailedBreakout, VWAPTrendRider, IndexMeanReversion, VixSpikeFade, MomentumContinuation). Profiles were bypassed by `strategy_routing` config — all validated symbols received the same regime-routed strategies regardless of profile scoring. Scanner pipeline simplified from 7 stages to 5 stages: universe → technicals+validation → flow+ranking → watchlist. Strategies are now assigned purely via `strategy_routing` config per regime. ~200 lines of dead/bypassed code removed.
