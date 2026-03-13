@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **UnifiedDataClient (REST)**: Added `src/data/client.py` with `UnifiedDataClient` class providing all REST methods for Data-Gateway communication. Replaces `CentralApiClient` with a cleaner interface: retry logic (429/5xx with exponential backoff, immediate raise on 401/403), bar/trade normalization, order management, screener endpoints, and computed helpers (`get_prior_day_stats`, `get_avg_daily_volume`). WebSocket URL computed and stored for future streaming support. 37 unit tests in `tests/data/test_unified_client_rest.py`.
+
 - **DataRequirements dataclass**: Added `src/data/requirements.py` with `DataRequirements` dataclass and `aggregate_requirements()` function for strategies to declare needed data feeds (bars, quotes, trades streams and on-scan REST fetches like flow/gex). Part of the unified data client migration.
+
+- **Strategy data_requirements declarations**: Added `data_requirements` class attribute to `BaseStrategy` (default: bars stream only) and overrides on all 12 strategies that need non-default feeds. Strategies now declare their WebSocket streams (bars/quotes/trades) and on-scan REST fetches (flow/gex/prior_day) so the engine can auto-subscribe to the right data.
 
 - **Ledger Adapter**: Added `CerberusLedgerAdapter` (`src/core/ledger_adapter.py`) to record all trade opens and closes in the unified empire-core ledger. Maps Cerberus-specific fields (regime tags, R-multiples, MAE/MFE, features) to the standardized ledger schema. Back-fills open records for trades that started before the adapter was initialized. Integrated into `PositionManager` with best-effort try/except so ledger failures never interrupt trading.
 
