@@ -16,6 +16,7 @@ from src.core.domain import (
 )
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -30,6 +31,7 @@ class ORBV2Strategy(BaseStrategy):
     gap alignment, and confluence scoring."""
 
     name: str = "orb_v2"
+    data_requirements = DataRequirements(streams=["bars"], on_scan=["prior_day"])
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)

@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import FusionStrategyConfig
 
@@ -23,6 +24,7 @@ class FusionStrategyV1(BaseStrategy):
     """
 
     name = "fusion_v1"
+    data_requirements = DataRequirements(streams=["bars", "quotes"], on_scan=["flow", "gex"])
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)

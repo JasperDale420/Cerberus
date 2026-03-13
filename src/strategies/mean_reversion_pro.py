@@ -18,6 +18,7 @@ from src.core.domain import (
 )
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -42,6 +43,7 @@ class MeanReversionProStrategy(BaseStrategy):
     """
 
     name: str = "mean_reversion_pro"
+    data_requirements = DataRequirements(streams=["bars", "quotes"], on_scan=["flow", "prior_day"])
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)

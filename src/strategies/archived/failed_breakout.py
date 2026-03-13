@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import FailedBreakoutConfig
 
@@ -13,6 +14,7 @@ class FailedBreakoutStrategy(BaseStrategy):
     """
 
     name = "failed_breakout"
+    data_requirements = DataRequirements(streams=["bars"], on_scan=["prior_day"])
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)

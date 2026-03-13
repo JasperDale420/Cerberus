@@ -9,6 +9,7 @@ from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import VWAPReversionConfig
 
@@ -17,6 +18,7 @@ class VWAPReversionStrategy(BaseStrategy):
     """VWAP Reversion (Mean Reversion off VWAP Bands)."""
 
     name: str = "vwap_reversion"
+    data_requirements = DataRequirements(streams=["bars", "quotes"], on_scan=["flow"])
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)

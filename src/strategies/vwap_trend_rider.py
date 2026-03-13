@@ -5,6 +5,7 @@ from src.core import time_utils
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
+from src.data.requirements import DataRequirements
 from src.strategies.base import BaseStrategy
 from src.strategies.config_models import VWAPTrendRiderConfig
 
@@ -16,6 +17,7 @@ class VWAPTrendRiderStrategy(BaseStrategy):
     """
 
     name = "vwap_trend_rider"
+    data_requirements = DataRequirements(streams=["bars"], on_scan=["flow"])
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)

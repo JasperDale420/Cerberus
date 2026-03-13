@@ -4,10 +4,12 @@ from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime
 from src.core.logger import StructuredLogger
+from src.data.requirements import DataRequirements
 
 
 class BaseStrategy(ABC):
     name: str = "base"
+    data_requirements: DataRequirements = DataRequirements()  # default: bars stream only
 
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         self.config = config
