@@ -194,7 +194,7 @@ class ExecutionEngine:
         except Exception:
             self._inc_error("execution")
 
-    def _get_cached_indicator_periods(self, state: SymbolState) -> Dict[str, set[int]]:
+    def _get_cached_indicator_periods(self, state: SymbolState) -> Dict[str, Tuple[int, ...]]:
         """
         Cache indicator period discovery per symbol state.
 
@@ -205,8 +205,15 @@ class ExecutionEngine:
         if not isinstance(state.meta, dict):
             state.meta = {}
 
-        # Normalize ordering so equivalent allowed-strategy lists share one cache entry.
-        strategy_key = tuple(sorted(str(s) for s in (getattr(state, "allowed_strategies", []) or [])))
+        raw_strategy_key = tuple(str(s) for s in (getattr(state, "allowed_strategies", []) or []))
+        cached_raw_strategy_key = state.meta.get("_indicator_periods_raw_strategy_key")
+        strategy_key = state.meta.get("_indicator_periods_strategy_key")
+        if cached_raw_strategy_key != raw_strategy_key or not isinstance(strategy_key, tuple):
+            # Hot-path optimization: only normalize/sort strategies when routing actually changes.
+            strategy_key = tuple(sorted(raw_strategy_key))
+            state.meta["_indicator_periods_raw_strategy_key"] = raw_strategy_key
+            state.meta["_indicator_periods_strategy_key"] = strategy_key
+
         cache_key = (strategy_key, self._indicator_periods_config_version)
         cached_key = state.meta.get("_indicator_periods_cache_key")
         cached_periods = state.meta.get("_indicator_periods")
@@ -218,12 +225,16 @@ class ExecutionEngine:
         state.meta["_indicator_periods"] = periods
         return periods
 
-    def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set[int]]:
-        """Collect required indicator periods from enabled strategies."""
+    def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, Tuple[int, ...]]:
+        """
+        Collect required indicator periods from enabled strategies.
+
+        Returns sorted positive tuples so bar updates can iterate directly without re-sorting.
+        """
         strategies = list(getattr(state, "allowed_strategies", []) or [])
         strat_cfgs = self.config.get("strategies") if isinstance(self.config.get("strategies"), dict) else {}
 
-        periods: Dict[str, set[int]] = {
+        periods: Dict[str, Set[int]] = {
             "ema": set(),
             "rsi": set(),
             "vol_sma": set(),
@@ -244,13 +255,13 @@ class ExecutionEngine:
             if s == "index_mean_reversion":
                 periods["bb"].add(int(cfg.get("bb_len", 20)))
 
-        return periods
+        return {name: tuple(sorted(x for x in values if x > 0)) for name, values in periods.items()}
 
-    def _update_ema_indicators(self, state: SymbolState, close: float, periods: set) -> None:
+    def _update_ema_indicators(self, state: SymbolState, close: float, periods: Tuple[int, ...]) -> None:
         """Update EMA indicators for given periods."""
         from src.core.indicators import RollingEMA
 
-        for p in sorted(x for x in periods if x > 0):
+        for p in periods:
             key = f"_ema_close_obj:{p}"
             obj = state.indicators.get(key)
             if not isinstance(obj, RollingEMA):
@@ -261,11 +272,11 @@ class ExecutionEngine:
             state.indicators[f"ema_close:{p}:prev"] = prev
             state.indicators[f"ema_close:{p}"] = val
 
-    def _update_rsi_indicators(self, state: SymbolState, close: float, periods: set) -> None:
+    def _update_rsi_indicators(self, state: SymbolState, close: float, periods: Tuple[int, ...]) -> None:
         """Update RSI indicators for given periods."""
         from src.core.indicators import RollingRSI
 
-        for p in sorted(x for x in periods if x > 0):
+        for p in periods:
             key = f"_rsi_obj:{p}"
             obj = state.indicators.get(key)
             if not isinstance(obj, RollingRSI):
@@ -276,11 +287,11 @@ class ExecutionEngine:
             state.indicators[f"rsi:{p}:prev"] = prev
             state.indicators[f"rsi:{p}"] = rsi_val
 
-    def _update_vol_sma_indicators(self, state: SymbolState, volume: float, periods: set) -> None:
+    def _update_vol_sma_indicators(self, state: SymbolState, volume: float, periods: Tuple[int, ...]) -> None:
         """Update volume SMA indicators for given periods."""
         from src.core.indicators import RollingSMA
 
-        for p in sorted(x for x in periods if x > 0):
+        for p in periods:
             key = f"_sma_vol_obj:{p}"
             obj = state.indicators.get(key)
             if not isinstance(obj, RollingSMA):
@@ -291,11 +302,11 @@ class ExecutionEngine:
             state.indicators[f"sma_vol:{p}:prev"] = prev
             state.indicators[f"sma_vol:{p}"] = val
 
-    def _update_bb_indicators(self, state: SymbolState, close: float, periods: set) -> None:
+    def _update_bb_indicators(self, state: SymbolState, close: float, periods: Tuple[int, ...]) -> None:
         """Update Bollinger Band indicators for given periods."""
         from src.core.indicators import RollingStd
 
-        for p in sorted(x for x in periods if x > 0):
+        for p in periods:
             key = f"_std_close_obj:{p}"
             obj = state.indicators.get(key)
             if not isinstance(obj, RollingStd):

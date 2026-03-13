@@ -26,6 +26,7 @@ dependencies = [
     "pytz>=2025.2",
     "statsmodels>=0.14",
     "structlog>=24.1.0",
+    "tenacity>=8.0",
 ]
 
 [project.optional-dependencies]

@@ -462,3 +462,45 @@ def test_indicator_period_cache_invalidates_when_allowed_strategies_change() -> 
     engine._update_indicator_cache(state, bar)
 
     assert calls == 2
+
+
+@pytest.mark.unit
+def test_indicator_period_cache_avoids_resorting_on_cache_hits(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = ExecutionEngine(
+        config={
+            "strategies": {
+                "trend_pullback": {"ema_fast": 8, "ema_slow": 21, "rsi_len": 2},
+            }
+        },
+        logger=_logger("test_exec_indicator_period_no_resort"),
+        alpaca_client=None,
+        db=None,
+    )
+    state = SymbolState(
+        symbol="AAPL",
+        bars=deque(maxlen=100),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=["trend_pullback"],
+        meta={},
+    )
+    bar = Bar(symbol="AAPL", time=datetime(2025, 1, 1, tzinfo=timezone.utc), open=1, high=1, low=1, close=1, volume=1)
+
+    # Warm cache entry once so the next call exercises cache-hit behavior.
+    engine._update_indicator_cache(state, bar)
+
+    import src.engine.execution as execution_module
+
+    sorted_calls = 0
+    real_sorted = sorted
+
+    def _spy_sorted(*args: Any, **kwargs: Any):
+        nonlocal sorted_calls
+        sorted_calls += 1
+        return real_sorted(*args, **kwargs)
+
+    monkeypatch.setattr(execution_module, "sorted", _spy_sorted, raising=False)
+    engine._update_indicator_cache(state, bar)
+
+    assert sorted_calls == 0
