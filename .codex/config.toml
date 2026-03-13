@@ -19,4 +19,4 @@ web_search = "live"
 
 # Environment-specific settings
 # [env]
-# ANTHROPIC_API_KEY = "your-local-key"
+# ANTHROPIC_API_KEY = "your-local-key"  # pragma: allowlist secret
