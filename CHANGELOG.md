@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **DataRequirements dataclass**: Added `src/data/requirements.py` with `DataRequirements` dataclass and `aggregate_requirements()` function for strategies to declare needed data feeds (bars, quotes, trades streams and on-scan REST fetches like flow/gex). Part of the unified data client migration.
+
 - **Ledger Adapter**: Added `CerberusLedgerAdapter` (`src/core/ledger_adapter.py`) to record all trade opens and closes in the unified empire-core ledger. Maps Cerberus-specific fields (regime tags, R-multiples, MAE/MFE, features) to the standardized ledger schema. Back-fills open records for trades that started before the adapter was initialized. Integrated into `PositionManager` with best-effort try/except so ledger failures never interrupt trading.
 
 ### Removed
