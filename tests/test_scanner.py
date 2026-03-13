@@ -5,7 +5,6 @@ import pytest
 
 from src.core.domain import SymbolFeatures
 from src.scanner.core import Scanner
-from src.scanner.profiles import VWAPReversionProfile
 
 
 def create_features(symbol, price=100.0, volume=100000.0):
@@ -39,47 +38,47 @@ def create_features(symbol, price=100.0, volume=100000.0):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_scanner_flow():
-    # Mocks
+    """Scanner assigns strategies from strategy_routing config by regime."""
     mock_universe = MagicMock()
     mock_universe.get_universe.return_value = ["AAPL", "TSLA"]
 
     mock_pipeline = MagicMock()
-    # Mock features return (Stage 1 technicals)
     mock_features = {
         "AAPL": create_features("AAPL", price=150.0, volume=200000),
-        "TSLA": create_features("TSLA", price=200.0, volume=50000),  # Low volume
+        "TSLA": create_features("TSLA", price=200.0, volume=50000),
     }
     mock_pipeline.compute_technicals_only = AsyncMock(return_value=mock_features)
     mock_pipeline.append_flow_features = AsyncMock(return_value=mock_features)
 
     mock_logger = MagicMock()
 
-    # Init Scanner
-    scanner = Scanner(mock_universe, mock_pipeline, mock_logger)
+    config = {
+        "strategy_routing": {
+            "chop": ["vwap_reversion", "failed_breakout", "index_mean_reversion", "gap_fill"],
+        },
+    }
 
-    # Run scan
+    scanner = Scanner(mock_universe, mock_pipeline, mock_logger, config=config)
     results = await scanner.scan(scan_time=datetime.now(timezone.utc))
 
-    # Verify
-    # TSLA might match other profiles added recently (e.g. GapFill), so allow len >= 1
-    # Check that AAPL is matched and has VWAP strategy
+    # Both symbols should be in the watchlist (no profile filtering)
     matched_symbols = [s.symbol for s in results.watchlist]
     assert "AAPL" in matched_symbols
+    assert "TSLA" in matched_symbols
 
+    # All symbols get the regime's strategies
     aapl_res = next(s for s in results.watchlist if s.symbol == "AAPL")
     assert "vwap_reversion" in aapl_res.strategies
+    assert "failed_breakout" in aapl_res.strategies
+    assert "index_mean_reversion" in aapl_res.strategies
+    assert "gap_fill" in aapl_res.strategies
 
-    # Verify calls
+    # Universe and pipeline called correctly
     mock_universe.get_universe.assert_called_once()
-    # Determinism: scan_time is passed through as_of
     assert mock_pipeline.compute_technicals_only.call_count == 1
     args, kwargs = mock_pipeline.compute_technicals_only.call_args
     assert args[0] == ["AAPL", "TSLA"]
     assert kwargs.get("as_of") is not None
-
-    # Verify Stage 2 called for survivors
-    # AAPL passed valid price/vol filters; TSLA also passed?
-    # min_volume default 0.0, so both pass baseline.
     assert mock_pipeline.append_flow_features.call_count == 1
 
 
@@ -116,17 +115,20 @@ async def test_scanner_feature_pipeline_failure_fails_open() -> None:
 
 
 @pytest.mark.unit
-def test_vwap_profile():
-    profile = VWAPReversionProfile(min_price=10.0, min_volume=1000)
+@pytest.mark.asyncio
+async def test_scanner_empty_routing_produces_empty_strategies():
+    """When strategy_routing has no entry for the regime, watchlist symbols get no strategies."""
+    mock_universe = MagicMock()
+    mock_universe.get_universe.return_value = ["AAPL"]
 
-    # Pass
-    f1 = create_features("A", price=15.0, volume=2000)
-    assert profile.filter(f1) is True
+    mock_pipeline = MagicMock()
+    mock_features = {"AAPL": create_features("AAPL", price=150.0, volume=200000)}
+    mock_pipeline.compute_technicals_only = AsyncMock(return_value=mock_features)
+    mock_pipeline.append_flow_features = AsyncMock(return_value=mock_features)
 
-    # Fail Price
-    f2 = create_features("B", price=5.0, volume=2000)
-    assert profile.filter(f2) is False
+    scanner = Scanner(mock_universe, mock_pipeline, MagicMock(), config={})
+    results = await scanner.scan(scan_time=datetime.now(timezone.utc))
 
-    # Fail Volume
-    f3 = create_features("C", price=15.0, volume=500)
-    assert profile.filter(f3) is False
+    assert len(results.watchlist) == 1
+    assert results.watchlist[0].symbol == "AAPL"
+    assert results.watchlist[0].strategies == []

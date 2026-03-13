@@ -2,37 +2,27 @@
 Scanner - Universe selection and symbol filtering.
 
 This package implements dynamic watchlist construction based on real-time
-unusual options flow data and configurable filters for tradability.
+market data and configurable filters for tradability.
 
 Components:
-    - Scanner: Main scanner orchestrating filters and ranking
-    - Filters: Volume, price range, volatility, and flow-based filters
-    - Ranking: Prioritization logic for most attractive symbols
+    - Scanner: Main scanner orchestrating universe selection, validation, and ranking
+    - UniverseBuilder: 3-tier symbol selection (explicit + static + dynamic volume)
+    - DataValidator: Baseline price/volume/ATR filters
+    - RankingEngine: Cross-sectional alpha scoring
+    - PairScanner: Cointegration-based pair discovery
+    - StreamingScanner: Real-time OFI/TFI microstructure updates
 
 Scanner Workflow:
-    1. Fetch unusual options flow from Unusual Whales API
-    2. Apply filters (volume > threshold, price in range, etc.)
-    3. Rank symbols by flow strength and other criteria
-    4. Return top N symbols as ScanResult for watchlist
-
-Filters:
-    - Minimum volume: Ensure liquidity for execution
-    - Price range: Avoid penny stocks and ultra-expensive stocks
-    - Volatility: Filter out low-volatility symbols
-    - Flow strength: Prioritize strong unusual options activity
-    - Existing positions: Optionally exclude already-held symbols
+    1. Build universe (explicit symbols + static files + dynamic volume)
+    2. Fetch technicals and apply data validation filters
+    3. Fetch flow data and rank symbols cross-sectionally
+    4. Assign strategies via strategy_routing config by regime
+    5. Build watchlist sorted by AlphaScore
 
 Configuration (config.yaml):
-    - scanner_interval: How often to refresh (bars)
-    - max_watchlist_size: Maximum symbols in watchlist
-    - filters: Volume, price, ATR thresholds
-    - ranking: Weights for flow vs momentum vs volatility
-
-Key Concepts:
-    - Scanner runs periodically (not every bar) for performance
-    - Results cached to avoid redundant API calls
-    - Watchlist can change intraday based on flow updates
-    - PRD 6.3: Scanner integration with execution engine
+    - scanner: interval, max_watchlist_size, validation thresholds
+    - universe: explicit symbols, static files, dynamic volume sources
+    - strategy_routing: per-regime strategy assignments
 
 See Also:
     - src.engine: ExecutionEngine consumes ScanResult

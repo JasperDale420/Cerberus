@@ -1,4 +1,3 @@
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,24 +7,12 @@ from src.core.domain import (
     Bar,
     Regime,
     ScanResult,
-    StrategyCandidate,
     SymbolFeatures,
     WatchlistSymbol,
 )
 from src.core.logger import StructuredLogger
 from src.data.pipeline import FeaturePipeline
 from src.scanner.pair_scanner import PairScanner
-from src.scanner.profiles import (
-    FailedBreakoutProfile,
-    FlowMomentumProfile,
-    GapProfile,
-    IndexMeanReversionProfile,
-    ORBScannerProfile,
-    ScannerProfile,
-    TrendPullbackProfile,
-    VWAPReversionProfile,
-    VWAPTrendRiderProfile,
-)
 from src.scanner.ranking import RankingEngine
 from src.scanner.universe import UniverseBuilder
 
@@ -49,7 +36,6 @@ class Scanner:
         feature_pipeline: FeaturePipeline,
         logger: StructuredLogger,
         config: Optional[Dict[str, Any]] = None,
-        strategy_profiles: Optional[Dict[str, ScannerProfile]] = None,
     ):
         self.universe_builder = universe_builder
         self.feature_pipeline = feature_pipeline
@@ -58,11 +44,6 @@ class Scanner:
         from src.scanner.validation import DataValidator
 
         self.validator = DataValidator(logger)
-
-        # P4: Initialize profiles from config or use defaults
-        self.profiles: Dict[str, ScannerProfile] = (
-            strategy_profiles if strategy_profiles is not None else self._build_profiles_from_config()
-        )
         self.ranking_engine = RankingEngine(logger)
 
         # Initialize Pair trading config and engine
@@ -94,64 +75,6 @@ class Scanner:
             self._cache_maxsize = int(scanner_cfg.get("feature_cache_maxsize", 1000))
         except (TypeError, ValueError):
             self._cache_maxsize = 1000
-
-    def _build_profiles_from_config(self) -> Dict[str, ScannerProfile]:
-        """
-        P4 fix: Build scanner profiles with configurable thresholds.
-
-        Config format (under scanner.profiles):
-            vwap_reversion:
-                min_price: 15.0
-                min_volume: 100000
-                min_sigma: 2.5
-            orb:
-                min_gap_pct: 0.02
-                min_price: 20.0
-        """
-        profile_cfg = self.config.get("scanner", {}).get("profiles", {})
-        if not isinstance(profile_cfg, dict):
-            profile_cfg = {}
-
-        def _get(name: str, key: str, default: float) -> float:
-            cfg = profile_cfg.get(name, {})
-            if not isinstance(cfg, dict):
-                return default
-            try:
-                return float(cfg.get(key, default))
-            except (TypeError, ValueError):
-                return default
-
-        return {
-            "vwap_reversion": VWAPReversionProfile(
-                min_price=_get("vwap_reversion", "min_price", 10.0),
-                min_volume=_get("vwap_reversion", "min_volume", 0.0),
-                min_sigma=_get("vwap_reversion", "min_sigma", 2.0),
-            ),
-            "orb": ORBScannerProfile(
-                min_gap_pct=_get("orb", "min_gap_pct", 0.01),
-                min_price=_get("orb", "min_price", 10.0),
-            ),
-            "trend_pullback": TrendPullbackProfile(
-                min_adx=_get("trend_pullback", "min_adx", 25.0),
-                max_dist_ema20=_get("trend_pullback", "max_dist_ema20", 0.02),
-            ),
-            "failed_breakout": FailedBreakoutProfile(
-                proximity_pct=_get("failed_breakout", "proximity_pct", 0.02),
-            ),
-            "vwap_trend_rider": VWAPTrendRiderProfile(
-                min_adx=_get("vwap_trend_rider", "min_adx", 20.0),
-            ),
-            "index_mean_reversion": IndexMeanReversionProfile(
-                min_sigma=_get("index_mean_reversion", "min_sigma", 2.0),
-            ),
-            "flow_momentum": FlowMomentumProfile(
-                min_flow_zscore=_get("flow_momentum", "min_flow_zscore", 2.5),
-            ),
-            "gap_fill": GapProfile(
-                min_gap=_get("gap_fill", "min_gap", 0.015),
-                max_gap=_get("gap_fill", "max_gap", 0.10),
-            ),
-        }
 
     async def scan(self, regime: Regime = Regime.CHOP, scan_time: Optional[datetime] = None) -> ScanResult:
         """
@@ -187,12 +110,8 @@ class Scanner:
         if survivors:
             self.ranking_engine.rank_symbols(list(survivors.values()))
 
-        # Stage 5: Score Strategies
-        candidates = self._score_strategies(survivors, regime)
-
-        # Stage 6: Build Watchlist
+        # Stage 5: Build Watchlist (strategies assigned via strategy_routing config)
         watchlist = self._build_watchlist(
-            candidates,
             universe_size,
             features_returned,
             baseline_filtered,
@@ -332,88 +251,31 @@ class Scanner:
                 error=str(e),
             )
 
-    def _score_strategies(self, survivors: Dict[str, SymbolFeatures], regime: Regime) -> List[StrategyCandidate]:
-        candidates = []
-        for symbol, features in survivors.items():
-            if not isinstance(features, SymbolFeatures):
-                continue
-            for strat_name, profile in self.profiles.items():
-                if profile.filter(features):
-                    score = float(profile.score(features, regime))
-                    candidates.append(
-                        StrategyCandidate(
-                            symbol=symbol,
-                            strategy=strat_name,
-                            score=score,
-                            features=features,
-                        )
-                    )
-        return candidates
-
     def _build_watchlist(
         self,
-        candidates: List[StrategyCandidate],
         universe_size: int,
         features_returned: int,
         baseline_filtered: int,
         survivors: Dict[str, SymbolFeatures],
         regime: Regime,
     ) -> List[WatchlistSymbol]:
+        """Build the watchlist with strategies assigned via strategy_routing config."""
         scanner_cfg = (self.config.get("scanner") or {}) if isinstance(self.config, dict) else {}
-        top_k = int(scanner_cfg.get("top_k_per_strategy", 10))
 
-        # Group by strategy and prune
-        by_viz: Dict[str, List[StrategyCandidate]] = defaultdict(list)
-        for c in candidates:
-            by_viz[c.strategy].append(c)
-
-        pruned = []
-        for cands in by_viz.values():
-            cands_sorted = sorted(cands, key=lambda c: (-c.score, c.symbol))
-            pruned.extend(cands_sorted[: max(0, top_k)])
-
-        # Group by symbol
-        by_symbol: Dict[str, Tuple[float, List[str], Any]] = {}
-
-        # Add global strategies from routing for the current regime
+        # Resolve strategies for the current regime from routing config
         routing_cfg = self.config.get("strategy_routing", {})
         regime_key = regime.value if hasattr(regime, "value") else str(regime)
-        global_strategies = list(routing_cfg.get(regime_key, []))
+        regime_strategies = list(routing_cfg.get(regime_key, []))
 
-        for c in pruned:
-            if c.symbol not in by_symbol:
-                # Merge profile-selected strategies with global strategies
-                strats = list(set(global_strategies + [c.strategy]))
-                by_symbol[c.symbol] = (c.score, strats, c.features)
-            else:
-                best, strategies, feats = by_symbol[c.symbol]
-                if c.strategy not in strategies:
-                    strategies.append(c.strategy)
-                by_symbol[c.symbol] = (max(best, c.score), strategies, feats)
-
-        # Handle case where some symbols passed baseline but had no profile matches
-        # We still want to add them if global strategies (like fusion_v1) are enabled
-        potential_symbols = set()
-        for c in candidates:
-            potential_symbols.add(c.symbol)
-
-        # If we have global strategies, ensure baseline-passing symbols are considered
-        # even if they didn't match a specific 'profile' (Stage 4)
-        if global_strategies:
-            for sym, feats in survivors.items():
-                if sym not in by_symbol:
-                    # Give them a baseline score (relative_strength or 0)
-                    score = float(getattr(feats, "relative_strength", 0.0))
-                    by_symbol[sym] = (score, list(global_strategies), feats)
-
+        # Build watchlist: assign regime-routed strategies to all validated symbols
         watchlist_all = [
             WatchlistSymbol(
                 symbol=sym,
-                score=float(score),
-                strategies=sorted(strats),
+                score=float(getattr(feats, "relative_strength", 0.0)),
+                strategies=list(regime_strategies),
                 features=feats,
             )
-            for sym, (score, strats, feats) in by_symbol.items()
+            for sym, feats in survivors.items()
         ]
 
         # Apply Top-N Alpha Rank gating if enabled
@@ -426,7 +288,7 @@ class Scanner:
                 remaining=len(watchlist_all),
             )
 
-        # Sort by AlphaScore descending (falling back to strategy score)
+        # Sort by AlphaScore descending (falling back to relative strength)
         watchlist = sorted(
             watchlist_all,
             key=lambda w: (
@@ -436,16 +298,14 @@ class Scanner:
             ),
         )
 
-        # M3 fix: Configurable watchlist size with documented default
-        # PRD recommends max 30 symbols for manageable tracking; larger values may impact performance
+        # Configurable watchlist size with hard safety cap
         max_size = int(scanner_cfg.get("max_watchlist_size", 30))
-        default_cap = 50  # Hard cap for safety
+        default_cap = 50
         if max_size > default_cap:
             self.logger.warning(
                 "Clamping watchlist size to safety cap",
                 requested=max_size,
                 clamped=default_cap,
-                hint="PRD recommends 30 or fewer symbols for manageable tracking",
             )
             max_size = default_cap
 
@@ -459,6 +319,7 @@ class Scanner:
             universe_size=universe_size,
             features_returned=features_returned,
             baseline_filtered=baseline_filtered,
+            regime_strategies=regime_strategies,
             feature_pipeline_metrics=getattr(self.feature_pipeline, "last_run_metrics", {}),
         )
         return watchlist

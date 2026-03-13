@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Scanner Profiles**: Deleted `src/scanner/profiles.py` and all ScannerProfile classes (VWAPReversion, ORB, GapFill, FlowMomentum, TrendPullback, FailedBreakout, VWAPTrendRider, IndexMeanReversion, VixSpikeFade, MomentumContinuation). Profiles were bypassed by `strategy_routing` config — all validated symbols received the same regime-routed strategies regardless of profile scoring. Scanner pipeline simplified from 7 stages to 5 stages: universe → technicals+validation → flow+ranking → watchlist. Strategies are now assigned purely via `strategy_routing` config per regime. ~200 lines of dead/bypassed code removed.
+
 ### Fixed
 
 - **Health check: dev dependencies not installed, test suite broken** (2026-03-13):
