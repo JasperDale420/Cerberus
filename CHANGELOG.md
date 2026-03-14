@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **ExecutionEngine gateway_client and alpaca_client dependencies**: Removed direct `AlpacaClient` and `GatewayStreamClient` imports, constructor parameters, and instance variables from `ExecutionEngine`. Subscription management now uses an `on_subscription_change` callback. Flatten/reconciliation uses an optional `broker_client` attribute (set externally). Order execution already routed through `order_executor` (set by `main.py`).
+
 - **Legacy/dual/gateway backend mode settings**: Removed `cerberus_data_backend`, `cerberus_storage_backend`, `cerberus_dual_read_compare`, and `cerberus_failover_to_legacy` fields from Settings. Removed `use_gateway_data` and `use_heber_storage` properties. Simplified `validate_startup_mode()` to only check that `CERBERUS_GATEWAY_KEY` is set. All data now flows exclusively through Data-Gateway via UnifiedDataClient.
 
 ### Changed

@@ -59,7 +59,6 @@ def test_execution_engine_routing_excludes_disabled_strategy_regime_pair() -> No
                 meta={},
             )
 
-    alp = _FakeAlpacaClient()
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {
         "index_symbol": "SPY",
@@ -69,7 +68,6 @@ def test_execution_engine_routing_excludes_disabled_strategy_regime_pair() -> No
     engine = ExecutionEngine(
         config=cfg,
         logger=_logger("test_exec_disabled_routing"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: now,
     )
     strat = _S({}, _logger("test_exec_disabled_routing_strat"))
@@ -173,11 +171,9 @@ def _watch(symbol: str, strategies: Optional[List[str]] = None) -> WatchlistSymb
 
 @pytest.mark.unit
 def test_execution_engine_update_config_syncs_risk_mode_and_limits() -> None:
-    alp = _FakeAlpacaClient()
     engine = ExecutionEngine(
         config={"risk": {"risk_mode": "normal", "max_daily_loss": 100}},
         logger=_logger("test_exec_update_config"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
     engine.market_state = MarketState(time=engine.clock(), regime=Regime.CHOP, risk_mode=RiskMode.NORMAL)
@@ -202,13 +198,18 @@ def test_execution_engine_update_config_syncs_risk_mode_and_limits() -> None:
 
 @pytest.mark.unit
 def test_execution_engine_apply_scan_result_clamps_and_throttles_churn() -> None:
-    alp = _FakeAlpacaClient()
+    subscribed: List[str] = []
+
+    def _on_sub(action: str, sym: str) -> None:
+        if action == "add":
+            subscribed.append(sym)
+
     engine = ExecutionEngine(
         config={"index_symbol": "SPY", "max_churn_per_scan": 1},
         logger=_logger("test_exec_apply_scan"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
+    engine.on_subscription_change = _on_sub
 
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.symbol_states["SPY"] = SymbolState(
@@ -257,13 +258,18 @@ def test_execution_engine_apply_scan_result_clamps_and_throttles_churn() -> None
 
 @pytest.mark.unit
 def test_execution_engine_apply_scan_result_reserves_index_slot_for_ws_limit() -> None:
-    alp = _FakeAlpacaClient()
+    subscribed: List[str] = []
+
+    def _on_sub(action: str, sym: str) -> None:
+        if action == "add":
+            subscribed.append(sym)
+
     engine = ExecutionEngine(
         config={"index_symbol": "SPY", "max_churn_per_scan": 100},
         logger=_logger("test_exec_scan_reserve_index"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
+    engine.on_subscription_change = _on_sub
 
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.symbol_states["SPY"] = SymbolState(
@@ -286,7 +292,7 @@ def test_execution_engine_apply_scan_result_reserves_index_slot_for_ws_limit() -
     assert len(non_index) == 29
     assert "S29" not in engine.symbol_states
     assert "S30" not in engine.symbol_states
-    assert len(alp.subscribed) == 29
+    assert len(subscribed) == 29
 
 
 @pytest.mark.unit
@@ -295,9 +301,9 @@ def test_execution_engine_flatten_all_resets_local_state_on_success() -> None:
     engine = ExecutionEngine(
         config={"position_mismatch_mode": "ignore"},
         logger=_logger("test_exec_flatten_success"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
+    engine.broker_client = alp
     engine.symbol_states["AAPL"] = SymbolState(
         symbol="AAPL",
         bars=deque(maxlen=10),
@@ -331,9 +337,9 @@ def test_execution_engine_flatten_all_raises_when_close_fails_in_halt_mode() -> 
     engine = ExecutionEngine(
         config={"position_mismatch_mode": "halt"},
         logger=_logger("test_exec_flatten_raise"),
-        alpaca_client=alp,  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
+    engine.broker_client = alp
     with pytest.raises(RuntimeError, match="broker down"):
         engine.flatten_all(reason="unit_test")
 
@@ -343,7 +349,6 @@ def test_execution_engine_tracks_session_vwap_and_resets_on_day_boundary() -> No
     engine = ExecutionEngine(
         config={"index_symbol": "SPY"},
         logger=_logger("test_exec_session_vwap"),
-        alpaca_client=None,
         db=None,
     )
 

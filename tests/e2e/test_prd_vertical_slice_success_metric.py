@@ -141,7 +141,6 @@ def test_prd_success_metric_vertical_slice_offline(tmp_path: Path) -> None:
         config=cfg,
         logger=logger,
         db=db,
-        alpaca_client=None,
         clock=clock,
     )
     engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore

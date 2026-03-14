@@ -21,11 +21,8 @@ from src.core.domain import (
     WatchlistSymbol,
 )
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
-from src.data.gateway_stream import GatewayStreamClient
 from src.engine.health import HealthMonitor
 from src.engine.market import MarketStateManager
-from src.engine.orders import OrderExecutor
 from src.engine.position_manager import PositionManager
 from src.engine.risk import RiskManager
 from src.engine.strategy_engine import StrategyEngine, StrategyRouting
@@ -45,21 +42,22 @@ class ExecutionEngine:
         config: Dict[str, Any],
         logger: StructuredLogger,
         db: Optional[DatabaseDatabase] = None,
-        alpaca_client: Optional[AlpacaClient] = None,
         run_id: Optional[str] = None,
         clock: Optional[Callable[[], datetime]] = None,
-        gateway_client: Optional[GatewayStreamClient] = None,
     ):
         self.config = config
         self.logger = logger
         self.db = db
-        self.alpaca_client = alpaca_client
-        self.gateway_client = gateway_client
         self.run_id = run_id
         self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
         self.risk_manager = RiskManager(config, logger)
-        self.order_executor = OrderExecutor(alpaca_client, logger, db, clock=self.clock) if alpaca_client else None
+        self.order_executor = None  # Set externally via main.py
+        # Optional broker client (e.g. AlpacaClient) for direct broker operations
+        # like flatten_all and reconciliation. Set externally via main.py if needed.
+        self.broker_client: Any = None
+        # Callback for subscription changes: (action: "add"|"remove", symbol: str) -> None
+        self.on_subscription_change: Optional[Callable[[str, str], None]] = None
         self.scanner: Optional[Scanner] = None  # Injected later or via init
         self.streaming_scanner: Optional[StreamingScanner] = None  # Injected later
 
@@ -288,8 +286,10 @@ class ExecutionEngine:
 
     def flatten_all(self, *, reason: str = "eod") -> None:
         """Emergency flatten: close all positions and cancel all orders."""
-        if not self.alpaca_client:
-            self.logger.warning("Flatten requested but no Alpaca client", reason=reason)
+        if not self.broker_client:
+            self.logger.warning("Flatten requested but no broker client available — skipping", reason=reason)
+            # Still reset local state so the engine is in a clean state
+            self._flatten_reset_local_state()
             return
 
         self._set_risk_mode("off")
@@ -311,17 +311,17 @@ class ExecutionEngine:
 
     def _flatten_cancel_orders(self, reason: str) -> None:
         """Cancel all open orders (best-effort)."""
-        assert self.alpaca_client is not None
+        assert self.broker_client is not None
         try:
-            self.alpaca_client.trading_client.cancel_orders()
+            self.broker_client.trading_client.cancel_orders()
         except Exception as e:
             self.logger.error("Cancel orders failed", reason=reason, error=str(e), exc_info=True)
 
     def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
         """Close all positions (best-effort)."""
-        assert self.alpaca_client is not None
+        assert self.broker_client is not None
         try:
-            self.alpaca_client.trading_client.close_all_positions(cancel_orders=True)
+            self.broker_client.trading_client.close_all_positions(cancel_orders=True)
         except Exception as e:
             self.logger.error(
                 "Close all positions failed",
@@ -339,9 +339,9 @@ class ExecutionEngine:
         positions_confirmed = False
         orders_confirmed = False
 
-        assert self.alpaca_client is not None
+        assert self.broker_client is not None
         try:
-            open_positions = list(self.alpaca_client.trading_client.get_all_positions())
+            open_positions = list(self.broker_client.trading_client.get_all_positions())
             positions_confirmed = True
         except Exception as e:
             self.logger.warning("Failed to fetch broker positions after flatten", error=str(e))
@@ -350,7 +350,7 @@ class ExecutionEngine:
             from alpaca.trading.enums import QueryOrderStatus
             from alpaca.trading.requests import GetOrdersRequest
 
-            resp = self.alpaca_client.trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
+            resp = self.broker_client.trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
             open_orders = resp if isinstance(resp, list) else []
             orders_confirmed = True
         except Exception as e:
@@ -1717,12 +1717,8 @@ class ExecutionEngine:
 
             self.logger.info("Dropping symbol from active set", symbol=sym)
             del self.symbol_states[sym]
-            if self.alpaca_client:
-                self.alpaca_client.unsubscribe(sym)
-            if self.gateway_client:
-                self.gateway_client.unsubscribe(sym)
-                self.gateway_client.unsubscribe_quotes(sym)
-                self.gateway_client.unsubscribe_trades(sym)
+            if self.on_subscription_change:
+                self.on_subscription_change("remove", sym)
             if self.streaming_scanner:
                 self.streaming_scanner.remove_symbol(sym)
 
@@ -1792,12 +1788,8 @@ class ExecutionEngine:
             meta = self._build_scan_meta(scanned_sym)
             self.symbol_states[sym].meta.update(meta)
 
-            if self.alpaca_client:
-                self.alpaca_client.subscribe(sym)
-            if self.gateway_client:
-                self.gateway_client.subscribe(sym)
-                self.gateway_client.subscribe_quotes(sym)
-                self.gateway_client.subscribe_trades(sym)
+            if self.on_subscription_change:
+                self.on_subscription_change("add", sym)
             if self.streaming_scanner:
                 self.streaming_scanner.add_symbol(sym)
 
@@ -1962,11 +1954,10 @@ class ExecutionEngine:
         )
 
     async def _fetch_broker_data(self) -> Optional[tuple[Any, Any, Any, Any]]:
-        alpaca_client = self.alpaca_client
-        if alpaca_client is None:
+        if self.broker_client is None:
             return None
 
-        trading_client = alpaca_client.trading_client
+        trading_client = self.broker_client.trading_client
         import asyncio
 
         from alpaca.trading.enums import QueryOrderStatus

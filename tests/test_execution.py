@@ -19,13 +19,11 @@ def test_process_signal_flow():
         "max_notional_per_order": 10000,
     }
     mock_logger = MagicMock()
-    mock_alpaca = MagicMock()
 
-    engine = ExecutionEngine(mock_config, mock_logger, alpaca_client=mock_alpaca)
-
-    # Mock RiskManager and OrderExecutor behaviors via engine's internal instances
-    # But better to mock the classes or just test the logic flow if we trust the components.
-    # Since we are testing integration, let's let them run but mock the external Alpaca call.
+    engine = ExecutionEngine(mock_config, mock_logger)
+    # Set up a mock order executor so signal processing can submit orders
+    mock_order_executor = MagicMock()
+    engine.order_executor = mock_order_executor
 
     # Setup Signal
     signal = Signal(
@@ -56,27 +54,22 @@ def test_process_signal_flow():
     engine._process_signal(signal)
 
     # Verify RiskManager approved (qty = 50 / 1 = 50)
-    # Verify OrderExecutor called Alpaca
-    # Debug failure
-    if mock_alpaca.trading_client.submit_order.call_count == 0:
-        print("\nLogger warnings:", mock_logger.warning.call_args_list)
-        print("Logger errors:", mock_logger.error.call_args_list)
-
-    # Check args
-    mock_alpaca.trading_client.submit_order.assert_called_once()
-    call_args = mock_alpaca.trading_client.submit_order.call_args[0][0]
-    assert call_args.symbol == "AAPL"
-    assert call_args.qty == 50
-    assert call_args.side.value == "buy"
+    # Verify OrderExecutor was called
+    mock_order_executor.submit.assert_called_once()
+    call_args = mock_order_executor.submit.call_args
+    intent = call_args[0][0]
+    assert intent.symbol == "AAPL"
+    assert intent.qty == 50
 
 
 @pytest.mark.unit
 def test_process_signal_risk_rejection():
     mock_config = {"max_daily_loss": 1000, "max_risk_per_trade": 50}
     mock_logger = MagicMock()
-    mock_alpaca = MagicMock()
 
-    engine = ExecutionEngine(mock_config, mock_logger, mock_alpaca)
+    engine = ExecutionEngine(mock_config, mock_logger)
+    mock_order_executor = MagicMock()
+    engine.order_executor = mock_order_executor
 
     # Simulate max loss exceeded
     engine.risk_manager.current_daily_pnl = -1100
@@ -107,4 +100,4 @@ def test_process_signal_risk_rejection():
     engine._process_signal(signal)
 
     # Verify NO order submitted
-    mock_alpaca.trading_client.submit_order.assert_not_called()
+    mock_order_executor.submit.assert_not_called()

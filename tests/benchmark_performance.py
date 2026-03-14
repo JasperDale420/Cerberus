@@ -74,7 +74,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         Measure ExecutionEngine.on_bar() latency.
         Goal: P99 < 10ms (processing only).
         """
-        engine = ExecutionEngine(config={}, logger=self.logger, alpaca_client=self.unified_client)
+        engine = ExecutionEngine(config={}, logger=self.logger)
 
         # Mock dependencies
         engine.market_manager = MagicMock()

@@ -109,8 +109,9 @@ async def test_vertical_slice_scanner_to_execution(mock_config_loader, mock_logg
     # Engine Setup
     # ExecutionEngine expects a config DICT, not a Loader object.
     config_dict = mock_config_loader.load_config.return_value
-    # Pass alpaca_client to init so OrderExecutor is created
-    engine = ExecutionEngine(config_dict, mock_logger, alpaca_client=mock_alpaca)
+    engine = ExecutionEngine(config_dict, mock_logger)
+    # Set up a mock order executor (previously created by passing alpaca_client to constructor)
+    engine.order_executor = MagicMock()
 
     # Mock RiskManager to ensure signal acceptance not blocked by PnL/limits
     engine.risk_manager = MagicMock()

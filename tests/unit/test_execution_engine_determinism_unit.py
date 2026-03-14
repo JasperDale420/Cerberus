@@ -16,7 +16,6 @@ def test_apply_scan_result_is_deterministic_for_same_inputs() -> None:
     engine = ExecutionEngine(
         config={"index_symbol": "SPY", "max_churn_per_scan": 1},
         logger=logger,
-        alpaca_client=None,
         db=None,
     )
 
@@ -60,7 +59,6 @@ def test_apply_scan_result_is_deterministic_for_same_inputs() -> None:
         e = ExecutionEngine(
             config={"index_symbol": "SPY", "max_churn_per_scan": 1},
             logger=logger,
-            alpaca_client=None,
             db=None,
         )
         e.symbol_states = dict(engine.symbol_states)
@@ -81,7 +79,6 @@ def test_process_signal_degrades_gracefully_on_risk_exception() -> None:
     engine = ExecutionEngine(
         config={"index_symbol": "SPY"},
         logger=logger,
-        alpaca_client=None,
         db=None,
     )
     engine.market_state.regime = Regime.CHOP

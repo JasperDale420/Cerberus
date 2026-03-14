@@ -32,7 +32,7 @@ def execution_engine(mock_logger, mock_alpaca):
         "max_notional_per_order": 50000,
         "risk": {"max_daily_loss": 1000},
     }
-    return ExecutionEngine(config, mock_logger, alpaca_client=mock_alpaca)
+    return ExecutionEngine(config, mock_logger)
 
 
 @pytest.mark.unit
@@ -141,11 +141,11 @@ async def test_reconcile_broker_state_runs(execution_engine, mock_alpaca):
 
 
 @pytest.mark.unit
-def test_flatten_all_calls_alpaca(execution_engine, mock_alpaca):
+def test_flatten_all_calls_broker(execution_engine, mock_alpaca):
     # Setup
     execution_engine.config["position_mismatch_mode"] = "log"
-    # Ensure client exists
-    assert execution_engine.alpaca_client is not None
+    # Set broker_client so flatten_all actually runs broker operations
+    execution_engine.broker_client = mock_alpaca
 
     # Mock return values for verification steps to prevent errors
     mock_alpaca.trading_client.get_all_positions.return_value = []

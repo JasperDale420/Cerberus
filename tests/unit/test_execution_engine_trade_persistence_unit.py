@@ -30,7 +30,7 @@ def _make_db(tmp_path: Path) -> DatabaseDatabase:
 @pytest.mark.unit
 def test_execution_engine_updates_unrealized_pnl_on_bar() -> None:
     logger = StructuredLogger("test_unrealized", level="INFO")
-    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=None, alpaca_client=None)
+    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=None)
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.market_state = MarketState(time=now, regime=Regime.CHOP)
 
@@ -64,7 +64,7 @@ def test_execution_engine_updates_unrealized_pnl_on_bar() -> None:
 @pytest.mark.unit
 def test_execution_engine_on_bar_accepts_single_bar_argument() -> None:
     logger = StructuredLogger("test_on_bar_arity", level="INFO")
-    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=None, alpaca_client=None)
+    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=None)
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.market_state = MarketState(time=now, regime=Regime.CHOP)
 
@@ -96,7 +96,7 @@ def test_execution_engine_on_bar_accepts_single_bar_argument() -> None:
 def test_trade_persistence_uses_closed_qty_not_fill_qty(tmp_path: Path) -> None:
     db = _make_db(tmp_path)
     logger = StructuredLogger("test_trade_qty", level="INFO")
-    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=db, alpaca_client=None)
+    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=db)
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.market_state = MarketState(time=now, regime=Regime.CHOP)
 
@@ -155,7 +155,7 @@ def test_trade_pnl_net_subtracts_configured_costs(tmp_path: Path) -> None:
             "slippage_bps": 10.0,
         },
     }
-    engine = ExecutionEngine(config=cfg, logger=logger, db=db, alpaca_client=None)
+    engine = ExecutionEngine(config=cfg, logger=logger, db=db)
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.market_state = MarketState(time=now, regime=Regime.CHOP)
 
@@ -212,7 +212,7 @@ def test_trade_pnl_net_subtracts_configured_costs(tmp_path: Path) -> None:
 def test_fill_persistence_never_writes_none_correlation_id(tmp_path: Path) -> None:
     db = _make_db(tmp_path)
     logger = StructuredLogger("test_fill_corr_id", level="INFO")
-    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=db, alpaca_client=None)
+    engine = ExecutionEngine(config={"index_symbol": "SPY"}, logger=logger, db=db)
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     engine.market_state = MarketState(time=now, regime=Regime.CHOP)
 
