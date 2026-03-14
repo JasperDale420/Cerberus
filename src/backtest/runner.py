@@ -20,7 +20,7 @@ from src.backtest.indicator_precompute import (
 from src.core.config import ConfigLoader
 from src.core.domain import Bar, SymbolState
 from src.core.logger import StructuredLogger
-from src.data.api_client import CentralApiClient
+from src.data.client import UnifiedDataClient
 from src.engine.execution import ExecutionEngine
 
 _BAR_DATAFRAME_CACHE: dict[tuple[str, tuple[str, ...], str, str, int], pd.DataFrame] = {}
@@ -511,12 +511,14 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
         )
     else:
         # Fetch from API (legacy path)
-        gateway_client = CentralApiClient(config_loader, logger)
+        gateway_url = os.environ.get("CERBERUS_GATEWAY_URL", "http://localhost:8080")
+        gateway_key = os.environ.get("CERBERUS_GATEWAY_KEY", "")
+        gateway_client = UnifiedDataClient(gateway_url, gateway_key)
         bars_list: list[dict] = []
         for symbol in symbols:
             try:
                 logger.info("Fetching bars for symbol...", symbol=symbol)
-                resp = gateway_client.get_alpaca_bars(symbol=symbol, start=start_dt, end=end_dt, timeframe="1Min")
+                resp = gateway_client.get_historical_bars(symbol=symbol, start=start_dt, end=end_dt, timeframe="1Min")
                 bars = resp.get("bars", [])
                 for b in bars:
                     b["symbol"] = symbol

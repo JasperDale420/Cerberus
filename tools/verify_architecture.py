@@ -35,7 +35,7 @@ def verify_architecture():
         from src.analysis.db import DatabaseDatabase
         from src.core.config import ConfigLoader
         from src.core.logger import StructuredLogger
-        from src.data.alpaca import AlpacaClient
+        from src.data.client import UnifiedDataClient
         from src.data.pipeline import FeaturePipeline
         from src.data.unusual_whales import UnusualWhalesClient
 
@@ -65,11 +65,13 @@ def verify_architecture():
         from src.scanner.core import Scanner
         from src.scanner.universe import UniverseBuilder
 
-        # Mock dependencies for Scanner
-        alpaca = AlpacaClient(config_loader, logger)  # Mock or real is fine for init
+        # Initialize UnifiedDataClient for scanner dependencies
+        gateway_url = os.environ.get("CERBERUS_GATEWAY_URL", "http://localhost:8080")
+        gateway_key = os.environ.get("CERBERUS_GATEWAY_KEY", "")
+        unified_client = UnifiedDataClient(gateway_url, gateway_key)
         uw_client = UnusualWhalesClient(config_loader, logger)
-        pipeline = FeaturePipeline(alpaca, uw_client, logger, config=config)
-        universe = UniverseBuilder(config_loader, logger, config=config, alpaca_client=alpaca)
+        pipeline = FeaturePipeline(unified_client, uw_client, logger, config=config)
+        universe = UniverseBuilder(unified_client, logger, config=config)
 
         _ = Scanner(universe, pipeline, logger, config=config)
         print("[PASS] Scanner instantiated")

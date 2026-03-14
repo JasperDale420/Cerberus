@@ -16,7 +16,7 @@ def _bar_row(t: datetime, *, o: float, h: float, low: float, c: float, v: float 
 
 
 class _FakeAlpacaClient:
-    def __init__(self, _config_loader: Any, _logger: StructuredLogger):
+    def __init__(self) -> None:
         self._bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
 
     def set_bars(self, symbol: str, rows: List[Dict[str, Any]]) -> None:
@@ -32,8 +32,7 @@ class _DummyConfigLoader:
 
 
 @pytest.mark.unit
-def test_stage3_extract_strategy_class_errors_when_none(monkeypatch) -> None:
-    monkeypatch.setattr(stage3_mod, "AlpacaClient", _FakeAlpacaClient)
+def test_stage3_extract_strategy_class_errors_when_none() -> None:
     logger = StructuredLogger("test_stage3_extract_none", level="INFO")
     ev = stage3_mod.DeterministicStage3Evaluator({}, _DummyConfigLoader(), logger)
     mod = ModuleType("empty_mod")
@@ -42,15 +41,15 @@ def test_stage3_extract_strategy_class_errors_when_none(monkeypatch) -> None:
 
 
 @pytest.mark.unit
-def test_stage3_evaluate_code_stop_priority(monkeypatch) -> None:
-    monkeypatch.setattr(stage3_mod, "AlpacaClient", _FakeAlpacaClient)
+def test_stage3_evaluate_code_stop_priority() -> None:
     logger = StructuredLogger("test_stage3_eval", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage3": {"backtest": {"symbols": ["AAPL"], "window_days": 1}}}}
     ev = stage3_mod.DeterministicStage3Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
-    assert isinstance(ev.alpaca, _FakeAlpacaClient)
-    ev.alpaca.set_bars(
+    fake_alpaca = _FakeAlpacaClient()
+    ev.alpaca = fake_alpaca
+    fake_alpaca.set_bars(
         "AAPL",
         [
             _bar_row(now, o=100.0, h=100.0, low=100.0, c=100.0),

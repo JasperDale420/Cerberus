@@ -20,7 +20,6 @@ from src.agent.models import ActionType, AgentAction, StrategyDailyStats
 from src.core.config import ConfigLoader
 from src.core.domain import Bar, MarketState, Regime, RiskMode, SymbolState
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
 from src.strategies.base import BaseStrategy
 
 
@@ -67,7 +66,7 @@ class DeterministicStage3Evaluator:
         self.logger = logger
         self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
         self.bars_provider = bars_provider
-        self.alpaca = AlpacaClient(config_loader, logger) if bars_provider is None else None
+        self.alpaca: Any = None  # Legacy: only used when no bars_provider is set
 
     def _bars_window(self, as_of: datetime) -> tuple[datetime, datetime]:
         agent_cfg = (self.config.get("agent") or {}) if isinstance(self.config, dict) else {}

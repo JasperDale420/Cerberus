@@ -32,7 +32,7 @@ class _DummyConfigLoader:
 
 
 class _FakeAlpacaClient:
-    def __init__(self, _config_loader: Any, _logger: StructuredLogger):
+    def __init__(self) -> None:
         self._bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
 
     def set_bars(self, symbol: str, rows: List[Dict[str, Any]]) -> None:
@@ -69,8 +69,7 @@ class _OneShotStrategy(BaseStrategy):
 
 
 @pytest.mark.unit
-def test_stage2_symbols_prefers_agent_stage2_symbols(monkeypatch) -> None:
-    monkeypatch.setattr(stage2_mod, "AlpacaClient", _FakeAlpacaClient)
+def test_stage2_symbols_prefers_agent_stage2_symbols() -> None:
     logger = StructuredLogger("test_stage2_symbols", level="INFO")
     cfg = {
         "agent": {"stage2": {"symbols": ["aapl", "MSFT", "msft"]}},
@@ -81,8 +80,7 @@ def test_stage2_symbols_prefers_agent_stage2_symbols(monkeypatch) -> None:
 
 
 @pytest.mark.unit
-def test_stage2_symbols_falls_back_to_universe_symbols(monkeypatch) -> None:
-    monkeypatch.setattr(stage2_mod, "AlpacaClient", _FakeAlpacaClient)
+def test_stage2_symbols_falls_back_to_universe_symbols() -> None:
     logger = StructuredLogger("test_stage2_symbols_fallback", level="INFO")
     cfg = {
         "agent": {"stage2": {"symbols": []}},
@@ -93,8 +91,7 @@ def test_stage2_symbols_falls_back_to_universe_symbols(monkeypatch) -> None:
 
 
 @pytest.mark.unit
-def test_stage2_strategy_instance_validates_name(monkeypatch) -> None:
-    monkeypatch.setattr(stage2_mod, "AlpacaClient", _FakeAlpacaClient)
+def test_stage2_strategy_instance_validates_name() -> None:
     logger = StructuredLogger("test_stage2_strategy_mapping", level="INFO")
     ev = stage2_mod.DeterministicStage2Evaluator({}, _DummyConfigLoader(), logger)
     with pytest.raises(ValueError, match="Unknown strategy"):
@@ -103,14 +100,14 @@ def test_stage2_strategy_instance_validates_name(monkeypatch) -> None:
 
 @pytest.mark.unit
 def test_stage2_evaluate_stop_priority_when_both_hit(monkeypatch) -> None:
-    monkeypatch.setattr(stage2_mod, "AlpacaClient", _FakeAlpacaClient)
     logger = StructuredLogger("test_stage2_eval_stop_priority", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage2": {"symbols": ["AAPL"], "window_days": 1}}}
     ev = stage2_mod.DeterministicStage2Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
-    assert isinstance(ev.alpaca, _FakeAlpacaClient)
-    ev.alpaca.set_bars(
+    fake_alpaca = _FakeAlpacaClient()
+    ev.alpaca = fake_alpaca
+    fake_alpaca.set_bars(
         "AAPL",
         [
             _bar("AAPL", now, o=100.0, h=100.0, low=100.0, c=100.0),
@@ -129,14 +126,14 @@ def test_stage2_evaluate_stop_priority_when_both_hit(monkeypatch) -> None:
 
 @pytest.mark.unit
 def test_stage2_evaluate_max_hold_exits_at_close(monkeypatch) -> None:
-    monkeypatch.setattr(stage2_mod, "AlpacaClient", _FakeAlpacaClient)
     logger = StructuredLogger("test_stage2_eval_max_hold", level="INFO")
     now = datetime(2025, 1, 1, tzinfo=timezone.utc)
     cfg = {"agent": {"stage2": {"symbols": ["AAPL"], "window_days": 1}}}
     ev = stage2_mod.DeterministicStage2Evaluator(cfg, _DummyConfigLoader(), logger, clock=lambda: now)
 
-    assert isinstance(ev.alpaca, _FakeAlpacaClient)
-    ev.alpaca.set_bars(
+    fake_alpaca = _FakeAlpacaClient()
+    ev.alpaca = fake_alpaca
+    fake_alpaca.set_bars(
         "AAPL",
         [
             _bar("AAPL", now, o=100.0, h=100.0, low=100.0, c=100.0),

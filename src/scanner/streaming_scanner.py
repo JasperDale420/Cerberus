@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, Optional
 
 from src.core.logger import StructuredLogger
 from src.data.calculator import FeatureCalculator
-from src.data.gateway_stream import StreamQuote, StreamTrade
+from src.data.client import StreamQuote, StreamTrade
 
 # Minimum threshold for feature change to trigger an update callback
 OFI_CHANGE_THRESHOLD = 0.15

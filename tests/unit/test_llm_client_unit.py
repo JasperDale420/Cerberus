@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,30 +14,34 @@ class _DummyConfigLoader(ConfigLoader):
     def load_config(self, _path: Optional[str] = None) -> Dict[str, Any]:  # pragma: no cover
         return {}
 
-
-class _FakeCentralApiClient:
-    def __init__(self, _config_loader: ConfigLoader, _logger: StructuredLogger):
-        self.calls: List[Dict[str, Any]] = []
-
-    def chat_completion(self, model: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        self.calls.append({"model": model, "messages": messages})
-        return {"choices": [{"message": {"content": "ok"}}]}
+    def get_env(self, key: str, default: str = "") -> str:
+        return default
 
 
 @pytest.mark.unit
 def test_llm_client_complete_builds_openai_like_messages(monkeypatch) -> None:
-    monkeypatch.setattr(llm_mod, "CentralApiClient", _FakeCentralApiClient)
-    logger = StructuredLogger("test_llm_client", level="INFO")
-    client = llm_mod.LLMClient(_DummyConfigLoader(), logger, model_name="m")
+    """LLMClient.complete sends correct messages to the LLM HTTP endpoint."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+
+    with patch.object(llm_mod, "create_http_client", return_value=mock_client):
+        logger = StructuredLogger("test_llm_client", level="INFO")
+        client = llm_mod.LLMClient(_DummyConfigLoader(), logger, model_name="m")
 
     out = client.complete("hi", system_prompt="sys")
     assert out == "ok"
-    assert client.central_client.calls == [  # type: ignore
-        {
+
+    mock_client.post.assert_called_once_with(
+        "/v1/chat/completions",
+        json={
             "model": "m",
             "messages": [
                 {"role": "system", "content": "sys"},
                 {"role": "user", "content": "hi"},
             ],
-        }
-    ]
+        },
+    )

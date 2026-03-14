@@ -17,6 +17,7 @@ Output:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,13 +26,12 @@ from typing import Any, Dict
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
+from src.data.client import UnifiedDataClient
 
 
 def capture_snapshot(
-    client: AlpacaClient,
+    client: UnifiedDataClient,
     logger: StructuredLogger,
     most_actives_top_n: int = 50,
     movers_top_n: int = 20,
@@ -88,13 +88,14 @@ def main() -> None:
     print("=" * 40)
 
     # Initialize
-    config_loader = ConfigLoader()
     logger = StructuredLogger("screener_capture")
 
     try:
-        client = AlpacaClient(config_loader, logger)
+        gateway_url = os.environ.get("CERBERUS_GATEWAY_URL", "http://localhost:8080")
+        gateway_key = os.environ.get("CERBERUS_GATEWAY_KEY", "")
+        client = UnifiedDataClient(gateway_url, gateway_key)
     except Exception as e:
-        print(f"Error: Failed to initialize Alpaca client: {e}")
+        print(f"Error: Failed to initialize Data-Gateway client: {e}")
         sys.exit(1)
 
     # Capture snapshot

@@ -16,7 +16,6 @@ from src.analysis.db import DatabaseDatabase
 from src.analysis.schema import Order as DbOrder
 from src.core.domain import OrderIntent
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
 from src.data.client import UnifiedDataClient
 
 
@@ -94,7 +93,7 @@ class OrderExecutor:
 
     def __init__(
         self,
-        alpaca_client: AlpacaClient,
+        alpaca_client: Any,
         logger: StructuredLogger,
         db: Optional[DatabaseDatabase] = None,
         clock: Optional[Callable[[], datetime]] = None,

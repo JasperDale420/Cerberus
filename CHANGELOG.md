@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- Removed `AlpacaClient` (`src/data/alpaca.py`), `GatewayStreamClient` (`src/data/gateway_stream.py`), and `CentralApiClient` (`src/data/api_client.py`) legacy data clients — all data now flows through `UnifiedDataClient`
+- Removed legacy/dual/gateway failover integration tests, Heber shadow parity tests, and old AlpacaClient/CentralApiClient unit and contract tests
+- Removed direct AlpacaClient usage from options strategies, agent evaluators, backtest runner, LLM client, and utility scripts — all rewired to `UnifiedDataClient` or simplified
+
 - **ExecutionEngine gateway_client and alpaca_client dependencies**: Removed direct `AlpacaClient` and `GatewayStreamClient` imports, constructor parameters, and instance variables from `ExecutionEngine`. Subscription management now uses an `on_subscription_change` callback. Flatten/reconciliation uses an optional `broker_client` attribute (set externally). Order execution already routed through `order_executor` (set by `main.py`).
 
 - **Legacy/dual/gateway backend mode settings**: Removed `cerberus_data_backend`, `cerberus_storage_backend`, `cerberus_dual_read_compare`, and `cerberus_failover_to_legacy` fields from Settings. Removed `use_gateway_data` and `use_heber_storage` properties. Simplified `validate_startup_mode()` to only check that `CERBERUS_GATEWAY_KEY` is set. All data now flows exclusively through Data-Gateway via UnifiedDataClient.

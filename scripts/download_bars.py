@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,9 +23,8 @@ from typing import Any, Dict, List
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
+from src.data.client import UnifiedDataClient
 
 
 def parse_args() -> argparse.Namespace:
@@ -191,7 +191,7 @@ def _to_iso(val: Any) -> str:
 
 
 def download_bars(
-    client: AlpacaClient,
+    client: UnifiedDataClient,
     logger: StructuredLogger,
     symbol: str,
     start: datetime,
@@ -278,10 +278,11 @@ def main() -> None:
     print(f"Output dir: {args.output_dir}")
     print()
 
-    # Initialize Alpaca client
-    config_loader = ConfigLoader()
+    # Initialize Data-Gateway client
     logger = StructuredLogger("download_bars")
-    client = AlpacaClient(config_loader, logger)
+    gateway_url = os.environ.get("CERBERUS_GATEWAY_URL", "http://localhost:8080")
+    gateway_key = os.environ.get("CERBERUS_GATEWAY_KEY", "")
+    client = UnifiedDataClient(gateway_url, gateway_key)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

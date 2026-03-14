@@ -1,11 +1,11 @@
-"""Unit tests for the StreamingScanner and GatewayStreamClient multi-feed extensions."""
+"""Unit tests for the StreamingScanner."""
 
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
-from src.data.gateway_stream import GatewayStreamClient, StreamQuote, StreamTrade
+from src.data.client import StreamQuote, StreamTrade
 from src.scanner.streaming_scanner import StreamingScanner
 
 # ── Fixtures ──
@@ -21,19 +21,6 @@ def mock_logger():
 
 
 @pytest.fixture
-def mock_config_loader():
-    loader = MagicMock()
-    loader.get_env = MagicMock(
-        side_effect=lambda key, default="": {
-            "CERBERUS_GATEWAY_URL": "http://localhost:8080",
-            "CERBERUS_GATEWAY_KEY": "test-key",
-            "DATA_INGESTION_URL": "http://localhost:8080",
-        }.get(key, default)
-    )
-    return loader
-
-
-@pytest.fixture
 def mock_calculator():
     calc = MagicMock()
     calc.calculate_ofi = MagicMock(return_value=0.5)
@@ -42,108 +29,8 @@ def mock_calculator():
 
 
 @pytest.fixture
-def gateway_client(mock_config_loader, mock_logger):
-    return GatewayStreamClient(mock_config_loader, mock_logger)
-
-
-@pytest.fixture
 def streaming_scanner(mock_calculator, mock_logger):
     return StreamingScanner(calculator=mock_calculator, logger=mock_logger)
-
-
-# ── GatewayStreamClient Multi-Feed Tests ──
-
-
-class TestGatewayStreamClientMultiFeed:
-    """Tests for multi-feed subscribe/unsubscribe on GatewayStreamClient."""
-
-    def test_subscribe_quotes_tracks_symbols(self, gateway_client):
-        gateway_client.subscribe_quotes("AAPL")
-        gateway_client.subscribe_quotes("MSFT")
-        assert "AAPL" in gateway_client._desired_quote_symbols
-        assert "MSFT" in gateway_client._desired_quote_symbols
-
-    def test_unsubscribe_quotes_removes_symbol(self, gateway_client):
-        gateway_client.subscribe_quotes("AAPL")
-        gateway_client.unsubscribe_quotes("AAPL")
-        assert "AAPL" not in gateway_client._desired_quote_symbols
-
-    def test_subscribe_trades_tracks_symbols(self, gateway_client):
-        gateway_client.subscribe_trades("TSLA")
-        assert "TSLA" in gateway_client._desired_trade_symbols
-
-    def test_unsubscribe_trades_removes_symbol(self, gateway_client):
-        gateway_client.subscribe_trades("TSLA")
-        gateway_client.unsubscribe_trades("TSLA")
-        assert "TSLA" not in gateway_client._desired_trade_symbols
-
-    def test_bar_subscribe_backward_compat(self, gateway_client):
-        gateway_client.subscribe("SPY")
-        assert "SPY" in gateway_client._desired_bar_symbols
-        assert "SPY" in gateway_client._desired_symbols  # backward-compat property
-
-    def test_bar_unsubscribe_backward_compat(self, gateway_client):
-        gateway_client.subscribe("SPY")
-        gateway_client.unsubscribe("SPY")
-        assert "SPY" not in gateway_client._desired_bar_symbols
-
-    def test_normalize_quote_from_data(self, gateway_client):
-        payload = {
-            "S": "AAPL",
-            "bp": 150.0,
-            "bs": 100,
-            "ap": 150.05,
-            "as": 200,
-            "t": "2025-01-01T12:00:00Z",
-        }
-        quote = gateway_client._normalize_quote_from_data(payload)
-        assert isinstance(quote, StreamQuote)
-        assert quote.symbol == "AAPL"
-        assert quote.bid_price == 150.0
-        assert quote.bid_size == 100
-        assert quote.ask_price == 150.05
-        assert quote.ask_size == 200
-
-    def test_normalize_trade_from_data(self, gateway_client):
-        payload = {
-            "S": "MSFT",
-            "p": 300.5,
-            "s": 50,
-            "t": "2025-01-01T12:00:00Z",
-            "c": ["@", "T"],
-        }
-        trade = gateway_client._normalize_trade_from_data(payload)
-        assert isinstance(trade, StreamTrade)
-        assert trade.symbol == "MSFT"
-        assert trade.price == 300.5
-        assert trade.size == 50
-        assert trade.conditions == ["@", "T"]
-
-    def test_normalize_quote_missing_symbol_raises(self, gateway_client):
-        with pytest.raises(ValueError, match="Missing symbol"):
-            gateway_client._normalize_quote_from_data({"bp": 1.0, "t": "2025-01-01T12:00:00Z"})
-
-    def test_normalize_trade_missing_symbol_raises(self, gateway_client):
-        with pytest.raises(ValueError, match="Missing symbol"):
-            gateway_client._normalize_trade_from_data({"p": 1.0, "t": "2025-01-01T12:00:00Z"})
-
-    def test_extract_data_payload_quote_feed(self, gateway_client):
-        msg = {"type": "data", "feed": "quotes", "data": {"S": "AAPL", "bp": 150}}
-        feed, payload = gateway_client._extract_data_payload(msg)
-        assert feed == "quotes"
-        assert payload["S"] == "AAPL"
-
-    def test_extract_data_payload_trade_feed(self, gateway_client):
-        msg = {"type": "data", "feed": "trades", "data": {"S": "AAPL", "p": 150}}
-        feed, payload = gateway_client._extract_data_payload(msg)
-        assert feed == "trades"
-        assert payload["S"] == "AAPL"
-
-    def test_extract_data_payload_non_data_type(self, gateway_client):
-        msg = {"type": "heartbeat"}
-        feed, payload = gateway_client._extract_data_payload(msg)
-        assert feed == ""
-        assert payload is None
 
 
 # ── StreamingScanner Tests ──
@@ -189,7 +76,7 @@ class TestStreamingScanner:
         streaming_scanner.add_symbol("AAPL")
         now = datetime.now(timezone.utc)
 
-        # Set initial OFI to 0, calculator will return 0.5 → delta of 0.5 > threshold
+        # Set initial OFI to 0, calculator will return 0.5 -> delta of 0.5 > threshold
         for i in range(6):
             quote = StreamQuote(
                 symbol="AAPL",
