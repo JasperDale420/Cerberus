@@ -1,52 +1,21 @@
 import argparse
 import asyncio
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
-from pathlib import Path
 from typing import cast
 
 from src.analysis.analytics import AnalyticsEngine
 from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
 from src.data.client import UnifiedDataClient
-from src.data.gateway_stream import GatewayStreamClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
 from src.scanner.core import Scanner
 from src.scanner.streaming_scanner import StreamingScanner
 from src.scanner.universe import UniverseBuilder
-
-
-def _should_initialize_alpaca_client(
-    order_executor: str,
-    data_backend: str,
-    failover_to_legacy: bool,
-) -> bool:
-    """Determine whether Alpaca client initialization is required."""
-    normalized_executor = str(order_executor or "").strip().lower()
-    normalized_backend = str(data_backend or "").strip().lower()
-    return not (
-        normalized_backend == "gateway" and normalized_executor in ("noop", "gateway") and not bool(failover_to_legacy)
-    )
-
-
-def _should_start_alpaca_stream(order_executor: str, data_backend: str) -> bool:
-    """Determine whether Alpaca direct bar/trade streams should run.
-
-    The gateway stream is started separately when using gateway data backend.
-    This only controls whether the direct Alpaca WebSocket stream (which
-    requires Alpaca API keys) should also start.
-    """
-    normalized_executor = str(order_executor or "").strip().lower()
-    normalized_backend = str(data_backend or "").strip().lower()
-    if normalized_backend == "gateway":
-        return normalized_executor == "alpaca"
-    return True
 
 
 def _next_market_open_local(now: datetime) -> datetime:
@@ -81,45 +50,6 @@ def _is_regular_market_session_local(now: datetime) -> bool:
     if now.hour < 9 or (now.hour == 9 and now.minute < 30):
         return False
     return not now.hour >= 16
-
-
-def _capture_screener_snapshot(client: AlpacaClient, logger: StructuredLogger) -> None:
-    """Capture daily screener snapshot for historical backtest replay."""
-    snapshot = {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "most_actives": [],
-        "gainers": [],
-        "losers": [],
-    }
-
-    try:
-        snapshot["most_actives"] = client.get_most_actives(top=50)
-    except Exception as e:
-        logger.warning("Failed to fetch most actives", error=str(e))
-
-    try:
-        movers = client.get_movers(top=20)
-        snapshot["gainers"] = movers.get("gainers", [])
-        snapshot["losers"] = movers.get("losers", [])
-    except Exception as e:
-        logger.warning("Failed to fetch movers", error=str(e))
-
-    # Save to data/screener_snapshots/<date>.jsonl
-    output_dir = Path("data/screener_snapshots")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    output_path = output_dir / f"{date_str}.jsonl"
-
-    with open(output_path, "a") as f:
-        f.write(json.dumps(snapshot) + "\n")
-
-    logger.info(
-        "Screener snapshot captured",
-        most_actives=len(snapshot["most_actives"]),
-        gainers=len(snapshot["gainers"]),
-        losers=len(snapshot["losers"]),
-        path=str(output_path),
-    )
 
 
 def _build_strategy_registry() -> dict[str, type]:
@@ -299,7 +229,6 @@ async def async_main():
             "Startup settings validation passed",
             order_executor=args.order_executor,
             mode=args.mode,
-            data_backend=runtime_settings.cerberus_data_backend,
         )
     except ValueError as e:
         bootstrap_logger.error("Startup settings validation failed", error=str(e))
@@ -335,23 +264,7 @@ async def async_main():
         clock = _utc_now_clock()
 
     # 2. Components
-    require_alpaca_client = _should_initialize_alpaca_client(
-        order_executor=args.order_executor,
-        data_backend=runtime_settings.cerberus_data_backend,
-        failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
-    )
-    alpaca_client = AlpacaClient(config_loader, logger) if require_alpaca_client else None
-    if not require_alpaca_client:
-        logger.info(
-            "Skipping Alpaca client initialization (not required for current mode)",
-            data_backend=runtime_settings.cerberus_data_backend,
-            failover_to_legacy=runtime_settings.cerberus_failover_to_legacy,
-            order_executor=args.order_executor,
-        )
-
-    # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
-    gateway_stream_client = GatewayStreamClient(config_loader, logger)
 
     unified_client = UnifiedDataClient(
         gateway_url=runtime_settings.cerberus_gateway_url,
@@ -388,7 +301,7 @@ async def async_main():
     # Initialize Agent
     agent = Agent(logger, config_loader, config_path_or_dir=args.config)
 
-    engine = ExecutionEngine(config, logger, db, alpaca_client, clock=clock, gateway_client=gateway_stream_client)
+    engine = ExecutionEngine(config, logger, db, clock=clock)
     engine.scanner = scanner  # Inject scanner
 
     # Initialize Streaming Scanner for live microstructure feature updates
@@ -404,8 +317,6 @@ async def async_main():
 
     # Configure order executor
     if args.order_executor == "gateway":
-        if not runtime_settings.use_gateway_data:
-            raise ValueError("Gateway order executor requires CERBERUS_DATA_BACKEND=gateway|dual")
         from src.engine.orders import GatewayOrderExecutor
 
         engine.order_executor = GatewayOrderExecutor(
@@ -418,8 +329,6 @@ async def async_main():
         from src.engine.orders import NoopOrderExecutor
 
         engine.order_executor = NoopOrderExecutor(logger, db=db, clock=clock)  # type: ignore
-    elif args.order_executor == "alpaca" and runtime_settings.use_gateway_data:
-        raise ValueError("Direct Alpaca order executor is blocked while CERBERUS_DATA_BACKEND uses gateway.")
 
     # Register Strategies (config-driven, deterministic; PRD plug-and-play intent)
     strategy_registry = _build_strategy_registry()
@@ -461,65 +370,20 @@ async def async_main():
             except Exception as e:
                 logger.error("Startup Agent run failed", error=str(e), exc_info=True)
 
-    # 4. Initial Scan — Start bar data streams
+    # 4. Initial Scan — Start unified data stream
+    from src.data.requirements import aggregate_requirements
 
-    # Helper to (re-)start the gateway WebSocket stream.
-    # Called at initial startup and after each overnight sleep to ensure a
-    # fresh connection for the new trading session.
-    use_gateway_stream = runtime_settings.use_gateway_data
+    _required = aggregate_requirements([s.data_requirements for s in engine.strategies.values()])
 
-    def _start_gateway_stream_task() -> "asyncio.Task[object] | None":
-        if not use_gateway_stream:
-            return None
-        logger.info(
-            "Starting gateway bar stream...",
-            data_backend=runtime_settings.cerberus_data_backend,
-            order_executor=args.order_executor,
+    await unified_client.connect()
+    stream_task: asyncio.Task[object] | None = asyncio.create_task(
+        unified_client.start_stream(
+            on_bar=engine.on_bar,
+            on_quote=engine.on_quote,
+            on_trade=engine.on_trade_data,
+            on_reconnect=engine.reconcile_broker_state,
         )
-        task = asyncio.create_task(
-            gateway_stream_client.start_stream(
-                engine.on_bar,
-                on_reconnect=engine.reconcile_broker_state,
-                on_quote=engine.on_quote,
-                on_trade=engine.on_trade_data,
-            )
-        )
-        gateway_stream_client.subscribe(config.get("index_symbol", "SPY"))
-        return task
-
-    def _restart_gateway_stream(
-        current_task: "asyncio.Task[object] | None",
-    ) -> "asyncio.Task[object] | None":
-        """Tear down the existing gateway stream and start a fresh one."""
-        if current_task is not None and not current_task.done():
-            current_task.cancel()
-        # Reset internal WS state so start_stream creates a new connection
-        gateway_stream_client._running = False
-        gateway_stream_client._ws = None
-        return _start_gateway_stream_task()
-
-    gateway_stream_task = _start_gateway_stream_task()
-
-    # Alpaca direct streams: only for direct Alpaca execution mode.
-    start_alpaca_stream = _should_start_alpaca_stream(
-        order_executor=args.order_executor,
-        data_backend=runtime_settings.cerberus_data_backend,
     )
-    alpaca_stream_task: asyncio.Task[object] | None = None
-    if start_alpaca_stream:
-        logger.info("Starting Alpaca stream...")
-        assert alpaca_client is not None
-        alpaca_stream_task = asyncio.create_task(
-            alpaca_client.start_stream(engine.on_bar, on_reconnect=engine.reconcile_broker_state)
-        )
-        alpaca_client.subscribe(config.get("index_symbol", "SPY"))
-
-    trade_stream_task: asyncio.Task[object] | None = None
-    if start_alpaca_stream and args.order_executor == "alpaca":
-        assert alpaca_client is not None
-        trade_stream_task = asyncio.create_task(
-            alpaca_client.start_trade_stream(engine.on_trade_update, on_reconnect=engine.reconcile_broker_state)
-        )
     reconcile_task = asyncio.create_task(engine.reconcile_loop())
 
     logger.info("Running initial scan...")
@@ -587,9 +451,20 @@ async def async_main():
                     await asyncio.sleep(min(300, max(1, int(remaining))))
                 last_warning_min = None
 
-                # Reconnect gateway stream for the new session
-                gateway_stream_task = _restart_gateway_stream(gateway_stream_task)
-                logger.info("Gateway stream reconnected after pre-market sleep")
+                # Reconnect unified stream for the new session
+                if stream_task is not None and not stream_task.done():
+                    stream_task.cancel()
+                await unified_client.disconnect()
+                await unified_client.connect()
+                stream_task = asyncio.create_task(
+                    unified_client.start_stream(
+                        on_bar=engine.on_bar,
+                        on_quote=engine.on_quote,
+                        on_trade=engine.on_trade_data,
+                        on_reconnect=engine.reconcile_broker_state,
+                    )
+                )
+                logger.info("Unified stream reconnected after pre-market sleep")
                 continue
 
             # 1. Market Close Check (Exit at 16:00 ET)
@@ -659,13 +534,6 @@ async def async_main():
                                 error=str(e),
                                 exc_info=True,
                             )
-                # Capture daily screener snapshot for historical backtest data
-                if alpaca_client is not None:
-                    try:
-                        _capture_screener_snapshot(alpaca_client, logger)
-                    except Exception as e:
-                        logger.warning("Screener snapshot capture failed", error=str(e))
-
                 if bool(config.get("exit_on_market_close", False)):
                     logger.info("Market closed. Exiting daily session.")
                     break
@@ -684,13 +552,29 @@ async def async_main():
                     await asyncio.sleep(min(300, max(1, int(remaining))))
                 last_warning_min = None
 
-                # Reconnect gateway stream for the new trading session
-                gateway_stream_task = _restart_gateway_stream(gateway_stream_task)
-                logger.info("Gateway stream reconnected after overnight sleep")
+                # Reconnect unified stream for the new trading session
+                if stream_task is not None and not stream_task.done():
+                    stream_task.cancel()
+                await unified_client.disconnect()
+                await unified_client.connect()
+                stream_task = asyncio.create_task(
+                    unified_client.start_stream(
+                        on_bar=engine.on_bar,
+                        on_quote=engine.on_quote,
+                        on_trade=engine.on_trade_data,
+                        on_reconnect=engine.reconcile_broker_state,
+                    )
+                )
+                logger.info("Unified stream reconnected after overnight sleep")
                 continue
 
             # 2. Run Scanner (every 5 mins)
             await engine.run_scan()
+
+            # Update subscriptions to match new watchlist
+            current_symbols = list(engine.symbol_states.keys())
+            current_symbols.append(config.get("index_symbol", "SPY"))
+            await unified_client.update_subscriptions(current_symbols)
 
             # Wait for next scan interval
             scanner_cfg = (config.get("scanner") or {}) if isinstance(config, dict) else {}
@@ -717,15 +601,11 @@ async def async_main():
         )
         raise
     finally:
-        if gateway_stream_task is not None and not gateway_stream_task.done():
-            gateway_stream_task.cancel()
-        if alpaca_stream_task is not None and not alpaca_stream_task.done():
-            alpaca_stream_task.cancel()
-        if trade_stream_task is not None and not trade_stream_task.done():
-            trade_stream_task.cancel()
+        if stream_task is not None and not stream_task.done():
+            stream_task.cancel()
         if not reconcile_task.done():
             reconcile_task.cancel()
-        unified_client.close()
+        await unified_client.close_async()
         await uw_client.close()
 
 

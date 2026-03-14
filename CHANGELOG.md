@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Simplified main.py to use UnifiedDataClient exclusively**: Removed all `AlpacaClient`, `GatewayStreamClient`, and legacy data backend branching from the startup and main loop. Streaming now goes through `UnifiedDataClient.start_stream()` with automatic reconnect on session boundaries. Subscriptions update after each scan cycle via `update_subscriptions()`. Removed dead helper functions (`_should_initialize_alpaca_client`, `_should_start_alpaca_stream`, `_capture_screener_snapshot`) and their associated imports. Engine construction no longer passes `alpaca_client` or `gateway_client` params.
+
 - **FeaturePipeline and UniverseBuilder rewired to UnifiedDataClient**: Replaced `AlpacaClient` + `CentralApiClient` params with single `UnifiedDataClient` in both `FeaturePipeline` and `UniverseBuilder`. Removed `ConfigLoader`, `get_settings()`, `use_gateway_data`, and `allow_legacy_failover` from `UniverseBuilder`. Simplified `_get_historical_bars`, `_get_screener_most_actives`, and `_get_screener_movers` to direct delegation. Updated `src/main.py`, `scripts/paper_live_test.py`, and `tools/paper_live_harness.py` construction sites. All tests updated.
 
 - **GatewayOrderExecutor rewired to UnifiedDataClient**: Replaced `CentralApiClient` with `UnifiedDataClient` in `GatewayOrderExecutor`. Order submission now calls `unified_client.submit_order()`, cancellation calls `unified_client.cancel_order()`, and order listing calls `unified_client.get_orders()` with local symbol filtering (since `get_orders` doesn't accept a `symbols` parameter). Updated `src/main.py` to construct a `UnifiedDataClient` for the gateway executor path.
