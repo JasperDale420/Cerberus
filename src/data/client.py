@@ -1,19 +1,54 @@
-"""Unified data client for Cerberus — REST methods.
+"""Unified data client for Cerberus — REST + WebSocket streaming.
 
 Replaces CentralApiClient with a cleaner interface that talks to Data-Gateway.
-WebSocket streaming methods will be added in a future task.
+REST methods provide historical/snapshot data; WebSocket methods provide real-time streaming.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, cast
 
 import httpx
 
+from src.core.domain import Bar
 from src.core.http_client import create_http_client
 from src.core.logger import StructuredLogger
+
+
+@dataclass
+class StreamQuote:
+    """Normalized quote from the Data-Gateway WebSocket stream."""
+
+    symbol: str
+    bid_price: float
+    bid_size: float
+    ask_price: float
+    ask_size: float
+    timestamp: datetime
+
+
+@dataclass
+class StreamTrade:
+    """Normalized trade from the Data-Gateway WebSocket stream."""
+
+    symbol: str
+    price: float
+    size: float
+    timestamp: datetime
+    conditions: list[str] = field(default_factory=list)
+
+
+FEED_NAME_MAP = {
+    "bars": "stock_bars",
+    "quotes": "stock_quotes",
+    "trades": "stock_trades",
+}
+REVERSE_FEED_MAP = {v: k for k, v in FEED_NAME_MAP.items()}
 
 logger = StructuredLogger("unified_data_client")
 
@@ -46,6 +81,12 @@ class UnifiedDataClient:
 
         self._max_retries = 3
         self._retry_backoff_base = 1.0
+
+        # WebSocket state
+        self._ws = None
+        self._running = False
+        self._subscribed_symbols: set[str] = set()
+        self._subscribed_feeds: set[str] = set()
 
     # ------------------------------------------------------------------
     # Retry helpers
@@ -409,3 +450,281 @@ class UnifiedDataClient:
     def close(self) -> None:
         """Close underlying HTTP client."""
         self.client.close()
+
+    async def close_async(self) -> None:
+        """Close both REST and WebSocket connections."""
+        await self.disconnect()
+        self.close()
+
+    # ------------------------------------------------------------------
+    # WebSocket: timestamp parsing & payload normalization
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_timestamp(value) -> datetime:
+        """Parse a timestamp from various formats into a timezone-aware datetime."""
+        if isinstance(value, datetime):
+            return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        if isinstance(value, str):
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        raise ValueError(f"Invalid timestamp: {value}")
+
+    def _normalize_stream_bar(self, payload: dict) -> Bar:
+        """Normalize a WebSocket bar payload into a Bar domain object."""
+        symbol = str(payload.get("S") or payload.get("symbol") or "").upper()
+        if not symbol:
+            raise ValueError("Missing symbol in bar payload")
+        ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        return Bar(
+            symbol=symbol,
+            time=ts,
+            open=float(payload.get("o") if payload.get("o") is not None else payload.get("open", 0.0)),
+            high=float(payload.get("h") if payload.get("h") is not None else payload.get("high", 0.0)),
+            low=float(payload.get("l") if payload.get("l") is not None else payload.get("low", 0.0)),
+            close=float(payload.get("c") if payload.get("c") is not None else payload.get("close", 0.0)),
+            volume=float(payload.get("v") if payload.get("v") is not None else payload.get("volume", 0.0)),
+            vwap=payload.get("vw") or payload.get("vwap"),
+            trade_count=payload.get("n") or payload.get("trade_count"),
+        )
+
+    def _normalize_stream_quote(self, payload: dict) -> StreamQuote:
+        """Normalize a WebSocket quote payload into a StreamQuote."""
+        symbol = str(payload.get("S") or payload.get("symbol") or "").upper()
+        if not symbol:
+            raise ValueError("Missing symbol in quote payload")
+        ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        return StreamQuote(
+            symbol=symbol,
+            timestamp=ts,
+            bid_price=float(payload.get("bp") if payload.get("bp") is not None else payload.get("bid_price", 0.0)),
+            bid_size=float(payload.get("bs") if payload.get("bs") is not None else payload.get("bid_size", 0.0)),
+            ask_price=float(payload.get("ap") if payload.get("ap") is not None else payload.get("ask_price", 0.0)),
+            ask_size=float(payload.get("as") if payload.get("as") is not None else payload.get("ask_size", 0.0)),
+        )
+
+    def _normalize_stream_trade(self, payload: dict) -> StreamTrade:
+        """Normalize a WebSocket trade payload into a StreamTrade."""
+        symbol = str(payload.get("S") or payload.get("symbol") or "").upper()
+        if not symbol:
+            raise ValueError("Missing symbol in trade payload")
+        ts = self._parse_timestamp(payload.get("t") or payload.get("timestamp"))
+        raw_conditions = payload.get("c") or payload.get("conditions") or []
+        conditions = list(raw_conditions) if isinstance(raw_conditions, (list, tuple)) else []
+        return StreamTrade(
+            symbol=symbol,
+            timestamp=ts,
+            price=float(payload.get("p") if payload.get("p") is not None else payload.get("price", 0.0)),
+            size=float(payload.get("s") if payload.get("s") is not None else payload.get("size", 0.0)),
+            conditions=conditions,
+        )
+
+    @staticmethod
+    def _extract_data_payload(message: dict) -> tuple[str, dict | None]:
+        """Extract feed name and data payload from a WebSocket message."""
+        if message.get("type") != "data":
+            return "", None
+        feed = str(message.get("feed") or "")
+        data = message.get("data")
+        if isinstance(data, dict):
+            return feed, data
+        envelope = message.get("envelope")
+        if isinstance(envelope, dict):
+            payload = envelope.get("payload")
+            if isinstance(payload, dict):
+                return feed, payload
+        return feed, None
+
+    # ------------------------------------------------------------------
+    # WebSocket: connection management
+    # ------------------------------------------------------------------
+
+    async def connect(self) -> None:
+        """Connect to gateway WebSocket and authenticate."""
+        import websockets
+
+        self._ws = await websockets.connect(self._ws_url)
+        # Auth
+        await self._ws.send(json.dumps({"action": "auth", "key": self.gateway_key}))
+        raw = await self._ws.recv()
+        msg = json.loads(raw)
+        if not isinstance(msg, dict) or msg.get("type") != "auth_result" or msg.get("status") != "ok":
+            await self._ws.close()
+            self._ws = None
+            raise RuntimeError(f"Gateway WebSocket auth failed: {msg}")
+
+    async def disconnect(self) -> None:
+        """Gracefully close WebSocket connection."""
+        self._running = False
+        if self._ws is not None:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
+            self._ws = None
+        self._subscribed_symbols.clear()
+        self._subscribed_feeds.clear()
+
+    async def subscribe(self, feeds: list[str], symbols: list[str]) -> None:
+        """Subscribe to feeds for symbols. Maps short feed names to gateway feed names."""
+        if not self._ws or not feeds or not symbols:
+            return
+        mapped_feeds = [FEED_NAME_MAP.get(f, f) for f in feeds]
+        upper_symbols = [s.upper() for s in symbols]
+        await self._ws.send(
+            json.dumps(
+                {
+                    "action": "subscribe",
+                    "feeds": mapped_feeds,
+                    "symbols": upper_symbols,
+                }
+            )
+        )
+        self._subscribed_feeds.update(mapped_feeds)
+        self._subscribed_symbols.update(upper_symbols)
+
+    async def unsubscribe(self, feeds: list[str], symbols: list[str]) -> None:
+        """Unsubscribe from feeds for symbols."""
+        if not self._ws or not feeds or not symbols:
+            return
+        mapped_feeds = [FEED_NAME_MAP.get(f, f) for f in feeds]
+        upper_symbols = [s.upper() for s in symbols]
+        await self._ws.send(
+            json.dumps(
+                {
+                    "action": "unsubscribe",
+                    "feeds": mapped_feeds,
+                    "symbols": upper_symbols,
+                }
+            )
+        )
+        self._subscribed_symbols -= set(upper_symbols)
+
+    async def update_subscriptions(self, new_symbols: list[str]) -> None:
+        """Diff current vs new symbols and send subscribe/unsubscribe deltas."""
+        if not self._ws:
+            return
+        new_set = {s.upper() for s in new_symbols}
+        current = self._subscribed_symbols
+        to_add = new_set - current
+        to_remove = current - new_set
+        feeds_list = sorted(self._subscribed_feeds) if self._subscribed_feeds else ["stock_bars"]
+        if to_remove:
+            await self._ws.send(
+                json.dumps(
+                    {
+                        "action": "unsubscribe",
+                        "feeds": feeds_list,
+                        "symbols": sorted(to_remove),
+                    }
+                )
+            )
+        if to_add:
+            await self._ws.send(
+                json.dumps(
+                    {
+                        "action": "subscribe",
+                        "feeds": feeds_list,
+                        "symbols": sorted(to_add),
+                    }
+                )
+            )
+        self._subscribed_symbols = new_set
+
+    # ------------------------------------------------------------------
+    # WebSocket: streaming loop
+    # ------------------------------------------------------------------
+
+    async def start_stream(
+        self,
+        on_bar=None,
+        on_quote=None,
+        on_trade=None,
+        on_reconnect=None,
+    ) -> None:
+        """Main WebSocket recv loop with auto-reconnect."""
+
+        self._running = True
+        backoff = 1.0
+        consecutive_failures = 0
+        max_failures = 5
+
+        while self._running:
+            try:
+                if self._ws is None:
+                    await self.connect()
+                    # Re-subscribe after reconnect
+                    if self._subscribed_feeds and self._subscribed_symbols:
+                        await self._ws.send(
+                            json.dumps(
+                                {
+                                    "action": "subscribe",
+                                    "feeds": sorted(self._subscribed_feeds),
+                                    "symbols": sorted(self._subscribed_symbols),
+                                }
+                            )
+                        )
+                    if on_reconnect and consecutive_failures > 0:
+                        if asyncio.iscoroutinefunction(on_reconnect):
+                            await on_reconnect()
+                        else:
+                            on_reconnect()
+
+                backoff = 1.0
+                consecutive_failures = 0
+
+                while self._running:
+                    raw = await self._ws.recv()
+                    try:
+                        parsed = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    messages = parsed if isinstance(parsed, list) else [parsed]
+                    for msg in messages:
+                        if not isinstance(msg, dict):
+                            continue
+                        # Heartbeat pong
+                        if msg.get("type") == "heartbeat":
+                            await self._ws.send(json.dumps({"action": "heartbeat"}))
+                            continue
+                        # Data dispatch
+                        feed, payload = self._extract_data_payload(msg)
+                        if payload is None:
+                            continue
+                        await self._dispatch_event(feed, payload, on_bar, on_quote, on_trade)
+
+            except asyncio.CancelledError:
+                self._running = False
+                raise
+            except Exception as exc:
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures:
+                    raise RuntimeError(f"WebSocket stream failed after {max_failures} consecutive failures") from exc
+                self._ws = None
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2.0, 30.0)
+
+    async def _dispatch_event(self, feed, payload, on_bar, on_quote, on_trade) -> None:
+        """Dispatch a parsed event to the appropriate callback."""
+        try:
+            if feed == "bars" and on_bar:
+                bar = self._normalize_stream_bar(payload)
+                if asyncio.iscoroutinefunction(on_bar):
+                    await on_bar(bar.symbol, bar)
+                else:
+                    on_bar(bar.symbol, bar)
+            elif feed == "quotes" and on_quote:
+                quote = self._normalize_stream_quote(payload)
+                if asyncio.iscoroutinefunction(on_quote):
+                    await on_quote(quote.symbol, quote)
+                else:
+                    on_quote(quote.symbol, quote)
+            elif feed == "trades" and on_trade:
+                trade = self._normalize_stream_trade(payload)
+                if asyncio.iscoroutinefunction(on_trade):
+                    await on_trade(trade.symbol, trade)
+                else:
+                    on_trade(trade.symbol, trade)
+        except Exception:
+            pass  # Don't crash the stream on callback errors
