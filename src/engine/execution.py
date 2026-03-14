@@ -63,7 +63,22 @@ class ExecutionEngine:
 
         self.strategies: Dict[str, BaseStrategy] = {}
         self.strategy_engine: Optional[StrategyEngine] = None
-        self.position_manager = PositionManager()
+
+        # Wire CerberusLedgerAdapter into PositionManager (best-effort)
+        ledger_adapter = None
+        try:
+            from empire_core.ledger import LedgerWriter
+
+            from src.core.ledger_adapter import CerberusLedgerAdapter
+
+            ledger_db_path = config.get("ledger_db_path", "ledger.db")
+            writer = LedgerWriter(db_path=ledger_db_path, system="cerberus")
+            ledger_adapter = CerberusLedgerAdapter(ledger=writer)
+            logger.info("ledger_adapter_attached", ledger_db=ledger_db_path)
+        except Exception:
+            logger.warning("ledger_adapter_init_failed", exc_info=True)
+
+        self.position_manager = PositionManager(ledger_adapter=ledger_adapter)
         self.meta_labeler = MetaLabeler(logger)
         self.symbol_states: Dict[str, SymbolState] = {}
         # Bounded trade capture for backtests/analysis

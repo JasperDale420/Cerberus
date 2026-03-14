@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Sorted import block in `src/engine/execution.py` to comply with ruff I001 rule (import order within try block for ledger adapter initialization).
+
 ### Added
 
 - **Ledger adapter wired into execution flow**: `ExecutionEngine` now creates a `CerberusLedgerAdapter` and passes it to `PositionManager`, so all trade opens and closes are recorded in the unified ledger (`ledger.db`). Adapter creation is wrapped in try/except so failures never break trading. The ledger DB path is configurable via `ledger_db_path` in the engine config (defaults to `ledger.db`).
