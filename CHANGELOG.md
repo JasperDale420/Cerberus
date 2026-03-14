@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Ledger adapter wired into execution flow**: `ExecutionEngine` now creates a `CerberusLedgerAdapter` and passes it to `PositionManager`, so all trade opens and closes are recorded in the unified ledger (`ledger.db`). Adapter creation is wrapped in try/except so failures never break trading. The ledger DB path is configurable via `ledger_db_path` in the engine config (defaults to `ledger.db`).
+
+### Changed
+
+- **Flow alerts now read from Heber**: Option flow data is read from Heber Silver (populated by Data-Gateway's UW poller) instead of making duplicate direct API calls to Unusual Whales. Falls back to Gateway REST proxy if Heber is not configured. Set `CERBERUS_HEBER_DATA_ROOT` to enable.
+
 ### Removed
 
 - Removed `AlpacaClient` (`src/data/alpaca.py`), `GatewayStreamClient` (`src/data/gateway_stream.py`), and `CentralApiClient` (`src/data/api_client.py`) legacy data clients — all data now flows through `UnifiedDataClient`

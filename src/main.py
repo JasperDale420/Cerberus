@@ -271,12 +271,24 @@ async def async_main():
         gateway_key=runtime_settings.cerberus_gateway_key,
     )
 
+    # Heber reader for flow alerts (populated by Gateway poller — avoids duplicate UW API calls)
+    heber_client = None
+    if runtime_settings.cerberus_heber_data_root:
+        from src.data.heber_read_client import HeberReadClient
+
+        heber_client = HeberReadClient(
+            data_root=runtime_settings.cerberus_heber_data_root,
+            logger=logger,
+        )
+        logger.info("Heber reader initialized for flow alerts", data_root=runtime_settings.cerberus_heber_data_root)
+
     feature_pipeline = FeaturePipeline(
         unified_client,
         uw_client,
         logger,
         config=config,
         clock=clock,
+        heber_client=heber_client,
     )
 
     universe_builder = UniverseBuilder(

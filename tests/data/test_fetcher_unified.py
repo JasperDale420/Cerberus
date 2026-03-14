@@ -44,7 +44,6 @@ def test_fetcher_no_alpaca_or_central_api_params(mock_client, mock_uw, mock_logg
     fetcher = DataFetcher(mock_client, mock_uw, mock_logger)
     assert not hasattr(fetcher, "alpaca_client")
     assert not hasattr(fetcher, "central_api_client")
-    assert not hasattr(fetcher, "heber_client")
     assert not hasattr(fetcher, "data_backend")
 
 

@@ -65,8 +65,9 @@ def test_apply_scan_result_is_deterministic_for_same_inputs() -> None:
         e.apply_scan_result(scan_results)  # type: ignore
         return set(e.symbol_states.keys()), list(logger.info.call_args_list)
 
+    logger.reset_mock()
     keys1, logs1 = run_once()
-    logger.info.reset_mock()
+    logger.reset_mock()
     keys2, logs2 = run_once()
 
     assert keys1 == keys2

@@ -33,6 +33,7 @@ class FeaturePipeline:
         clock: Optional[Callable[[], datetime]] = None,
         snapshot_manager: Optional["SnapshotManager"] = None,
         atlas_reader: Optional["AtlasFactorReader"] = None,
+        heber_client: Optional[Any] = None,
     ):
         self.unified_client = unified_client
         self.unusual_whales_client = unusual_whales_client
@@ -57,6 +58,7 @@ class FeaturePipeline:
             logger,
             config=config,
             clock=self.clock,
+            heber_client=heber_client,
         )
         self.calculator = FeatureCalculator()
 

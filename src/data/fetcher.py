@@ -15,6 +15,7 @@ class DataFetcher:
     Handles data retrieval for the FeaturePipeline (I/O only).
     Manages caching and concurrency limits.
     All data flows through UnifiedDataClient (Data-Gateway).
+    Flow alerts are read from Heber Silver (populated by Gateway poller).
     """
 
     def __init__(
@@ -24,9 +25,11 @@ class DataFetcher:
         logger: StructuredLogger,
         config: dict[str, Any] | None = None,
         clock: Callable[[], datetime] | None = None,
+        heber_client: Any | None = None,
     ):
         self.unified_client = unified_client
         self.unusual_whales_client = unusual_whales_client
+        self.heber_client = heber_client
         self.logger = logger
         self.config = config or {}
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -167,13 +170,34 @@ class DataFetcher:
             return [], metrics
 
     async def fetch_flow(self, symbol: str, date_str: str) -> list[Any]:
-        """Fetches option flow data for a specific date."""
+        """Fetches option flow data from Heber Silver (populated by Gateway poller).
+
+        Falls back to Gateway REST proxy if Heber is not configured.
+        """
+        sym = str(symbol).strip().upper()
+
+        # Primary: read from Heber Silver (no extra API calls — poller already fetched it)
+        if self.heber_client is not None:
+            try:
+                dt = datetime.fromisoformat(date_str)
+                start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=UTC)
+                end = start + timedelta(hours=23, minutes=59, seconds=59)
+                rows = await asyncio.to_thread(self.heber_client.get_flow_alerts, sym, start, end)
+                if rows:
+                    return rows
+                self.logger.debug("No flow alerts in Heber for symbol", symbol=sym, date=date_str)
+            except Exception as e:
+                self.logger.warning("Heber flow read failed; falling back to gateway", symbol=sym, error=str(e))
+
+        # Fallback: Gateway REST proxy (makes a live UW API call)
         try:
-            response = await asyncio.to_thread(self.unified_client.get_flow, symbol, date_str)
+            response = await asyncio.to_thread(self.unified_client.get_flow, sym, date_str)
             data = response.get("data") if isinstance(response, dict) else None
             return data if isinstance(data, list) else []
         except Exception as e:
-            self.logger.warning("Flow fetch failed", symbol=symbol, error=str(e))
+            self.logger.warning("Flow fetch failed", symbol=sym, error=str(e))
             return []
 
     async def fetch_gex(self, symbol: str) -> list[dict[str, Any]]:
