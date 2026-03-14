@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Legacy/dual/gateway backend mode settings**: Removed `cerberus_data_backend`, `cerberus_storage_backend`, `cerberus_dual_read_compare`, and `cerberus_failover_to_legacy` fields from Settings. Removed `use_gateway_data` and `use_heber_storage` properties. Simplified `validate_startup_mode()` to only check that `CERBERUS_GATEWAY_KEY` is set. All data now flows exclusively through Data-Gateway via UnifiedDataClient.
+
 ### Changed
 
 - **Simplified main.py to use UnifiedDataClient exclusively**: Removed all `AlpacaClient`, `GatewayStreamClient`, and legacy data backend branching from the startup and main loop. Streaming now goes through `UnifiedDataClient.start_stream()` with automatic reconnect on session boundaries. Subscriptions update after each scan cycle via `update_subscriptions()`. Removed dead helper functions (`_should_initialize_alpaca_client`, `_should_start_alpaca_stream`, `_capture_screener_snapshot`) and their associated imports. Engine construction no longer passes `alpaca_client` or `gateway_client` params.

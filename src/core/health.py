@@ -64,16 +64,9 @@ def check_alpaca_credentials() -> Dict[str, Any]:
     base_url = settings.resolved_base_url
 
     if not api_key or not secret_key:
-        if settings.cerberus_data_backend == "gateway":
-            return {
-                "status": "skipped",
-                "reason": "Gateway mode enabled; direct Alpaca credentials not required",
-                "data_backend": settings.cerberus_data_backend,
-            }
         return {
-            "status": "error",
-            "error": "Missing ALPACA_API_KEY or ALPACA_SECRET_KEY environment variables",
-            "data_backend": settings.cerberus_data_backend,
+            "status": "skipped",
+            "reason": "Alpaca credentials not configured (not required for gateway mode)",
         }
 
     is_paper = settings.alpaca_paper
@@ -84,7 +77,6 @@ def check_alpaca_credentials() -> Dict[str, Any]:
         "mode": mode,
         "base_url": base_url or "not_set",
         "credentials_present": True,
-        "data_backend": settings.cerberus_data_backend,
     }
 
 
@@ -181,12 +173,6 @@ def check_heber_freshness(
 ) -> Dict[str, Any]:
     """Verify Heber Silver datasets contain recent files for required feeds."""
     settings = get_settings()
-    if not settings.use_heber_storage:
-        return {
-            "status": "skipped",
-            "reason": "Heber storage backend not enabled",
-        }
-
     data_root_raw = str(settings.cerberus_heber_data_root).strip()
     if not data_root_raw:
         return {

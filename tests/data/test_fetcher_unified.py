@@ -45,7 +45,7 @@ def test_fetcher_no_alpaca_or_central_api_params(mock_client, mock_uw, mock_logg
     assert not hasattr(fetcher, "alpaca_client")
     assert not hasattr(fetcher, "central_api_client")
     assert not hasattr(fetcher, "heber_client")
-    assert not hasattr(fetcher, "use_gateway_data")
+    assert not hasattr(fetcher, "data_backend")
 
 
 def test_fetch_prior_day_stats(mock_client, mock_uw, mock_logger):

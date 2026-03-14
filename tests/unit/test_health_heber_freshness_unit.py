@@ -37,8 +37,6 @@ def test_check_heber_freshness_reports_recent_dataset_file(
     _touch(trades_file, now)
 
     settings = SimpleNamespace(
-        cerberus_storage_backend="heber",
-        use_heber_storage=True,
         cerberus_heber_data_root=str(tmp_path),
     )
     monkeypatch.setattr(health, "get_settings", lambda: settings)
@@ -60,8 +58,6 @@ def test_check_heber_freshness_reports_stale_when_no_recent_file(
     _touch(bars_file, old_time)
 
     settings = SimpleNamespace(
-        cerberus_storage_backend="heber",
-        use_heber_storage=True,
         cerberus_heber_data_root=str(tmp_path),
     )
     monkeypatch.setattr(health, "get_settings", lambda: settings)
