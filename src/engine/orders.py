@@ -17,7 +17,7 @@ from src.analysis.schema import Order as DbOrder
 from src.core.domain import OrderIntent
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
-from src.data.api_client import CentralApiClient
+from src.data.client import UnifiedDataClient
 
 
 def _truncate(value: Any, *, limit: int) -> str:
@@ -482,12 +482,12 @@ class GatewayOrderExecutor:
 
     def __init__(
         self,
-        central_api_client: CentralApiClient,
+        unified_client: UnifiedDataClient,
         logger: StructuredLogger,
         db: Optional[DatabaseDatabase] = None,
         clock: Optional[Callable[[], datetime]] = None,
     ):
-        self.central_api_client = central_api_client
+        self.unified_client = unified_client
         self.logger = logger
         self.db = db
         self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
@@ -510,7 +510,7 @@ class GatewayOrderExecutor:
             else self.logger
         )
         try:
-            order = self.central_api_client.submit_alpaca_order(
+            order = self.unified_client.submit_order(
                 symbol=intent.symbol,
                 side=intent.side.value,
                 qty=float(intent.qty),
@@ -623,7 +623,7 @@ class GatewayOrderExecutor:
     def cancel_by_broker_order_id(self, broker_order_id: str) -> None:
         """Best-effort cancel of a specific order through Data-Gateway."""
         try:
-            cancelled = self.central_api_client.cancel_alpaca_order(broker_order_id)
+            cancelled = self.unified_client.cancel_order(broker_order_id)
             self.logger.info(
                 "Gateway order cancel requested",
                 broker_order_id=broker_order_id,
@@ -642,12 +642,10 @@ class GatewayOrderExecutor:
         """Cancel all open orders for a symbol via Data-Gateway."""
         cancelled = 0
         try:
-            orders = self.central_api_client.get_alpaca_orders(
-                status="open",
-                symbols=[symbol],
-                limit=500,
-            )
+            orders = self.unified_client.get_orders(status="open", limit=500)
             for order in orders:
+                if str(order.get("symbol", "")) != symbol:
+                    continue
                 oid = str(order.get("id") or "")
                 if not oid:
                     continue

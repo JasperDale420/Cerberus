@@ -11,7 +11,7 @@ def test_gateway_order_executor_submits_via_central_api_and_persists_order() -> 
     logger = MagicMock()
     db = MagicMock()
     gateway = MagicMock()
-    gateway.submit_alpaca_order.return_value = {
+    gateway.submit_order.return_value = {
         "id": "gw-order-1",
         "symbol": "AAPL",
         "status": "accepted",
@@ -36,8 +36,8 @@ def test_gateway_order_executor_submits_via_central_api_and_persists_order() -> 
     out = executor.submit(intent)
 
     assert out["id"] == "gw-order-1"
-    gateway.submit_alpaca_order.assert_called_once()
-    args = gateway.submit_alpaca_order.call_args.kwargs
+    gateway.submit_order.assert_called_once()
+    args = gateway.submit_order.call_args.kwargs
     assert args["symbol"] == "AAPL"
     assert args["side"] == "buy"
     assert args["qty"] == 5.0
@@ -60,7 +60,7 @@ def test_gateway_order_executor_ignores_broker_managed_exit_fields() -> None:
     logger = MagicMock()
     db = MagicMock()
     gateway = MagicMock()
-    gateway.submit_alpaca_order.return_value = {"id": "gw-order-2"}
+    gateway.submit_order.return_value = {"id": "gw-order-2"}
     intent = OrderIntent(
         symbol="TSLA",
         side=OrderSide.SELL,
@@ -79,7 +79,7 @@ def test_gateway_order_executor_ignores_broker_managed_exit_fields() -> None:
 
     executor.submit(intent)
 
-    call = gateway.submit_alpaca_order.call_args.kwargs
+    call = gateway.submit_order.call_args.kwargs
     assert call["symbol"] == "TSLA"
     assert call["order_type"] == "limit"
     assert call["limit_price"] == 250.0

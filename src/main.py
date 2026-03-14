@@ -12,7 +12,7 @@ from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
 from src.data.alpaca import AlpacaClient
-from src.data.api_client import CentralApiClient
+from src.data.client import UnifiedDataClient
 from src.data.gateway_stream import GatewayStreamClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
@@ -351,25 +351,26 @@ async def async_main():
 
     # Unusual Whales Client
     uw_client = UnusualWhalesClient(config_loader, logger, config=config)
-    central_api_client = CentralApiClient(config_loader, logger)
     gateway_stream_client = GatewayStreamClient(config_loader, logger)
 
+    unified_client = UnifiedDataClient(
+        gateway_url=runtime_settings.cerberus_gateway_url,
+        gateway_key=runtime_settings.cerberus_gateway_key,
+    )
+
     feature_pipeline = FeaturePipeline(
-        alpaca_client,
+        unified_client,
         uw_client,
         logger,
-        central_api_client=central_api_client,
         config=config,
         clock=clock,
     )
 
     universe_builder = UniverseBuilder(
-        config_loader,
+        unified_client,
         logger,
         config=config,
         config_path_or_dir=args.config,
-        alpaca_client=alpaca_client,
-        central_api_client=central_api_client,
         clock=clock,
     )
     scanner = Scanner(universe_builder, feature_pipeline, logger, config=config)
@@ -408,7 +409,7 @@ async def async_main():
         from src.engine.orders import GatewayOrderExecutor
 
         engine.order_executor = GatewayOrderExecutor(
-            central_api_client,
+            unified_client,
             logger,
             db=db,
             clock=clock,
@@ -724,7 +725,7 @@ async def async_main():
             trade_stream_task.cancel()
         if not reconcile_task.done():
             reconcile_task.cancel()
-        central_api_client.close()
+        unified_client.close()
         await uw_client.close()
 
 
