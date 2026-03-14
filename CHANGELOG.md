@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **DataFetcher rewired to UnifiedDataClient**: Replaced `AlpacaClient`, `CentralApiClient`, and `HeberReadClient` with single `UnifiedDataClient` in `src/data/fetcher.py`. Removed all dual-read comparison methods, legacy failover logic, Heber fallback chain, and gateway/backend mode flags. File reduced from ~746 lines to ~210 lines. All data now flows through Data-Gateway via `UnifiedDataClient`. LRU cache pattern preserved for bars. 17 new tests in `tests/data/test_fetcher_unified.py`.
+
 ### Added
+
+- **UnifiedDataClient WebSocket streaming**: Added WebSocket methods to `UnifiedDataClient` for real-time bar, quote, and trade streaming via Data-Gateway. Includes `connect()`/`disconnect()`, `subscribe()`/`unsubscribe()`, `update_subscriptions()` with delta diffing, `start_stream()` with auto-reconnect and exponential backoff, and `StreamQuote`/`StreamTrade` dataclasses. Feed name mapping (`bars` -> `stock_bars`, etc.), heartbeat handling, and both sync/async callback dispatch. 25 tests in `tests/data/test_unified_client_ws.py`.
 
 - **UnifiedDataClient (REST)**: Added `src/data/client.py` with `UnifiedDataClient` class providing all REST methods for Data-Gateway communication. Replaces `CentralApiClient` with a cleaner interface: retry logic (429/5xx with exponential backoff, immediate raise on 401/403), bar/trade normalization, order management, screener endpoints, and computed helpers (`get_prior_day_stats`, `get_avg_daily_volume`). WebSocket URL computed and stored for future streaming support. 37 unit tests in `tests/data/test_unified_client_rest.py`.
 
