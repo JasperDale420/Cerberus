@@ -14,7 +14,7 @@ from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.domain import OrderSide, Regime, Signal
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
+from src.data.client import UnifiedDataClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
@@ -78,7 +78,7 @@ class TestHarness:
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(args.config)
         self.engine: Optional[ExecutionEngine] = None
-        self.alpaca: Optional[AlpacaClient] = None
+        self.unified_client: Optional[UnifiedDataClient] = None
         self.bot_log_path: Optional[str] = None
 
         # Kill Switch Check
@@ -113,11 +113,14 @@ class TestHarness:
         # We can re-configure the root logger or specific loggers here.
         # But let's stick to the SUT as strict as possible.
 
-        # 2. Alpaca Client - Check Paper Mode
-        self.alpaca = AlpacaClient(self.config_loader, _slog("AlpacaClient"))
-        if not self.alpaca.paper and not self.args.force_live:
-            self.logger.critical("Alpaca Client is NOT in paper mode! Aborting.")
-            sys.exit(1)
+        # 2. Unified Data Client
+        from src.core.settings import get_settings
+
+        runtime = get_settings()
+        self.unified_client = UnifiedDataClient(
+            gateway_url=runtime.cerberus_gateway_url,
+            gateway_key=runtime.cerberus_gateway_key,
+        )
 
         # 3. Execution Engine
         db = DatabaseDatabase(
@@ -127,14 +130,13 @@ class TestHarness:
             config_path_or_dir=self.args.config,
         )
         db.init_db()
-        # Using in-memory or paper DB? Config usually points to sqlite.
 
         self.engine = ExecutionEngine(
             self.config,
             _slog("Engine", level="INFO"),
             db,
-            self.alpaca,
-            run_id=self.run_id,  # Pass run_id!
+            None,
+            run_id=self.run_id,
         )
 
         # 4. Scanner & Pipeline
@@ -144,18 +146,17 @@ class TestHarness:
             config=self.config,
         )
         feature_pipeline = FeaturePipeline(
-            self.alpaca,
+            self.unified_client,
             uw_client,
             _slog("Pipeline", level="INFO"),
             config=self.config,
             clock=getattr(self.engine, "clock", None),
         )
         universe_builder = UniverseBuilder(
-            self.config_loader,
+            self.unified_client,
             _slog("Universe", level="INFO"),
             config=self.config,
             config_path_or_dir=self.args.config,
-            alpaca_client=self.alpaca,
             clock=getattr(self.engine, "clock", None),
         )
         scanner = Scanner(

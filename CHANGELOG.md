@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **FeaturePipeline and UniverseBuilder rewired to UnifiedDataClient**: Replaced `AlpacaClient` + `CentralApiClient` params with single `UnifiedDataClient` in both `FeaturePipeline` and `UniverseBuilder`. Removed `ConfigLoader`, `get_settings()`, `use_gateway_data`, and `allow_legacy_failover` from `UniverseBuilder`. Simplified `_get_historical_bars`, `_get_screener_most_actives`, and `_get_screener_movers` to direct delegation. Updated `src/main.py`, `scripts/paper_live_test.py`, and `tools/paper_live_harness.py` construction sites. All tests updated.
+
 - **GatewayOrderExecutor rewired to UnifiedDataClient**: Replaced `CentralApiClient` with `UnifiedDataClient` in `GatewayOrderExecutor`. Order submission now calls `unified_client.submit_order()`, cancellation calls `unified_client.cancel_order()`, and order listing calls `unified_client.get_orders()` with local symbol filtering (since `get_orders` doesn't accept a `symbols` parameter). Updated `src/main.py` to construct a `UnifiedDataClient` for the gateway executor path.
 
 - **DataFetcher rewired to UnifiedDataClient**: Replaced `AlpacaClient`, `CentralApiClient`, and `HeberReadClient` with single `UnifiedDataClient` in `src/data/fetcher.py`. Removed all dual-read comparison methods, legacy failover logic, Heber fallback chain, and gateway/backend mode flags. File reduced from ~746 lines to ~210 lines. All data now flows through Data-Gateway via `UnifiedDataClient`. LRU cache pattern preserved for bars. 17 new tests in `tests/data/test_fetcher_unified.py`.

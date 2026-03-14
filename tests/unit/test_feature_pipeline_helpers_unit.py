@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -17,9 +17,9 @@ def _logger(name: str) -> StructuredLogger:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_feature_pipeline_requires_as_of_for_determinism() -> None:
-    alpaca = MagicMock()
+    unified = MagicMock()
     uw = MagicMock()
-    fp = FeaturePipeline(alpaca, uw, _logger("test_fp_as_of"))
+    fp = FeaturePipeline(unified, uw, _logger("test_fp_as_of"))
     with pytest.raises(ValueError, match="requires as_of"):
         await fp.compute_features(["AAPL"])
 
@@ -90,51 +90,38 @@ async def test_feature_pipeline_computes_true_gap_and_premarket_volume() -> None
 
 
 @pytest.mark.unit
-def test_feature_pipeline_fetch_avg_daily_volume_uses_last_window_and_handles_shapes() -> None:
-    alpaca = MagicMock()
+def test_feature_pipeline_fetch_avg_daily_volume_delegates_to_unified_client() -> None:
+    unified = MagicMock()
     uw = MagicMock()
-    fp = FeaturePipeline(alpaca, uw, _logger("test_fp_avg_volume"))
+    fp = FeaturePipeline(unified, uw, _logger("test_fp_avg_volume"))
 
     end = datetime(2025, 1, 10, tzinfo=timezone.utc)
-    alpaca.get_historical_bars.return_value = {"bars": [{"v": 10}, {"v": 20}, {"volume": 30}, {"v": None}, {"v": 40}]}
+    unified.get_avg_daily_volume.return_value = 30.0
     avg = fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=3)
-    # last 3 valid volumes: 20, 30, 40 (None skipped) => average 30
     assert avg == pytest.approx(30.0)
+    unified.get_avg_daily_volume.assert_called_once_with("AAPL", end, 3)
 
-    alpaca.get_historical_bars.return_value = [{"v": 1}, {"v": 2}, {"v": 3}]
-    assert fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=2) == pytest.approx(2.5)
-
-    alpaca.get_historical_bars.side_effect = RuntimeError("fail")
+    unified.get_avg_daily_volume.side_effect = RuntimeError("fail")
     assert fp.fetcher.fetch_avg_daily_volume("AAPL", end, lookback_days=2) is None
 
 
 @pytest.mark.unit
-def test_feature_pipeline_fetch_prior_day_stats_filters_to_completed_day() -> None:
-    alpaca = MagicMock()
-    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_prior_day"))
+def test_feature_pipeline_fetch_prior_day_stats_delegates_to_unified_client() -> None:
+    unified = MagicMock()
+    fp = FeaturePipeline(unified, MagicMock(), _logger("test_fp_prior_day"))
 
     current = datetime(2025, 1, 10, 15, 0, tzinfo=timezone.utc)
-    alpaca.get_historical_bars.return_value = {
-        "bars": [
-            {"t": (current - timedelta(days=2)).isoformat(), "h": 10, "l": 9, "c": 9.5},
-            {
-                "t": (current - timedelta(days=1)).isoformat(),
-                "h": 12,
-                "l": 11,
-                "c": 11.5,
-            },
-            {"t": current.isoformat(), "h": 99, "l": 1, "c": 50},
-        ]
-    }
+    unified.get_prior_day_stats.return_value = (12.0, 11.0, 11.5)
 
     high, low, close = fp.fetcher.fetch_prior_day_stats("AAPL", current)
     assert (high, low, close) == (12.0, 11.0, 11.5)
+    unified.get_prior_day_stats.assert_called_once_with("AAPL", current)
 
 
 @pytest.mark.unit
 def test_feature_pipeline_extracts_closes_from_mixed_bar_shapes() -> None:
-    alpaca = MagicMock()
-    fp = FeaturePipeline(alpaca, MagicMock(), _logger("test_fp_extract_closes"))
+    unified = MagicMock()
+    fp = FeaturePipeline(unified, MagicMock(), _logger("test_fp_extract_closes"))
 
     class _Bar:
         def __init__(self, c: float) -> None:

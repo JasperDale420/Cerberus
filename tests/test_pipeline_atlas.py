@@ -61,7 +61,7 @@ class TestAppendAtlasFactors:
             composites={"AAPL": 0.5},
         )
         pipeline = FeaturePipeline(
-            alpaca_client=None,
+            unified_client=MagicMock(),
             unusual_whales_client=MagicMock(),
             logger=MagicMock(),
             atlas_reader=reader,
@@ -80,7 +80,7 @@ class TestAppendAtlasFactors:
         from src.data.pipeline import FeaturePipeline
 
         pipeline = FeaturePipeline(
-            alpaca_client=None,
+            unified_client=MagicMock(),
             unusual_whales_client=MagicMock(),
             logger=MagicMock(),
             atlas_reader=None,
@@ -100,7 +100,7 @@ class TestAppendAtlasFactors:
         broken_reader = MagicMock()
         broken_reader.get_scores.side_effect = RuntimeError("bad disk")
         pipeline = FeaturePipeline(
-            alpaca_client=None,
+            unified_client=MagicMock(),
             unusual_whales_client=MagicMock(),
             logger=MagicMock(),
             atlas_reader=broken_reader,
@@ -120,7 +120,7 @@ class TestAppendAtlasFactors:
 
         reader = FakeAtlasReader(scores={}, composites={})
         pipeline = FeaturePipeline(
-            alpaca_client=None,
+            unified_client=MagicMock(),
             unusual_whales_client=MagicMock(),
             logger=MagicMock(),
             atlas_reader=reader,
@@ -145,7 +145,7 @@ class TestAppendAtlasFactors:
             composites={"AAPL": 0.5, "TSLA": -0.8},
         )
         pipeline = FeaturePipeline(
-            alpaca_client=None,
+            unified_client=MagicMock(),
             unusual_whales_client=MagicMock(),
             logger=MagicMock(),
             atlas_reader=reader,

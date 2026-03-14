@@ -6,14 +6,13 @@ from zoneinfo import ZoneInfo
 
 from src.core.domain import SymbolFeatures
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
-from src.data.api_client import CentralApiClient
 from src.data.calculator import FeatureCalculator
 from src.data.fetcher import DataFetcher
 from src.data.unusual_whales import UnusualWhalesClient
 
 if TYPE_CHECKING:
     from src.data.atlas_reader import AtlasFactorReader
+    from src.data.client import UnifiedDataClient
     from src.data.snapshot_manager import SnapshotManager
 
 US_EASTERN = ZoneInfo("America/New_York")
@@ -27,16 +26,15 @@ class FeaturePipeline:
 
     def __init__(
         self,
-        alpaca_client: Optional[AlpacaClient],
+        unified_client: "UnifiedDataClient",
         unusual_whales_client: UnusualWhalesClient,
         logger: StructuredLogger,
         config: Optional[Dict[str, Any]] = None,
         clock: Optional[Callable[[], datetime]] = None,
         snapshot_manager: Optional["SnapshotManager"] = None,
-        central_api_client: Optional[CentralApiClient] = None,
         atlas_reader: Optional["AtlasFactorReader"] = None,
     ):
-        self.alpaca_client = alpaca_client
+        self.unified_client = unified_client
         self.unusual_whales_client = unusual_whales_client
         self.logger = logger
         self.config = config or {}
@@ -54,10 +52,9 @@ class FeaturePipeline:
 
         # New Collaborators
         self.fetcher = DataFetcher(
-            alpaca_client,
+            unified_client,
             unusual_whales_client,
             logger,
-            central_api_client=central_api_client,
             config=config,
             clock=self.clock,
         )

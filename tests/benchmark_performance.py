@@ -18,11 +18,11 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         self.config_loader.load_config.return_value = {}
 
         # Mock Clients
-        self.alpaca_client = MagicMock()
+        self.unified_client = MagicMock()
         self.uw_client = MagicMock()
 
         # Mock FeaturePipeline (historical fetching is the bottleneck to test)
-        self.feature_pipeline = FeaturePipeline(self.alpaca_client, self.uw_client, self.logger, config={})
+        self.feature_pipeline = FeaturePipeline(self.unified_client, self.uw_client, self.logger, config={})
 
         # Mock UniverseBuilder to return fixed set of 50 symbols
         self.universe_builder = MagicMock(spec=UniverseBuilder)
@@ -54,7 +54,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
 
         # self.feature_pipeline.fetch_bars_batch = MagicMock(side_effect=mock_fetch)
         # Also mock single get_historical_bars if used
-        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"c": 100.0, "v": 1000} for _ in range(100)]}
+        self.unified_client.get_historical_bars.return_value = {"bars": [{"c": 100.0, "v": 1000} for _ in range(100)]}
 
         start_time = time.perf_counter()
 
@@ -74,7 +74,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         Measure ExecutionEngine.on_bar() latency.
         Goal: P99 < 10ms (processing only).
         """
-        engine = ExecutionEngine(config={}, logger=self.logger, alpaca_client=self.alpaca_client)
+        engine = ExecutionEngine(config={}, logger=self.logger, alpaca_client=self.unified_client)
 
         # Mock dependencies
         engine.market_manager = MagicMock()
@@ -107,7 +107,7 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         """
         # Setup
         sym = "TEST_CACHE"
-        mock_pipeline = FeaturePipeline(self.alpaca_client, self.uw_client, self.logger, config={})
+        mock_pipeline = FeaturePipeline(self.unified_client, self.uw_client, self.logger, config={})
 
         # T0: Start of session (09:30 ET) ~ 14:30 UTC
         # T1: 15:00 UTC
@@ -117,28 +117,28 @@ class TestPerformanceBenchmark(unittest.IsolatedAsyncioTestCase):
         t2 = datetime(2025, 1, 1, 15, 10, 0, tzinfo=timezone.utc)
 
         # 1. First Call: Should fetch full history
-        self.alpaca_client.get_historical_bars.reset_mock()
-        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"t": t1.isoformat(), "c": 100, "v": 1000}]}
+        self.unified_client.get_historical_bars.reset_mock()
+        self.unified_client.get_historical_bars.return_value = {"bars": [{"t": t1.isoformat(), "c": 100, "v": 1000}]}
 
         await mock_pipeline.compute_features([sym], as_of=t1)
 
         # Verify 1st fetch
-        self.alpaca_client.get_historical_bars.assert_called()
-        args1, _ = self.alpaca_client.get_historical_bars.call_args
+        self.unified_client.get_historical_bars.assert_called()
+        args1, _ = self.unified_client.get_historical_bars.call_args
         # args: (symbol, start, end, timeframe)
         # We don't check exact start (it's 4am ET), but end should be T1
         self.assertEqual(args1[2], t1)
 
         # 2. Second Call: Should be incremental
-        self.alpaca_client.get_historical_bars.reset_mock()
+        self.unified_client.get_historical_bars.reset_mock()
         # Mock return for the increment
-        self.alpaca_client.get_historical_bars.return_value = {"bars": [{"t": t2.isoformat(), "c": 101, "v": 1000}]}
+        self.unified_client.get_historical_bars.return_value = {"bars": [{"t": t2.isoformat(), "c": 101, "v": 1000}]}
 
         await mock_pipeline.compute_features([sym], as_of=t2)
 
         # Verify 2nd fetch
-        self.alpaca_client.get_historical_bars.assert_called()
-        args2, _ = self.alpaca_client.get_historical_bars.call_args
+        self.unified_client.get_historical_bars.assert_called()
+        args2, _ = self.unified_client.get_historical_bars.call_args
 
         # Start time should be > T1 (incremental)
         # args2[1] is fetch_start, args2[2] is end

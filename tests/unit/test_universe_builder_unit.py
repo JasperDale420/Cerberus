@@ -1,26 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
-from unittest.mock import patch
+from typing import Any, Dict
+from unittest.mock import MagicMock
 
 import pytest
 
-from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
-from src.core.settings import Settings
 from src.scanner.universe import UniverseBuilder
 
 
-class _DummyConfigLoader(ConfigLoader):
-    def __init__(self, config: Dict[str, Any]):
-        self._config = config
+class _FakeUnifiedClient:
+    """Fake UnifiedDataClient that returns bars with volume data."""
 
-    def load_config(self, _path: Optional[str] = None) -> Dict[str, Any]:
-        return dict(self._config)
-
-
-class _FakeAlpaca:
     def __init__(self, volumes_by_symbol: Dict[str, float]):
         self._vols = {k.upper(): float(v) for k, v in volumes_by_symbol.items()}
 
@@ -30,16 +22,11 @@ class _FakeAlpaca:
             return {"bars": []}
         return {"bars": [{"v": float(v)}]}
 
+    def get_most_actives(self, top: int = 20) -> list[str]:
+        return []
 
-class _FakeGateway:
-    def __init__(self, volumes_by_symbol: Dict[str, float]):
-        self._vols = {k.upper(): float(v) for k, v in volumes_by_symbol.items()}
-
-    def get_alpaca_bars(self, symbol: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        v = self._vols.get(symbol.upper())
-        if v is None:
-            return {"bars": []}
-        return {"bars": [{"v": float(v)}]}
+    def get_movers(self, top: int = 10) -> Dict[str, list[str]]:
+        return {"gainers": [], "losers": []}
 
 
 def _logger() -> StructuredLogger:
@@ -77,10 +64,9 @@ def test_universe_builder_combines_sources_and_dedupes(tmp_path) -> None:
     }
 
     builder = UniverseBuilder(
-        _DummyConfigLoader(cfg),
+        _FakeUnifiedClient({"MSFT": 100.0, "TSLA": 200.0}),  # type: ignore
         _logger(),
         config=cfg,
-        alpaca_client=_FakeAlpaca({"MSFT": 100.0, "TSLA": 200.0}),  # type: ignore
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
 
@@ -90,13 +76,13 @@ def test_universe_builder_combines_sources_and_dedupes(tmp_path) -> None:
 @pytest.mark.unit
 def test_universe_builder_raises_when_empty() -> None:
     cfg: Dict[str, Any] = {"universe": {"symbols": []}}
-    builder = UniverseBuilder(_DummyConfigLoader(cfg), _logger(), config=cfg)
+    builder = UniverseBuilder(MagicMock(), _logger(), config=cfg)
     with pytest.raises(ValueError, match="Universe is empty"):
         builder.build_universe()
 
 
 @pytest.mark.unit
-def test_universe_builder_uses_gateway_client_for_dynamic_volume_selection() -> None:
+def test_universe_builder_uses_unified_client_for_dynamic_volume_selection() -> None:
     cfg = {
         "universe": {
             "symbols": ["AAPL"],
@@ -111,20 +97,11 @@ def test_universe_builder_uses_gateway_client_for_dynamic_volume_selection() -> 
         }
     }
 
-    runtime = Settings(
-        CERBERUS_DATA_BACKEND="gateway",
-        CERBERUS_GATEWAY_URL="http://gateway.test",
-        CERBERUS_GATEWAY_KEY="gw_test_key",
+    builder = UniverseBuilder(
+        _FakeUnifiedClient({"MSFT": 100.0, "TSLA": 300.0}),  # type: ignore
+        _logger(),
+        config=cfg,
+        clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
-
-    with patch("src.scanner.universe.get_settings", return_value=runtime):
-        builder = UniverseBuilder(
-            _DummyConfigLoader(cfg),
-            _logger(),
-            config=cfg,
-            alpaca_client=None,
-            central_api_client=_FakeGateway({"MSFT": 100.0, "TSLA": 300.0}),  # type: ignore[arg-type]
-            clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
-        )
 
     assert builder.build_universe() == ["AAPL", "TSLA"]

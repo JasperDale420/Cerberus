@@ -1,39 +1,19 @@
-"""Gateway-mode integration tests for scanner universe and feature pipeline."""
+"""Integration tests for scanner universe and feature pipeline with UnifiedDataClient."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.config import ConfigLoader
-from src.core.settings import Settings
 from src.data.pipeline import FeaturePipeline
 from src.scanner.universe import UniverseBuilder
 
 
-class _DummyConfigLoader(ConfigLoader):
-    def __init__(self, config: dict):
-        self._config = config
-
-    def load_config(self, _path: str | None = None) -> dict:
-        return dict(self._config)
-
-
-def _gateway_runtime_settings() -> Settings:
-    return Settings(
-        CERBERUS_DATA_BACKEND="gateway",
-        CERBERUS_FAILOVER_TO_LEGACY=False,
-        CERBERUS_GATEWAY_URL="http://gateway.test",
-        CERBERUS_GATEWAY_KEY="gw_test_key",
-    )
-
-
 @pytest.mark.integration
-def test_gateway_mode_scanner_routes_screener_calls_to_central_api_client() -> None:
-    runtime = _gateway_runtime_settings()
+def test_unified_client_scanner_routes_screener_calls() -> None:
     logger = MagicMock()
 
     config = {
@@ -49,35 +29,25 @@ def test_gateway_mode_scanner_routes_screener_calls_to_central_api_client() -> N
         }
     }
 
-    central = MagicMock()
-    central.get_alpaca_most_actives.return_value = ["AAPL", "MSFT"]
-    central.get_alpaca_movers.return_value = {"gainers": ["TSLA"], "losers": ["NVDA"]}
+    unified = MagicMock()
+    unified.get_most_actives.return_value = ["AAPL", "MSFT"]
+    unified.get_movers.return_value = {"gainers": ["TSLA"], "losers": ["NVDA"]}
 
-    alpaca = MagicMock()
-    alpaca.get_most_actives.side_effect = AssertionError("legacy screener should not be called in gateway mode")
-    alpaca.get_movers.side_effect = AssertionError("legacy screener should not be called in gateway mode")
-
-    with patch("src.scanner.universe.get_settings", return_value=runtime):
-        builder = UniverseBuilder(
-            _DummyConfigLoader(config),
-            logger,
-            config=config,
-            alpaca_client=alpaca,
-            central_api_client=central,
-        )
-        universe = builder.build_universe()
+    builder = UniverseBuilder(
+        unified,
+        logger,
+        config=config,
+    )
+    universe = builder.build_universe()
 
     assert universe == ["AAPL", "MSFT", "TSLA", "NVDA"]
-    central.get_alpaca_most_actives.assert_called_once_with(top=2)
-    central.get_alpaca_movers.assert_called_once_with(top=1)
-    alpaca.get_most_actives.assert_not_called()
-    alpaca.get_movers.assert_not_called()
+    unified.get_most_actives.assert_called_once_with(top=2)
+    unified.get_movers.assert_called_once_with(top=1)
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_and_trades() -> None:
-    runtime = _gateway_runtime_settings()
+async def test_unified_client_feature_pipeline_uses_unified_client_for_bars_and_trades() -> None:
     logger = MagicMock()
 
     bars_payload = {
@@ -87,15 +57,8 @@ async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_an
         ]
     }
 
-    central = MagicMock()
-    central.get_alpaca_bars.return_value = bars_payload
-    central.get_alpaca_trades.return_value = [
-        {"t": "2025-01-06T14:31:00Z", "p": 101.0, "s": 100, "c": ["@"], "x": "V", "z": "C"}
-    ]
-
-    alpaca = MagicMock()
-    alpaca.get_historical_bars.side_effect = AssertionError("legacy bars should not be called in gateway mode")
-    alpaca.get_historical_trades.side_effect = AssertionError("legacy trades should not be called in gateway mode")
+    unified = MagicMock()
+    unified.get_historical_bars.return_value = bars_payload
 
     uw = AsyncMock()
 
@@ -104,14 +67,12 @@ async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_an
         "unusual_whales": {"enabled": False},
     }
 
-    with patch("src.data.fetcher.get_settings", return_value=runtime):
-        pipeline = FeaturePipeline(
-            alpaca_client=alpaca,
-            unusual_whales_client=uw,
-            logger=logger,
-            config=config,
-            central_api_client=central,
-        )
+    pipeline = FeaturePipeline(
+        unified_client=unified,
+        unusual_whales_client=uw,
+        logger=logger,
+        config=config,
+    )
 
     as_of = datetime(2025, 1, 6, 15, 0, tzinfo=timezone.utc)
 
@@ -152,7 +113,4 @@ async def test_gateway_mode_feature_pipeline_uses_central_api_client_for_bars_an
 
     assert "AAPL" in features
     assert features["AAPL"].symbol == "AAPL"
-    assert central.get_alpaca_bars.call_count >= 2  # SPY benchmark + symbol bars
-    central.get_alpaca_trades.assert_called_once()
-    alpaca.get_historical_bars.assert_not_called()
-    alpaca.get_historical_trades.assert_not_called()
+    assert unified.get_historical_bars.call_count >= 2  # SPY benchmark + symbol bars

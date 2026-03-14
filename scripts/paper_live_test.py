@@ -11,7 +11,7 @@ from pathlib import Path
 from src.analysis.db import DatabaseDatabase
 from src.core.config import ConfigLoader
 from src.core.logger import StructuredLogger
-from src.data.alpaca import AlpacaClient
+from src.data.client import UnifiedDataClient
 from src.data.pipeline import FeaturePipeline
 from src.data.unusual_whales import UnusualWhalesClient
 from src.engine.execution import ExecutionEngine
@@ -103,10 +103,16 @@ class PaperLiveHarness:
 
         # 2. Components
         try:
-            self.alpaca = AlpacaClient(self.config_loader, self.logger)
+            from src.core.settings import get_settings
+
+            runtime = get_settings()
+            self.unified_client = UnifiedDataClient(
+                gateway_url=runtime.cerberus_gateway_url,
+                gateway_key=runtime.cerberus_gateway_key,
+            )
             self.uw_client = UnusualWhalesClient(self.config_loader, self.logger)
-            self.pipeline = FeaturePipeline(self.alpaca, self.uw_client, self.logger)
-            self.universe = UniverseBuilder(self.config_loader, self.logger)
+            self.pipeline = FeaturePipeline(self.unified_client, self.uw_client, self.logger)
+            self.universe = UniverseBuilder(self.unified_client, self.logger)
             self.scanner = Scanner(self.universe, self.pipeline, self.logger)
             self.db = DatabaseDatabase(self.config_loader, self.logger)
             self.db.init_db()
