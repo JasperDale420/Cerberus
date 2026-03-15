@@ -208,6 +208,8 @@ def test_risk_manager_rejects_notional_symbol_and_open_risk_caps() -> None:
     assert rm.last_rejection_reason == "MAX_NOTIONAL"
 
     # Symbol notional: existing 100 + proposed 100 > 150
+    # Cap risk per trade to 1.0 so qty_limit=1 and size_hint=1.0 (full conviction) yields qty=1.
+    rm.max_risk_per_trade = 1.0
     st = _mk_state()
     st.position = type("P", (), {"qty": 1.0, "avg_price": 100.0})()
     out = rm.apply(
@@ -219,6 +221,8 @@ def test_risk_manager_rejects_notional_symbol_and_open_risk_caps() -> None:
     assert rm.last_rejection_reason == "MAX_SYMBOL_NOTIONAL"
 
     # Open risk cap: proposed risk 1*10=10 > cap after existing open_risk=0
+    # Restore max_risk_per_trade so size_hint=10 (absolute) passes qty_limit check.
+    rm.max_risk_per_trade = 50.0
     rm.max_notional_per_order = 1e9
     rm.max_notional_per_symbol = 0.0
     out = rm.apply(
