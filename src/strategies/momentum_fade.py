@@ -18,6 +18,7 @@ from src.core.domain import (
     SessionRegime,
     Signal,
     SymbolState,
+    TrendRegime,
     VolRegime,
 )
 from src.core.logger import StructuredLogger
@@ -76,8 +77,12 @@ class MomentumFadeStrategy(BaseStrategy):
         # Maximum hold time in minutes
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 90)))
 
-        # Mean reversion: only trade when higher TF is flat
+        # Mean-reversion mode for higher-TF alignment check
         self.tf_alignment_mode = "mean_reversion"
+
+        # Disable TF alignment — the trend-aware directional filter in on_bar()
+        # handles regime gating; the separate EMA-spread gate is redundant
+        self.higher_tf_alignment = False
 
     def _calculate_volume_ratio(self, bar: Bar, symbol_state: SymbolState) -> float:
         """Calculate current bar volume vs average of recent 1m bars."""
@@ -129,10 +134,6 @@ class MomentumFadeStrategy(BaseStrategy):
                 return None
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
-
-        # --- multi-timeframe setup ---
-        mtf = MultiTimeframeAnalyzer(symbol_state)
-
         # === VWAP DISTANCE CALCULATION ===
         vwap = bar.vwap
         if vwap is None:
@@ -164,6 +165,28 @@ class MomentumFadeStrategy(BaseStrategy):
             side = OrderSide.SELL
         else:
             side = OrderSide.BUY
+
+        # --- trend-aware directional filter ---
+        # In trending markets, only fade moves that are WITH the trend
+        # (overextensions within a trend revert; counter-trend moves don't)
+        #   UP trend: only SHORT overextended rallies (fade the blow-off)
+        #   DOWN trend: only BUY overextended selloffs (fade the panic)
+        #   FLAT: fade both directions
+        if snapshot is not None:
+            if snapshot.trend == TrendRegime.UP and side == OrderSide.BUY:
+                return None  # Don't buy dips via VWAP in an uptrend (that's trend-following, not fading)
+            if snapshot.trend == TrendRegime.DOWN and side == OrderSide.SELL:
+                return None  # Don't short via VWAP in a downtrend
+
+        # --- RSI directional gate ---
+        # RSI must agree with fade direction — avoids fading strong trends
+        mtf = MultiTimeframeAnalyzer(symbol_state)
+        rsi_1m = mtf.get_rsi("1m", 14)
+        if rsi_1m is not None:
+            if side == OrderSide.BUY and rsi_1m > 50:
+                return None  # RSI not oversold enough to buy the dip
+            if side == OrderSide.SELL and rsi_1m < 50:
+                return None  # RSI not overbought enough to short the rip
 
         # --- higher timeframe alignment (mean reversion mode) ---
         if not self._check_higher_tf_alignment(symbol_state, side):
@@ -221,15 +244,21 @@ class MomentumFadeStrategy(BaseStrategy):
             passed=rsi_passed,
         )
 
-        # Factor 4: Mean reversion alignment — higher TFs should be flat/choppy
-        mr_alignment = mtf.get_mean_reversion_alignment()
-        mr_score = mr_alignment * 100.0
+        # Factor 4: Trend-context score
+        # Fading WITH-trend overextensions is the right setup; neutral in FLAT
+        trend_ctx_score = 50.0
+        if snapshot is not None:
+            if snapshot.trend == TrendRegime.UP and side == OrderSide.SELL:
+                trend_ctx_score = 75.0  # Fading blow-off top in uptrend
+            elif snapshot.trend == TrendRegime.DOWN and side == OrderSide.BUY:
+                trend_ctx_score = 75.0  # Fading panic selloff in downtrend
+
         scorer.add_factor(
-            "mr_alignment",
-            raw_value=mr_alignment,
-            score=mr_score,
+            "trend_context",
+            raw_value=trend_ctx_score / 100.0,
+            score=trend_ctx_score,
             weight=0.15,
-            passed=mr_alignment > 0.3,
+            passed=True,
         )
 
         # Factor 5: Candle rejection — wick against the move suggests exhaustion
@@ -254,6 +283,9 @@ class MomentumFadeStrategy(BaseStrategy):
         # --- confluence gate ---
         if not scorer.passes_threshold():
             return None
+
+        # --- mean-reversion alignment score (for meta reporting) ---
+        mr_alignment = mtf.get_mean_reversion_alignment()
 
         # --- stop / target ---
         atr_5m = mtf.get_atr("5m", 14)

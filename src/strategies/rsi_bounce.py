@@ -20,6 +20,7 @@ from src.core.domain import (
     SessionRegime,
     Signal,
     SymbolState,
+    TrendRegime,
     VolRegime,
 )
 from src.core.logger import StructuredLogger
@@ -76,8 +77,12 @@ class RsiBounceStrategy(BaseStrategy):
             overrides.get("confluence_threshold", config.get("confluence_threshold", 60.0))
         )
 
-        # Mean reversion: only trade when higher TF is flat
+        # Mean-reversion mode for higher-TF alignment check
         self.tf_alignment_mode = "mean_reversion"
+
+        # Disable TF alignment — the trend-aware directional filter in on_bar()
+        # handles regime gating; the separate EMA-spread gate is redundant
+        self.higher_tf_alignment = False
 
     def on_bar(
         self,
@@ -110,7 +115,6 @@ class RsiBounceStrategy(BaseStrategy):
             # Skip premarket — not enough liquidity for mean reversion
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
-
         # --- multi-timeframe setup ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
@@ -124,6 +128,16 @@ class RsiBounceStrategy(BaseStrategy):
         is_overbought = rsi_5m > self.rsi_overbought
         if not is_oversold and not is_overbought:
             return None
+
+        # --- trend-aware directional filter ---
+        # In trending markets, only trade WITH the trend:
+        #   UP trend: only BUY on oversold (buy the dip)
+        #   DOWN trend: only SELL on overbought (fade the rally)
+        #   FLAT: trade both directions (classic mean reversion)
+        if snapshot is not None and snapshot.trend == TrendRegime.UP and is_overbought:
+            return None  # Don't short overbought in an uptrend
+        if snapshot is not None and snapshot.trend == TrendRegime.DOWN and is_oversold:
+            return None  # Don't buy oversold in a downtrend
 
         # === BOLLINGER BAND CHECK (5-minute) ===
         bb_data = mtf._cache.get("5m")  # noqa: SLF001 — access after get_rsi triggers cache
@@ -210,16 +224,22 @@ class RsiBounceStrategy(BaseStrategy):
             passed=True,
         )
 
-        # Factor 3: Mean reversion alignment — are higher TFs also flat/choppy?
-        mr_alignment = mtf.get_mean_reversion_alignment()
-        mr_score = mr_alignment * 100.0  # 0.0-1.0 -> 0-100
+        # Factor 3: Trend-context bonus
+        # In FLAT regime: 50 (neutral). In trending regime trading WITH trend: 80 (bonus).
+        # This replaces the old mr_alignment factor that penalized trending regimes.
+        trend_ctx_score = 50.0  # default: flat or unknown
+        if snapshot is not None:
+            if snapshot.trend == TrendRegime.UP and side == OrderSide.BUY:
+                trend_ctx_score = 80.0  # Buying oversold dip in uptrend = strong setup
+            elif snapshot.trend == TrendRegime.DOWN and side == OrderSide.SELL:
+                trend_ctx_score = 80.0  # Shorting overbought rally in downtrend = strong
 
         scorer.add_factor(
-            name="mr_alignment",
-            raw_value=mr_alignment,
-            score=mr_score,
+            name="trend_context",
+            raw_value=trend_ctx_score / 100.0,
+            score=trend_ctx_score,
             weight=0.25,
-            passed=mr_alignment > 0.0,
+            passed=True,
         )
 
         # Check confluence threshold

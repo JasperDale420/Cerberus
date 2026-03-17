@@ -335,10 +335,10 @@ class TestMeanReversionPro:
         assert MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.UP, vol=VolRegime.LOW)) is True
 
     @pytest.mark.unit
-    def test_rejects_trending_in_normal_vol(self, strategy):
-        """MRP should not trade trends unless vol is LOW."""
+    def test_allows_trending_in_normal_vol(self, strategy):
+        """MRP allows trending regimes when volatility is NORMAL (relaxed gate)."""
         assert (
-            MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.UP, vol=VolRegime.NORMAL)) is False
+            MeanReversionProStrategy._regime_ok(_make_market_state(trend=TrendRegime.UP, vol=VolRegime.NORMAL)) is True
         )
 
     @pytest.mark.unit

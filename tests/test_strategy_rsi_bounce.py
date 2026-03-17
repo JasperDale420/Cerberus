@@ -475,4 +475,4 @@ class TestRsiBounceOnBar:
         factor_names = set(signal.meta["factors"].keys())
         assert "rsi_extremity" in factor_names
         assert "band_proximity" in factor_names
-        assert "mr_alignment" in factor_names
+        assert "trend_context" in factor_names
