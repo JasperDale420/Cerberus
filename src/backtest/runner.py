@@ -627,6 +627,7 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     executor.configure_advanced_exits(risk_cfg)
     engine.order_executor = executor
     engine.backtest_mode = True  # Enable scanner_bypass for V2 strategies
+    engine.market_manager.persist_to_db = False  # Skip per-bar RegimeHistory DB writes
 
     # Register strategies
     from src.main import _build_strategy_registry

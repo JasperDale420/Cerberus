@@ -1,4 +1,5 @@
 import math
+import time as _time
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from src.core.domain import (
     Side,
     WatchlistSymbol,
 )
+from src.core.errors import ErrorCode
+from src.core.indicators import RollingEMA, RollingRSI, RollingSMA, RollingStd
 from src.core.logger import StructuredLogger
 from src.engine.health import HealthMonitor
 from src.engine.market import MarketStateManager
@@ -85,6 +88,11 @@ class ExecutionEngine:
         self.closed_trades: deque = deque(maxlen=5000)
         # Fill dedup: prevent double processing of the same fill on reconnect/restart
         self._processed_fill_ids: Set[str] = set()
+
+        # Backtest mode flag — set by runner.py to skip DB writes, health monitoring, etc.
+        self.backtest_mode: bool = False
+        # Cached indicator periods (computed once, reused per bar)
+        self._cached_indicator_periods: Optional[Dict[str, set]] = None
 
         # Extracted Collaborators
         self.health = HealthMonitor(config, logger, run_id, self.clock)
@@ -213,7 +221,14 @@ class ExecutionEngine:
             self._inc_error("execution")
 
     def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set]:
-        """Collect required indicator periods from enabled strategies."""
+        """Collect required indicator periods from enabled strategies.
+
+        Results are cached on self._cached_indicator_periods after the first call
+        to avoid re-iterating strategy configs on every bar.
+        """
+        if self._cached_indicator_periods is not None:
+            return self._cached_indicator_periods
+
         strategies = list(getattr(state, "allowed_strategies", []) or [])
         strat_cfgs = self.config.get("strategies") if isinstance(self.config.get("strategies"), dict) else {}
 
@@ -238,12 +253,11 @@ class ExecutionEngine:
             if s == "index_mean_reversion":
                 periods["bb"].add(int(cfg.get("bb_len", 20)))
 
+        self._cached_indicator_periods = periods
         return periods
 
     def _update_ema_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update EMA indicators for given periods."""
-        from src.core.indicators import RollingEMA
-
         for p in sorted(x for x in periods if x > 0):
             key = f"_ema_close_obj:{p}"
             obj = state.indicators.get(key)
@@ -257,8 +271,6 @@ class ExecutionEngine:
 
     def _update_rsi_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update RSI indicators for given periods."""
-        from src.core.indicators import RollingRSI
-
         for p in sorted(x for x in periods if x > 0):
             key = f"_rsi_obj:{p}"
             obj = state.indicators.get(key)
@@ -272,8 +284,6 @@ class ExecutionEngine:
 
     def _update_vol_sma_indicators(self, state: SymbolState, volume: float, periods: set) -> None:
         """Update volume SMA indicators for given periods."""
-        from src.core.indicators import RollingSMA
-
         for p in sorted(x for x in periods if x > 0):
             key = f"_sma_vol_obj:{p}"
             obj = state.indicators.get(key)
@@ -287,8 +297,6 @@ class ExecutionEngine:
 
     def _update_bb_indicators(self, state: SymbolState, close: float, periods: set) -> None:
         """Update Bollinger Band indicators for given periods."""
-        from src.core.indicators import RollingStd
-
         for p in sorted(x for x in periods if x > 0):
             key = f"_std_close_obj:{p}"
             obj = state.indicators.get(key)
@@ -584,16 +592,18 @@ class ExecutionEngine:
         else:
             symbol = str(symbol_or_bar)
 
-        import time as _time
-
         start_bar = _time.perf_counter()
 
         self.bars_processed += 1
         bar_time = getattr(bar, "time", getattr(bar, "timestamp", None))
 
         try:
-            _bind = getattr(self.logger, "bind", None)
-            log = _bind(symbol=symbol, run_id=self.run_id) if callable(_bind) else self.logger
+            # In backtest mode, skip logger bind overhead (creates new object per bar)
+            if self.backtest_mode:
+                log = self.logger
+            else:
+                _bind = getattr(self.logger, "bind", None)
+                log = _bind(symbol=symbol, run_id=self.run_id) if callable(_bind) else self.logger
 
             # Helper: Update State
             state = self._update_symbol_state(symbol, bar, bar_time)
@@ -605,33 +615,35 @@ class ExecutionEngine:
             self._manage_positions(symbol, state, log)
 
             # Emit periodic health metrics based on bar time (deterministic for replay).
-            try:
-                self._maybe_log_health(self.market_state.time)
-            except Exception:
-                self._inc_error("execution")
+            # Skip in backtest mode to avoid per-bar datetime arithmetic.
+            if not self.backtest_mode:
+                try:
+                    self._maybe_log_health(self.market_state.time)
+                except Exception:
+                    self._inc_error("execution")
 
-            # PRD 11.2: latency observability (best-effort; does not affect decisions).
-            try:
-                latency_ms = (_time.perf_counter() - start_bar) * 1000.0
-                max_ms = float(self.config.get("max_bar_latency_ms", 1000.0) or 1000.0)
-                if latency_ms > max_ms:
-                    log.warning(
-                        "Slow bar processing",
-                        bar_latency_ms=float(latency_ms),
-                        max_bar_latency_ms=float(max_ms),
-                        bars_processed=self.bars_processed,
-                        run_id=self.run_id,
+            # PRD 11.2: latency observability (skip in backtest mode).
+            if not self.backtest_mode:
+                try:
+                    latency_ms = (_time.perf_counter() - start_bar) * 1000.0
+                    max_ms = float(self.config.get("max_bar_latency_ms", 1000.0) or 1000.0)
+                    if latency_ms > max_ms:
+                        log.warning(
+                            "Slow bar processing",
+                            bar_latency_ms=float(latency_ms),
+                            max_bar_latency_ms=float(max_ms),
+                            bars_processed=self.bars_processed,
+                            run_id=self.run_id,
+                        )
+                except Exception as e:
+                    self.logger.debug(
+                        "Latency logging failed",
+                        operation="log_bar_latency",
+                        error=str(e),
                     )
-            except Exception as e:
-                self.logger.debug(
-                    "Latency logging failed",
-                    operation="log_bar_latency",
-                    error=str(e),
-                )
         except Exception as e:
             self.consecutive_on_bar_errors += 1
             self._inc_error("execution")
-            from src.core.errors import ErrorCode
 
             _bind = getattr(self.logger, "bind", None)
             log = _bind(symbol=symbol, run_id=self.run_id) if callable(_bind) else self.logger
@@ -905,7 +917,6 @@ class ExecutionEngine:
                     self.orders_submitted += 1
         except Exception as e:
             self._inc_error("orders")
-            from src.core.errors import ErrorCode
 
             self.logger.error(
                 "PositionManager exit failed",
@@ -933,11 +944,9 @@ class ExecutionEngine:
         )
 
         # 1. Risk Check
-        import time
-
         active_positions = [s.position for s in self.symbol_states.values() if s.position is not None]
 
-        start_risk = time.perf_counter()
+        start_risk = _time.perf_counter()
         try:
             intents = self.risk_manager.apply(
                 signal,
@@ -949,7 +958,7 @@ class ExecutionEngine:
         except Exception as e:
             self._log_risk_failure(log, signal, e)
             return
-        risk_latency = (time.perf_counter() - start_risk) * 1000
+        risk_latency = (_time.perf_counter() - start_risk) * 1000
 
         # 2. Persist Signal
         self._persist_signal(signal, intents)
@@ -989,7 +998,6 @@ class ExecutionEngine:
     def _log_risk_failure(self, log: Any, signal: Signal, error: Exception) -> None:
         """Log risk manager failure."""
         self._inc_error("risk")
-        from src.core.errors import ErrorCode
 
         log.error(
             "RiskManager.apply failed; dropping signal",
@@ -1003,7 +1011,7 @@ class ExecutionEngine:
 
     def _persist_signal(self, signal: Signal, intents: List[Any]) -> None:
         """Persist signal to database."""
-        if not self.db:
+        if not self.db or self.backtest_mode:
             return
 
         rejection_reason = None
@@ -1164,10 +1172,8 @@ class ExecutionEngine:
             return
 
         # Submit each intent
-        import time
-
         for intent in intents:
-            self._submit_single_intent(intent, log, risk_latency, time.perf_counter)
+            self._submit_single_intent(intent, log, risk_latency, _time.perf_counter)
 
     def _should_halt_trading_for_db(self, log: Any) -> bool:
         """Check if trading should halt due to DB failures."""
@@ -1313,7 +1319,6 @@ class ExecutionEngine:
             )
         except Exception as e:
             self._inc_error("execution")
-            from src.core.errors import ErrorCode
 
             self.logger.error(
                 "PositionManager on_fill failed",
@@ -1357,6 +1362,7 @@ class ExecutionEngine:
         fill_price: float,
         fill_qty: float,
     ) -> None:
+        fill_ts = self._normalize_timestamp(fill_ts)
         broker_order_id = fill.get("broker_order_id")
         explicit_order_id = fill.get("order_id")
         symbol = fill["symbol"]
@@ -1383,8 +1389,8 @@ class ExecutionEngine:
                             type="unknown",
                             limit_price=None,
                             status="filled",
-                            time_placed=fill_ts,
-                            time_last_update=fill_ts,
+                            time_placed=self._normalize_timestamp(fill_ts),
+                            time_last_update=self._normalize_timestamp(fill_ts),
                             broker_order_id=str(broker_order_id),
                             meta_json={"recovered_from_fill": True},
                         )
@@ -1462,6 +1468,20 @@ class ExecutionEngine:
             except Exception:
                 self.logger.debug("Market state daily PNL update failed", exc_info=True)
 
+    @staticmethod
+    def _normalize_timestamp(ts: Any) -> Any:
+        """Convert Pandas Timestamps / nanosecond ints to Python datetime for SQLite."""
+        if ts is None:
+            return ts
+        if isinstance(ts, (int, float)):
+            from datetime import datetime as _dt
+            from datetime import timezone as _tz
+
+            return _dt.fromtimestamp(ts / 1e9, tz=_tz.utc)
+        if hasattr(ts, "to_pydatetime"):
+            return ts.to_pydatetime()
+        return ts
+
     def _persist_closed_trade(self, closed: Any) -> None:
         def _write_trade(session: Session) -> None:
             trade = DbTrade(
@@ -1471,8 +1491,8 @@ class ExecutionEngine:
                 regime_at_exit=str(closed.regime_tags_at_exit),
                 side=closed.side,
                 qty=closed.qty,
-                entry_time=closed.entry_time,
-                exit_time=closed.exit_time,
+                entry_time=self._normalize_timestamp(closed.entry_time),
+                exit_time=self._normalize_timestamp(closed.exit_time),
                 entry_price=closed.entry_price,
                 exit_price=closed.exit_price,
                 pnl_gross=closed.pnl_gross,
@@ -1514,7 +1534,6 @@ class ExecutionEngine:
             info = self.order_executor.handle_trade_update(update)
         except Exception as e:
             self.error_counts["orders"] += 1
-            from src.core.errors import ErrorCode
 
             self.logger.error(
                 "Trade update handling failed",
@@ -1595,7 +1614,6 @@ class ExecutionEngine:
             results = await self.scanner.scan(regime=self.market_state.regime, scan_time=self.market_state.time)
         except Exception as e:
             self.error_counts["scanner"] += 1
-            from src.core.errors import ErrorCode
 
             self.logger.error(
                 "Scanner scan failed; retaining existing watchlist",
@@ -1989,7 +2007,6 @@ class ExecutionEngine:
             orders = await asyncio.to_thread(_get_orders_list, QueryOrderStatus.OPEN)
         except Exception as e:
             self.error_counts["orders"] += 1
-            from src.core.errors import ErrorCode
 
             self.logger.error(
                 "Reconcile fetch failed",
@@ -2366,6 +2383,8 @@ class ExecutionEngine:
         filled_avg_price: float,
         filled_qty: float,
     ) -> None:
+        fill_ts = self._normalize_timestamp(fill_ts)
+
         def _write_fill(session: Session) -> None:
             session.add(
                 DbFill(

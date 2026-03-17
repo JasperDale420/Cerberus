@@ -26,6 +26,8 @@ class MarketStateManager:
         self.db = db
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.on_error = on_error or (lambda x: None)
+        # When False, skip DB writes for regime history (backtest mode).
+        self.persist_to_db: bool = True
 
         self.state = MarketState(time=self.clock(), regime=Regime.CHOP)
         regime_cfg = (config.get("regime") if isinstance(config.get("regime"), dict) else {}) or {}
@@ -75,8 +77,8 @@ class MarketStateManager:
         except Exception:
             pass
 
-        # Persist regime updates
-        if self.db:
+        # Persist regime updates (skip in backtest mode)
+        if self.db and self.persist_to_db:
             ok = self.db.write(
                 "regime_history",
                 lambda session: session.add(
@@ -116,3 +118,28 @@ class MarketStateManager:
         Call this with VXX bars when available.
         """
         self.market_context.update_vol(bar)
+
+    def update_iv_surface(
+        self,
+        chain_data: list,
+        current_price: float = 0.0,
+        risk_free_rate: float = 0.05,
+        time_to_expiry: float = 30 / 365,
+    ) -> None:
+        """Update IV surface dynamics from options chain data."""
+        self.market_context.update_iv_surface(
+            chain_data,
+            current_price=current_price,
+            risk_free_rate=risk_free_rate,
+            time_to_expiry=time_to_expiry,
+        )
+
+    def update_etf_flow(
+        self,
+        etf_symbol: str,
+        etf_data: dict,
+        stock_symbol: str,
+        stock_data: dict,
+    ) -> None:
+        """Update ETF flow propagation from UW-format flow dicts."""
+        self.market_context.update_etf_flow(etf_symbol, etf_data, stock_symbol, stock_data)
