@@ -19,9 +19,9 @@ regime:
 
 # V2 Strategy Routing — regime-aware
 strategy_routing:
-  bull: [trend_rider_pro, flow_alpha, orb_v2]
-  bear: [trend_rider_pro, flow_alpha, orb_v2]
-  chop: [mean_reversion_pro, flow_alpha]
+  bull: [trend_rider_pro, flow_alpha, orb_v2, momentum_fade]
+  bear: [trend_rider_pro, flow_alpha, orb_v2, momentum_fade]
+  chop: [mean_reversion_pro, flow_alpha, rsi_bounce, momentum_fade]
 
 # V2 Strategies — all new consolidated strategies
 strategies:
@@ -75,9 +75,12 @@ strategies:
       min_confidence: 0.5
   rsi_bounce:
     enabled: true
-    confluence_threshold: 60.0
+    confluence_threshold: 50.0
     cooldown_bars: 30
     max_hold_minutes: 60
+    rsi_oversold: 20.0
+    rsi_overbought: 80.0
+    band_tolerance: 1.5
     activation:
       session: [opening, midday, power_hour]
       trend: [flat, up, down]
@@ -87,9 +90,11 @@ strategies:
       min_confidence: 0.5
   momentum_fade:
     enabled: true
-    confluence_threshold: 60.0
+    confluence_threshold: 45.0
     cooldown_bars: 30
     max_hold_minutes: 90
+    vwap_threshold: 0.005
+    volume_surge_mult: 1.5
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down]
@@ -106,7 +111,7 @@ risk:
   max_daily_loss: 3000.0          # 3% of account
   max_risk_per_trade: 1500.0      # 1.5% of account
   max_open_risk: 5000.0           # 5% total open risk
-  max_trades_per_day: 10
+  max_trades_per_day: 50
   max_open_positions: 8
   max_positions_per_strategy: 2
   max_notional_per_order: 25000.0
