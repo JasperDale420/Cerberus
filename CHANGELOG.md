@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **rsi_bounce/momentum_fade zero trades from daily trade cap**: Both strategies generated valid signals but `MAX_TRADES_PER_DAY=10` was exhausted by other strategies first. Increased to 50, added both to `strategy_routing` buckets, tuned entry thresholds (momentum_fade: confluence 45, vwap 0.5%, vol surge 1.5x; rsi_bounce: confluence 50, RSI 20/80, band tolerance 1.5%).
 - **Missing strategy registrations**: `rsi_bounce` and `momentum_fade` were never registered in `_build_strategy_registry()`, so they silently produced 0 trades despite being enabled in config. Added both to the registry.
 - **RSI Bounce extreme thresholds**: Default RSI oversold/overbought thresholds were 10/90, making the strategy nearly impossible to trigger. Changed to 25/75 for realistic mean-reversion signals.
 - **Backtest fill flush performance**: `await asyncio.sleep(0)` after every bar was very slow (~200K yields per month). Now only yields when executor had open orders that could have filled.
