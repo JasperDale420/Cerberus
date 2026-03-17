@@ -70,18 +70,18 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "confluence_threshold",
             "float",
-            low=50.0,
-            high=80.0,
+            low=40.0,
+            high=75.0,
             step=5.0,
-            description="Minimum confluence score to enter (higher = pickier)",
+            description="Minimum confluence score to enter (lowered floor to 40 for more trades)",
         ),
         ParamDef(
             "min_trend_alignment",
             "float",
-            low=0.3,
-            high=0.8,
+            low=0.2,
+            high=0.7,
             step=0.05,
-            description="MTF trend alignment gate (0-1)",
+            description="MTF trend alignment gate (lowered floor to 0.2 for choppy regimes)",
         ),
         # pullback_threshold LOCKED at 0.004 (CV 0.53 — unstable)
         ParamDef(
@@ -129,10 +129,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "confluence_threshold",
             "float",
-            low=50.0,
+            low=40.0,
             high=75.0,
             step=5.0,
-            description="Minimum confluence score to enter",
+            description="Minimum confluence score to enter (lowered floor to 40)",
         ),
         ParamDef(
             "vwap_dist_threshold",
@@ -154,9 +154,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             "max_hold_minutes",
             "int",
             low=20,
-            high=60,
+            high=90,
             step=5,
-            description="Maximum hold time (floor raised to 20 — no sub-10m scalping)",
+            description="Maximum hold time (widened ceiling to 90 for mean-reversion)",
         ),
         ParamDef(
             "stop_atr_mult",
@@ -175,10 +175,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "confluence_threshold",
             "float",
-            low=50.0,
+            low=40.0,
             high=75.0,
             step=5.0,
-            description="Minimum confluence score for breakout entry",
+            description="Minimum confluence score for breakout entry (lowered floor to 40)",
         ),
         ParamDef(
             "vol_gate_mult",
@@ -231,10 +231,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "confluence_threshold",
             "float",
-            low=50.0,
+            low=40.0,
             high=75.0,
             step=5.0,
-            description="Minimum confluence score to enter",
+            description="Minimum confluence score to enter (lowered floor to 40)",
         ),
         ParamDef(
             "band_tolerance",
@@ -294,10 +294,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "confluence_threshold",
             "float",
-            low=50.0,
+            low=40.0,
             high=75.0,
             step=5.0,
-            description="Minimum confluence score to enter",
+            description="Minimum confluence score to enter (lowered floor to 40)",
         ),
         ParamDef(
             "stop_atr_mult",
