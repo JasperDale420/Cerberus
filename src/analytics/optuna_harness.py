@@ -392,6 +392,15 @@ def _apply_params_to_config(
         "time_window_start",
         "time_window_end",
         "max_hold_minutes",
+        "rsi_oversold",
+        "rsi_overbought",
+        "band_tolerance",
+        "vwap_threshold",
+        "volume_surge_mult",
+        "vwap_dist_threshold",
+        "bb_pos_threshold",
+        "stop_atr_mult",
+        "target_atr_mult",
     }
 
     for key, value in params.items():
