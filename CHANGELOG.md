@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Backtest EOD flatten timing**: Positions were held overnight because the backtest runner only flattened at the next day's first bar (9:30 AM), not at market close. Added intraday flatten at 15:55 ET when `force_flat_at_1600` is configured, matching live engine behavior. This reduced average hold times from 400-800 minutes to realistic intraday values.
 - **Risk manager unit test for `MAX_SYMBOL_NOTIONAL`**: Test `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` was failing because `size_hint=1` is treated as a 100% conviction multiplier (not 1 absolute share), resulting in qty=50 and notional=5000 which triggered `MAX_NOTIONAL` before reaching the `MAX_SYMBOL_NOTIONAL` check. Fixed by setting `rm.max_risk_per_trade = 1.0` before the symbol-notional assertion (yielding qty=1) and restoring it to `50.0` before the open-risk assertion.
 - **Position sizing bug**: `size_hint` values between 0-1 (conviction multipliers from strategies) were truncated to 0 by `int()`, causing all signals to be rejected with `ZERO_QTY`. Now correctly treated as a scaling factor on the risk-based quantity limit, so `size_hint=0.6` means 60% of the max allowed position size.
 - Sorted import block in `src/engine/execution.py` to comply with ruff I001 rule (import order within try block for ledger adapter initialization).

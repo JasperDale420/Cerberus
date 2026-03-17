@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from src.analysis.momentum_crash import MomentumCrashDetector
 from src.config.models import RiskConfig, StrategyConfig
 from src.core.domain import MarketState, OrderIntent, OrderType, Signal, SymbolState
 from src.core.logger import StructuredLogger
@@ -80,6 +81,19 @@ class RiskManager:
 
         # CVaR tail-risk sizer
         self.cvar_sizer = CVaRSizer(config=self.risk_cfg.cvar, logger=self.logger)
+
+        # Momentum crash hedging detector (Daniel & Moskowitz 2016)
+        from src.analysis.momentum_crash import MomentumCrashConfig as MCConfig
+
+        mc_cfg = self.risk_cfg.momentum_crash
+        self.momentum_crash_detector = MomentumCrashDetector(
+            config=MCConfig(
+                min_exposure=mc_cfg.min_exposure,
+                bear_threshold=mc_cfg.bear_threshold,
+                spread_lookback=mc_cfg.spread_lookback,
+            ),
+            logger=self.logger,
+        )
 
     def _session_date_for(self, as_of: datetime) -> date:
         tz_name = str(self.raw_config.get("timezone", self.DEFAULT_TIMEZONE) or self.DEFAULT_TIMEZONE)
@@ -370,7 +384,12 @@ class RiskManager:
 
         qty: int = 0
         if signal.size_hint:
-            qty = min(int(signal.size_hint), qty_limit)
+            if signal.size_hint <= 1.0:
+                # size_hint is a conviction multiplier (0-1) — scale qty_limit
+                qty = max(int(qty_limit * signal.size_hint), 1) if qty_limit > 0 else 0
+            else:
+                # size_hint is an absolute share count
+                qty = min(int(signal.size_hint), qty_limit)
         else:
             qty = qty_limit
 
@@ -470,6 +489,22 @@ class RiskManager:
                         orig_qty=orig_qty,
                         adjusted_qty=qty,
                         cvar_mult=round(cvar_mult, 3),
+                    )
+
+        # Momentum crash hedging (Daniel & Moskowitz 2016)
+        if self.risk_cfg.momentum_crash.enabled and qty > 0:
+            crash_result = self.momentum_crash_detector.get_crash_probability()
+            if crash_result is not None and crash_result.exposure_scalar < 1.0:
+                orig_qty = qty
+                qty = max(1, int(qty * crash_result.exposure_scalar))
+                if qty != orig_qty:
+                    self.logger.debug(
+                        "Qty adjusted by momentum crash hedging",
+                        symbol=signal.symbol,
+                        orig_qty=orig_qty,
+                        adjusted_qty=qty,
+                        crash_prob=round(crash_result.crash_probability, 4),
+                        exposure_scalar=round(crash_result.exposure_scalar, 3),
                     )
 
         return qty
@@ -700,6 +735,20 @@ class RiskManager:
         # Update CPPI with current equity if provided
         if self.risk_cfg.cppi.enabled and account_equity is not None:
             self.cppi_sizer.update_equity(account_equity)
+
+    def update_momentum_crash(
+        self,
+        realized_vol: float,
+        is_bear: bool,
+        credit_spread_zscore: float = 0.0,
+    ) -> None:
+        """Feed market conditions to momentum crash detector."""
+        if self.risk_cfg.momentum_crash.enabled:
+            self.momentum_crash_detector.update(
+                realized_vol=realized_vol,
+                is_bear=is_bear,
+                credit_spread_zscore=credit_spread_zscore,
+            )
 
     def record_completed_trade(
         self,

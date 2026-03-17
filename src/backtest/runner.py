@@ -4,6 +4,7 @@ import os
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -24,6 +25,7 @@ from src.data.client import UnifiedDataClient
 from src.engine.execution import ExecutionEngine
 
 _BAR_DATAFRAME_CACHE: dict[tuple[str, tuple[str, ...], str, str, int], pd.DataFrame] = {}
+_ET_TZ = ZoneInfo("America/New_York")
 
 
 class BacktestClock:
@@ -263,7 +265,7 @@ def _validate_survivorship(
             )
 
 
-def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
+def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord]:
     """Pair filled buy/sell orders into TradeRecord objects using FIFO matching.
 
     Uses a position-stack approach (same as BacktestAnalyzer._process_symbol_fills
@@ -273,6 +275,11 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
     from collections import deque
 
     QTY_EPSILON = 1e-7
+
+    # Extract commission config from risk settings
+    risk_cfg = config.get("risk", {})
+    commission_per_share = float(risk_cfg.get("commission_per_share", 0.0) or 0.0)
+    min_commission = float(risk_cfg.get("min_commission", 0.0) or 0.0)
 
     # Extract all data inside the session to avoid DetachedInstanceError
     with db.get_session() as session:
@@ -359,6 +366,14 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
                     else:
                         strategy = corr_to_strategy.get(entry_corr, "")
 
+                    # Commission: entry leg + exit leg
+                    entry_leg_commission = max(min_commission, commission_per_share * match_qty)
+                    exit_leg_commission = max(min_commission, commission_per_share * match_qty)
+                    total_commission = entry_leg_commission + exit_leg_commission
+
+                    # Make PnL net of commission
+                    net_pnl = pnl - total_commission
+
                     trades.append(
                         TradeRecord(
                             symbol=sym,
@@ -368,7 +383,8 @@ def _build_trade_records(db: DatabaseDatabase) -> list[TradeRecord]:
                             exit_price=exit_price,
                             entry_time=head["time"],
                             exit_time=fill_time,
-                            pnl=round(pnl, 2),
+                            pnl=round(net_pnl, 2),
+                            commission=round(total_commission, 2),
                             strategy=strategy,
                         )
                     )
@@ -737,6 +753,13 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             equity_curve.append((ts, engine.account.equity))
         prev_day = current_day
 
+        # Intraday flatten at 15:55 ET (5 min before close) when force_flat_at_1600 is set
+        if backtest_cfg.get("force_flat_at_1600", False):
+            et_time = ts.astimezone(_ET_TZ)
+            if et_time.hour == 15 and et_time.minute >= 55:
+                if any(abs(q) > 1e-6 for q in engine.account.positions_qty.values()):
+                    _backtest_flatten_all(reason="Force flat before 16:00")
+
         mock_bar = Bar(
             symbol=row.symbol,
             time=ts,
@@ -789,7 +812,7 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     logger.info("Backtest replay complete. Generating report...")
 
     # Build trade records from paired buy/sell orders
-    trades = _build_trade_records(db)
+    trades = _build_trade_records(db, config)
 
     report = BacktestReportCard(
         trades=trades,
