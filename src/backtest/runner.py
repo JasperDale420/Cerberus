@@ -787,6 +787,10 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
         #    so that the current bar's fills are reflected in PnL)
         executor.process_bar(mock_bar)
 
+        # Flush async fill callbacks so PositionManager processes them
+        # before the next bar (create_task defers until next await)
+        await asyncio.sleep(0)
+
         # 2. Calculate updated equity AFTER fills are processed
         pos_value = sum(qty * latest_prices.get(sym, 0.0) for sym, qty in positions_qty.items() if qty != 0)
         engine.account.equity = engine.account.cash + pos_value

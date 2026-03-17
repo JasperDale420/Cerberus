@@ -123,6 +123,38 @@ class SimulatedOrderExecutor:
         # In simulated mode, `update` is already the normalized dict
         if isinstance(update, dict):
             return update
+        # Handle _MockUpdate objects from _dispatch_event — extract attributes
+        # so ExecutionEngine.on_trade_update can process fills into PositionManager
+        if hasattr(update, "event"):
+            result: dict = {}
+            for attr in (
+                "event",
+                "timestamp",
+                "symbol",
+                "side",
+                "status",
+                "broker_order_id",
+                "client_order_id",
+                "parent_broker_order_id",
+                "correlation_id",
+                "strategy",
+                "qty",
+                "price",
+                "fill_qty",
+                "fill_price",
+            ):
+                val = getattr(update, attr, None)
+                if val is not None:
+                    # Unwrap mock enums
+                    if hasattr(val, "value"):
+                        val = val.value
+                    result[attr] = val
+            # on_trade_update expects fill_qty/fill_price for fill events
+            if "fill_qty" not in result and "qty" in result:
+                result["fill_qty"] = result["qty"]
+            if "fill_price" not in result and "price" in result:
+                result["fill_price"] = result["price"]
+            return result
         return {}
 
     def _dispatch_event(
@@ -194,7 +226,11 @@ class SimulatedOrderExecutor:
             mock.qty = fill_qty
             mock.price = fill_price
 
-        # Fire and forget if async
+        # In backtest mode, dispatch fills synchronously so PositionManager
+        # processes them immediately (not deferred via create_task which
+        # only executes on the next event loop yield).
+        # Schedule as a task — the runner must await asyncio.sleep(0) after
+        # each process_bar call to flush these fills before the next bar.
         if asyncio.iscoroutinefunction(self.on_trade_update):
             try:
                 loop = asyncio.get_running_loop()
