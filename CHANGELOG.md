@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **WFO v3 optimized params applied to trend_rider_pro and orb_v2**: Applied walk-forward optimization mean parameters with stability annotations. trend_rider_pro: confluence_threshold=63.3, stop_atr_mult=2.08, target_atr_mult=4.5, trail_min_profit_r=0.60, max_hold_minutes=138. orb_v2: confluence_threshold=54.2, vol_gate_mult=1.53, trail_min_profit_r=0.96, max_hold_minutes=93.
+- **Disabled unprofitable strategies**: rsi_bounce (WFO v4 REJECT: 1/6 windows profitable, PF=0.42), momentum_fade (WFO v4 REJECT: 0 trades on 4-symbol universe), mean_reversion_pro (excluded from WFO, PF=0.72), flow_alpha (needs live options flow data).
+- **Disabled all V1 legacy strategies in backtest_v2.yaml**: Added explicit `enabled: false` for 14 V1 strategies (vwap_reversion, failed_breakout, trend_pullback, etc.) to prevent ConfigLoader deep-merge from strategies.yaml activating them during V2 backtests.
+- **Verification backtest results**: With only WFO-approved strategies (trend_rider_pro + orb_v2), full-year 2024 backtest achieves PF=0.91, max DD=1.96%, 1,082 trades. Strategies are near-breakeven — edge consumed by commission/friction model.
+
 ### Fixed
 
 - **`MomentumFadeStrategy` and `RsiBounceStrategy` wrong `tf_alignment_mode`**: Both strategies are mean-reversion types but inherited the base class default of `"trend"` for `tf_alignment_mode`. Added explicit `self.tf_alignment_mode = "mean_reversion"` in `_set_params` for both, consistent with all other mean-reversion strategies (gap_fill, vwap_reversion, etc.).
