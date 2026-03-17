@@ -272,9 +272,17 @@ class SimulatedOrderExecutor:
         low_p = getattr(bar, "low", 0.0)
 
         filled_order_ids = []
+        # Track parent IDs whose OCO leg already filled this bar to prevent
+        # both TP and SL filling on the same bar (OCO double-fill bug).
+        filled_parent_ids: set[str] = set()
 
         for oid, order in list(self.open_orders.items()):
             if order["symbol"] != symbol:
+                continue
+
+            # OCO guard: if a sibling with the same parent already filled, skip
+            parent_id = order.get("parent_broker_order_id")
+            if parent_id and parent_id in filled_parent_ids:
                 continue
 
             fill_price = 0.0
@@ -302,6 +310,10 @@ class SimulatedOrderExecutor:
 
             if is_filled:
                 order["status"] = "filled"
+
+                # Mark parent as having a filled child (OCO guard)
+                if parent_id:
+                    filled_parent_ids.add(parent_id)
 
                 fill_qty = float(order["qty"])
                 fill_val = fill_qty * fill_price

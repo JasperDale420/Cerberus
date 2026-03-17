@@ -613,7 +613,7 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
 
     # Inject our mock executor with backtest config for slippage
     backtest_cfg = config.get("backtest", {})
-    risk_cfg = config.get("risk_management", {})
+    risk_cfg = config.get("risk", config.get("risk_management", {}))
     executor = SimulatedOrderExecutor(
         logger=logger,
         db=db,
