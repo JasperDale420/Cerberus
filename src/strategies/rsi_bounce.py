@@ -60,8 +60,8 @@ class RsiBounceStrategy(BaseStrategy):
 
         # RSI parameters
         self.rsi_len = int(overrides.get("rsi_len", config.get("rsi_len", 14)))
-        self.rsi_oversold = float(overrides.get("rsi_oversold", config.get("rsi_oversold", 10.0)))
-        self.rsi_overbought = float(overrides.get("rsi_overbought", config.get("rsi_overbought", 90.0)))
+        self.rsi_oversold = float(overrides.get("rsi_oversold", config.get("rsi_oversold", 25.0)))
+        self.rsi_overbought = float(overrides.get("rsi_overbought", config.get("rsi_overbought", 75.0)))
 
         # Bollinger Band parameters
         self.bb_period = int(overrides.get("bb_period", config.get("bb_period", 20)))

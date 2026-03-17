@@ -785,11 +785,13 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
 
         # 1. Evaluate fills sequentially (must happen BEFORE equity calc
         #    so that the current bar's fills are reflected in PnL)
+        had_open_orders = bool(executor.open_orders)
         executor.process_bar(mock_bar)
 
-        # Flush async fill callbacks so PositionManager processes them
-        # before the next bar (create_task defers until next await)
-        await asyncio.sleep(0)
+        # Flush async fill callbacks only when fills may have occurred
+        # (avoid yielding every bar — sleep(0) on 200K+ bars is expensive)
+        if had_open_orders:
+            await asyncio.sleep(0)
 
         # 2. Calculate updated equity AFTER fills are processed
         pos_value = sum(qty * latest_prices.get(sym, 0.0) for sym, qty in positions_qty.items() if qty != 0)

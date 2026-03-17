@@ -63,11 +63,13 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.intraday_momentum import IntradayMomentumStrategy
     from src.strategies.mean_reversion_pro import MeanReversionProStrategy
     from src.strategies.momentum_continuation import MomentumContinuationStrategy
+    from src.strategies.momentum_fade import MomentumFadeStrategy
     from src.strategies.orb import ORBStrategy
     from src.strategies.orb_v2 import ORBV2Strategy
     from src.strategies.order_flow_imbalance import OrderFlowImbalanceStrategy
     from src.strategies.pair_trading import PairTradingStrategy
     from src.strategies.pair_trading_v2 import PairTradingV2Strategy
+    from src.strategies.rsi_bounce import RsiBounceStrategy
     from src.strategies.trend_pullback import TrendPullbackStrategy
     from src.strategies.trend_rider_pro import TrendRiderProStrategy
     from src.strategies.vix_spike_fade import VixSpikeFadeStrategy
@@ -81,6 +83,8 @@ def _build_strategy_registry() -> dict[str, type]:
         "flow_alpha": FlowAlphaStrategy,
         "orb_v2": ORBV2Strategy,
         "pair_trading_v2": PairTradingV2Strategy,
+        "rsi_bounce": RsiBounceStrategy,
+        "momentum_fade": MomentumFadeStrategy,
         # Legacy strategies (disabled in config)
         "vwap_reversion": VWAPReversionStrategy,
         "orb": ORBStrategy,
