@@ -130,10 +130,13 @@ class MeanReversionProStrategy(BaseStrategy):
         if snap.session == SessionRegime.PREMARKET:
             return False
 
-        # Prefer FLAT trend; allow UP/DOWN only when vol is LOW
+        # Allow mean-reversion in FLAT trend always, or in UP/DOWN when
+        # vol is LOW or NORMAL (not just LOW). Mean-reversion signals
+        # still require extreme VWAP/BB readings to trigger, so the
+        # confluence scoring gates quality even in trending markets.
         if snap.trend == TrendRegime.FLAT:
             return True
-        return snap.vol == VolRegime.LOW
+        return snap.vol in (VolRegime.LOW, VolRegime.NORMAL)
 
     # ------------------------------------------------------------------
     # Direction detection
