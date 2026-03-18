@@ -277,21 +277,21 @@ class TestMomentumFadeVolumeRatio:
         """Volume ratio should correctly compare current vs average."""
         ss = _make_symbol_state(n_bars=30, bar_volume=5000)
         bar = _make_bar(volume=15000)  # 3x average
-        ratio = strategy._calculate_volume_ratio(bar, ss)
+        ratio = strategy._calculate_volume_ratio(bar, "TEST", ss)
         assert ratio == pytest.approx(3.0, rel=0.1)
 
     def test_volume_ratio_returns_zero_insufficient_bars(self, strategy):
         """Should return 0.0 with too few bars."""
         ss = _make_symbol_state(n_bars=2, bar_volume=5000)
         bar = _make_bar(volume=15000)
-        ratio = strategy._calculate_volume_ratio(bar, ss)
+        ratio = strategy._calculate_volume_ratio(bar, "TEST", ss)
         assert ratio == 0.0
 
     def test_volume_ratio_zero_avg_volume(self, strategy):
         """Should handle zero average volume gracefully."""
         ss = _make_symbol_state(n_bars=30, bar_volume=0)
         bar = _make_bar(volume=15000)
-        ratio = strategy._calculate_volume_ratio(bar, ss)
+        ratio = strategy._calculate_volume_ratio(bar, "TEST", ss)
         assert ratio == 0.0
 
 
