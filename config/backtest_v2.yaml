@@ -151,10 +151,10 @@ strategies:
 # Risk — sized for $100k account
 risk:
   max_daily_loss: 3000.0          # 3% of account
-  max_risk_per_trade: 1500.0      # 1.5% of account
-  max_open_risk: 5000.0           # 5% total open risk
+  max_risk_per_trade: 2000.0      # autoresearch iter26: scale up risk with proven edge
+  max_open_risk: 8000.0           # autoresearch iter26: match higher per-trade risk
   max_trades_per_day: 50
-  max_open_positions: 8
+  max_open_positions: 12          # autoresearch iter26: more simultaneous positions
   max_positions_per_strategy: 4   # autoresearch iter18: more concurrent positions
   max_notional_per_order: 25000.0
   max_notional_per_symbol: 25000.0
