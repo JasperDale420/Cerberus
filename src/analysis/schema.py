@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -232,3 +232,29 @@ class DailyUniverse(Base):
     source: Mapped[str] = mapped_column(String(32))  # 'scanner', 'static', 'dynamic'
     added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     meta_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class StrategyICDaily(Base):
+    """Daily information coefficient tracking per strategy for IC-weighted signal aggregation."""
+
+    __tablename__ = "strategy_ic_daily"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    strategy: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    ic_value: Mapped[float] = mapped_column(Float, nullable=False)
+    is_decaying: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PortfolioRiskSnapshot(Base):
+    """Point-in-time portfolio risk metrics for VaR/CVaR monitoring and concentration limits."""
+
+    __tablename__ = "portfolio_risk_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    portfolio_var: Mapped[float] = mapped_column(Float, nullable=False)
+    portfolio_cvar: Mapped[float] = mapped_column(Float, nullable=False)
+    correlation_matrix_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    concentration_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gross_exposure: Mapped[float] = mapped_column(Float, nullable=False)

@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Quant foundation layer** (`src/quant/`): GARCH conditional volatility, Kalman filters, Engle-Granger/Johansen cointegration, Hurst exponent, CUSUM breakout detection, Granger causality, Markov regime-switching, adaptive thresholds, walk-forward validation, deflated Sharpe ratio
+- **Portfolio optimization layer** (`src/portfolio/`): IC-weighted signal aggregation, risk-parity allocation with drawdown throttle, portfolio VaR/CVaR with concentration limits, strategy attribution with rolling Sharpe/Sortino
+- New dependencies: `arch>=7.0`, `filterpy>=1.4`
+- New DB tables: `strategy_ic_daily` (daily IC tracking per strategy), `portfolio_risk_snapshots` (point-in-time VaR/CVaR/concentration)
 - **momentum_fade quant upgrade (1.5/5 to 3.5/5)**: Replaced raw VWAP deviation threshold with GARCH-conditional z-score (falls back to raw % when GARCH not fitted), added momentum exhaustion model (velocity + deceleration gate — only fades when momentum is decelerating), Hurst exponent gate (rejects entries when H >= 0.5, indicating trending regime), entropy filter (rejects when regime entropy > 0.8), and intraday seasonal volume adjustment (15-minute time-of-day buckets replace flat 20-bar average). Confluence factor weights rebalanced to include GARCH z-score intensity and exhaustion score factors.
 - **rsi_bounce quant upgrade (4/5 to 4.5/5)**: Added GARCH-conditional z-score (replaces rolling std when GARCH model fitted), BOCPD structural break gate (rejects entries when changepoint_probability > 0.7), rolling kurtosis filter (rejects entries when excess kurtosis > 6, indicating fat-tailed instability), and AdaptiveThresholdEngine for z_entry and confluence thresholds (scales by GARCH vol and OU half-life). All changes are surgical additions — existing 6-factor model and gates preserved.
 - **flow_alpha quant upgrade (2.5/5 to 4/5)**: Replaced static signal weights (0.35/0.25/0.20/0.20) with IC-weighted combination that adapts to predictive power of each flow signal. Added Granger causality validation (tests flow_zscore → returns every 500 bars, reduces conviction 30% when not causal). Added VPIN toxicity gate (rejects entries during informed-flow periods). Replaced fixed z-score /3.0 normalization with GARCH-conditional volatility scaling. All quant components are lazy-initialized per symbol.
@@ -18,6 +22,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **pair_trading_v2**: Kalman hedge ratio replaces EMA, Engle-Granger entry gate, GARCH-conditional z-score, OU half-life hard gate, rolling correlation monitor
+- **mean_reversion_pro**: GARCH-conditional z-score, Hurst exponent filter (H<0.45), adaptive confluence thresholds, OU half-life hard gate
+- **trend_rider_pro**: Kalman mean tracker replaces EMA-20, Hurst trending gate (H>0.55), Markov regime probability replaces ADX threshold, GARCH-forecasted stops
+- **flow_alpha**: IC-weighted signal combination, Granger causality validation, VPIN toxicity gate, GARCH-conditional normalization
+- **orb_v2**: CUSUM statistical breakout detection, variance ratio gate, BOCPD confidence multiplier, GARCH-relative volume gate
+- **rsi_bounce**: GARCH-conditional z-score, BOCPD structural break awareness, kurtosis filter, adaptive thresholds
+- **momentum_fade**: GARCH-conditional z-score, momentum exhaustion model (velocity + acceleration), Hurst gate (H<0.5), entropy filter, intraday seasonal volume
 - **WFO v3 optimized params applied to trend_rider_pro and orb_v2**: Applied walk-forward optimization mean parameters with stability annotations. trend_rider_pro: confluence_threshold=63.3, stop_atr_mult=2.08, target_atr_mult=4.5, trail_min_profit_r=0.60, max_hold_minutes=138. orb_v2: confluence_threshold=54.2, vol_gate_mult=1.53, trail_min_profit_r=0.96, max_hold_minutes=93.
 - **Disabled unprofitable strategies**: rsi_bounce (WFO v4 REJECT: 1/6 windows profitable, PF=0.42), momentum_fade (WFO v4 REJECT: 0 trades on 4-symbol universe), mean_reversion_pro (excluded from WFO, PF=0.72), flow_alpha (needs live options flow data).
 - **Disabled all V1 legacy strategies in backtest_v2.yaml**: Added explicit `enabled: false` for 14 V1 strategies (vwap_reversion, failed_breakout, trend_pullback, etc.) to prevent ConfigLoader deep-merge from strategies.yaml activating them during V2 backtests.
