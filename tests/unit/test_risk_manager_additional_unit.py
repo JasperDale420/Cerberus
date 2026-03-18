@@ -198,14 +198,25 @@ def test_risk_manager_rejects_notional_symbol_and_open_risk_caps() -> None:
     }
     rm = RiskManager(cfg, _logger("test_exposure_caps"))
 
-    # Notional per order: 10 * 100 = 1000 > 100
+    # Notional per order: 10 * 100 = 1000 > 100 — qty is capped to 1 (not rejected).
+    # Risk manager now caps qty to fit notional limit rather than rejecting the signal.
     out = rm.apply(
         _mk_signal(entry=100.0, stop=99.0, size_hint=10),
         _mk_state(),
         MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP),
     )
-    assert out == []
-    assert rm.last_rejection_reason == "MAX_NOTIONAL"
+    assert len(out) == 1
+    assert out[0].qty == 1  # capped: int(100.0 / 100.0) = 1
+
+    # MAX_NOTIONAL rejection when entry_price > cap (capped_qty rounds down to 0).
+    rm2 = RiskManager(cfg, _logger("test_exposure_caps2"))
+    out2 = rm2.apply(
+        _mk_signal(entry=200.0, stop=199.0, size_hint=10),
+        _mk_state(),
+        MarketState(time=datetime.now(timezone.utc), regime=Regime.CHOP),
+    )
+    assert out2 == []
+    assert rm2.last_rejection_reason == "MAX_NOTIONAL"
 
     # Symbol notional: existing 100 + proposed 100 > 150
     # Cap risk per trade to 1.0 so qty_limit=1 and size_hint=1.0 (full conviction) yields qty=1.

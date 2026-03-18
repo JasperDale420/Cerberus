@@ -12,7 +12,6 @@ Run:
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
 from collections import defaultdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -38,7 +37,7 @@ _positions_without_max_hold = []  # (strategy, symbol, max_hold_seconds)
 _long_hold_trades = []
 
 # ── Patch 1: SimulatedOrderExecutor._dispatch_event ──────────────
-from src.backtest import executor as bt_exec_mod
+from src.backtest import executor as bt_exec_mod  # noqa: E402
 
 _orig_dispatch = bt_exec_mod.SimulatedOrderExecutor._dispatch_event
 
@@ -67,7 +66,7 @@ def _patched_handle(self, update):
 bt_exec_mod.SimulatedOrderExecutor.handle_trade_update = _patched_handle
 
 # ── Patch 3: ExecutionEngine.on_trade_update ─────────────────────
-from src.engine import execution as exec_mod
+from src.engine import execution as exec_mod  # noqa: E402
 
 _orig_on_trade = exec_mod.ExecutionEngine.on_trade_update
 
@@ -103,7 +102,7 @@ def _patched_on_fill(self, fill):
 exec_mod.ExecutionEngine.on_fill = _patched_on_fill
 
 # ── Patch 5: PositionManager._open_new_position ─────────────────
-from src.engine import position_manager as pm_mod
+from src.engine import position_manager as pm_mod  # noqa: E402
 
 _orig_open = pm_mod.PositionManager._open_new_position
 
@@ -160,6 +159,7 @@ exec_mod.ExecutionEngine._store_pending_entry = _patched_store
 
 # ── Run backtest ─────────────────────────────────────────────────
 
+
 async def main():
     from src.backtest.runner import run_backtest
 
@@ -170,9 +170,11 @@ async def main():
     print("=" * 80)
 
     # Create a modified config with relaxed risk limits
-    from src.core.config import ConfigLoader
-    import yaml
     import tempfile
+
+    import yaml
+
+    from src.core.config import ConfigLoader
 
     loader = ConfigLoader()
     config = loader.load_config("config/backtest_v2.yaml")
@@ -210,14 +212,14 @@ async def main():
 
     print(f"\n--- Positions opened without max_hold_seconds: {len(_positions_without_max_hold)} ---")
     by_strat = defaultdict(int)
-    for strat, sym, mh in _positions_without_max_hold:
+    for strat, _sym, _mh in _positions_without_max_hold:
         by_strat[strat] += 1
     for strat, count in sorted(by_strat.items(), key=lambda x: -x[1]):
         print(f"  {strat}: {count}")
 
     # Analyze trade records from the report
     if report and hasattr(report, "trades"):
-        print(f"\n--- Trade Records Analysis ---")
+        print("\n--- Trade Records Analysis ---")
         long_holds = []
         for t in report.trades:
             if hasattr(t, "holding_period_seconds") and t.holding_period_seconds:
@@ -240,7 +242,7 @@ async def main():
 
         print("\n  Long-hold trades by strategy:")
         for strat, holds in sorted(strat_holds.items(), key=lambda x: -len(x[1])):
-            print(f"    {strat}: {len(holds)} trades, avg hold={sum(holds)/len(holds):.0f}m, max={max(holds):.0f}m")
+            print(f"    {strat}: {len(holds)} trades, avg hold={sum(holds) / len(holds):.0f}m, max={max(holds):.0f}m")
 
     print("\n" + "=" * 80)
     print("SUMMARY / ROOT CAUSE ANALYSIS")
@@ -254,14 +256,14 @@ Two issues identified:
    _check_max_hold_exit never runs.
 
    Evidence:
-   - dispatch_event_fill:          {_counters['dispatch_event_fill']}
-   - on_trade_update_called:       {_counters['on_trade_update_called']}
-   - handle_trade_update_non_dict: {_counters['handle_trade_update_non_dict']}
-   - info_has_event_fill:          {_counters['info_has_event_fill']}
-   - info_empty_event:             {_counters['info_empty_event']}
-   - on_fill_called:               {_counters['on_fill_called']}
-   - position_opened:              {_counters['position_opened']}
-   - max_hold_check_called:        {_counters['max_hold_check_called']}
+   - dispatch_event_fill:          {_counters["dispatch_event_fill"]}
+   - on_trade_update_called:       {_counters["on_trade_update_called"]}
+   - handle_trade_update_non_dict: {_counters["handle_trade_update_non_dict"]}
+   - info_has_event_fill:          {_counters["info_has_event_fill"]}
+   - info_empty_event:             {_counters["info_empty_event"]}
+   - on_fill_called:               {_counters["on_fill_called"]}
+   - position_opened:              {_counters["position_opened"]}
+   - max_hold_check_called:        {_counters["max_hold_check_called"]}
 
 2. MISSING MAX_HOLD: Even if fills were processed, these strategies don't set
    max_hold_minutes anywhere (neither in exit_config nor YAML):
@@ -269,7 +271,7 @@ Two issues identified:
     for strat, count in sorted(_strategies_missing_max_hold.items(), key=lambda x: -x[1]):
         print(f"   - {strat} ({count} signals)")
 
-    print(f"""
+    print("""
    Strategies properly setting max_hold_minutes:
    - trend_rider_pro (120m in exit_config + YAML)
    - flow_alpha (45m in exit_config + YAML)

@@ -24,7 +24,7 @@ os.environ.setdefault("EMPIRE_LOG_FORMAT", "json")
 os.chdir("/Users/jacobmcmillan/Empire/Cerberus")
 sys.path.insert(0, ".")
 
-from src.analytics.optuna_harness import composite_objective, run_backtest_for_optimization
+from src.analytics.optuna_harness import composite_objective, run_backtest_for_optimization  # noqa: E402
 
 
 def main():

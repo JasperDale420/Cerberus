@@ -8,12 +8,11 @@ Usage:
 Finds the latest WFO run for each strategy and produces a summary table
 with recommendations for parameter adjustments.
 """
+
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-
 
 STRATEGIES = ["trend_rider_pro", "mean_reversion_pro", "orb_v2", "rsi_bounce", "momentum_fade"]
 RUNS_DIR = Path("artifacts/optimization/runs")
@@ -45,7 +44,7 @@ def analyze_strategy(data: dict) -> dict:
     # Filter out hard-reject windows
     valid_oos = [m for m in oos if m.get("n_trades", 0) > 0]
     all_pnls = [m.get("net_pnl", 0) for m in oos]
-    valid_pnls = [m.get("net_pnl", 0) for m in valid_oos]
+    _valid_pnls = [m.get("net_pnl", 0) for m in valid_oos]  # noqa: F841
 
     analysis = {
         "wfo_efficiency": data.get("wfo_efficiency_ratio", 0),
@@ -112,7 +111,9 @@ def main():
         return
 
     # Summary table
-    print(f"\n{'Strategy':<22s} {'WFO Eff':>8s} {'OOS PnL':>10s} {'Win/Total':>10s} {'Avg WR':>8s} {'Avg PF':>8s} {'Trades':>8s} {'Hold':>6s} {'Recommendation'}")
+    print(
+        f"\n{'Strategy':<22s} {'WFO Eff':>8s} {'OOS PnL':>10s} {'Win/Total':>10s} {'Avg WR':>8s} {'Avg PF':>8s} {'Trades':>8s} {'Hold':>6s} {'Recommendation'}"
+    )
     print("-" * 120)
 
     for strat in STRATEGIES:
@@ -149,7 +150,7 @@ def main():
 
         oos = data.get("oos_metrics", [])
         if oos:
-            print(f"\n  Per-Window OOS:")
+            print("\n  Per-Window OOS:")
             print(f"  {'Window':>6s} {'Trades':>7s} {'WR':>6s} {'PF':>6s} {'PnL':>10s} {'Hold':>6s} {'Sharpe':>7s}")
             for i, m in enumerate(oos):
                 print(
@@ -163,7 +164,7 @@ def main():
                 )
 
         if a["param_stability"]:
-            print(f"\n  Parameter Stability:")
+            print("\n  Parameter Stability:")
             for p, v in a["param_stability"].items():
                 status = "STABLE" if v.get("stable") else ("BORDERLINE" if v.get("cv", 0) <= 0.40 else "UNSTABLE")
                 print(f"    {p:<25s} mean={v['mean']:.3f}  cv={v['cv']:.3f}  {status}")
@@ -171,7 +172,7 @@ def main():
         # Best params per window
         bpw = data.get("best_params_per_window", [])
         if bpw and any(bpw):
-            print(f"\n  Best Params (window means):")
+            print("\n  Best Params (window means):")
             all_keys = set()
             for bp in bpw:
                 if bp:
@@ -180,7 +181,9 @@ def main():
                 vals = [bp.get(k) for bp in bpw if bp and k in bp]
                 if vals:
                     mean_v = sum(v for v in vals if isinstance(v, (int, float))) / max(len(vals), 1)
-                    print(f"    {k:<25s} mean={mean_v:.3f}  values={[round(v, 3) if isinstance(v, float) else v for v in vals]}")
+                    print(
+                        f"    {k:<25s} mean={mean_v:.3f}  values={[round(v, 3) if isinstance(v, float) else v for v in vals]}"
+                    )
 
 
 if __name__ == "__main__":

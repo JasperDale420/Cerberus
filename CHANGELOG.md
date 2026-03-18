@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Test suite preflight**: `uv sync --all-extras` is now required to install dev dependencies (pytest, ruff, etc.) into the venv; previously `uv sync` alone left pytest missing, causing 4 collection errors via the system pytest missing `filterpy` in its environment.
+- **MTF flat-gate tests** (`test_hierarchical_mtf_gate_unit.py`): Updated `test_rejects_when_15m_emas_diverged` and `test_rejects_when_15m_adx_high` to match the relaxed thresholds introduced in commit `9efc9d9` (EMA spread threshold 0.3% → 0.8%, ADX rejection threshold 25 → 35).
+- **Risk manager notional-cap test** (`test_risk_manager_additional_unit.py`): Updated `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` to reflect the capping behavior introduced in commit `5fcdce9` — when a signal's notional exceeds the per-order limit, qty is now capped to fit rather than rejected. Added a complementary assertion for the MAX_NOTIONAL rejection path (triggered when entry_price > cap, so capped qty rounds to 0).
+- **Ruff lint** (34 → 0 errors): Fixed import ordering, removed unused imports and variables (`valid_pnls`, `sys`, `datetime/timezone` in scripts), removed f-strings without placeholders, renamed unused loop variables to `_sym`/`_mh`, and added `# noqa: E402` to intentional post-sys.path imports in diagnostic/runner scripts.
+
 ### Added
 
 - **Quant foundation layer** (`src/quant/`): GARCH conditional volatility, Kalman filters, Engle-Granger/Johansen cointegration, Hurst exponent, CUSUM breakout detection, Granger causality, Markov regime-switching, adaptive thresholds, walk-forward validation, deflated Sharpe ratio

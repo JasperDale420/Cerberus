@@ -47,7 +47,7 @@ wfo = WalkForwardOptimizer(
     mode="rolling",
 )
 
-print(f"WFO v5 — 50 trials, 8-symbol universe", flush=True)
+print("WFO v5 — 50 trials, 8-symbol universe", flush=True)
 print(f"Windows: {len(wfo.get_windows())}", flush=True)
 print(f"Holdout: {wfo.get_holdout_window()}", flush=True)
 print(f"Symbols: {OPT_SYMBOLS}", flush=True)

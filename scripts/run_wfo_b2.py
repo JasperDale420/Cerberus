@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 """Run WFO for a single strategy."""
-import sys
-import os
+
 import json
+import os
+import sys
+
 import yaml
 
 os.chdir("/Users/jacobmcmillan/Empire/Cerberus")
 sys.path.insert(0, ".")
 
-from src.analytics.optuna_harness import WalkForwardOptimizer
+from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 strategy_name = sys.argv[1]
 

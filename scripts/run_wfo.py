@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """Run WFO for a single strategy."""
-import sys
-import os
+
 import json
 import logging
+import os
+import sys
 import warnings
 
 # Suppress all logging before any imports
@@ -15,9 +16,9 @@ os.environ.setdefault("EMPIRE_LOG_FORMAT", "json")
 os.chdir("/Users/jacobmcmillan/Empire/Cerberus")
 sys.path.insert(0, ".")
 
-import yaml
+import yaml  # noqa: E402
 
-from src.analytics.optuna_harness import WalkForwardOptimizer
+from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 strategy_name = sys.argv[1]
 

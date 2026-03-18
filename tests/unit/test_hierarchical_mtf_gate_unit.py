@@ -13,8 +13,6 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.core.domain import (
     Bar,
     LiquidityRegime,
@@ -28,7 +26,6 @@ from src.core.domain import (
     TrendRegime,
     VolRegime,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers (same patterns as test_v2_strategies_unit.py)
@@ -142,10 +139,10 @@ class TestRequireHigherTfTrend:
 
     def test_passes_when_15m_ema20_above_ema50_for_buy(self):
         """BUY allowed when 15m EMA20 > EMA50 (uptrend on higher TF)."""
-        from src.strategies.base import BaseStrategy
 
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         # 15m EMA20=102, EMA50=100 → uptrend
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
@@ -153,6 +150,7 @@ class TestRequireHigherTfTrend:
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 30.0
 
@@ -163,6 +161,7 @@ class TestRequireHigherTfTrend:
         """BUY rejected when 15m EMA20 < EMA50 (downtrend on higher TF)."""
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         # 15m EMA20=98, EMA50=100 → downtrend
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
@@ -170,6 +169,7 @@ class TestRequireHigherTfTrend:
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 30.0
 
@@ -180,12 +180,14 @@ class TestRequireHigherTfTrend:
         """SELL allowed when 15m EMA20 < EMA50 (downtrend on higher TF)."""
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 98.0
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 30.0
 
@@ -196,12 +198,14 @@ class TestRequireHigherTfTrend:
         """SELL rejected when 15m shows uptrend."""
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 102.0
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 30.0
 
@@ -212,12 +216,14 @@ class TestRequireHigherTfTrend:
         """Even if EMAs align, ADX < 20 means no confirmed trend — reject."""
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 102.0
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 15.0  # too low — no confirmed trend
 
@@ -238,12 +244,14 @@ class TestRequireHigherTfTrend:
         """When ADX unavailable but EMAs align, allow through (early session grace)."""
         strategy = _make_strategy_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 102.0
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = None
 
@@ -263,12 +271,14 @@ class TestRequireHigherTfFlat:
         """MR allowed when 15m EMAs within 0.15% and ADX < 25."""
         strategy = _make_mrp_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 100.1  # 0.1% from EMA50 — converged
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 18.0  # low ADX — choppy
 
@@ -276,15 +286,17 @@ class TestRequireHigherTfFlat:
         assert result is True
 
     def test_rejects_when_15m_emas_diverged(self):
-        """MR rejected when 15m EMAs spread > 0.3% — trending, not flat."""
+        """MR rejected when 15m EMAs spread >= 0.8% — strong trend, not flat."""
         strategy = _make_mrp_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
-                return 100.5  # 0.5% from EMA50 — diverged
+                return 100.9  # 0.9% from EMA50 — exceeds 0.8% rejection threshold
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = 18.0
 
@@ -292,17 +304,19 @@ class TestRequireHigherTfFlat:
         assert result is False
 
     def test_rejects_when_15m_adx_high(self):
-        """MR rejected when ADX > 25 even if EMAs converged — strong trend."""
+        """MR rejected when ADX >= 35 — very strong trend."""
         strategy = _make_mrp_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 100.1
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
-        mtf.get_adx.return_value = 30.0  # high ADX — trending
+        mtf.get_adx.return_value = 38.0  # ADX >= 35 — very strong trend
 
         result = strategy._require_higher_tf_flat(mtf)
         assert result is False
@@ -321,12 +335,14 @@ class TestRequireHigherTfFlat:
         """When ADX unavailable but EMAs converged, allow (early session grace)."""
         strategy = _make_mrp_with_mtf_gate()
         mtf = MagicMock()
+
         def get_ema_side_effect(tf, period):
             if tf == "15m" and period == 20:
                 return 100.1
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_side_effect
         mtf.get_adx.return_value = None  # no ADX yet
 
@@ -344,9 +360,7 @@ class TestTRPUsesHigherTfTrend:
 
     def test_trp_rejects_buy_when_15m_downtrend(self):
         """TRP should not generate BUY when 15m shows downtrend."""
-        from unittest.mock import patch
 
-        from src.core.domain import TrendRegime
         from src.strategies.trend_rider_pro import TrendRiderProStrategy
 
         config = {
@@ -388,6 +402,7 @@ class TestTRPUsesHigherTfTrend:
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.2  # 5m/1m pullback near EMA
+
         mtf.get_ema.side_effect = get_ema_for_15m
         mtf.get_adx.return_value = 30.0
 
@@ -402,9 +417,7 @@ class TestMRPUsesHigherTfFlat:
 
     def test_mrp_rejects_when_15m_trending(self):
         """MRP should not generate signal when 15m shows strong trend."""
-        from unittest.mock import patch
 
-        from src.core.domain import TrendRegime
         from src.strategies.mean_reversion_pro import MeanReversionProStrategy
 
         config = {
@@ -448,6 +461,7 @@ class TestMRPUsesHigherTfFlat:
             if tf == "15m" and period == 50:
                 return 100.0
             return 100.0
+
         mtf.get_ema.side_effect = get_ema_for_15m
         mtf.get_adx.return_value = 35.0
 
