@@ -128,7 +128,7 @@ class PortfolioPerformance:
 
         arr = np.array(returns[-w:])
         std = float(np.std(arr, ddof=1))
-        if std == 0.0:
+        if std < 1e-12:
             return None
 
         return float(arr.mean() / std * math.sqrt(252))
@@ -168,12 +168,12 @@ class PortfolioPerformance:
         cumulative = np.cumsum(pnls)
         peak = np.maximum.accumulate(cumulative)
 
-        # Avoid division by zero when peak is zero
         max_dd = 0.0
         for i in range(len(cumulative)):
-            if peak[i] > 0:
-                dd = (cumulative[i] - peak[i]) / peak[i]
-                if dd < max_dd:
-                    max_dd = dd
+            if abs(peak[i]) < 1e-12:
+                continue
+            dd = (cumulative[i] - peak[i]) / abs(peak[i])
+            if dd < max_dd:
+                max_dd = dd
 
         return float(max_dd)
