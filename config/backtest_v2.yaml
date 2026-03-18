@@ -44,7 +44,7 @@ strategies:
     signal_timeframe: 5               # evaluate pullbacks on 5m closes only
     confluence_threshold: 63.3       # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 4                    # autoresearch trp iter1: 4 * 5m = 20 min cooldown
-    min_trend_alignment: 0.40        # autoresearch iter3: relaxed for more entries in confirmed trends
+    min_trend_alignment: 0.30        # autoresearch trp iter9: 15m hard gate handles confirmation
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
     stop_atr_mult: 1.75             # autoresearch iter3: tighter stops for better R:R
