@@ -180,18 +180,12 @@ class ORBV2Strategy(BaseStrategy):
         s2 = score_volume(bar.volume, avg_vol, 1.2, 3.0) if avg_vol > 0 else 0.0
         scorer.add_factor("volume", bar.volume, s2, 0.25, passed=s2 > 0)
 
-        # 3. Gap alignment (0.20) — reject breakouts opposing a significant gap
+        # 3. Gap alignment (0.20)
         if side == OrderSide.BUY:
-            if gap_pct < -0.005:
-                s3 = 0.0  # strong gap down, don't buy breakout
-            else:
-                s3 = 80.0 if gap_pct > 0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
+            s3 = 80.0 if gap_pct > 0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
         else:
-            if gap_pct > 0.005:
-                s3 = 0.0  # strong gap up, don't sell breakout
-            else:
-                s3 = 80.0 if gap_pct < -0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
-        scorer.add_factor("gap_alignment", gap_pct, s3, 0.20, passed=s3 >= 40)
+            s3 = 80.0 if gap_pct < -0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
+        scorer.add_factor("gap_alignment", gap_pct, s3, 0.20, passed=s3 >= 60)
 
         # 4. MTF trend alignment (0.15)
         mtf_raw = mtf.get_trend_alignment(side)
