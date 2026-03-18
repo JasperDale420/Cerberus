@@ -42,7 +42,7 @@ strategies:
   trend_rider_pro:
     enabled: true        # autoresearch trp: isolating for retuning with 5m + 15m gate
     signal_timeframe: 5               # evaluate pullbacks on 5m closes only
-    confluence_threshold: 55.0        # autoresearch trp iter2: relax (15m gate handles quality)
+    confluence_threshold: 63.3       # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 4                    # autoresearch trp iter1: 4 * 5m = 20 min cooldown
     min_trend_alignment: 0.40        # autoresearch iter3: relaxed for more entries in confirmed trends
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
