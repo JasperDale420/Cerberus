@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime
 from typing import Any
 
+from src.analysis.ou_estimator import OUEstimator
 from src.core.domain import (
     Bar,
     MarketState,
@@ -13,8 +14,11 @@ from src.core.domain import (
     TrendRegime,
     VolRegime,
 )
-from src.core.indicators import RollingEMA, RollingStd
+from src.core.indicators import RollingStd
 from src.core.logger import StructuredLogger
+from src.quant.cointegration import RollingCointegrationMonitor
+from src.quant.filters import KalmanHedgeRatio
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import ConfluenceScorer, score_deviation, score_volume
 
@@ -28,13 +32,12 @@ def _pair_key(leg_a: str, leg_b: str) -> str:
 def _make_pair_state(
     leg_a: str,
     leg_b: str,
-    hedge_ema_period: int,
     spread_lookback: int,
 ) -> dict[str, Any]:
     return {
         "leg_a": leg_a,
         "leg_b": leg_b,
-        "hedge_ema": RollingEMA.from_period(hedge_ema_period),
+        "kalman": KalmanHedgeRatio(),
         "spread_std": RollingStd.create(spread_lookback),
         "last_price_a": 0.0,
         "last_price_b": 0.0,
@@ -43,12 +46,16 @@ def _make_pair_state(
         "bar_count": 0,
         "signal_active": False,
         "z_score_history": deque(maxlen=10),
+        # Rolling correlation tracking
+        "prices_a": deque(maxlen=spread_lookback),
+        "prices_b": deque(maxlen=spread_lookback),
     }
 
 
 class PairTradingV2Strategy(BaseStrategy):
-    """Enhanced pair trading with dynamic hedge ratio (EMA-based simplified
-    Kalman filter), rolling spread z-score, and confluence scoring.
+    """Enhanced pair trading with Kalman-filtered hedge ratio, Engle-Granger
+    cointegration gate, GARCH-conditional z-scores, OU half-life gate,
+    and rolling correlation monitoring.
 
     ``on_bar`` is called per-symbol; the strategy tracks which pairs each
     symbol belongs to and only computes signals when both legs have a fresh
@@ -61,6 +68,10 @@ class PairTradingV2Strategy(BaseStrategy):
         super().__init__(config, logger)
         self._pair_state: dict[str, dict[str, Any]] = {}
         self._symbol_to_pairs: dict[str, list[str]] = {}
+        # Quant monitors — keyed by pair key
+        self._coint_monitors: dict[str, RollingCointegrationMonitor] = {}
+        self._spread_garch: dict[str, GARCHForecaster] = {}
+        self._ou_estimators: dict[str, OUEstimator] = {}
         self._init_pairs(config)
 
     def _set_params(self, config: dict[str, Any]) -> None:
@@ -72,6 +83,8 @@ class PairTradingV2Strategy(BaseStrategy):
         self.spread_lookback = int(config.get("spread_lookback", 100))
         self.min_bars = int(config.get("min_bars", 60))
         self.freshness_seconds = float(config.get("freshness_seconds", 60.0))
+        self.max_hold_minutes = float(config.get("max_hold_minutes", 120.0))
+        self.min_correlation = float(config.get("min_correlation", 0.6))
         self.tf_alignment_mode = "mean_reversion"
 
     def _init_pairs(self, config: dict[str, Any]) -> None:
@@ -84,11 +97,24 @@ class PairTradingV2Strategy(BaseStrategy):
             self._pair_state[key] = _make_pair_state(
                 leg_a,
                 leg_b,
-                self.hedge_ema_period,
                 self.spread_lookback,
             )
             self._symbol_to_pairs.setdefault(leg_a, []).append(key)
             self._symbol_to_pairs.setdefault(leg_b, []).append(key)
+            # Init quant monitors per pair
+            self._coint_monitors[key] = RollingCointegrationMonitor(
+                lookback=self.spread_lookback,
+                retest_interval=20,
+            )
+            self._spread_garch[key] = GARCHForecaster(
+                min_observations=50,
+                lookback=500,
+                refit_interval=20,
+            )
+            self._ou_estimators[key] = OUEstimator(
+                lookback=self.spread_lookback,
+                min_observations=30,
+            )
 
     # -- regime helpers ---------------------------------------------------
 
@@ -119,22 +145,63 @@ class PairTradingV2Strategy(BaseStrategy):
             return False
         return abs((time_a - time_b).total_seconds()) <= self.freshness_seconds
 
-    # -- spread / z-score -------------------------------------------------
+    # -- rolling correlation -----------------------------------------------
 
     @staticmethod
+    def _rolling_correlation(ps: dict[str, Any]) -> float | None:
+        """Compute rolling Pearson correlation from stored price deques."""
+        prices_a = ps["prices_a"]
+        prices_b = ps["prices_b"]
+        n = len(prices_a)
+        if n < 20:
+            return None
+        a_list = list(prices_a)
+        b_list = list(prices_b)
+        mean_a = sum(a_list) / n
+        mean_b = sum(b_list) / n
+        cov = sum((a_list[i] - mean_a) * (b_list[i] - mean_b) for i in range(n)) / n
+        std_a = (sum((x - mean_a) ** 2 for x in a_list) / n) ** 0.5
+        std_b = (sum((x - mean_b) ** 2 for x in b_list) / n) ** 0.5
+        if std_a < 1e-12 or std_b < 1e-12:
+            return None
+        return cov / (std_a * std_b)
+
+    # -- spread / z-score -------------------------------------------------
+
     def _compute_spread_zscore(
+        self,
         ps: dict[str, Any],
+        key: str,
     ) -> tuple[float, float, float, float] | None:
         """Return (hedge_ratio, spread, z_score, std) or None."""
         price_a, price_b = ps["last_price_a"], ps["last_price_b"]
         if price_b <= 0.0 or price_a <= 0.0:
             return None
-        hedge_ratio = ps["hedge_ema"].update(price_a / price_b)
-        spread = price_a - hedge_ratio * price_b
+
+        # Kalman-filtered hedge ratio (models price_a = intercept + slope * price_b)
+        kalman: KalmanHedgeRatio = ps["kalman"]
+        spread = kalman.update(price_b, price_a)  # x=price_b, y=price_a
+        hedge_ratio = kalman.hedge_ratio
+
         mean, std = ps["spread_std"].update(spread)
+
+        # Feed spread to GARCH forecaster
+        garch = self._spread_garch[key]
+        garch_result = garch.update(spread)
+
+        # Feed spread to OU estimator
+        self._ou_estimators[key].update(spread)
+
         if std <= 0.0:
             return None
-        return hedge_ratio, spread, (spread - mean) / std, std
+
+        # Use GARCH-conditional z-score when available, else rolling std
+        if garch_result is not None:
+            z_score = garch.conditional_zscore(spread - mean)
+        else:
+            z_score = (spread - mean) / std
+
+        return hedge_ratio, spread, z_score, std
 
     # -- confluence scoring -----------------------------------------------
 
@@ -191,13 +258,11 @@ class PairTradingV2Strategy(BaseStrategy):
             passed=flat_sc >= 50.0,
         )
 
-        # 5. Hedge ratio stability (0.10)
-        ema = ps["hedge_ema"]
-        if ema.prev_value is not None and ema.value is not None:
-            stability = 1.0 - abs(ema.value - ema.prev_value) / (abs(ema.value) + 1e-4)
-            h_sc = max(0.0, stability * 100.0)
-        else:
-            h_sc = 50.0
+        # 5. Hedge ratio stability via Kalman uncertainty (0.10)
+        kalman: KalmanHedgeRatio = ps["kalman"]
+        uncertainty = kalman.hedge_ratio_uncertainty
+        # Lower uncertainty = more stable. Map [0, 10] -> [100, 0]
+        h_sc = max(0.0, min(100.0, 100.0 * (1.0 - uncertainty / 10.0)))
         scorer.add_factor("hedge_stability", raw_value=h_sc, score=h_sc, weight=0.10)
 
         return scorer
@@ -299,10 +364,19 @@ class PairTradingV2Strategy(BaseStrategy):
 
         ps["bar_count"] += 1
 
+        # Track prices for rolling correlation
+        if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
+            ps["prices_a"].append(ps["last_price_a"])
+            ps["prices_b"].append(ps["last_price_b"])
+
+        # Update cointegration monitor on each bar (both legs needed)
+        if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
+            self._coint_monitors[key].update(ps["last_price_a"], ps["last_price_b"])
+
         # Warm-up phase: feed indicators but skip signal generation
         if ps["bar_count"] < self.min_bars:
             if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
-                self._compute_spread_zscore(ps)
+                self._compute_spread_zscore(ps, key)
             return None
 
         if not self._both_legs_fresh(ps, bar.time):
@@ -310,12 +384,40 @@ class PairTradingV2Strategy(BaseStrategy):
         if ps["signal_active"]:
             return None
 
-        result = self._compute_spread_zscore(ps)
+        result = self._compute_spread_zscore(ps, key)
         if result is None:
             return None
         hedge_ratio, spread, z_score, std = result
 
         ps["z_score_history"].append(z_score)
+
+        # -- Quant gates (applied BEFORE confluence scoring) ----------------
+
+        # Gate 1: Cointegration check
+        if not self._coint_monitors[key].is_valid:
+            self.logger.debug(
+                "pair_trading_v2: cointegration gate rejected",
+                pair=key,
+                symbol=symbol,
+            )
+            return None
+
+        # Gate 2: OU half-life check
+        ou_result = self._ou_estimators[key].update(spread)
+        if ou_result is not None and ou_result.half_life > self.max_hold_minutes:
+            self.logger.debug(
+                "pair_trading_v2: OU half-life gate rejected",
+                pair=key,
+                symbol=symbol,
+                half_life=round(ou_result.half_life, 2),
+                max_hold=self.max_hold_minutes,
+            )
+            return None
+
+        # Track rolling correlation (informational; can gate exits later)
+        corr = self._rolling_correlation(ps)
+
+        # -- end quant gates ------------------------------------------------
 
         side = self._determine_side(z_score, symbol, leg_a, leg_b)
         if side is None:
@@ -358,6 +460,8 @@ class PairTradingV2Strategy(BaseStrategy):
         meta["hedge_ratio"] = round(hedge_ratio, 6)
         meta["spread"] = round(spread, 6)
         meta["other_leg"] = other_leg
+        if corr is not None:
+            meta["rolling_correlation"] = round(corr, 4)
 
         self.last_signal_time[symbol] = bar.time
         ps["signal_active"] = True
@@ -370,6 +474,7 @@ class PairTradingV2Strategy(BaseStrategy):
             z_score=round(z_score, 4),
             hedge_ratio=round(hedge_ratio, 6),
             confluence=round(scorer.score(), 2),
+            correlation=round(corr, 4) if corr is not None else None,
         )
 
         return self._create_signal(

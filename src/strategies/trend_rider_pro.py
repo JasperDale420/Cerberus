@@ -16,6 +16,10 @@ from src.core.domain import (
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.data.requirements import DataRequirements
+from src.quant.filters import KalmanMeanTracker
+from src.quant.regime import MarkovRegimeSwitcher
+from src.quant.statistics import HurstExponent
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -79,6 +83,11 @@ class TrendRiderProStrategy(BaseStrategy):
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)
+        # Per-symbol quant state — lazy-initialized on first bar
+        self._kalman: dict[str, KalmanMeanTracker] = {}
+        self._hurst: dict[str, HurstExponent] = {}
+        self._garch: dict[str, GARCHForecaster] = {}
+        self._markov: dict[str, MarkovRegimeSwitcher] = {}
 
     # ------------------------------------------------------------------
     # Config
@@ -101,6 +110,33 @@ class TrendRiderProStrategy(BaseStrategy):
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 120)))
 
     # ------------------------------------------------------------------
+    # Per-symbol quant component initialization
+    # ------------------------------------------------------------------
+
+    def _ensure_quant_state(self, symbol: str) -> None:
+        """Lazily initialize quant components for a symbol on first encounter."""
+        if symbol not in self._kalman:
+            self._kalman[symbol] = KalmanMeanTracker(process_noise=0.01, measurement_noise=1.0)
+        if symbol not in self._hurst:
+            self._hurst[symbol] = HurstExponent(min_observations=100, lookback=500)
+        if symbol not in self._garch:
+            self._garch[symbol] = GARCHForecaster(min_observations=50, lookback=500, refit_interval=20)
+        if symbol not in self._markov:
+            self._markov[symbol] = MarkovRegimeSwitcher(n_regimes=2, min_observations=100, refit_interval=50)
+
+    def _update_quant_state(self, symbol: str, bar: Bar) -> None:
+        """Feed current bar data into all quant components for this symbol."""
+        close = bar.close
+        self._kalman[symbol].update(close)
+        self._hurst[symbol].update(close)
+        self._garch[symbol].update(close)
+        # Markov expects returns — compute from last two prices
+        garch_prices = self._garch[symbol]._prices
+        if len(garch_prices) >= 2:
+            ret = (garch_prices[-1] / garch_prices[-2]) - 1.0
+            self._markov[symbol].update(ret)
+
+    # ------------------------------------------------------------------
     # Main entry
     # ------------------------------------------------------------------
 
@@ -111,6 +147,10 @@ class TrendRiderProStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Signal | None:
+        # --- lazy init + update quant components every bar ---
+        self._ensure_quant_state(symbol)
+        self._update_quant_state(symbol, bar)
+
         # --- timeframe gate: only evaluate on signal_timeframe closes ---
         if not self._is_evaluation_bar(bar):
             return None
@@ -136,9 +176,20 @@ class TrendRiderProStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
-        # --- direction detection ---
+        # --- Hurst trending gate ---
+        hurst_result = self._hurst[symbol].update(bar.close)
+        if hurst_result is not None and hurst_result.H <= 0.55:
+            self.logger.debug(
+                "hurst_trending_gate_rejected",
+                symbol=symbol,
+                hurst=round(hurst_result.H, 4),
+                strategy=self.name,
+            )
+            return None
+
+        # --- direction detection (uses Kalman instead of EMA-20) ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
-        side = self._detect_side(bar, mtf, snapshot)
+        side = self._detect_side(bar, mtf, snapshot, symbol)
         if side is None:
             return None
 
@@ -147,7 +198,7 @@ class TrendRiderProStrategy(BaseStrategy):
             return None
 
         # --- confluence scoring ---
-        scorer = self._score_confluence(bar, side, mtf, symbol_state, snapshot)
+        scorer = self._score_confluence(bar, side, mtf, symbol_state, snapshot, symbol)
         if not scorer.passes_threshold():
             return None
 
@@ -156,7 +207,7 @@ class TrendRiderProStrategy(BaseStrategy):
         if atr_5m is None or atr_5m <= 0:
             return None
 
-        stop_price = self._compute_stop(bar, side, mtf, atr_5m)
+        stop_price = self._compute_stop(bar, side, mtf, atr_5m, symbol)
         stop_distance = abs(bar.close - stop_price)
         stop_distance = self._apply_regime_volatility_multiplier(stop_distance, market_state)
 
@@ -169,8 +220,17 @@ class TrendRiderProStrategy(BaseStrategy):
 
         # --- build meta ---
         meta = scorer.to_meta()
-        meta["strategy_version"] = "trend_rider_pro_v1"
+        meta["strategy_version"] = "trend_rider_pro_v2"
         meta["atr_5m"] = round(atr_5m, 6)
+        # Include quant state in meta for observability
+        garch_result = self._garch[symbol]._last_result
+        if garch_result is not None:
+            meta["garch_conditional_vol"] = round(garch_result.conditional_vol, 6)
+        if hurst_result is not None:
+            meta["hurst_H"] = round(hurst_result.H, 4)
+        markov_result = self._markov[symbol].last_result
+        if markov_result is not None:
+            meta["markov_trend_prob"] = round(markov_result.filtered_probability, 4)
         meta["exit_config"] = {
             "trailing_enabled": True,
             "trail_timeframe": "5m",
@@ -201,10 +261,20 @@ class TrendRiderProStrategy(BaseStrategy):
         bar: Bar,
         mtf: MultiTimeframeAnalyzer,
         snapshot: Any,
+        symbol: str = "",
     ) -> OrderSide | None:
-        """Determine trade direction from trend alignment + pullback/VWAP."""
+        """Determine trade direction from trend alignment + pullback/VWAP.
+
+        Uses Kalman mean estimate instead of EMA-20 for pullback detection
+        when available, falling back to EMA-20 if Kalman not yet initialized.
+        Uses Markov regime probability instead of hardcoded ADX threshold
+        for trend confirmation, falling back to ADX gate if Markov hasn't converged.
+        """
+        # Kalman mean replaces EMA-20 for pullback anchor
+        kalman_state = self._kalman[symbol].state if symbol in self._kalman else None
         ema20_5m = mtf.get_ema("5m", 20)
-        if ema20_5m is None or ema20_5m <= 0:
+        pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
+        if pullback_anchor is None or pullback_anchor <= 0:
             return None
 
         vwap_dist_1m = mtf.get_vwap_distance("1m")
@@ -212,22 +282,21 @@ class TrendRiderProStrategy(BaseStrategy):
         # --- BUY side ---
         buy_alignment = mtf.get_trend_alignment(OrderSide.BUY)
         if buy_alignment >= self.min_trend_alignment:
-            pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
-            near_ema = pullback_pct <= self.pullback_threshold
-            # VWAP soft gate: prefer above VWAP but allow slight dips (pullback to EMA can cross VWAP)
+            pullback_pct = abs(bar.close - pullback_anchor) / bar.close
+            near_anchor = pullback_pct <= self.pullback_threshold
             vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= -0.002
-            if near_ema and vwap_ok:
-                if self._regime_allows(OrderSide.BUY, snapshot, mtf):
+            if near_anchor and vwap_ok:
+                if self._regime_allows_with_markov(OrderSide.BUY, snapshot, mtf, symbol):
                     return OrderSide.BUY
 
         # --- SELL side ---
         sell_alignment = mtf.get_trend_alignment(OrderSide.SELL)
         if sell_alignment >= self.min_trend_alignment:
-            pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
-            near_ema = pullback_pct <= self.pullback_threshold
+            pullback_pct = abs(bar.close - pullback_anchor) / bar.close
+            near_anchor = pullback_pct <= self.pullback_threshold
             vwap_ok = vwap_dist_1m is None or vwap_dist_1m <= 0.002
-            if near_ema and vwap_ok:
-                if self._regime_allows(OrderSide.SELL, snapshot, mtf):
+            if near_anchor and vwap_ok:
+                if self._regime_allows_with_markov(OrderSide.SELL, snapshot, mtf, symbol):
                     return OrderSide.SELL
 
         return None
@@ -262,6 +331,31 @@ class TrendRiderProStrategy(BaseStrategy):
         # SELL
         return trend in (TrendRegime.DOWN, TrendRegime.FLAT)
 
+    def _regime_allows_with_markov(
+        self,
+        side: OrderSide,
+        snapshot: Any,
+        mtf: MultiTimeframeAnalyzer,
+        symbol: str,
+    ) -> bool:
+        """Check regime using Markov probability when available, falling back to ADX gate.
+
+        Replaces the hardcoded ADX threshold with Markov regime probability.
+        Requires filtered_probability > 0.7 for the dominant regime to confirm trend.
+        Falls back to the original _regime_allows if Markov hasn't converged.
+        """
+        markov_result = self._markov.get(symbol, None)
+        if markov_result is not None:
+            markov_result = markov_result.last_result
+        if markov_result is not None and markov_result.filtered_probability > 0.7:
+            # Markov has converged and is confident — use it as regime gate
+            return self._regime_allows(side, snapshot, mtf)
+        if markov_result is not None and markov_result.filtered_probability <= 0.7:
+            # Markov has converged but regime is uncertain — reject
+            return False
+        # Markov not yet converged — fall back to original regime gate
+        return self._regime_allows(side, snapshot, mtf)
+
     # ------------------------------------------------------------------
     # Confluence scoring
     # ------------------------------------------------------------------
@@ -273,6 +367,7 @@ class TrendRiderProStrategy(BaseStrategy):
         mtf: MultiTimeframeAnalyzer,
         symbol_state: SymbolState,
         snapshot: Any,
+        symbol: str = "",
     ) -> ConfluenceScorer:
         scorer = ConfluenceScorer(threshold=self.confluence_threshold)
 
@@ -287,13 +382,15 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=alignment > 0.5,
         )
 
-        # 2. Pullback quality (weight 0.20)
+        # 2. Pullback quality (weight 0.20) — uses Kalman mean instead of EMA-20
+        kalman_state = self._kalman[symbol].state if symbol in self._kalman else None
         ema20_5m = mtf.get_ema("5m", 20)
+        pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
         pullback_pct = 0.0
-        if ema20_5m is not None and ema20_5m > 0:
-            pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
+        if pullback_anchor is not None and pullback_anchor > 0:
+            pullback_pct = abs(bar.close - pullback_anchor) / bar.close
         pb_score = score_deviation(pullback_pct, 0.001, 0.008)
-        # Invert: closer to EMA = higher score
+        # Invert: closer to anchor = higher score
         pb_score = max(0.0, 100.0 - pb_score)
         scorer.add_factor(
             "pullback_quality",
@@ -363,18 +460,32 @@ class TrendRiderProStrategy(BaseStrategy):
         side: OrderSide,
         mtf: MultiTimeframeAnalyzer,
         atr_5m: float,
+        symbol: str = "",
     ) -> float:
-        """Compute raw stop price before regime multiplier."""
+        """Compute raw stop price before regime multiplier.
+
+        Uses GARCH conditional volatility for stop distance when available,
+        falling back to ATR-based stops if GARCH hasn't fitted yet.
+        """
+        # Determine volatility-based stop distance
+        garch_result = self._garch[symbol]._last_result if symbol in self._garch else None
+        if garch_result is not None and garch_result.conditional_vol > 0:
+            # GARCH conditional vol is in decimal return terms — convert to dollar distance
+            vol_distance = self.stop_atr_mult * garch_result.conditional_vol * bar.close
+        else:
+            # Fallback to ATR
+            vol_distance = self.stop_atr_mult * atr_5m
+
         if side == OrderSide.BUY:
             swings = mtf.get_swing_lows("5m", lookback=5)
             if swings:
                 return swings[0]  # most recent swing low
-            return bar.low - self.stop_atr_mult * atr_5m
+            return bar.low - vol_distance
         # SELL
         swings = mtf.get_swing_highs("5m", lookback=5)
         if swings:
             return swings[0]  # most recent swing high
-        return bar.high + self.stop_atr_mult * atr_5m
+        return bar.high + vol_distance
 
     # ------------------------------------------------------------------
     # Helpers
