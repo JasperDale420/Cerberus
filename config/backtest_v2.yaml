@@ -92,7 +92,7 @@ strategies:
       risk: [risk_on, neutral]
       min_confidence: 0.5
   rsi_bounce:
-    enabled: false       # WFO v4 REJECT: 1/6 windows profitable, PF=0.42 on full backtest
+    enabled: true        # autoresearch rsib: testing
     signal_timeframe: 5               # evaluate on 5m closes only
     confluence_threshold: 55.0
     cooldown_bars: 20
@@ -109,7 +109,7 @@ strategies:
       risk: [neutral, risk_off]
       min_confidence: 0.5
   momentum_fade:
-    enabled: true        # autoresearch mf: isolating for optimization
+    enabled: false       # DEAD: PF<0.70 at all confluence levels, fading 2024 bull = losing
     signal_timeframe: 5               # autoresearch mf: evaluate on 5m closes
     confluence_threshold: 75.0        # autoresearch mf iter2: very high bar
     cooldown_bars: 4                  # 20 min at 5m
