@@ -109,7 +109,7 @@ class DatabaseDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            self.logger.error("Database session rollback", error=str(e))
+            self.logger.debug("Database session rollback", error=str(e))
             raise
         finally:
             session.close()
