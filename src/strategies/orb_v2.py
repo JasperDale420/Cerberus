@@ -105,10 +105,10 @@ class ORBV2Strategy(BaseStrategy):
     def _adaptive_range_minutes(gap_pct: float) -> int:
         abs_gap = abs(gap_pct)
         if abs_gap < 0.005:
-            return 15
+            return 5
         if abs_gap < 0.015:
-            return 20
-        return 30
+            return 10
+        return 15
 
     # -- session reset / range building ------------------------------------
 
