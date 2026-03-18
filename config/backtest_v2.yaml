@@ -78,7 +78,7 @@ strategies:
     cooldown_bars: 10                    # autoresearch orb iter10: breakout_fired already limits 1/day
     max_hold_minutes: 180              # autoresearch orb iter2: extend hold time
     vol_gate_mult: 1.53                # WFO v3 mean (CV=0.12, very stable)
-    trail_min_profit_r: 0.5            # autoresearch orb iter12: trail sooner to lock in gains
+    trail_min_profit_r: 0.96           # WFO v3 mean (CV=0.28, stable)
     activation:
       session: [opening, midday]  # Range builds during opening, breakouts fire in midday
       trend: [up, down, flat]
