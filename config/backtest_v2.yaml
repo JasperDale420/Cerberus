@@ -157,8 +157,8 @@ risk:
   max_trades_per_day: 50
   max_open_positions: 8
   max_positions_per_strategy: 4   # autoresearch iter18: more concurrent positions
-  max_notional_per_order: 65000.0  # autoresearch iter32: push notional to 65k
-  max_notional_per_symbol: 65000.0
+  max_notional_per_order: 75000.0  # autoresearch iter33: push notional to 75k
+  max_notional_per_symbol: 75000.0
   time_in_force: "day"
   risk_mode: "normal"
   slippage_bps: 3.0               # Realistic slippage for liquid names
