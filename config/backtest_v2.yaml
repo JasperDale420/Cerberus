@@ -34,6 +34,7 @@ strategies:
     higher_tf_alignment: false
     vwap_dist_threshold: 0.002        # autoresearch mrp iter7: lower VWAP threshold
     bb_pos_threshold: 0.25            # autoresearch mrp iter7: lower BB threshold
+    vpin_threshold: 0.95              # autoresearch mrp iter8: disable VPIN gate (was 0.7)
     stop_atr_mult: 1.25              # tight stops for mean reversion
     min_bars: 20                      # moderate warmup
     activation:
