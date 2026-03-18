@@ -73,7 +73,7 @@ strategies:
       min_confidence: 0.4
   orb_v2:
     enabled: true        # autoresearch orb: isolating for optimization
-    signal_timeframe: 5               # breakout eval on 5m closes (range builds on 1m)
+    signal_timeframe: 1               # ORB needs 1m precision for timely breakout entry
     confluence_threshold: 54.2          # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 40
     max_hold_minutes: 180              # autoresearch orb iter2: extend hold time
