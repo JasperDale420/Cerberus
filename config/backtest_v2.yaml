@@ -49,7 +49,7 @@ strategies:
     trail_min_profit_r: 0.75        # autoresearch iter2: let winners run before trailing
     max_hold_minutes: 240           # autoresearch iter11: near full-day hold
     activation:
-      session: [opening, power_hour]       # autoresearch iter25: drop midday
+      session: [opening, midday, power_hour]
       trend: [up, down]
       vol: [low, normal, high]
       liquidity: [good, thin]
