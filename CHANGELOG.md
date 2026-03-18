@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Per-window HMM retraining in WFO**: The walk-forward optimizer now retrains the HMM regime model on each training window's daily bars before running the IS optimization and OOS backtest. This eliminates lookahead bias from using a globally-trained HMM during WFO. Artifacts are saved per-window under the run's artifact directory.
 - **HMM regime gate**: Added `_check_hmm_gate()` to BaseStrategy that reads HMM predictions from `market_state.meta["hmm_regime"]` and rejects trades when the predicted regime matches strategy-specific rejection rules. Wired into all 5 active strategies (mean_reversion_pro, trend_rider_pro, orb_v2, rsi_bounce, momentum_fade) with per-strategy reject lists and confidence thresholds configured in `backtest_v2.yaml`.
 
 ### Fixed

@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import optuna
+import pandas as pd
 import pytest
 
 from src.analytics import optuna_harness
-from src.analytics.optuna_harness import build_wfo_run_context
+from src.analytics.optuna_harness import _aggregate_bars_to_daily_for_hmm, build_wfo_run_context
 
 
 @pytest.mark.unit
@@ -99,3 +100,87 @@ def test_create_objective_uses_window_specific_min_trade_threshold(monkeypatch: 
     score = objective(trial)
 
     assert score > -1000.0
+
+
+# ---------------------------------------------------------------------------
+# HMM per-window retraining helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_aggregate_bars_to_daily_for_hmm_basic() -> None:
+    """Verify minute bars are correctly aggregated to daily OHLCV."""
+    day1 = pd.date_range("2024-01-02 09:30", periods=390, freq="1min", tz="UTC")
+    day2 = pd.date_range("2024-01-03 09:30", periods=390, freq="1min", tz="UTC")
+    timestamps = day1.append(day2)
+    n = len(timestamps)
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "symbol": "SPY",
+            "open": range(100, 100 + n),
+            "high": range(101, 101 + n),
+            "low": range(99, 99 + n),
+            "close": range(100, 100 + n),
+            "volume": [1000] * n,
+        }
+    )
+
+    daily = _aggregate_bars_to_daily_for_hmm(df, "SPY")
+
+    assert not daily.empty
+    assert list(daily.columns) == ["time", "open", "high", "low", "close", "volume"]
+    assert len(daily) == 2
+    # First day: first open should be 100
+    assert daily.iloc[0]["open"] == 100
+    # Volume should sum across all minutes in the day
+    assert daily.iloc[0]["volume"] == 390 * 1000
+
+
+@pytest.mark.unit
+def test_aggregate_bars_to_daily_for_hmm_filters_symbol() -> None:
+    """Only the requested symbol's bars are included."""
+    ts = pd.date_range("2024-01-02 09:30", periods=10, freq="1min", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "timestamp": list(ts) + list(ts),
+            "symbol": ["SPY"] * 10 + ["AAPL"] * 10,
+            "open": [100] * 20,
+            "high": [101] * 20,
+            "low": [99] * 20,
+            "close": [100] * 20,
+            "volume": [500] * 20,
+        }
+    )
+
+    daily = _aggregate_bars_to_daily_for_hmm(df, "SPY")
+
+    assert len(daily) == 1
+    assert daily.iloc[0]["volume"] == 5000  # 10 bars * 500
+
+
+@pytest.mark.unit
+def test_aggregate_bars_to_daily_for_hmm_empty_input() -> None:
+    """Empty input returns empty DataFrame."""
+    result = _aggregate_bars_to_daily_for_hmm(pd.DataFrame(), "SPY")
+    assert result.empty
+
+
+@pytest.mark.unit
+def test_aggregate_bars_to_daily_for_hmm_missing_symbol() -> None:
+    """If the requested symbol is not in the data, return empty."""
+    ts = pd.date_range("2024-01-02 09:30", periods=5, freq="1min", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "timestamp": ts,
+            "symbol": ["AAPL"] * 5,
+            "open": [150] * 5,
+            "high": [151] * 5,
+            "low": [149] * 5,
+            "close": [150] * 5,
+            "volume": [1000] * 5,
+        }
+    )
+
+    result = _aggregate_bars_to_daily_for_hmm(df, "SPY")
+    assert result.empty

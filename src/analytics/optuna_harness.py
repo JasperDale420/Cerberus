@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import optuna
+import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from src.analytics.param_spaces import suggest_params
@@ -130,6 +131,110 @@ def build_wfo_run_context(
         storage_uri=storage_uri,
         study_prefix=f"{strategy_name}_{normalized_tag}",
     )
+
+
+# ---------------------------------------------------------------------------
+# HMM per-window retraining helpers
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_bars_to_daily_for_hmm(bars_df: pd.DataFrame, symbol: str = "SPY") -> pd.DataFrame:
+    """Convert minute bars to daily OHLCV for HMM training.
+
+    Filters to a single symbol (index), aggregates to daily, and formats
+    the result for ``HmmRegimeService.fit_ohlcv()``.
+    """
+    if bars_df.empty:
+        return pd.DataFrame()
+
+    # Filter to index symbol if multi-symbol
+    if "symbol" in bars_df.columns:
+        bars_df = bars_df[bars_df["symbol"] == symbol]
+
+    if bars_df.empty:
+        return pd.DataFrame()
+
+    working = bars_df.copy()
+    working["date"] = pd.to_datetime(working["timestamp"]).dt.date
+    daily = (
+        working.groupby("date")
+        .agg(
+            open=("open", "first"),
+            high=("high", "max"),
+            low=("low", "min"),
+            close=("close", "last"),
+            volume=("volume", "sum"),
+        )
+        .reset_index()
+    )
+
+    daily["time"] = pd.to_datetime(daily["date"])
+    daily = daily[["time", "open", "high", "low", "close", "volume"]]
+    return daily.sort_values("time").reset_index(drop=True)
+
+
+def _retrain_hmm_for_window(
+    bars_df: pd.DataFrame,
+    window_idx: int,
+    config: dict[str, Any],
+    artifact_root: str = "artifacts/regime_models/hmm",
+) -> str | None:
+    """Train an HMM on training-window bars and save to a window-specific directory.
+
+    Returns the artifact directory path on success, or ``None`` if HMM is
+    disabled or there is insufficient data.
+    """
+    hmm_cfg_raw = config.get("hmm_regime", {})
+    if not isinstance(hmm_cfg_raw, dict):
+        return None
+
+    enabled = hmm_cfg_raw.get("enabled", False)
+    runtime_cfg = hmm_cfg_raw.get("runtime", {})
+    runtime_enabled = runtime_cfg.get("enabled", False) if isinstance(runtime_cfg, dict) else False
+    if not (enabled and runtime_enabled):
+        return None
+
+    index_symbol = config.get("index_symbol", "SPY")
+    daily_bars = _aggregate_bars_to_daily_for_hmm(bars_df, index_symbol)
+
+    min_samples = 30
+    if len(daily_bars) < min_samples:
+        print(
+            f"  [HMM] Insufficient daily bars for window {window_idx}: "
+            f"{len(daily_bars)} < {min_samples} — skipping HMM retraining",
+            flush=True,
+        )
+        return None
+
+    from src.regime_models.hmm.config import HmmConfig
+    from src.regime_models.hmm.service import HmmRegimeService
+
+    window_dir = f"{artifact_root}/wfo_window_{window_idx}"
+    os.makedirs(window_dir, exist_ok=True)
+
+    # Build HmmConfig from the raw config dict, overriding artifact_dir
+    hmm_config_data = {**hmm_cfg_raw, "artifact_dir": window_dir}
+    hmm_config = HmmConfig.model_validate(hmm_config_data)
+
+    class _QuietLogger:
+        """Minimal logger for HMM training in optimization context."""
+
+        def info(self, msg: str, **kw: Any) -> None:
+            pass
+
+        def warning(self, msg: str, **kw: Any) -> None:
+            print(f"  [HMM WARNING] {msg}", flush=True)
+
+    hmm_service = HmmRegimeService(config=hmm_config, logger=_QuietLogger())
+    summary = hmm_service.fit_ohlcv(daily_bars)
+    hmm_service.save()
+
+    print(
+        f"  [HMM] Trained for window {window_idx}: "
+        f"{summary['n_samples']} samples, {summary['n_states']} states → {window_dir}",
+        flush=True,
+    )
+    return window_dir
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +802,21 @@ class WalkForwardOptimizer:
             print(f"  Test:  {window['test_start']} → {window['test_end']}")
             print(f"{'=' * 60}")
 
+            # 0. Per-window HMM retraining (avoids lookahead bias)
+            #    Train HMM on the training window's daily bars BEFORE launching
+            #    IS optimization or OOS backtest. The trained artifacts are saved
+            #    to a window-specific directory and the config is updated so that
+            #    both IS workers and OOS backtest load the correct model.
+            window_config = copy.deepcopy(base_config)
+            hmm_artifact_dir = _retrain_hmm_for_window(
+                bars_df=self._load_training_bars(data_dir, window_config, window),
+                window_idx=i,
+                config=window_config,
+                artifact_root=str(run_context.artifact_dir / "hmm"),
+            )
+            if hmm_artifact_dir is not None:
+                window_config.setdefault("hmm_regime", {})["artifact_dir"] = hmm_artifact_dir
+
             # 1. Optimize on training window
             study = optuna.create_study(
                 direction="maximize",
@@ -732,7 +852,7 @@ class WalkForwardOptimizer:
                         study.study_name,
                         storage,
                         strategy_name,
-                        base_config,
+                        window_config,
                         window["train_start"],
                         window["train_end"],
                         data_dir,
@@ -770,7 +890,7 @@ class WalkForwardOptimizer:
             print(f"  IS best params: {best_params}")
 
             # 2. Validate on test window with best params
-            oos_config = _apply_params_to_config(base_config, strategy_name, best_params)
+            oos_config = _apply_params_to_config(window_config, strategy_name, best_params)
             # Disable other strategies
             for sname in oos_config.get("strategies", {}):
                 if sname != strategy_name:
@@ -911,6 +1031,47 @@ class WalkForwardOptimizer:
             }
 
         return result
+
+    @staticmethod
+    def _load_training_bars(
+        data_dir: str,
+        config: dict[str, Any],
+        window: dict[str, str],
+    ) -> pd.DataFrame:
+        """Load parquet bars for the training window period.
+
+        Only loads the index symbol (e.g. SPY) since HMM training only needs
+        market-wide regime data, not all universe symbols. This keeps the
+        main-process load lightweight.
+        """
+        from src.core.logger import StructuredLogger
+
+        data_path = Path(data_dir)
+        if not data_path.is_dir():
+            return pd.DataFrame()
+
+        index_symbol = config.get("index_symbol", "SPY")
+
+        train_start = datetime.fromisoformat(window["train_start"])
+        if train_start.tzinfo is None:
+            train_start = train_start.replace(tzinfo=timezone.utc)
+
+        train_end = datetime.fromisoformat(window["train_end"])
+        if train_end.tzinfo is None:
+            train_end = train_end.replace(tzinfo=timezone.utc)
+
+        logger = StructuredLogger("HMM-WFO", level="WARNING")
+
+        from src.backtest.runner import _load_bars_from_parquet
+
+        bars = _load_bars_from_parquet(
+            data_path,
+            {index_symbol},
+            train_start,
+            train_end,
+            logger,
+        )
+        return bars
 
 
 # ---------------------------------------------------------------------------
