@@ -158,6 +158,57 @@ class BaseStrategy(ABC):
         else:
             return ema_fast < ema_slow
 
+    def _require_higher_tf_trend(self, mtf: Any, side: OrderSide) -> bool:
+        """Hard gate: 15m timeframe must confirm trend direction.
+
+        For trend-following strategies. Checks:
+        1. 15m EMA20 vs EMA50 direction must match proposed side
+        2. 15m ADX must be >= 20 (confirmed trend, not noise)
+
+        Returns True if trend confirmed (or insufficient data), False to reject.
+        """
+        ema20 = mtf.get_ema("15m", 20)
+        ema50 = mtf.get_ema("15m", 50)
+
+        if ema20 is None or ema50 is None:
+            return True  # no data yet — early session grace
+
+        adx = mtf.get_adx("15m")
+        if adx is not None and adx < 20.0:
+            return False  # no confirmed trend
+
+        if side == OrderSide.BUY:
+            return ema20 > ema50
+        return ema20 < ema50
+
+    def _require_higher_tf_flat(self, mtf: Any) -> bool:
+        """Hard gate: 15m timeframe must be flat/choppy.
+
+        For mean-reversion strategies. Checks:
+        1. 15m EMA20 and EMA50 spread < 0.3% (converged)
+        2. 15m ADX < 25 (no strong trend)
+
+        Returns True if flat (or insufficient data), False to reject.
+        """
+        ema20 = mtf.get_ema("15m", 20)
+        ema50 = mtf.get_ema("15m", 50)
+
+        if ema20 is None or ema50 is None:
+            return True  # no data yet — early session grace
+
+        if abs(ema50) < 1e-9:
+            return True
+
+        spread_pct = abs(ema20 - ema50) / abs(ema50)
+        if spread_pct >= 0.003:  # 0.3% — EMAs diverged, trending
+            return False
+
+        adx = mtf.get_adx("15m")
+        if adx is not None and adx >= 25.0:
+            return False  # strong trend even if EMAs close
+
+        return True
+
     def _create_signal(
         self,
         symbol: str,

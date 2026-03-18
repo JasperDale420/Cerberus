@@ -380,6 +380,10 @@ class MeanReversionProStrategy(BaseStrategy):
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
+        # --- 15m flatness hard gate ---
+        if not self._require_higher_tf_flat(mtf):
+            return None
+
         # Hard MTF flatness gate — mean reversion only works when higher TFs are not strongly trending
         mr_alignment = mtf.get_mean_reversion_alignment()
         if mr_alignment < 0.1:

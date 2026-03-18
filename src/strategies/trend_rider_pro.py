@@ -142,6 +142,10 @@ class TrendRiderProStrategy(BaseStrategy):
         if side is None:
             return None
 
+        # --- 15m trend hard gate ---
+        if not self._require_higher_tf_trend(mtf, side):
+            return None
+
         # --- confluence scoring ---
         scorer = self._score_confluence(bar, side, mtf, symbol_state, snapshot)
         if not scorer.passes_threshold():
