@@ -357,8 +357,13 @@ class MeanReversionProStrategy(BaseStrategy):
         if not time_utils.in_time_window_str(bar.time, self.time_window_start, self.time_window_end):
             return None
 
-        if not self._regime_ok(market_state):
-            return None
+        # Simplified regime check — only skip SHOCK vol and PREMARKET
+        snap = market_state.regime_snapshot
+        if snap is not None:
+            if snap.vol == VolRegime.SHOCK:
+                return None
+            if snap.session == SessionRegime.PREMARKET:
+                return None
 
         # --- Daily loss throttle ---
         if not self._daily_throttle_ok(bar):
@@ -369,25 +374,13 @@ class MeanReversionProStrategy(BaseStrategy):
             self._vpin[symbol] = VPINCalculator(logger=self.logger)
         vpin_result = self._vpin[symbol].update(bar)
         if vpin_result is not None and vpin_result.vpin > self._vpin_threshold:
-            self.logger.debug(
-                "mean_reversion_pro: VPIN toxic, skipping",
-                symbol=symbol,
-                vpin=round(vpin_result.vpin, 4),
-                threshold=self._vpin_threshold,
-            )
             return None
 
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        # --- 15m flatness hard gate ---
-        if not self._require_higher_tf_flat(mtf):
-            return None
-
-        # Hard MTF flatness gate — mean reversion only works when higher TFs are not strongly trending
+        # 15m flatness: soft check — use mr_alignment in confluence scoring, not as hard gate
         mr_alignment = mtf.get_mean_reversion_alignment()
-        if mr_alignment < 0.1:
-            return None
 
         vwap_dist = mtf.get_vwap_distance("1m")
         if vwap_dist is None:
