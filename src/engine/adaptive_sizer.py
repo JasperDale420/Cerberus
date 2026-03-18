@@ -12,13 +12,13 @@ class SizingConfig:
     """Configuration for adaptive position sizing."""
 
     # Base risk as percentage of account equity
-    base_risk_pct: float = 0.050  # 5.0% — aggressive sizing for confirmed trend entries
-    max_risk_pct: float = 0.080  # 8.0% absolute max
-    min_risk_pct: float = 0.010  # 1.0% minimum
+    base_risk_pct: float = 0.020  # 2.0% base — quality gates handle filtering
+    max_risk_pct: float = 0.030  # 3.0% absolute max
+    min_risk_pct: float = 0.005  # 0.5% minimum (prevents tiny positions)
 
     # Conviction scaling (from confluence score)
     conviction_enabled: bool = True
-    conviction_floor: float = 0.8  # Near-full size even at threshold (quality gates upstream)
+    conviction_floor: float = 0.5  # Minimum multiplier at threshold
     conviction_ceiling: float = 1.0  # Maximum multiplier at score=100
 
     # Correlation reduction
