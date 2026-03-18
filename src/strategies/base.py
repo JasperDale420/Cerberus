@@ -25,6 +25,8 @@ class BaseStrategy(ABC):
         # Multi-timeframe trend alignment gate
         self.higher_tf_alignment = bool(config.get("higher_tf_alignment", True))
         self.tf_alignment_mode = str(config.get("tf_alignment_mode", "trend"))  # "trend" or "mean_reversion"
+        # Signal timeframe gate: only evaluate on N-minute candle closes (1=every bar, 5=5m, 15=15m)
+        self.signal_timeframe = int(config.get("signal_timeframe", 1))
 
     def update_params(self, config: Dict[str, Any]) -> None:
         """
@@ -69,6 +71,20 @@ class BaseStrategy(ABC):
             pass
 
         return False
+
+    def _is_evaluation_bar(self, bar: Bar) -> bool:
+        """Return True if this bar falls on a signal_timeframe boundary.
+
+        When signal_timeframe=1 (default), every bar is an evaluation bar.
+        When signal_timeframe=5, only bars at :00, :05, :10, ... are evaluation bars.
+        This prevents strategies from reacting to intra-candle noise on lower timeframes.
+
+        Market open (9:30) is always an evaluation bar regardless of timeframe.
+        """
+        if self.signal_timeframe <= 1:
+            return True
+        minute = bar.time.minute
+        return minute % self.signal_timeframe == 0
 
     def _require_min_bars(self, symbol_state: SymbolState, min_count: int, log: bool = True) -> bool:
         """

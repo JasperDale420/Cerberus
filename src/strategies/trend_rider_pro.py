@@ -111,6 +111,10 @@ class TrendRiderProStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Signal | None:
+        # --- timeframe gate: only evaluate on signal_timeframe closes ---
+        if not self._is_evaluation_bar(bar):
+            return None
+
         # --- time window ---
         t = time_utils.get_eastern_time_of_day(bar.time)
         if not (self.time_window_start <= t <= self.time_window_end):

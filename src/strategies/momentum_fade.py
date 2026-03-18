@@ -113,6 +113,8 @@ class MomentumFadeStrategy(BaseStrategy):
         market_state: MarketState,
     ) -> Signal | None:
         """Process a single bar and optionally generate a fade signal."""
+        if not self._is_evaluation_bar(bar):
+            return None
 
         # --- time window ---
         t = time_utils.get_eastern_time_of_day(bar.time)

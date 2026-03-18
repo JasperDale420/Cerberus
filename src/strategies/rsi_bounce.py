@@ -116,12 +116,8 @@ class RsiBounceStrategy(BaseStrategy):
         # OU half-life parameters
         self.ou_lookback = int(overrides.get("ou_lookback", config.get("ou_lookback", 60)))
         self.ou_min_obs = int(overrides.get("ou_min_obs", config.get("ou_min_obs", 30)))
-        self.max_half_life_bars = float(
-            overrides.get("max_half_life_bars", config.get("max_half_life_bars", 20.0))
-        )
-        self.min_half_life_bars = float(
-            overrides.get("min_half_life_bars", config.get("min_half_life_bars", 1.0))
-        )
+        self.max_half_life_bars = float(overrides.get("max_half_life_bars", config.get("max_half_life_bars", 20.0)))
+        self.min_half_life_bars = float(overrides.get("min_half_life_bars", config.get("min_half_life_bars", 1.0)))
 
         # Variance ratio parameters
         self.vr_lookback = int(overrides.get("vr_lookback", config.get("vr_lookback", 120)))
@@ -135,17 +131,13 @@ class RsiBounceStrategy(BaseStrategy):
 
         # Volume climax parameters
         self.volume_lookback = int(overrides.get("volume_lookback", config.get("volume_lookback", 20)))
-        self.volume_climax_mult = float(
-            overrides.get("volume_climax_mult", config.get("volume_climax_mult", 1.5))
-        )
+        self.volume_climax_mult = float(overrides.get("volume_climax_mult", config.get("volume_climax_mult", 1.5)))
 
         # Momentum deceleration
         self.roc_lookback = int(overrides.get("roc_lookback", config.get("roc_lookback", 10)))
 
         # RSI percentile rank
-        self.rsi_pctile_lookback = int(
-            overrides.get("rsi_pctile_lookback", config.get("rsi_pctile_lookback", 100))
-        )
+        self.rsi_pctile_lookback = int(overrides.get("rsi_pctile_lookback", config.get("rsi_pctile_lookback", 100)))
 
         # Risk / exit parameters
         self.stop_atr_mult = float(overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5)))
@@ -302,6 +294,8 @@ class RsiBounceStrategy(BaseStrategy):
         market_state: MarketState,
     ) -> Signal | None:
         """Process a single bar and optionally generate a signal."""
+        if not self._is_evaluation_bar(bar):
+            return None
 
         # --- time window ---
         t = time_utils.get_eastern_time_of_day(bar.time)

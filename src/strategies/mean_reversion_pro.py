@@ -343,6 +343,10 @@ class MeanReversionProStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Signal | None:
+        # --- Timeframe gate: only evaluate on signal_timeframe closes ---
+        if not self._is_evaluation_bar(bar):
+            return None
+
         # --- Pre-flight checks ---
         if not self._check_cooldown(symbol, bar.time):
             return None

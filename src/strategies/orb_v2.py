@@ -267,7 +267,7 @@ class ORBV2Strategy(BaseStrategy):
         state = self._get_state(symbol)
         self._maybe_reset(state, bar, symbol_state)
 
-        # Phase 1: build opening range
+        # Phase 1: build opening range (always on 1m bars for resolution)
         if self._is_in_range_period(bar, state):
             self._update_range(state, bar)
             return None
@@ -275,6 +275,10 @@ class ORBV2Strategy(BaseStrategy):
         # Mark range complete once we leave the range window
         if not state["range_complete"] and state["range_bars"] > 0:
             state["range_complete"] = True
+
+        # Timeframe gate: breakout evaluation only on signal_timeframe closes
+        if not self._is_evaluation_bar(bar):
+            return None
 
         # Pre-flight checks
         if not state["range_complete"] or state["breakout_fired"]:
