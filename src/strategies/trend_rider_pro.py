@@ -59,7 +59,7 @@ def _score_session(session: SessionRegime | None) -> float:
     _map: dict[SessionRegime, float] = {
         SessionRegime.OPENING: 100.0,
         SessionRegime.POWER_HOUR: 80.0,
-        SessionRegime.MIDDAY: 40.0,
+        SessionRegime.MIDDAY: 65.0,
         SessionRegime.CLOSE: 20.0,
         SessionRegime.PREMARKET: 0.0,
     }
