@@ -49,7 +49,7 @@ strategies:
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
     stop_atr_mult: 1.25             # autoresearch trp iter11: even tighter
     target_atr_mult: 4.5            # autoresearch trp iter7: wider target with 15m trend confirmation
-    trail_min_profit_r: 0.75        # autoresearch iter2: let winners run before trailing
+    trail_min_profit_r: 0.50        # autoresearch trp iter13: trail earlier
     max_hold_minutes: 240           # autoresearch iter11: near full-day hold
     activation:
       session: [opening, midday, power_hour]
