@@ -34,6 +34,8 @@ import math
 from collections import deque
 from typing import Any, Optional
 
+from scipy.stats import kurtosis as scipy_kurtosis
+
 from src.analysis.ou_estimator import OUEstimator, OUResult
 from src.analysis.variance_ratio import VarianceRatioCalculator, VarianceRatioResult
 from src.analysis.vpin import VPINCalculator, VPINResult
@@ -50,6 +52,8 @@ from src.core.domain import (
 )
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
+from src.quant.regime import AdaptiveThresholdEngine
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import ConfluenceScorer, score_threshold
 
@@ -84,6 +88,10 @@ class RsiBounceStrategy(BaseStrategy):
         self._price_history: dict[str, deque[float]] = {}
         self._volume_history: dict[str, deque[float]] = {}
         self._roc_history: dict[str, deque[float]] = {}
+
+        # Quant upgrades: GARCH conditional vol + adaptive thresholds
+        self._garch: dict[str, GARCHForecaster] = {}
+        self._threshold_engine = AdaptiveThresholdEngine()
 
         super().__init__(config, logger)
 
@@ -147,6 +155,10 @@ class RsiBounceStrategy(BaseStrategy):
             overrides.get("confluence_threshold", config.get("confluence_threshold", 60.0))
         )
 
+        # BOCPD / kurtosis gate thresholds
+        self.bocpd_reject_threshold = float(config.get("bocpd_reject_threshold", 0.7))
+        self.kurtosis_reject_threshold = float(config.get("kurtosis_reject_threshold", 6.0))
+
         # Mean-reversion mode for higher-TF alignment check
         self.tf_alignment_mode = "mean_reversion"
 
@@ -183,13 +195,19 @@ class RsiBounceStrategy(BaseStrategy):
             self._volume_history[symbol] = deque(maxlen=self.volume_lookback)
         if symbol not in self._roc_history:
             self._roc_history[symbol] = deque(maxlen=self.roc_lookback)
+        if symbol not in self._garch:
+            self._garch[symbol] = GARCHForecaster()
 
     # ------------------------------------------------------------------
     # Factor computations
     # ------------------------------------------------------------------
 
     def _compute_zscore(self, symbol: str, price: float) -> Optional[float]:
-        """Compute rolling z-score of price relative to its recent mean."""
+        """Compute z-score of price relative to its recent mean.
+
+        Uses GARCH-conditional volatility when available for more accurate
+        normalization; falls back to rolling standard deviation otherwise.
+        """
         history = self._price_history[symbol]
         history.append(price)
 
@@ -199,13 +217,25 @@ class RsiBounceStrategy(BaseStrategy):
         prices = list(history)
         n = len(prices)
         mean = sum(prices) / n
+        deviation = price - mean
+
+        # Feed GARCH and attempt conditional z-score
+        garch = self._garch.get(symbol)
+        if garch is not None:
+            garch.update(price)
+            if garch._last_result is not None:
+                cond_z = garch.conditional_zscore(deviation)
+                if cond_z != 0.0:
+                    return cond_z
+
+        # Fallback: rolling standard deviation z-score
         var = sum((p - mean) ** 2 for p in prices) / n
         std = math.sqrt(var) if var > 0 else 0.0
 
         if std < 1e-10:
             return None
 
-        return (price - mean) / std
+        return deviation / std
 
     def _compute_rsi_percentile_rank(self, symbol: str, rsi: float) -> Optional[float]:
         """Compute percentile rank of current RSI relative to recent RSI history.
@@ -318,6 +348,15 @@ class RsiBounceStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
+            # --- BOCPD structural break gate ---
+            if snapshot.changepoint_probability > self.bocpd_reject_threshold:
+                self.logger.debug(
+                    "bocpd_structural_break_rejected",
+                    symbol=symbol,
+                    changepoint_probability=round(snapshot.changepoint_probability, 4),
+                )
+                return None
+
         # --- lazy init per-symbol analysis objects ---
         self._ensure_symbol_state(symbol)
 
@@ -382,6 +421,18 @@ class RsiBounceStrategy(BaseStrategy):
         # --- higher TF alignment ---
         if not self._check_higher_tf_alignment(symbol_state, side):
             return None
+
+        # --- kurtosis gate ---
+        price_hist = self._price_history[symbol]
+        if len(price_hist) >= 30:
+            kurt = float(scipy_kurtosis(list(price_hist), fisher=True))
+            if kurt > self.kurtosis_reject_threshold:
+                self.logger.debug(
+                    "kurtosis_gate_rejected",
+                    symbol=symbol,
+                    kurtosis=round(kurt, 4),
+                )
+                return None
 
         # =================================================================
         # 6-FACTOR MEAN REVERSION MODEL
@@ -455,13 +506,33 @@ class RsiBounceStrategy(BaseStrategy):
                 # VR >= 1 but not significantly trending — weak score
                 vr_score = max(0.0, 50.0 - 20.0 * (vr_result.vr - 1.0))
 
+        # === ADAPTIVE THRESHOLDS ===
+        garch_result = self._garch[symbol]._last_result if symbol in self._garch else None
+        garch_vol = garch_result.conditional_vol if garch_result is not None else 0.0
+        # Derive Hurst-like input from OU half-life: short half-life → strong mean-reversion → low H
+        hurst_proxy = 0.5  # neutral default
+        if ou_result is not None and ou_result.half_life > 0:
+            # Map half-life to [0.2, 0.5]: shorter HL → lower H → more MR
+            hurst_proxy = max(0.2, min(0.5, ou_result.half_life / (2.0 * self.max_half_life_bars)))
+
+        adapted_z_entry = self._threshold_engine.adapt(
+            base_threshold=self.zscore_entry,
+            conditional_vol=garch_vol,
+            hurst=hurst_proxy,
+        )
+        adapted_confluence = self._threshold_engine.adapt(
+            base_threshold=self.confluence_threshold,
+            conditional_vol=garch_vol,
+            hurst=hurst_proxy,
+        )
+
         # === CONFLUENCE SCORING ===
-        scorer = ConfluenceScorer(threshold=self.confluence_threshold)
+        scorer = ConfluenceScorer(threshold=adapted_confluence)
 
         # Factor 1: Z-Score Extremity (weight: 0.20)
         if z_score is not None:
             abs_z = abs(z_score)
-            z_entry = self.zscore_entry
+            z_entry = adapted_z_entry
             if abs_z >= z_entry:
                 z_extremity_score = min(100.0, 50.0 + 50.0 * (abs_z - z_entry) / z_entry)
             else:
@@ -581,6 +652,9 @@ class RsiBounceStrategy(BaseStrategy):
             "volume_ratio": round(vol_ratio, 2),
             "rsi_percentile": round(rsi_pctile, 2) if rsi_pctile is not None else None,
             "momentum_deceleration": round(momentum_decel, 2) if momentum_decel is not None else None,
+            "garch_conditional_vol": round(garch_vol, 6) if garch_vol else None,
+            "adapted_z_entry": round(adapted_z_entry, 4),
+            "adapted_confluence": round(adapted_confluence, 2),
             "exit_config": {
                 "trailing_enabled": True,
                 "trail_timeframe": "5m",
