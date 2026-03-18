@@ -221,24 +221,14 @@ class ORBV2Strategy(BaseStrategy):
         state: dict[str, Any],
         ss: SymbolState,
     ) -> float:
+        """Target = range_mult * range_width from entry.
+
+        Simplified from prior-day-high/low targeting which often set
+        unreachable targets, causing trades to hit max_hold instead.
+        """
         rw = state["range_high"] - state["range_low"]
         if side == OrderSide.BUY:
-            if ss.bars_1d and len(ss.bars_1d) >= 1:
-                ph = float(ss.bars_1d[-1].high)
-                if ph > bar.close:
-                    return ph
-            pdh = ss.meta.get("prior_day_high")
-            if pdh is not None and float(pdh) > bar.close:
-                return float(pdh)
             return bar.close + self.target_range_mult * rw
-        # SELL
-        if ss.bars_1d and len(ss.bars_1d) >= 1:
-            pl = float(ss.bars_1d[-1].low)
-            if pl < bar.close:
-                return pl
-        pdl = ss.meta.get("prior_day_low")
-        if pdl is not None and float(pdl) < bar.close:
-            return float(pdl)
         return bar.close - self.target_range_mult * rw
 
     def _exit_config(self) -> dict[str, Any]:
