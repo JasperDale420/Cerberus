@@ -323,13 +323,14 @@ class TrendRiderProStrategy(BaseStrategy):
 
         trend = getattr(snapshot, "trend", None)
 
-        # Allow FLAT regime — the 15m hard gate independently confirms
-        # micro-trend direction. Only reject opposite macro trend.
+        # Only allow entries when there is a confirmed trend in the matching
+        # direction.  FLAT is rejected — trend-following should not enter
+        # during choppy conditions.
         if side == OrderSide.BUY:
-            return trend in (TrendRegime.UP, TrendRegime.FLAT)
+            return trend == TrendRegime.UP
 
         # SELL
-        return trend in (TrendRegime.DOWN, TrendRegime.FLAT)
+        return trend == TrendRegime.DOWN
 
     def _regime_allows_with_markov(
         self,

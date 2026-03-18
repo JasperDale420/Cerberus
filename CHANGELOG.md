@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **TRP `_regime_allows` rejecting FLAT trends again**: The trend_rider_pro upgrade relaxed `_regime_allows` to accept FLAT regime, but trend-following should not enter during choppy conditions. Restored strict directional gating (BUY requires UP, SELL requires DOWN). Markov upgrade path via `_regime_allows_with_markov` is unaffected.
 - **`MomentumFadeStrategy` and `RsiBounceStrategy` wrong `tf_alignment_mode`**: Both strategies are mean-reversion types but inherited the base class default of `"trend"` for `tf_alignment_mode`. Added explicit `self.tf_alignment_mode = "mean_reversion"` in `_set_params` for both, consistent with all other mean-reversion strategies (gap_fill, vwap_reversion, etc.).
 - **`MomentumFadeStrategy` undefined `mr_alignment` in signal meta**: The signal metadata referenced an `mr_alignment` variable that was never computed, which would cause a `NameError` at runtime when a signal was generated. Fixed by computing `mr_alignment = mtf.get_mean_reversion_alignment()` before building the meta dict.
 - **Stale test for `rsi_bounce` confluence factor name**: `test_confluence_factors_in_meta` asserted `"mr_alignment"` was in the factor names, but the strategy's confluence scorer was updated to use `"trend_context"` instead. Updated the test to match the current implementation.
