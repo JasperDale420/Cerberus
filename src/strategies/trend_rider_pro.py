@@ -281,7 +281,7 @@ class TrendRiderProStrategy(BaseStrategy):
         pullback_pct = 0.0
         if ema20_5m is not None and ema20_5m > 0:
             pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
-        pb_score = score_deviation(pullback_pct, 0.001, 0.008)
+        pb_score = score_deviation(pullback_pct, 0.001, 0.010)
         # Invert: closer to EMA = higher score
         pb_score = max(0.0, 100.0 - pb_score)
         scorer.add_factor(
@@ -289,7 +289,7 @@ class TrendRiderProStrategy(BaseStrategy):
             raw_value=pullback_pct,
             score=pb_score,
             weight=0.20,
-            passed=0.001 <= pullback_pct <= 0.008,
+            passed=0.001 <= pullback_pct <= 0.010,
         )
 
         # 3. ADX strength (weight 0.15)
