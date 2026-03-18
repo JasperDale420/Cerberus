@@ -379,10 +379,10 @@ class MeanReversionProStrategy(BaseStrategy):
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        # 5m ADX gate: mean reversion only when 5m timeframe shows no strong trend
+        # 5m ADX gate: skip only very strong 5m trends (ADX>45)
         adx_5m = mtf.get_adx("5m")
-        if adx_5m is not None and adx_5m > 30.0:
-            return None  # 5m is trending — don't mean-revert
+        if adx_5m is not None and adx_5m > 45.0:
+            return None
 
         mr_alignment = mtf.get_mean_reversion_alignment()
 
