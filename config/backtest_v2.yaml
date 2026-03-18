@@ -155,7 +155,7 @@ risk:
   max_open_risk: 5000.0           # 5% total open risk
   max_trades_per_day: 50
   max_open_positions: 8
-  max_positions_per_strategy: 4   # autoresearch iter18: more concurrent positions
+  max_positions_per_strategy: 6   # autoresearch iter19: even more concurrent positions
   max_notional_per_order: 25000.0
   max_notional_per_symbol: 25000.0
   time_in_force: "day"
