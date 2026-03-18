@@ -72,7 +72,7 @@ strategies:
       risk: [risk_on, neutral]
       min_confidence: 0.4
   orb_v2:
-    enabled: true        # combined test with proper sizing
+    enabled: false       # PF=1.01 — doesn't survive real position sizing
     signal_timeframe: 1               # ORB needs 1m precision for timely breakout entry
     confluence_threshold: 60.0           # autoresearch orb iter7: raise quality bar
     cooldown_bars: 10                    # autoresearch orb iter10: breakout_fired already limits 1/day
