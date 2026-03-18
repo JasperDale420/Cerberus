@@ -302,7 +302,7 @@ class ORBV2Strategy(BaseStrategy):
 
         side: OrderSide | None = None
         rw = state["range_high"] - state["range_low"]
-        min_breakout = rw * 0.1  # require 10% of range width as minimum breakout distance
+        min_breakout = rw * 0.15  # require 15% of range width as minimum breakout distance
         if bar.close > state["range_high"] + min_breakout and vol_ok:
             # BUY breakout must be above VWAP
             if vwap_dist is not None and vwap_dist >= 0.0:
