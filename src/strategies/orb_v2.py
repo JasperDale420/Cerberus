@@ -4,6 +4,7 @@ from datetime import date
 from datetime import time as time_type
 from typing import Any
 
+from src.analysis.variance_ratio import VarianceRatioCalculator
 from src.core import time_utils
 from src.core.domain import (
     Bar,
@@ -17,6 +18,8 @@ from src.core.domain import (
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.data.requirements import DataRequirements
+from src.quant.statistics import CUSUMDetector
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -36,6 +39,9 @@ class ORBV2Strategy(BaseStrategy):
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)
         self._orb_state: dict[str, dict[str, Any]] = {}
+        self._cusum: dict[str, CUSUMDetector] = {}
+        self._garch: dict[str, GARCHForecaster] = {}
+        self._vr: dict[str, VarianceRatioCalculator] = {}
 
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
@@ -86,6 +92,17 @@ class ORBV2Strategy(BaseStrategy):
             "gap_pct": 0.0,
         }
 
+    # -- per-symbol quant state --------------------------------------------
+
+    def _ensure_quant_state(self, symbol: str) -> None:
+        """Lazily initialise CUSUM, GARCH, and VR components for *symbol*."""
+        if symbol not in self._cusum:
+            self._cusum[symbol] = CUSUMDetector(threshold=4.0, drift=0.5)
+        if symbol not in self._garch:
+            self._garch[symbol] = GARCHForecaster(min_observations=50, lookback=500, refit_interval=20)
+        if symbol not in self._vr:
+            self._vr[symbol] = VarianceRatioCalculator(lookback=30, period=5, min_observations=15)
+
     # -- gap / adaptive range ----------------------------------------------
 
     def _compute_gap_pct(self, bar: Bar, symbol_state: SymbolState) -> float:
@@ -130,11 +147,18 @@ class ORBV2Strategy(BaseStrategy):
         range_end = time_type(9 + end_min // 60, end_min % 60)
         return time_type(9, 30) <= t < range_end
 
-    @staticmethod
-    def _update_range(state: dict[str, Any], bar: Bar) -> None:
+    def _update_range(self, symbol: str, state: dict[str, Any], bar: Bar) -> None:
         state["range_high"] = max(state["range_high"], bar.high)
         state["range_low"] = min(state["range_low"], bar.low)
         state["range_bars"] += 1
+
+        # Feed close prices to VR calculator during range period
+        self._ensure_quant_state(symbol)
+        self._vr[symbol].update(bar.close)
+
+        # Feed (close - range_midpoint) to CUSUM during range build
+        range_mid = (state["range_high"] + state["range_low"]) / 2.0
+        self._cusum[symbol].update(bar.close - range_mid)
 
     # -- avg volume --------------------------------------------------------
 
@@ -161,6 +185,9 @@ class ORBV2Strategy(BaseStrategy):
         state: dict[str, Any],
         avg_vol: float,
         mtf: MultiTimeframeAnalyzer,
+        *,
+        cusum_fired: bool = False,
+        market_state: MarketState | None = None,
     ) -> ConfluenceScorer:
         scorer = ConfluenceScorer(threshold=self.confluence_threshold)
         rh: float = state["range_high"]
@@ -168,36 +195,48 @@ class ORBV2Strategy(BaseStrategy):
         rw = rh - rl
         gap_pct: float = state["gap_pct"]
 
-        # 1. Breakout strength (0.25)
+        # 1. Breakout strength (0.20)
         if rw > 0:
             dev = ((bar.close - rh) if side == OrderSide.BUY else (rl - bar.close)) / rw
             s1 = score_deviation(dev, 0.0, 0.5)
         else:
             dev, s1 = 0.0, 0.0
-        scorer.add_factor("breakout_strength", dev, s1, 0.25, passed=s1 > 0)
+        scorer.add_factor("breakout_strength", dev, s1, 0.20, passed=s1 > 0)
 
-        # 2. Volume (0.25)
+        # 2. Volume (0.20)
         s2 = score_volume(bar.volume, avg_vol, 1.2, 3.0) if avg_vol > 0 else 0.0
-        scorer.add_factor("volume", bar.volume, s2, 0.25, passed=s2 > 0)
+        scorer.add_factor("volume", bar.volume, s2, 0.20, passed=s2 > 0)
 
-        # 3. Gap alignment (0.20)
+        # 3. Gap alignment (0.15)
         if side == OrderSide.BUY:
             s3 = 80.0 if gap_pct > 0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
         else:
             s3 = 80.0 if gap_pct < -0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
-        scorer.add_factor("gap_alignment", gap_pct, s3, 0.20, passed=s3 >= 60)
+        scorer.add_factor("gap_alignment", gap_pct, s3, 0.15, passed=s3 >= 60)
 
-        # 4. MTF trend alignment (0.15)
+        # 4. MTF trend alignment (0.10)
         mtf_raw = mtf.get_trend_alignment(side)
-        scorer.add_factor("mtf_alignment", mtf_raw, mtf_raw * 100, 0.15, passed=mtf_raw > 0.3)
+        scorer.add_factor("mtf_alignment", mtf_raw, mtf_raw * 100, 0.10, passed=mtf_raw > 0.3)
 
-        # 5. Range quality -- tighter = better (0.15)
+        # 5. Range quality -- tighter = better (0.10)
         if bar.close > 0 and rw > 0:
             rwp = rw / bar.close
             s5 = score_threshold(rwp, 0.003, 0.001, invert=True)
         else:
             rwp, s5 = 0.0, 0.0
-        scorer.add_factor("range_quality", rwp, s5, 0.15, passed=s5 > 30)
+        scorer.add_factor("range_quality", rwp, s5, 0.10, passed=s5 > 30)
+
+        # 6. CUSUM confirmation (0.10) — higher score when CUSUM fires
+        cusum_score = 90.0 if cusum_fired else 30.0
+        scorer.add_factor("cusum_breakout", float(cusum_fired), cusum_score, 0.10, passed=cusum_fired)
+
+        # 7. BOCPD changepoint confidence (0.15) — from regime system
+        cp_prob = 0.0
+        if market_state is not None and market_state.regime_snapshot is not None:
+            cp_prob = market_state.regime_snapshot.changepoint_probability
+        cp_score = min(cp_prob * 100.0, 100.0)
+        scorer.add_factor("bocpd_changepoint", cp_prob, cp_score, 0.15, passed=cp_prob > 0.3)
+
         return scorer
 
     # -- stop / target -----------------------------------------------------
@@ -269,7 +308,7 @@ class ORBV2Strategy(BaseStrategy):
 
         # Phase 1: build opening range (always on 1m bars for resolution)
         if self._is_in_range_period(bar, state):
-            self._update_range(state, bar)
+            self._update_range(symbol, state, bar)
             return None
 
         # Mark range complete once we leave the range window
@@ -294,31 +333,71 @@ class ORBV2Strategy(BaseStrategy):
         if symbol_state.position and symbol_state.position.strategy == self.name:
             return None
 
-        # Breakout detection with volume gate + VWAP alignment
+        # Ensure quant state exists and feed GARCH with close price
+        self._ensure_quant_state(symbol)
+        garch_result = self._garch[symbol].update(bar.close)
+
+        # CUSUM breakout detection: feed deviation from range midpoint
+        range_mid = (state["range_high"] + state["range_low"]) / 2.0
+        cusum_result = self._cusum[symbol].update(bar.close - range_mid)
+        cusum_fired = cusum_result is not None and cusum_result.is_breakout
+
+        # Variance ratio gate: suppress breakout if mean-reverting
+        vr_result = self._vr[symbol].update(bar.close)
+        vr_mean_reverting = vr_result is not None and vr_result.is_mean_reverting
+
+        # Volume gate: GARCH-relative when available, else fixed average
         avg_vol = self._avg_volume(symbol_state)
-        vol_ok = avg_vol > 0 and bar.volume > avg_vol * self.vol_gate_mult
+        if garch_result is not None and garch_result.conditional_vol > 0:
+            # Scale volume gate by vol regime: higher GARCH vol → require more volume
+            vol_scale = max(0.8, min(1.5, garch_result.conditional_vol / 0.01))
+            vol_ok = avg_vol > 0 and bar.volume > avg_vol * self.vol_gate_mult * vol_scale
+        else:
+            vol_ok = avg_vol > 0 and bar.volume > avg_vol * self.vol_gate_mult
+
         mtf = MultiTimeframeAnalyzer(symbol_state)
         vwap_dist = mtf.get_vwap_distance("1m")
 
         side: OrderSide | None = None
         rw = state["range_high"] - state["range_low"]
         min_breakout = rw * 0.1  # require 10% of range width as minimum breakout distance
-        if bar.close > state["range_high"] + min_breakout and vol_ok:
-            # BUY breakout must be above VWAP
+
+        # Price must exceed range boundary (necessary condition)
+        price_above = bar.close > state["range_high"] + min_breakout
+        price_below = bar.close < state["range_low"] - min_breakout
+
+        # CUSUM + price confirmation: both must agree for full confidence
+        if price_above and (cusum_fired or vol_ok):
             if vwap_dist is not None and vwap_dist >= 0.0:
                 side = OrderSide.BUY
-        elif bar.close < state["range_low"] - min_breakout and vol_ok:
-            # SELL breakout must be below VWAP
+        elif price_below and (cusum_fired or vol_ok):
             if vwap_dist is not None and vwap_dist <= 0.0:
                 side = OrderSide.SELL
         if side is None:
+            return None
+
+        # VR gate: suppress breakout if variance ratio indicates mean-reversion
+        if vr_mean_reverting:
+            self.logger.debug(
+                "orb_v2: VR gate suppressed breakout",
+                symbol=symbol,
+                vr=round(vr_result.vr, 3) if vr_result else None,
+            )
             return None
 
         # Higher-TF alignment gate — breakouts need strong trend agreement
         alignment = mtf.get_trend_alignment(side)
         if alignment < 0.5:
             return None
-        scorer = self._score_entry(side, bar, state, avg_vol, mtf)
+        scorer = self._score_entry(
+            side,
+            bar,
+            state,
+            avg_vol,
+            mtf,
+            cusum_fired=cusum_fired,
+            market_state=market_state,
+        )
         if not scorer.passes_threshold():
             self.logger.debug(
                 "orb_v2: below threshold",
@@ -346,6 +425,9 @@ class ORBV2Strategy(BaseStrategy):
         meta["gap_pct"] = state["gap_pct"]
         meta["breakout_type"] = "high" if side == OrderSide.BUY else "low"
         meta["vol_ratio"] = round(bar.volume / avg_vol, 2) if avg_vol > 0 else 0.0
+        meta["cusum_fired"] = cusum_fired
+        meta["garch_vol"] = round(garch_result.conditional_vol, 6) if garch_result else None
+        meta["vr_ratio"] = round(vr_result.vr, 3) if vr_result else None
 
         # Record signal
         state["breakout_fired"] = True
