@@ -42,7 +42,7 @@ strategies:
     enabled: true
     confluence_threshold: 63.3       # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 20
-    min_trend_alignment: 0.40        # autoresearch iter3: relaxed for more entries in confirmed trends
+    min_trend_alignment: 0.30        # autoresearch iter23: further relaxed with VWAP filter in place
     pullback_threshold: 0.006        # autoresearch iter3: wider pullback window (was 0.003 default)
     stop_atr_mult: 1.75             # autoresearch iter3: tighter stops for better R:R
     target_atr_mult: 3.5            # autoresearch iter2: tighter target for more achievable exits
