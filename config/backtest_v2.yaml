@@ -41,7 +41,7 @@ strategies:
   trend_rider_pro:
     enabled: true
     confluence_threshold: 63.3       # WFO v3 mean (CV=0.17, stable)
-    cooldown_bars: 10               # autoresearch iter13: faster re-entry for trending symbols
+    cooldown_bars: 20
     min_trend_alignment: 0.40        # autoresearch iter3: relaxed for more entries in confirmed trends
     pullback_threshold: 0.006        # autoresearch iter3: wider pullback window (was 0.003 default)
     stop_atr_mult: 1.75             # autoresearch iter3: tighter stops for better R:R
