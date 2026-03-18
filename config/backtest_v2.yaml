@@ -40,7 +40,7 @@ strategies:
       min_confidence: 0.5
   trend_rider_pro:
     enabled: true
-    confluence_threshold: 70.0       # autoresearch iter1: raised from 63.3 to filter weak entries
+    confluence_threshold: 63.3       # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 20
     min_trend_alignment: 0.51        # WFO v3 mean (CV=0.31, borderline)
     stop_atr_mult: 2.08             # WFO v3 mean (CV=0.30, stable)
@@ -68,7 +68,7 @@ strategies:
       min_confidence: 0.4
   orb_v2:
     enabled: true
-    confluence_threshold: 62.0          # autoresearch iter1: raised from 54.2 to filter weak entries
+    confluence_threshold: 54.2          # WFO v3 mean (CV=0.17, stable)
     cooldown_bars: 40
     max_hold_minutes: 93               # WFO v3 mean (CV=0.24, stable)
     vol_gate_mult: 1.53                # WFO v3 mean (CV=0.12, very stable)
