@@ -168,7 +168,8 @@ class RiskConfig(BaseModel):
     max_open_positions: int = Field(default=5)
     max_positions_per_strategy: int = Field(default=3)
     max_notional_per_order: float = Field(default=0.0)  # Fixed $ limit (0 = disabled)
-    max_notional_pct: float = Field(default=0.05)  # % of equity (5% default)
+    max_notional_pct: float = Field(default=0.50)  # % of equity per order (50% — caps qty, not reject)
+    max_equity_pct: float = Field(default=0.50)  # % of equity allocation per position
     max_notional_per_symbol: float = Field(default=0.0)
     time_in_force: str = Field(default="day")
     risk_mode: str = Field(default="normal")
