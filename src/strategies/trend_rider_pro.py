@@ -329,15 +329,34 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=mom_score > 0,
         )
 
-        # 6. Session quality (weight 0.10)
+        # 6. Session quality (weight 0.05)
         session = getattr(snapshot, "session", None) if snapshot else None
         sess_score = _score_session(session)
         scorer.add_factor(
             "session_quality",
             raw_value=sess_score,
             score=sess_score,
-            weight=0.10,
+            weight=0.05,
             passed=sess_score > 0,
+        )
+
+        # 7. VWAP proximity (weight 0.05) — reward entries near VWAP
+        vwap_dist_1m = mtf.get_vwap_distance("1m")
+        if vwap_dist_1m is not None:
+            abs_dist = abs(vwap_dist_1m)
+            # Near VWAP (0-0.5%) = 100, extended (1%+) = 0
+            if abs_dist <= 0.005:
+                vwap_prox_score = 100.0 * (1.0 - abs_dist / 0.005)
+            else:
+                vwap_prox_score = 0.0
+        else:
+            vwap_prox_score = 50.0
+        scorer.add_factor(
+            "vwap_proximity",
+            raw_value=vwap_dist_1m or 0.0,
+            score=vwap_prox_score,
+            weight=0.05,
+            passed=vwap_prox_score > 30,
         )
 
         return scorer
