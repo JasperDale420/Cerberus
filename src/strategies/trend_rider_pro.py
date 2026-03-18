@@ -215,7 +215,7 @@ class TrendRiderProStrategy(BaseStrategy):
             pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
             near_ema = pullback_pct <= self.pullback_threshold
             # VWAP soft gate: prefer above VWAP but allow slight dips (pullback to EMA can cross VWAP)
-            vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= -0.004
+            vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= -0.002
             if near_ema and vwap_ok:
                 if self._regime_allows(OrderSide.BUY, snapshot, mtf):
                     return OrderSide.BUY
@@ -225,7 +225,7 @@ class TrendRiderProStrategy(BaseStrategy):
         if sell_alignment >= self.min_trend_alignment:
             pullback_pct = abs(bar.close - ema20_5m) / ema20_5m
             near_ema = pullback_pct <= self.pullback_threshold
-            vwap_ok = vwap_dist_1m is None or vwap_dist_1m <= 0.004
+            vwap_ok = vwap_dist_1m is None or vwap_dist_1m <= 0.002
             if near_ema and vwap_ok:
                 if self._regime_allows(OrderSide.SELL, snapshot, mtf):
                     return OrderSide.SELL
