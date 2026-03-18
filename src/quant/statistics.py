@@ -114,24 +114,25 @@ class CUSUMDetector:
     """Online CUSUM change-point detector with rolling normalisation."""
 
     _WARMUP = 10
-    _REFERENCE_WINDOW = 50
+    _ROLLING_WINDOW = 100
 
     def __init__(self, threshold: float = 4.0, drift: float = 0.5) -> None:
         self._threshold = threshold
         self._drift = drift
-        self._values: list[float] = []
+        self._values: deque[float] = deque(maxlen=self._ROLLING_WINDOW)
         self._cusum_pos = 0.0
         self._cusum_neg = 0.0
+        self._count = 0
 
     def update(self, value: float) -> CUSUMResult | None:
         self._values.append(value)
-        if len(self._values) < self._WARMUP:
+        self._count += 1
+        if self._count < self._WARMUP:
             return None
 
-        # Use a fixed reference window to avoid the mean tracking the shift.
-        ref = np.array(self._values[: self._REFERENCE_WINDOW], dtype=np.float64)
-        mean = float(np.mean(ref))
-        std = float(np.std(ref, ddof=1))
+        arr = np.array(self._values, dtype=np.float64)
+        mean = float(np.mean(arr))
+        std = float(np.std(arr, ddof=1))
         if std < 1e-12:
             return CUSUMResult(
                 is_breakout=False,

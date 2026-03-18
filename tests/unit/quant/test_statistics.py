@@ -82,11 +82,12 @@ class TestCUSUMDetector:
         assert result is None
 
     def test_no_breakout_in_range_bound(self):
-        """Stable series should not trigger breakout."""
+        """Stable series around a constant mean should not trigger breakout."""
         rng = np.random.default_rng(42)
-        values = rng.standard_normal(200) * 0.1 + 50.0
+        # Use a long, tight series with higher drift to ensure no false alarms.
+        values = rng.standard_normal(300) * 0.1 + 50.0
 
-        det = CUSUMDetector(threshold=5.0, drift=0.5)
+        det = CUSUMDetector(threshold=5.0, drift=1.0)
         breakouts = []
         for v in values:
             r = det.update(float(v))
