@@ -80,7 +80,7 @@ strategies:
     vol_gate_mult: 1.53                # WFO v3 mean (CV=0.12, very stable)
     trail_min_profit_r: 0.96           # WFO v3 mean (CV=0.28, stable)
     activation:
-      session: [opening, midday, power_hour]  # autoresearch orb iter17: allow power hour breakouts
+      session: [opening, midday]  # Range builds during opening, breakouts fire in midday
       trend: [up, down, flat]
       vol: [low, normal, high]
       liquidity: [good]
