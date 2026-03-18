@@ -357,7 +357,7 @@ class MeanReversionProStrategy(BaseStrategy):
         if not time_utils.in_time_window_str(bar.time, self.time_window_start, self.time_window_end):
             return None
 
-        # Simplified regime check — only skip SHOCK vol and PREMARKET
+        # Regime: skip SHOCK vol and PREMARKET
         snap = market_state.regime_snapshot
         if snap is not None:
             if snap.vol == VolRegime.SHOCK:
@@ -379,7 +379,11 @@ class MeanReversionProStrategy(BaseStrategy):
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        # 15m flatness: soft check — use mr_alignment in confluence scoring, not as hard gate
+        # 5m ADX gate: mean reversion only when 5m timeframe shows no strong trend
+        adx_5m = mtf.get_adx("5m")
+        if adx_5m is not None and adx_5m > 30.0:
+            return None  # 5m is trending — don't mean-revert
+
         mr_alignment = mtf.get_mean_reversion_alignment()
 
         vwap_dist = mtf.get_vwap_distance("1m")
