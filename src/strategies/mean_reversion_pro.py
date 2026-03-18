@@ -19,6 +19,9 @@ from src.core.domain import (
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.data.requirements import DataRequirements
+from src.quant.regime import AdaptiveThresholdEngine
+from src.quant.statistics import HurstExponent
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -57,6 +60,14 @@ class MeanReversionProStrategy(BaseStrategy):
         self._ou: dict[str, OUEstimator] = {}
         self._ou_enabled: bool = bool(config.get("ou_enabled", False))
         self._ou_lookback: int = int(config.get("ou_lookback", 60))
+        # Per-symbol GARCH conditional volatility forecasters
+        self._garch: dict[str, GARCHForecaster] = {}
+        # Per-symbol Hurst exponent estimators
+        self._hurst: dict[str, HurstExponent] = {}
+        # Adaptive threshold engine (shared across symbols)
+        self._threshold_engine = AdaptiveThresholdEngine()
+        # Hurst gate threshold: reject entries when H >= this value
+        self._hurst_gate_threshold: float = float(config.get("hurst_gate_threshold", 0.45))
 
     # ------------------------------------------------------------------
     # Config
@@ -376,6 +387,25 @@ class MeanReversionProStrategy(BaseStrategy):
         if vpin_result is not None and vpin_result.vpin > self._vpin_threshold:
             return None
 
+        # --- Feed quant estimators (lazy init per symbol) ---
+        if symbol not in self._garch:
+            self._garch[symbol] = GARCHForecaster()
+        garch_result = self._garch[symbol].update(bar.close)
+
+        if symbol not in self._hurst:
+            self._hurst[symbol] = HurstExponent()
+        hurst_result = self._hurst[symbol].update(bar.close)
+
+        # --- Hurst gate: reject non-mean-reverting regimes ---
+        if hurst_result is not None and hurst_result.H >= self._hurst_gate_threshold:
+            self.logger.debug(
+                "hurst_gate_rejected",
+                symbol=symbol,
+                hurst_h=round(hurst_result.H, 4),
+                threshold=self._hurst_gate_threshold,
+            )
+            return None
+
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
@@ -406,10 +436,35 @@ class MeanReversionProStrategy(BaseStrategy):
                 dynamic_vwap_threshold = self.vwap_dist_threshold * ou_result.scaling_factor
                 dynamic_bb_threshold = self.bb_pos_threshold * ou_result.scaling_factor
 
-        # --- Direction ---
-        side = self._detect_side(vwap_dist, bb_pos, dynamic_vwap_threshold, dynamic_bb_threshold)
+        # --- OU half-life hard gate ---
+        if self._ou_enabled and ou_result is not None and ou_result.half_life > self.max_hold_minutes:
+            self.logger.debug(
+                "ou_half_life_rejected",
+                symbol=symbol,
+                half_life=round(ou_result.half_life, 2),
+                max_hold=self.max_hold_minutes,
+            )
+            return None
+
+        # --- GARCH conditional z-score for VWAP distance ---
+        if garch_result is not None:
+            garch_vwap_dist = self._garch[symbol].conditional_zscore(vwap_dist)
+        else:
+            garch_vwap_dist = vwap_dist  # fallback to raw distance
+
+        # --- Direction (use GARCH-conditional z-score) ---
+        side = self._detect_side(garch_vwap_dist, bb_pos, dynamic_vwap_threshold, dynamic_bb_threshold)
         if side is None:
             return None
+
+        # --- Adaptive confluence threshold ---
+        garch_vol = garch_result.conditional_vol if garch_result is not None else 0.0
+        hurst_h = hurst_result.H if hurst_result is not None else 0.5
+        adaptive_threshold = self._threshold_engine.adapt(
+            base_threshold=self.confluence_threshold,
+            conditional_vol=garch_vol,
+            hurst=hurst_h,
+        )
 
         # --- Confluence scoring ---
         rsi = mtf.get_rsi("5m", 14)
@@ -426,12 +481,15 @@ class MeanReversionProStrategy(BaseStrategy):
             mr_alignment=mr_alignment,
         )
 
+        # Use adaptive threshold instead of fixed
+        scorer.threshold = adaptive_threshold
+
         if not scorer.passes_threshold():
             self.logger.debug(
                 "mean_reversion_pro: below threshold",
                 symbol=symbol,
                 score=round(scorer.score(), 2),
-                threshold=self.confluence_threshold,
+                threshold=round(adaptive_threshold, 2),
             )
             return None
 
@@ -457,6 +515,12 @@ class MeanReversionProStrategy(BaseStrategy):
             meta["ou_theta"] = round(ou_result.theta, 4)
             meta["ou_half_life"] = round(ou_result.half_life, 2)
             meta["ou_scaling"] = round(ou_result.scaling_factor, 3)
+        if garch_result is not None:
+            meta["garch_conditional_vol"] = round(garch_result.conditional_vol, 6)
+            meta["garch_annualized_vol"] = round(garch_result.annualized_vol, 4)
+        if hurst_result is not None:
+            meta["hurst_h"] = round(hurst_result.H, 4)
+        meta["adaptive_threshold"] = round(adaptive_threshold, 2)
 
         # --- Record cooldown ---
         self.last_signal_time[symbol] = bar.time

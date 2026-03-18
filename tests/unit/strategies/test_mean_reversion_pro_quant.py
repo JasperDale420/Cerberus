@@ -20,6 +20,8 @@ from src.strategies.mean_reversion_pro import MeanReversionProStrategy
 # Helpers
 # ---------------------------------------------------------------------------
 
+ET = ZoneInfo("US/Eastern")
+
 
 class _MockLogger:
     """Minimal mock matching StructuredLogger interface."""
@@ -71,6 +73,10 @@ def _make_symbol_state(symbol: str, bars: list[Bar]) -> SymbolState:
     )
 
 
+def _base_time() -> datetime:
+    return datetime(2025, 6, 15, 10, 0, tzinfo=ET)
+
+
 @pytest.fixture
 def strategy() -> MeanReversionProStrategy:
     config: dict[str, Any] = {
@@ -116,7 +122,7 @@ class TestQuantInitialization:
 class TestGarchFedOnBar:
     def test_garch_created_on_first_bar(self, strategy: MeanReversionProStrategy):
         """GARCH estimator should be lazily initialized for a symbol on its first bar."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
@@ -132,7 +138,7 @@ class TestGarchFedOnBar:
 
     def test_garch_update_called_each_bar(self, strategy: MeanReversionProStrategy):
         """GARCH.update should receive the bar's close price."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0 + i * 0.01) for i in range(35, 0, -1)]
 
         # Manually set up a mock GARCH to track calls
@@ -151,7 +157,7 @@ class TestGarchFedOnBar:
 
     def test_hurst_created_on_first_bar(self, strategy: MeanReversionProStrategy):
         """Hurst estimator should be lazily initialized for a symbol."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
@@ -173,7 +179,7 @@ class TestGarchFedOnBar:
 class TestHurstGate:
     def test_hurst_gate_rejects_trending(self, strategy: MeanReversionProStrategy):
         """When Hurst H >= 0.45, on_bar should return None and log rejection."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
@@ -206,7 +212,7 @@ class TestHurstGate:
 
     def test_hurst_gate_rejects_at_boundary(self, strategy: MeanReversionProStrategy):
         """When Hurst H == 0.45 (boundary), it should reject."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
@@ -231,7 +237,7 @@ class TestHurstGate:
 
     def test_hurst_gate_allows_mean_reverting(self, strategy: MeanReversionProStrategy):
         """When Hurst H < 0.45, the gate should NOT reject (other gates may still reject)."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
@@ -261,7 +267,7 @@ class TestHurstGate:
 
     def test_hurst_none_does_not_reject(self, strategy: MeanReversionProStrategy):
         """When Hurst returns None (not enough data), the gate should pass."""
-        t = datetime(2025, 6, 15, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        t = _base_time()
         bars = [_make_bar("AAPL", t - timedelta(minutes=i), 150.0) for i in range(35, 0, -1)]
         bar = _make_bar("AAPL", t, 150.0)
         bars.append(bar)
