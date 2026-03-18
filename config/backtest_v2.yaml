@@ -165,7 +165,7 @@ risk:
   max_positions_per_strategy: 4
   max_notional_per_order: 90000.0
   max_notional_per_symbol: 90000.0
-  max_notional_pct: 0.50          # 50% of equity (was 5% default — THAT was the sizing bottleneck)
+  # max_notional_pct now defaults to 0.50 (50%) in code — caps qty instead of rejecting
   time_in_force: "day"
   risk_mode: "normal"
   slippage_bps: 3.0               # Realistic slippage for liquid names

@@ -584,16 +584,29 @@ class RiskManager:
 
         return target_mult
 
-    def _check_notional_limits(self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0) -> bool:
-        # Calculate effective notional limit: prefer % of equity, fallback to fixed limit
-        max_notional_pct = getattr(self.risk_cfg, "max_notional_pct", 0.05)
+    def _get_effective_notional_limit(self, account_equity: float = 0.0) -> float:
+        """Calculate the effective per-order notional limit."""
+        max_notional_pct = getattr(self.risk_cfg, "max_notional_pct", 0.50)
         if account_equity > 0 and max_notional_pct > 0:
-            effective_limit = account_equity * max_notional_pct
+            return account_equity * max_notional_pct
         elif self.max_notional_per_order > 0:
-            effective_limit = self.max_notional_per_order
-        else:
-            effective_limit = float("inf")  # No limit
+            return self.max_notional_per_order
+        return float("inf")
 
+    def _check_symbol_notional(self, notional: float, symbol_state: SymbolState) -> bool:
+        """Check per-symbol notional limit (existing + proposed)."""
+        if self.max_notional_per_symbol > 0:
+            existing_notional = 0.0
+            if symbol_state.position:
+                existing_notional = float(symbol_state.position.qty * symbol_state.position.avg_price)
+            if (existing_notional + notional) > self.max_notional_per_symbol:
+                self.last_rejection_reason = "MAX_SYMBOL_NOTIONAL"
+                return False
+        return True
+
+    def _check_notional_limits(self, notional: float, symbol_state: SymbolState, account_equity: float = 0.0) -> bool:
+        """Legacy method — kept for backward compat. New flow uses cap-then-check."""
+        effective_limit = self._get_effective_notional_limit(account_equity)
         if notional > effective_limit:
             self.logger.warning(
                 "Signal rejected: Max notional per order exceeded",
@@ -604,15 +617,7 @@ class RiskManager:
             )
             self.last_rejection_reason = "MAX_NOTIONAL"
             return False
-
-        if self.max_notional_per_symbol > 0:
-            existing_notional = 0.0
-            if symbol_state.position:
-                existing_notional = float(symbol_state.position.qty * symbol_state.position.avg_price)
-            if (existing_notional + notional) > self.max_notional_per_symbol:
-                self.last_rejection_reason = "MAX_SYMBOL_NOTIONAL"
-                return False
-        return True
+        return self._check_symbol_notional(notional, symbol_state)
 
     def _check_risk_exposure(self, risk_per_share: float, qty: int, current_positions: Optional[List[Any]]) -> bool:
         if self.max_open_risk > 0 and current_positions is not None:
@@ -686,8 +691,26 @@ class RiskManager:
             self._log_rejection(signal)
             return []
 
+        # Cap qty to fit within notional limit (instead of rejecting)
         notional = qty * signal.entry_price
-        if not self._check_notional_limits(notional, symbol_state, account_equity):
+        max_notional = self._get_effective_notional_limit(account_equity)
+        if max_notional > 0 and notional > max_notional:
+            capped_qty = int(max_notional / signal.entry_price)
+            if capped_qty <= 0:
+                self.last_rejection_reason = "MAX_NOTIONAL"
+                self._log_rejection(signal)
+                return []
+            self.logger.debug(
+                "Notional cap: reducing qty",
+                symbol=signal.symbol,
+                orig_qty=qty,
+                capped_qty=capped_qty,
+                notional=round(qty * signal.entry_price, 2),
+                limit=round(max_notional, 2),
+            )
+            qty = capped_qty
+        # Also check per-symbol notional
+        if not self._check_symbol_notional(qty * signal.entry_price, symbol_state):
             self._log_rejection(signal)
             return []
 
