@@ -276,7 +276,7 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=alignment > 0.5,
         )
 
-        # 2. Pullback quality (weight 0.20)
+        # 2. Pullback quality (weight 0.15)
         ema20_5m = mtf.get_ema("5m", 20)
         pullback_pct = 0.0
         if ema20_5m is not None and ema20_5m > 0:
@@ -288,20 +288,20 @@ class TrendRiderProStrategy(BaseStrategy):
             "pullback_quality",
             raw_value=pullback_pct,
             score=pb_score,
-            weight=0.20,
+            weight=0.15,
             passed=0.001 <= pullback_pct <= 0.005,
         )
 
-        # 3. ADX strength (weight 0.15)
+        # 3. ADX strength (weight 0.20)
         adx_5m = mtf.get_adx("5m")
         adx_val = adx_5m if adx_5m is not None else 0.0
-        adx_score = score_threshold(adx_val, 20.0, 40.0)
+        adx_score = score_threshold(adx_val, 25.0, 45.0)
         scorer.add_factor(
             "adx_strength",
             raw_value=adx_val,
             score=adx_score,
-            weight=0.15,
-            passed=adx_val >= 20.0,
+            weight=0.20,
+            passed=adx_val >= 25.0,
         )
 
         # 4. Volume (weight 0.15)
