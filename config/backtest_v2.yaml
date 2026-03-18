@@ -157,15 +157,15 @@ strategies:
 
 # Risk — sized for $100k account
 risk:
-  max_daily_loss: 5000.0          # 5% of account
+  max_daily_loss: 3000.0          # 3% of account
   max_risk_per_trade: 2000.0      # 2% risk per trade
-  max_open_risk: 10000.0          # 10% total open risk
+  max_open_risk: 5000.0           # 5% total open risk
   max_trades_per_day: 50
   max_open_positions: 8
   max_positions_per_strategy: 4
-  max_notional_per_order: 100000.0
-  max_notional_per_symbol: 100000.0
-  max_notional_pct: 0.50          # 50% of equity per trade (was 5% default — THAT was the bottleneck)
+  max_notional_per_order: 90000.0
+  max_notional_per_symbol: 90000.0
+  max_notional_pct: 0.50          # 50% of equity (was 5% default — THAT was the sizing bottleneck)
   time_in_force: "day"
   risk_mode: "normal"
   slippage_bps: 3.0               # Realistic slippage for liquid names
