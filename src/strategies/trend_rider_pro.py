@@ -28,30 +28,27 @@ from src.strategies.confluence import (
 def _score_momentum(rsi: float, side: OrderSide) -> float:
     """Score RSI for trend-pullback momentum (0-100).
 
-    Uses a gradual curve centered on the ideal pullback zone.
-    For BUY: ideal zone is 42-58, with gradual falloff.
-    For SELL: mirrored around 50.
+    For BUY: RSI should be pulled back but not oversold/overbought.
+      - 45-55 (healthy pullback zone) => 100
+      - 40-45 or 55-70 (acceptable)   => 60
+      - outside                        => 0
+
+    For SELL: mirrored — RSI should be 30-60 territory.
+      - 45-55 => 100
+      - 30-45 or 55-60 => 60
+      - outside => 0
     """
     if side == OrderSide.BUY:
-        # Ideal: RSI 42-58 (healthy pullback in uptrend)
-        if 42.0 <= rsi <= 58.0:
+        if 45.0 <= rsi <= 55.0:
             return 100.0
-        if 35.0 <= rsi < 42.0:
-            return 40.0 + (rsi - 35.0) / 7.0 * 60.0  # 40→100 linear ramp
-        if 58.0 < rsi <= 72.0:
-            return 100.0 - (rsi - 58.0) / 14.0 * 60.0  # 100→40 gradual falloff
-        if 72.0 < rsi <= 80.0:
-            return 30.0  # momentum continuation — still valid
+        if 40.0 <= rsi < 45.0 or 55.0 < rsi <= 70.0:
+            return 60.0
         return 0.0
     # SELL
-    if 42.0 <= rsi <= 58.0:
+    if 45.0 <= rsi <= 55.0:
         return 100.0
-    if 58.0 < rsi <= 65.0:
-        return 40.0 + (65.0 - rsi) / 7.0 * 60.0
-    if 28.0 <= rsi < 42.0:
-        return 100.0 - (42.0 - rsi) / 14.0 * 60.0
-    if 20.0 <= rsi < 28.0:
-        return 30.0
+    if 30.0 <= rsi < 45.0 or 55.0 < rsi <= 60.0:
+        return 60.0
     return 0.0
 
 
