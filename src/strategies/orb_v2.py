@@ -301,8 +301,11 @@ class ORBV2Strategy(BaseStrategy):
         if side is None:
             return None
 
-        # Confluence scoring
+        # Higher-TF alignment gate — breakouts need strong trend agreement
         mtf = MultiTimeframeAnalyzer(symbol_state)
+        alignment = mtf.get_trend_alignment(side)
+        if alignment < 0.5:
+            return None
         scorer = self._score_entry(side, bar, state, avg_vol, mtf)
         if not scorer.passes_threshold():
             self.logger.debug(

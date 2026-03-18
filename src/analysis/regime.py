@@ -135,6 +135,22 @@ class MarketContextService:
         self._last_net_gex: float = 0.0
         self._last_gamma_flip_dist: float = 0.0
 
+        # IV Surface Dynamics analyzer
+        from src.analysis.iv_surface import IVSurfaceAnalyzer
+
+        self._iv_surface = IVSurfaceAnalyzer(logger=logger)
+        self._last_iv_skew_zscore: float = 0.0
+        self._last_iv_term_inverted: bool = False
+        self._last_iv_signal_strength: float = 0.0
+
+        # ETF Flow Propagation analyzer
+        from src.analysis.etf_flow import ETFFlowAnalyzer
+
+        self._etf_flow = ETFFlowAnalyzer(logger=logger)
+        self._last_etf_divergence: float = 0.0
+        self._last_etf_rotation: bool = False
+        self._last_etf_lead_signal: float = 0.0
+
         # Current snapshot
         self.current_snapshot: Optional[MarketRegimeSnapshot] = None
 
@@ -166,6 +182,41 @@ class MarketContextService:
             self._last_gex_regime = result.gex_regime
             self._last_net_gex = result.net_gex
             self._last_gamma_flip_dist = result.gamma_flip_distance
+
+    def update_iv_surface(
+        self,
+        chain_data: list,
+        current_price: float = 0.0,
+        risk_free_rate: float = 0.05,
+        time_to_expiry: float = 30 / 365,
+    ) -> None:
+        """Update IV surface from options chain data. Call when chain refreshes (typically EOD)."""
+        result = self._iv_surface.analyze(
+            chain_data,
+            current_price=current_price,
+            risk_free_rate=risk_free_rate,
+            time_to_expiry=time_to_expiry,
+        )
+        if result is not None:
+            self._last_iv_skew_zscore = result.skew_zscore
+            self._last_iv_term_inverted = result.is_inverted
+            self._last_iv_signal_strength = result.signal_strength
+
+    def update_etf_flow(
+        self,
+        etf_symbol: str,
+        etf_data: dict,
+        stock_symbol: str,
+        stock_data: dict,
+    ) -> None:
+        """Update ETF flow propagation from UW-format flow dicts."""
+        self._etf_flow.update_etf_flow(etf_symbol, etf_data)
+        self._etf_flow.update_stock_flow(stock_symbol, stock_data)
+        result = self._etf_flow.analyze(stock_symbol, etf_symbol)
+        if result is not None:
+            self._last_etf_divergence = result.divergence_score
+            self._last_etf_rotation = result.rotation_detected
+            self._last_etf_lead_signal = result.lead_signal
 
     def update_vol(self, bar: Bar) -> None:
         """
@@ -296,6 +347,12 @@ class MarketContextService:
                 gex_regime=self._last_gex_regime,
                 net_gex=self._last_net_gex,
                 gamma_flip_distance=self._last_gamma_flip_dist,
+                iv_skew_zscore=self._last_iv_skew_zscore,
+                iv_term_inverted=self._last_iv_term_inverted,
+                iv_signal_strength=self._last_iv_signal_strength,
+                etf_flow_divergence=self._last_etf_divergence,
+                etf_rotation_detected=self._last_etf_rotation,
+                etf_lead_signal=self._last_etf_lead_signal,
                 confidence=confidence,
             )
 

@@ -33,12 +33,12 @@ def _make_term_data(near_iv: float, far_iv: float, near_dte: int = 7, far_dte: i
 def _parabolic_call_prices(strikes: list[float], atm: float, base_price: float = 10.0) -> list[float]:
     """Generate synthetic call prices that produce a single-peaked RND.
 
-    Uses a downward-opening parabola for call prices so that the second
-    derivative (density) is a positive constant across the interior strikes.
+    Uses a Gaussian-shaped call price curve C(K) = A * exp(-0.5*((K-atm)/sigma)^2)
+    which is convex (positive second derivative) in the tails and produces a
+    realistic bell-shaped risk-neutral density.
     """
-    # C(K) = max(base_price - a*(K - atm)^2, 0.01)
-    a = base_price / ((strikes[-1] - atm) ** 2 + 1)
-    return [max(base_price - a * (k - atm) ** 2, 0.01) for k in strikes]
+    sigma = (strikes[-1] - strikes[0]) / 4.0
+    return [base_price * math.exp(-0.5 * ((k - atm) / sigma) ** 2) for k in strikes]
 
 
 def _bimodal_call_prices(strikes: list[float], peak1: float, peak2: float) -> list[float]:
@@ -303,10 +303,12 @@ class TestComputeRND:
         _, d_r0 = analyzer.compute_rnd(strikes, prices, rate=0.0, tte=1.0)
         _, d_r5 = analyzer.compute_rnd(strikes, prices, rate=0.05, tte=1.0)
 
-        # With positive rate, densities should be scaled up by e^{0.05}
-        if d_r0 and d_r5:
-            ratio = d_r5[len(d_r5) // 2] / d_r0[len(d_r0) // 2]
-            assert ratio == pytest.approx(math.exp(0.05), rel=0.01)
+        # Find a non-zero interior density for comparison
+        assert len(d_r0) > 0 and len(d_r5) > 0
+        idx = int(np.argmax(d_r0))
+        assert d_r0[idx] > 1e-15, "Need a positive density value to test scaling"
+        ratio = d_r5[idx] / d_r0[idx]
+        assert ratio == pytest.approx(math.exp(0.05), rel=0.01)
 
 
 # ===========================================================================

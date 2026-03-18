@@ -306,13 +306,13 @@ class TestLeadSignal:
         cfg = ETFFlowConfig(lookback_bars=30, min_bars=5)
         analyzer = ETFFlowAnalyzer(config=cfg)
 
-        # Stable negative flow for 20 bars
-        for _ in range(20):
-            analyzer.update_etf_flow(_make_etf_flow("SPY", 50, 200, -150.0))
+        # Gradually decreasing negative flow to build a baseline of small negative changes
+        for i in range(20):
+            analyzer.update_etf_flow(_make_etf_flow("SPY", 50, 200, -150.0 - i * 2.0))
 
-        # Sharp positive reversal
-        for _ in range(5):
-            analyzer.update_etf_flow(_make_etf_flow("SPY", 300, 50, 250.0))
+        # Sharp positive reversal: a large positive change from the last value
+        last_negative = -150.0 - 19 * 2.0  # -188.0
+        analyzer.update_etf_flow(_make_etf_flow("SPY", 300, 50, last_negative + 500.0))
 
         signal, conf, lag = analyzer.compute_lead_signal("SPY")
         assert signal > 0  # bullish lead
@@ -438,16 +438,22 @@ class TestEdgeCases:
         cfg = ETFFlowConfig(lookback_bars=30, min_bars=5)
         analyzer = ETFFlowAnalyzer(config=cfg)
 
-        for _ in range(25):
-            analyzer.update_etf_flow(_make_etf_flow("SPY", 200, 100, 100))
-            analyzer.update_etf_flow(_make_etf_flow("QQQ", 100, 200, -100))
-            analyzer.update_stock_flow(_make_stock_flow("AAPL", 150, 75, 75))
+        # Use varying values so z-scores are non-zero and differ between ETFs
+        for i in range(20):
+            analyzer.update_etf_flow(_make_etf_flow("SPY", 200, 100, 50.0 + i))
+            analyzer.update_etf_flow(_make_etf_flow("QQQ", 100, 200, -50.0 - i))
+            analyzer.update_stock_flow(_make_stock_flow("AAPL", 150, 75, 40.0 + i))
+
+        # Final spike: stock diverges in opposite direction from QQQ vs SPY
+        analyzer.update_etf_flow(_make_etf_flow("SPY", 200, 100, 200.0))
+        analyzer.update_etf_flow(_make_etf_flow("QQQ", 100, 200, -200.0))
+        analyzer.update_stock_flow(_make_stock_flow("AAPL", 150, 75, 200.0))
 
         spy_div = analyzer.compute_divergence("AAPL", "SPY")
         qqq_div = analyzer.compute_divergence("AAPL", "QQQ")
         assert spy_div is not None
         assert qqq_div is not None
-        # They should differ because ETF flows are opposite
+        # They should differ because ETF flows are in opposite directions
         assert spy_div != qqq_div
 
     def test_flow_state_internal_maxlen(self) -> None:

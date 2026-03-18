@@ -135,3 +135,10 @@ npx @claude-flow/cli@latest doctor --fix
 
 - Documentation: https://github.com/ruvnet/claude-flow
 - Issues: https://github.com/ruvnet/claude-flow/issues
+
+## Commit & Changelog Discipline
+
+- **Commit often** — make small, atomic commits after each logical change. Do not accumulate large uncommitted diffs across multiple files.
+- **Update the changelog** — every commit that changes behavior, fixes a bug, or adds a feature must have a corresponding entry in `CHANGELOG.md`. If no `CHANGELOG.md` exists, create one.
+- Changelog format: `## [Unreleased]` section at the top with entries grouped by `Added`, `Changed`, `Fixed`, `Removed`.
+- Write changelog entries from the user's perspective — describe *what changed*, not implementation details.

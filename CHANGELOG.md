@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Lo-MacKinlay variance ratio test module** (`src/analysis/variance_ratio.py`): Implements VR(k) with heteroscedasticity-robust z-statistic for detecting mean-reverting vs trending price regimes. Zero external dependencies (uses pure-Python normal distribution helpers). Includes 29 unit tests covering statistical properties, edge cases, and numeric helpers.
+- **RSI Bounce v2 — institutional-grade mean reversion**: Upgraded from 3-factor (RSI + BB + trend context) to 6-factor confluence model: z-score extremity, OU half-life validity (primary gate), RSI percentile rank, volume climax, momentum deceleration, and Lo-MacKinlay variance ratio gate. Adds VPIN toxicity filter to skip entries during informed trading. Drop-in replacement with same class name and strategy interface.
+
 ### Changed
 
 - **WFO v3 optimized params applied to trend_rider_pro and orb_v2**: Applied walk-forward optimization mean parameters with stability annotations. trend_rider_pro: confluence_threshold=63.3, stop_atr_mult=2.08, target_atr_mult=4.5, trail_min_profit_r=0.60, max_hold_minutes=138. orb_v2: confluence_threshold=54.2, vol_gate_mult=1.53, trail_min_profit_r=0.96, max_hold_minutes=93.

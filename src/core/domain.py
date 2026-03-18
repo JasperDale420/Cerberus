@@ -138,11 +138,21 @@ class MarketRegimeSnapshot:
     net_gex: float = 0.0
     gamma_flip_distance: float = 0.0  # % distance to gamma flip level
 
+    # IV Surface Dynamics (Breeden-Litzenberger 1978)
+    iv_skew_zscore: float = 0.0
+    iv_term_inverted: bool = False
+    iv_signal_strength: float = 0.0
+
+    # ETF Flow Propagation
+    etf_flow_divergence: float = 0.0
+    etf_rotation_detected: bool = False
+    etf_lead_signal: float = 0.0
+
     # Per-axis confidence (0.0 to 1.0)
     confidence: Dict[str, float] = field(default_factory=dict)
 
     # Schema versioning for analytics
-    model_version: str = "2.2"
+    model_version: str = "2.3"
 
     @property
     def regime_tags(self) -> Dict[str, str]:

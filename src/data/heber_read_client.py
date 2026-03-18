@@ -118,6 +118,131 @@ class HeberReadClient:
         normalized.sort(key=lambda row: str(row.get("t", "")))
         return normalized
 
+    # ------------------------------------------------------------------
+    # Phase 3: Advanced strategy data feeds
+    # ------------------------------------------------------------------
+
+    def get_iv_term_structure(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        as_of: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read IV term structure from Heber Silver."""
+        sym = str(symbol).strip().upper()
+        rows = self._read_asof_rows(
+            dataset="iv_term_structure",
+            symbol=sym,
+            instrument_key=f"equity:{sym}",
+            start=start,
+            end=end,
+            as_of=as_of or end,
+        )
+        return [
+            {
+                "symbol": str(row.get("symbol") or sym),
+                "expiry": str(row.get("expiry") or ""),
+                "iv": self._to_float(row.get("iv")),
+                "dte": self._to_int(row.get("dte")),
+                "call_iv": self._to_float(row.get("call_iv")),
+                "put_iv": self._to_float(row.get("put_iv")),
+                "timestamp": str(row.get("ts_event") or ""),
+            }
+            for row in rows
+        ]
+
+    def get_etf_tide(
+        self,
+        etf_symbol: str,
+        start: datetime,
+        end: datetime,
+        as_of: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read ETF tide (options flow sentiment) from Heber Silver."""
+        sym = str(etf_symbol).strip().upper()
+        rows = self._read_asof_rows(
+            dataset="etf_tide",
+            symbol=sym,
+            instrument_key=f"equity:{sym}",
+            start=start,
+            end=end,
+            as_of=as_of or end,
+        )
+        return [
+            {
+                "symbol": str(row.get("symbol") or row.get("ticker") or sym),
+                "net_call_premium": self._to_float(row.get("net_call_premium")),
+                "net_put_premium": self._to_float(row.get("net_put_premium")),
+                "net_volume": self._to_int(row.get("net_volume")),
+                "sentiment": str(row.get("sentiment") or ""),
+                "timestamp": str(row.get("ts_event") or ""),
+            }
+            for row in rows
+        ]
+
+    def get_flow_alerts(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        as_of: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read options flow alerts from Heber Silver."""
+        sym = str(symbol).strip().upper()
+        rows = self._read_asof_rows(
+            dataset="flow_alerts",
+            symbol=sym,
+            instrument_key=f"equity:{sym}",
+            start=start,
+            end=end,
+            as_of=as_of or end,
+        )
+        return [
+            {
+                "symbol": str(row.get("symbol") or row.get("underlying") or sym),
+                "premium": self._to_float(row.get("premium")),
+                "volume": self._to_float(row.get("volume")),
+                "put_call": str(row.get("put_call") or ""),
+                "strike": self._to_float(row.get("strike")),
+                "expiry": str(row.get("expiry") or ""),
+                "sentiment": str(row.get("sentiment") or ""),
+                "timestamp": str(row.get("ts_event") or ""),
+            }
+            for row in rows
+        ]
+
+    def get_auctions(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        as_of: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read NYSE auction data from Heber Silver."""
+        sym = str(symbol).strip().upper()
+        rows = self._read_asof_rows(
+            dataset="auctions",
+            symbol=sym,
+            instrument_key=f"equity:{sym}",
+            start=start,
+            end=end,
+            as_of=as_of or end,
+        )
+        return [
+            {
+                "symbol": str(row.get("symbol") or sym),
+                "auction_type": str(row.get("auction_type") or ""),
+                "auction_price": self._to_float(row.get("auction_price")),
+                "imbalance_size": self._to_int(row.get("imbalance_size")),
+                "imbalance_side": str(row.get("imbalance_side") or ""),
+                "paired_shares": self._to_int(row.get("paired_shares")),
+                "reference_price": self._to_float(row.get("reference_price")),
+                "timestamp": str(row.get("ts_event") or ""),
+            }
+            for row in rows
+        ]
+
     def _read_asof_rows(
         self,
         dataset: str,
@@ -165,9 +290,7 @@ class HeberReadClient:
                 rows.append(row)
 
         rows.sort(
-            key=lambda row: (
-                self._parse_ts(row.get("ts_event")) or self._parse_ts(row.get("bar_start_ts")) or start_utc
-            )
+            key=lambda row: self._parse_ts(row.get("ts_event")) or self._parse_ts(row.get("bar_start_ts")) or start_utc
         )
         return rows
 

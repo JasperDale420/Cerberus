@@ -24,3 +24,9 @@ coverage.xml
 .claude/
 .claude-flow/
 .swarm/
+.agents/
+.axon/
+.aider*
+.local_cerberus_data/
+tests/
+unusualwhales_python_client*/

@@ -305,7 +305,7 @@ class TestGEXInRegimeSnapshot:
         assert snapshot.gex_regime == "positive"
         assert snapshot.net_gex == 1_500_000.0
         assert snapshot.gamma_flip_distance == 0.02
-        assert snapshot.model_version == "2.2"
+        assert snapshot.model_version == "2.3"
 
     def test_gex_fields_default_none(self) -> None:
         from src.core.domain import (

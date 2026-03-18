@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -114,6 +114,37 @@ class HRPConfig(BaseModel):
     max_weight: float = Field(default=0.40, description="Maximum per-strategy weight")
 
 
+class MomentumCrashConfig(BaseModel):
+    """Momentum crash hedging configuration (Daniel & Moskowitz 2016)."""
+
+    enabled: bool = Field(default=False, description="Enable momentum crash exposure reduction")
+    min_exposure: float = Field(default=0.2, description="Minimum exposure floor during crash")
+    bear_threshold: float = Field(default=-0.10, description="Cumulative return threshold for bear flag")
+    spread_lookback: int = Field(default=60, description="Lookback bars for credit spread z-score")
+
+
+class IVSurfaceConfigModel(BaseModel):
+    """IV Surface Dynamics configuration (Breeden-Litzenberger 1978)."""
+
+    enabled: bool = Field(default=False, description="Enable IV surface analysis on regime snapshot")
+    skew_lookback: int = Field(default=20, description="Rolling window for skew z-score")
+    skew_sigma_threshold: float = Field(default=2.0, description="Sigma threshold for skew steepening")
+    min_strikes_for_rnd: int = Field(default=10, description="Minimum strikes for risk-neutral density")
+
+
+class ETFFlowConfigModel(BaseModel):
+    """Cross-Asset ETF Flow Propagation configuration."""
+
+    enabled: bool = Field(default=False, description="Enable ETF flow divergence on regime snapshot")
+    lookback_bars: int = Field(default=60, description="Rolling window for z-score computation")
+    min_bars: int = Field(default=20, description="Minimum observations before producing signals")
+    divergence_sigma: float = Field(default=2.0, description="Divergence significance threshold")
+    etf_symbols: List[str] = Field(
+        default_factory=lambda: ["SPY", "QQQ", "IWM"],
+        description="ETF symbols to track for flow analysis",
+    )
+
+
 class CVaRConfig(BaseModel):
     """CVaR tail-risk position sizing configuration."""
 
@@ -201,6 +232,15 @@ class RiskConfig(BaseModel):
 
     # CVaR tail risk sizing
     cvar: CVaRConfig = Field(default_factory=CVaRConfig)
+
+    # Momentum crash hedging (Daniel & Moskowitz 2016)
+    momentum_crash: MomentumCrashConfig = Field(default_factory=MomentumCrashConfig)
+
+    # IV Surface Dynamics (regime enrichment)
+    iv_surface: IVSurfaceConfigModel = Field(default_factory=IVSurfaceConfigModel)
+
+    # ETF Flow Propagation (regime enrichment)
+    etf_flow: ETFFlowConfigModel = Field(default_factory=ETFFlowConfigModel)
 
     # Antifragile per-class regime overrides
     antifragile_overrides: Dict[str, Dict[str, Dict[str, float]]] = Field(

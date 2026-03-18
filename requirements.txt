@@ -11,12 +11,12 @@ pydantic-settings>=2.0
 pyarrow==23.0.1
 pandas==3.0.0
 pandas-ta==0.4.71b0
-numpy==2.4.2
+numpy>=1.26.0,<2.3
 python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
 sqlalchemy==2.0.46
 PyYAML==6.0.3
 APScheduler==3.11.2
-httpx==0.28.1
+httpx>=0.20.0,<0.28.0
 pytz==2025.2
 statsmodels==0.14.6
 structlog>=24.1.0

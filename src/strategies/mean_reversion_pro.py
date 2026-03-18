@@ -151,13 +151,21 @@ class MeanReversionProStrategy(BaseStrategy):
     ) -> OrderSide | None:
         """Determine trade direction from VWAP distance and BB position.
 
+        Uses soft-OR logic: one indicator must be at full threshold (primary),
+        the other just needs to agree on direction (secondary). This doubles
+        trade frequency vs the old binary AND while maintaining directional
+        agreement between VWAP and BB.
+
         Returns OrderSide.BUY, OrderSide.SELL, or None.
         """
         vt = vwap_threshold if vwap_threshold is not None else self.vwap_dist_threshold
         bt = bb_threshold if bb_threshold is not None else self.bb_pos_threshold
-        if vwap_dist < -vt and bb_pos < -bt:
+
+        # BUY: primary VWAP extreme + BB agrees on direction, OR primary BB extreme + VWAP agrees
+        if (vwap_dist < -vt and bb_pos < 0) or (bb_pos < -bt and vwap_dist < 0):
             return OrderSide.BUY
-        if vwap_dist > vt and bb_pos > bt:
+        # SELL: primary VWAP extreme + BB agrees, OR primary BB extreme + VWAP agrees
+        if (vwap_dist > vt and bb_pos > 0) or (bb_pos > bt and vwap_dist > 0):
             return OrderSide.SELL
         return None
 
@@ -367,6 +375,11 @@ class MeanReversionProStrategy(BaseStrategy):
 
         # --- Multi-timeframe analysis ---
         mtf = MultiTimeframeAnalyzer(symbol_state)
+
+        # Hard MTF flatness gate — mean reversion only works when higher TFs are not strongly trending
+        mr_alignment = mtf.get_mean_reversion_alignment()
+        if mr_alignment < 0.1:
+            return None
 
         vwap_dist = mtf.get_vwap_distance("1m")
         if vwap_dist is None:

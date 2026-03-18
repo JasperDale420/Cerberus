@@ -132,8 +132,9 @@ class BaseStrategy(ABC):
         spread_pct = abs(ema_fast - ema_slow) / ema_slow
 
         if self.tf_alignment_mode == "mean_reversion":
-            # Mean reversion: only trade when higher TF is flat (EMAs converged)
-            return spread_pct < 0.0015  # 0.15% spread = choppy
+            # Mean reversion: trade when higher TF is not strongly trending
+            # 0.5% spread allows mild trends where RSI/BB mean-reversion still works
+            return spread_pct < 0.005  # 0.5% spread
 
         # Trend mode: higher TF must trend in signal direction
         if side == OrderSide.BUY:
