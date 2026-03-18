@@ -312,9 +312,9 @@ class ORBV2Strategy(BaseStrategy):
         if side is None:
             return None
 
-        # Higher-TF alignment gate — relaxed for breakouts (they create trends)
+        # Higher-TF alignment gate — breakouts need strong trend agreement
         alignment = mtf.get_trend_alignment(side)
-        if alignment < 0.3:
+        if alignment < 0.5:
             return None
         scorer = self._score_entry(side, bar, state, avg_vol, mtf)
         if not scorer.passes_threshold():
