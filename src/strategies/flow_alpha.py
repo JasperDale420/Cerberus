@@ -3,12 +3,19 @@ Order Flow Imbalance, and Fusion V1.
 
 Trades on options flow signals (Unusual Whales z-score, TFI, DOF, OFI)
 confirmed by price action and multi-timeframe alignment.  Flow leads price.
+
+Quant upgrades (v2):
+- IC-weighted signal combination (replaces static weights)
+- Granger causality validation (flow → returns)
+- VPIN toxicity gate (reject informed-flow periods)
+- GARCH-conditional z-score normalization
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from src.analysis.vpin import VPINCalculator
 from src.core import time_utils
 from src.core.domain import (
     Bar,
@@ -23,6 +30,9 @@ from src.core.domain import (
 from src.core.logger import StructuredLogger
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.data.requirements import DataRequirements
+from src.quant.statistics import GrangerCausalityTest
+from src.quant.validation import InformationCoefficientTracker
+from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import (
     ConfluenceScorer,
@@ -55,8 +65,30 @@ class FlowAlphaStrategy(BaseStrategy):
     name: str = "flow_alpha"
     data_requirements = DataRequirements(streams=["bars", "quotes"], on_scan=["flow", "gex"])
 
+    # Names of the four flow signals used for IC tracking
+    _FLOW_SIGNAL_NAMES = ("flow_zscore", "tfi", "dof_score", "ofi")
+    _STATIC_WEIGHTS = (0.35, 0.25, 0.20, 0.20)
+
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)
+
+        # Per-symbol GARCH conditional volatility forecasters
+        self._garch: dict[str, GARCHForecaster] = {}
+        # Per-symbol VPIN calculators for toxicity filtering
+        self._vpin: dict[str, VPINCalculator] = {}
+        self._vpin_threshold: float = float(config.get("vpin_threshold", 0.7))
+        # IC trackers — one per flow signal type
+        self._ic_trackers: dict[str, InformationCoefficientTracker] = {
+            name: InformationCoefficientTracker(window=50) for name in self._FLOW_SIGNAL_NAMES
+        }
+        # Granger causality state per symbol
+        self._granger_valid: dict[str, bool] = {}
+        self._granger_bar_count: dict[str, int] = {}
+        self._granger_retest_interval: int = int(config.get("granger_retest_interval", 500))
+        # History buffers for Granger testing
+        self._return_history: dict[str, list[float]] = {}
+        self._flow_history: dict[str, list[float]] = {}
+        self._granger_min_obs: int = 100
 
     # ------------------------------------------------------------------
     # Parameter setup
@@ -80,21 +112,78 @@ class FlowAlphaStrategy(BaseStrategy):
     # Flow computation
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _compute_flow_direction(symbol_state: SymbolState) -> float:
-        """Weighted composite of four flow signals, mapped to [-1, 1]."""
+    def _compute_flow_direction(
+        self,
+        symbol_state: SymbolState,
+        garch_cond_vol: float | None = None,
+    ) -> float:
+        """IC-weighted composite of four flow signals, mapped to [-1, 1].
+
+        When IC trackers have accumulated enough data, weights are proportional
+        to max(0, ic) for each signal.  Falls back to static weights otherwise.
+
+        ``garch_cond_vol`` (if available) replaces the fixed ``/3.0``
+        normalization on flow_zscore.
+        """
         flow_zscore = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
         tfi = float(symbol_state.meta.get("tfi", 0.0) or 0.0)
         dof_score = float(symbol_state.meta.get("dof_score", 0.0) or 0.0)
         ofi = float(symbol_state.meta.get("ofi", 0.0) or 0.0)
 
-        flow_direction = (
-            0.35 * max(-1.0, min(1.0, flow_zscore / 3.0))
-            + 0.25 * tfi
-            + 0.20 * (dof_score * 2.0 - 1.0)
-            + 0.20 * max(-1.0, min(1.0, ofi))
+        # GARCH-conditional normalization of flow_zscore
+        if garch_cond_vol is not None and garch_cond_vol > 0:
+            norm_flow = max(-1.0, min(1.0, flow_zscore * garch_cond_vol))
+        else:
+            norm_flow = max(-1.0, min(1.0, flow_zscore / 3.0))
+
+        signal_values = (
+            norm_flow,
+            tfi,
+            dof_score * 2.0 - 1.0,
+            max(-1.0, min(1.0, ofi)),
         )
+
+        weights = self._get_ic_weights()
+
+        flow_direction = sum(w * v for w, v in zip(weights, signal_values, strict=True))
         return flow_direction
+
+    def _get_ic_weights(self) -> tuple[float, ...]:
+        """Return IC-proportional weights or static fallback."""
+        ics = []
+        for name in self._FLOW_SIGNAL_NAMES:
+            tracker = self._ic_trackers[name]
+            ic = tracker.current_ic
+            ics.append(ic)
+
+        # Check if all IC trackers have data
+        if any(ic is None for ic in ics):
+            return self._STATIC_WEIGHTS
+
+        positive_ics = [max(0.0, ic) for ic in ics]  # type: ignore[arg-type]
+        total = sum(positive_ics)
+
+        if total < 1e-9:
+            return self._STATIC_WEIGHTS
+
+        return tuple(ic / total for ic in positive_ics)
+
+    def _update_ic_trackers(self, symbol_state: SymbolState, forward_return: float) -> None:
+        """Update IC trackers with current signal values and realized return."""
+        flow_zscore = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
+        tfi = float(symbol_state.meta.get("tfi", 0.0) or 0.0)
+        dof_score = float(symbol_state.meta.get("dof_score", 0.0) or 0.0)
+        ofi = float(symbol_state.meta.get("ofi", 0.0) or 0.0)
+
+        predictions = {
+            "flow_zscore": flow_zscore,
+            "tfi": tfi,
+            "dof_score": dof_score,
+            "ofi": ofi,
+        }
+
+        for name, pred in predictions.items():
+            self._ic_trackers[name].update(pred, forward_return)
 
     # ------------------------------------------------------------------
     # Average volume helper
@@ -141,6 +230,45 @@ class FlowAlphaStrategy(BaseStrategy):
     # Core bar handler
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Granger causality (periodic)
+    # ------------------------------------------------------------------
+
+    def _maybe_run_granger(self, symbol: str) -> None:
+        """Run Granger causality test every ``_granger_retest_interval`` bars."""
+        count = self._granger_bar_count.get(symbol, 0)
+        count += 1
+        self._granger_bar_count[symbol] = count
+
+        if count < self._granger_retest_interval:
+            return
+
+        returns = self._return_history.get(symbol, [])
+        flows = self._flow_history.get(symbol, [])
+        if len(returns) < self._granger_min_obs or len(flows) < self._granger_min_obs:
+            return
+
+        # Use last granger_min_obs observations
+        n = self._granger_min_obs
+        try:
+            result = GrangerCausalityTest.test(flows[-n:], returns[-n:], max_lag=5)
+            self._granger_valid[symbol] = result.is_causal
+            self._granger_bar_count[symbol] = 0
+            self.logger.info(
+                "granger_test_result",
+                symbol=symbol,
+                is_causal=result.is_causal,
+                p_value=round(result.p_value, 4),
+                best_lag=result.best_lag,
+            )
+        except Exception:
+            # Granger may fail on degenerate data; keep previous result
+            pass
+
+    # ------------------------------------------------------------------
+    # Core bar handler
+    # ------------------------------------------------------------------
+
     def on_bar(
         self,
         symbol: str,
@@ -168,8 +296,54 @@ class FlowAlphaStrategy(BaseStrategy):
         if not self._passes_regime_gate(market_state):
             return None
 
-        # --- Flow direction ---
-        flow_direction = self._compute_flow_direction(symbol_state)
+        # --- VPIN toxicity gate ---
+        if symbol not in self._vpin:
+            self._vpin[symbol] = VPINCalculator(logger=self.logger)
+        vpin_result = self._vpin[symbol].update(bar)
+        if vpin_result is not None and vpin_result.is_toxic:
+            self.logger.debug(
+                "flow_alpha: vpin_toxic_rejected",
+                symbol=symbol,
+                vpin=round(vpin_result.vpin, 4),
+            )
+            return None
+
+        # --- Feed GARCH (lazy init per symbol) ---
+        if symbol not in self._garch:
+            self._garch[symbol] = GARCHForecaster()
+        garch_result = self._garch[symbol].update(bar.close)
+        garch_cond_vol = garch_result.conditional_vol if garch_result is not None else None
+
+        # --- IC tracker update: use 1-bar forward return proxy ---
+        bars_list = list(symbol_state.bars)
+        if len(bars_list) >= 2:
+            prev_close = bars_list[-2].close
+            if prev_close > 0:
+                fwd_return = (bar.close - prev_close) / prev_close
+                self._update_ic_trackers(symbol_state, fwd_return)
+
+        # --- Accumulate history for Granger testing ---
+        flow_zscore_raw = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
+        if symbol not in self._return_history:
+            self._return_history[symbol] = []
+            self._flow_history[symbol] = []
+
+        if len(bars_list) >= 2:
+            prev_close = bars_list[-2].close
+            if prev_close > 0:
+                ret = (bar.close - prev_close) / prev_close
+                self._return_history[symbol].append(ret)
+                self._flow_history[symbol].append(flow_zscore_raw)
+                # Keep bounded
+                if len(self._return_history[symbol]) > 600:
+                    self._return_history[symbol] = self._return_history[symbol][-500:]
+                    self._flow_history[symbol] = self._flow_history[symbol][-500:]
+
+        # --- Periodic Granger test ---
+        self._maybe_run_granger(symbol)
+
+        # --- Flow direction (IC-weighted + GARCH-conditional) ---
+        flow_direction = self._compute_flow_direction(symbol_state, garch_cond_vol)
 
         if abs(flow_direction) <= self.min_flow_direction:
             return None  # flow too weak
@@ -276,6 +450,9 @@ class FlowAlphaStrategy(BaseStrategy):
             )
             return None
 
+        # --- Granger causality confidence adjustment ---
+        granger_causal = self._granger_valid.get(symbol)  # None = not tested yet
+
         # --- Stop / Target ---
         raw_risk = self.stop_atr_mult * atr_5m
         stop_distance = self._apply_regime_volatility_multiplier(
@@ -291,6 +468,16 @@ class FlowAlphaStrategy(BaseStrategy):
             stop_price = bar.close + stop_distance
             target_price = bar.close - target_distance
 
+        # --- Conviction: reduce if Granger says not causal ---
+        conviction = scorer.conviction_multiplier()
+        if granger_causal is False:
+            conviction *= 0.7
+            self.logger.debug(
+                "flow_alpha: granger_not_causal_penalty",
+                symbol=symbol,
+                reduced_conviction=round(conviction, 4),
+            )
+
         # --- Build meta ---
         meta = scorer.to_meta()
         meta.update(
@@ -303,6 +490,10 @@ class FlowAlphaStrategy(BaseStrategy):
                 "atr_5m": round(atr_5m, 4),
                 "stop_distance": round(stop_distance, 4),
                 "session": session_value,
+                "granger_causal": granger_causal,
+                "garch_cond_vol": round(garch_cond_vol, 6) if garch_cond_vol is not None else None,
+                "vpin": round(vpin_result.vpin, 4) if vpin_result is not None else None,
+                "ic_weights": [round(w, 4) for w in self._get_ic_weights()],
                 "exit_config": {
                     "trailing_enabled": True,
                     "trail_timeframe": "5m",
@@ -321,7 +512,7 @@ class FlowAlphaStrategy(BaseStrategy):
             side=side_str,
             flow_dir=round(flow_direction, 4),
             confluence=round(scorer.score(), 2),
-            conviction=round(scorer.conviction_multiplier(), 4),
+            conviction=round(conviction, 4),
         )
 
         self.last_signal_time[symbol] = bar.time
@@ -333,6 +524,6 @@ class FlowAlphaStrategy(BaseStrategy):
             market_state=market_state,
             stop_price=stop_price,
             target_price=target_price,
-            size_hint=scorer.conviction_multiplier(),
+            size_hint=conviction,
             meta=meta,
         )
