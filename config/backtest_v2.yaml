@@ -28,14 +28,14 @@ strategies:
   mean_reversion_pro:
     enabled: true        # autoresearch mrp: isolating for optimization
     signal_timeframe: 5               # evaluate on 5m closes only
-    confluence_threshold: 45.0        # autoresearch mrp iter1: lower bar (was 55)
-    cooldown_bars: 4                  # autoresearch mrp iter1: 4 * 5m = 20 min
-    max_hold_minutes: 60              # autoresearch mrp iter1: longer hold for bigger moves
+    confluence_threshold: 55.0        # autoresearch mrp iter2: back to moderate
+    cooldown_bars: 6                  # 30 min at 5m
+    max_hold_minutes: 45              # moderate hold
     higher_tf_alignment: false
-    vwap_dist_threshold: 0.002        # autoresearch mrp iter1: easier trigger (was 0.003)
-    bb_pos_threshold: 0.2             # autoresearch mrp iter1: easier trigger (was 0.3)
-    stop_atr_mult: 1.25              # autoresearch mrp iter1: tight stops
-    min_bars: 15                      # autoresearch mrp iter1: less warmup needed (was 30)
+    vwap_dist_threshold: 0.004        # autoresearch mrp iter2: need real deviation (tighter than default)
+    bb_pos_threshold: 0.4             # autoresearch mrp iter2: need real BB extension
+    stop_atr_mult: 1.25              # tight stops for mean reversion
+    min_bars: 20                      # moderate warmup
     activation:
       session: [opening, midday, power_hour]
       trend: [flat, up, down]
