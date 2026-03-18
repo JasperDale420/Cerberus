@@ -253,11 +253,13 @@ class TrendRiderProStrategy(BaseStrategy):
 
         trend = getattr(snapshot, "trend", None)
 
+        # Allow FLAT regime — the 15m hard gate independently confirms
+        # micro-trend direction. Only reject opposite macro trend.
         if side == OrderSide.BUY:
-            return trend == TrendRegime.UP
+            return trend in (TrendRegime.UP, TrendRegime.FLAT)
 
         # SELL
-        return trend == TrendRegime.DOWN
+        return trend in (TrendRegime.DOWN, TrendRegime.FLAT)
 
     # ------------------------------------------------------------------
     # Confluence scoring
