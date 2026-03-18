@@ -28,7 +28,7 @@ strategies:
   mean_reversion_pro:
     enabled: true        # autoresearch mrp: isolating for optimization
     signal_timeframe: 5               # evaluate on 5m closes only
-    confluence_threshold: 55.0        # autoresearch mrp iter2: back to moderate
+    confluence_threshold: 50.0        # autoresearch mrp iter10: find the sweet spot
     cooldown_bars: 6                  # 30 min at 5m
     max_hold_minutes: 45              # moderate hold
     higher_tf_alignment: false
