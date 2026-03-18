@@ -247,7 +247,7 @@ class ORBV2Strategy(BaseStrategy):
             "trail_timeframe": "5m",
             "trail_lookback": 3,
             "trail_min_profit_r": self.trail_min_profit_r,
-            "partial_exits": [(1.0, 0.33), (2.0, 0.33)],
+            "partial_exits": [(2.0, 0.5)],
             "max_hold_minutes": self.max_hold_minutes,
             "vol_adaptive": True,
         }
