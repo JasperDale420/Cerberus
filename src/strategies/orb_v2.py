@@ -290,19 +290,25 @@ class ORBV2Strategy(BaseStrategy):
         if symbol_state.position and symbol_state.position.strategy == self.name:
             return None
 
-        # Breakout detection with volume gate
+        # Breakout detection with volume gate + VWAP alignment
         avg_vol = self._avg_volume(symbol_state)
         vol_ok = avg_vol > 0 and bar.volume > avg_vol * self.vol_gate_mult
+        mtf = MultiTimeframeAnalyzer(symbol_state)
+        vwap_dist = mtf.get_vwap_distance("1m")
+
         side: OrderSide | None = None
         if bar.close > state["range_high"] and vol_ok:
-            side = OrderSide.BUY
+            # BUY breakout must be above VWAP
+            if vwap_dist is not None and vwap_dist >= 0.0:
+                side = OrderSide.BUY
         elif bar.close < state["range_low"] and vol_ok:
-            side = OrderSide.SELL
+            # SELL breakout must be below VWAP
+            if vwap_dist is not None and vwap_dist <= 0.0:
+                side = OrderSide.SELL
         if side is None:
             return None
 
         # Higher-TF alignment gate — breakouts need strong trend agreement
-        mtf = MultiTimeframeAnalyzer(symbol_state)
         alignment = mtf.get_trend_alignment(side)
         if alignment < 0.5:
             return None
