@@ -168,36 +168,36 @@ class ORBV2Strategy(BaseStrategy):
         rw = rh - rl
         gap_pct: float = state["gap_pct"]
 
-        # 1. Breakout strength (0.25)
+        # 1. Breakout strength (0.30) — strongest predictor
         if rw > 0:
             dev = ((bar.close - rh) if side == OrderSide.BUY else (rl - bar.close)) / rw
             s1 = score_deviation(dev, 0.0, 0.5)
         else:
             dev, s1 = 0.0, 0.0
-        scorer.add_factor("breakout_strength", dev, s1, 0.25, passed=s1 > 0)
+        scorer.add_factor("breakout_strength", dev, s1, 0.30, passed=s1 > 0)
 
-        # 2. Volume (0.25)
+        # 2. Volume (0.30) — second strongest predictor
         s2 = score_volume(bar.volume, avg_vol, 1.2, 3.0) if avg_vol > 0 else 0.0
-        scorer.add_factor("volume", bar.volume, s2, 0.25, passed=s2 > 0)
+        scorer.add_factor("volume", bar.volume, s2, 0.30, passed=s2 > 0)
 
-        # 3. Gap alignment (0.20)
+        # 3. Gap alignment (0.15)
         if side == OrderSide.BUY:
             s3 = 80.0 if gap_pct > 0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
         else:
             s3 = 80.0 if gap_pct < -0.002 else (40.0 if abs(gap_pct) <= 0.002 else 20.0)
-        scorer.add_factor("gap_alignment", gap_pct, s3, 0.20, passed=s3 >= 60)
+        scorer.add_factor("gap_alignment", gap_pct, s3, 0.15, passed=s3 >= 60)
 
         # 4. MTF trend alignment (0.15)
         mtf_raw = mtf.get_trend_alignment(side)
         scorer.add_factor("mtf_alignment", mtf_raw, mtf_raw * 100, 0.15, passed=mtf_raw > 0.3)
 
-        # 5. Range quality -- tighter = better (0.15)
+        # 5. Range quality -- tighter = better (0.10)
         if bar.close > 0 and rw > 0:
             rwp = rw / bar.close
             s5 = score_threshold(rwp, 0.003, 0.001, invert=True)
         else:
             rwp, s5 = 0.0, 0.0
-        scorer.add_factor("range_quality", rwp, s5, 0.15, passed=s5 > 30)
+        scorer.add_factor("range_quality", rwp, s5, 0.10, passed=s5 > 30)
         return scorer
 
     # -- stop / target -----------------------------------------------------
