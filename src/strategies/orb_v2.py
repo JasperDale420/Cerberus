@@ -208,7 +208,7 @@ class ORBV2Strategy(BaseStrategy):
         state: dict[str, Any],
         ms: MarketState,
     ) -> float:
-        base = state["range_high"] - state["range_low"]
+        base = (state["range_high"] - state["range_low"]) * 0.6
         adj = self._apply_regime_volatility_multiplier(base, ms)
         if side == OrderSide.BUY:
             return state["range_high"] - adj
