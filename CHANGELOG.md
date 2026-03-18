@@ -71,6 +71,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Execution hot-path indicator updates now use pre-sorted cached period tuples instead of sorting/filtering period sets on every bar (2026-03-18).
+  - Expected impact: lower per-bar CPU overhead in `ExecutionEngine._update_indicator_cache` (micro-benchmark: 6.13µs -> 4.83µs per call, ~21% faster over 20,000 iterations).
+  - Added regression coverage: `tests/unit/test_execution_engine_misc_unit.py::test_indicator_periods_are_pre_sorted_for_hot_path_updates`.
+
 - Scanner watchlist assembly now uses set-based strategy accumulation to avoid repeated linear membership checks and remove duplicate routed strategies before output sorting (2026-03-04).
   - Expected impact: ~1.5x faster strategy merge path in scan loops with large candidate sets (micro-benchmark: 0.276s -> 0.184s over 400 runs of 4,000 candidates).
   - Added regression coverage: `tests/unit/test_scanner_watchlist_unit.py`.

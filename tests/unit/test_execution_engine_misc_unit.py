@@ -462,3 +462,35 @@ def test_indicator_period_cache_invalidates_when_allowed_strategies_change() -> 
     engine._update_indicator_cache(state, bar)
 
     assert calls == 2
+
+
+@pytest.mark.unit
+def test_indicator_periods_are_pre_sorted_for_hot_path_updates() -> None:
+    engine = ExecutionEngine(
+        config={
+            "strategies": {
+                "trend_pullback": {"ema_fast": 21, "ema_slow": 8, "rsi_len": 2},
+                "index_mean_reversion": {"bb_len": 20},
+            }
+        },
+        logger=_logger("test_exec_indicator_periods_pre_sorted"),
+        alpaca_client=None,
+        db=None,
+    )
+    state = SymbolState(
+        symbol="AAPL",
+        bars=deque(maxlen=100),
+        indicators={},
+        position=None,
+        open_orders={},
+        allowed_strategies=["trend_pullback", "index_mean_reversion"],
+        meta={},
+    )
+
+    periods = engine._get_cached_indicator_periods(state)
+
+    # Hot-path update helpers can iterate directly without sorting/filtering each bar.
+    assert periods["ema"] == (8, 21)
+    assert periods["rsi"] == (2,)
+    assert periods["bb"] == (20,)
+    assert periods["vol_sma"] == ()

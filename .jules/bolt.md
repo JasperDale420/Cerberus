@@ -9,3 +9,7 @@
 ## 2026-02-27 - Backtest Volume Lookup Hot Path
 **Learning:** `BacktestFeaturePipeline._avg_daily_volume` was re-sorting historical day keys for every symbol scan, creating repeated O(d log d) overhead in intraday loops.
 **Action:** Keep per-symbol date indexes precomputed during `_build_index` and use binary search for lookups in repeated scan-time helpers.
+
+## 2026-03-18 - Indicator Period Sorting In Bar Loop
+**Learning:** `ExecutionEngine` was sorting/filtering indicator period sets inside every bar update (`_update_*_indicators`), even when allowed strategies were unchanged and periods were already cacheable.
+**Action:** Precompute sorted positive period tuples once in `_collect_indicator_periods` and iterate directly in the per-bar indicator update helpers.
