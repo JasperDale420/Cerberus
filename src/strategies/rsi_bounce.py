@@ -348,6 +348,11 @@ class RsiBounceStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
+        # --- HMM regime gate ---
+        if not self._check_hmm_gate(market_state):
+            return None
+
+        if snapshot is not None:
             # --- BOCPD structural break gate ---
             if snapshot.changepoint_probability > self.bocpd_reject_threshold:
                 self.logger.debug(

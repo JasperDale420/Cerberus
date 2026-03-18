@@ -27,6 +27,8 @@ class BaseStrategy(ABC):
         self.tf_alignment_mode = str(config.get("tf_alignment_mode", "trend"))  # "trend" or "mean_reversion"
         # Signal timeframe gate: only evaluate on N-minute candle closes (1=every bar, 5=5m, 15=15m)
         self.signal_timeframe = int(config.get("signal_timeframe", 1))
+        # HMM regime gate
+        self._hmm_gate_enabled = config.get("hmm_gate", {}).get("enabled", False)
 
     def update_params(self, config: Dict[str, Any]) -> None:
         """
@@ -206,6 +208,38 @@ class BaseStrategy(ABC):
         adx = mtf.get_adx("15m")
         if adx is not None and adx >= 35.0:
             return False  # only reject very strong trend
+
+        return True
+
+    def _check_hmm_gate(self, market_state: "MarketState") -> bool:
+        """Check HMM regime gate. Returns True if trade is allowed, False to reject.
+
+        Reads HMM predictions from market_state.meta["hmm_regime"] and compares
+        against strategy-specific rejection rules in config.hmm_gate.
+        """
+        gate_cfg = self.config.get("hmm_gate", {})
+        if not gate_cfg.get("enabled", False):
+            return True  # HMM gate not configured for this strategy
+
+        hmm = market_state.meta.get("hmm_regime", {})
+        if not hmm:
+            return True  # No HMM prediction available yet (warmup period)
+
+        confidence = hmm.get("confidence", 0.0)
+        min_conf = gate_cfg.get("min_confidence", 0.5)
+        if confidence < min_conf:
+            return True  # HMM not confident enough — don't gate on uncertain predictions
+
+        label = hmm.get("label", "")
+        reject_regimes = gate_cfg.get("reject_regimes", [])
+        if label in reject_regimes:
+            self.logger.debug(
+                "hmm_gate_rejected",
+                hmm_label=label,
+                hmm_confidence=confidence,
+                strategy=self.name,
+            )
+            return False
 
         return True
 

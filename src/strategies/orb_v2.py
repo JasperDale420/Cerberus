@@ -330,6 +330,9 @@ class ORBV2Strategy(BaseStrategy):
             return None
         if not self._regime_ok(market_state):
             return None
+        # --- HMM regime gate ---
+        if not self._check_hmm_gate(market_state):
+            return None
         if symbol_state.position and symbol_state.position.strategy == self.name:
             return None
 

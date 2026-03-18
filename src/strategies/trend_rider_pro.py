@@ -176,6 +176,10 @@ class TrendRiderProStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
+        # --- HMM regime gate ---
+        if not self._check_hmm_gate(market_state):
+            return None
+
         # --- Hurst trending gate ---
         hurst_result = self._hurst[symbol].update(bar.close)
         if hurst_result is not None and hurst_result.H <= 0.55:

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **HMM regime gate**: Added `_check_hmm_gate()` to BaseStrategy that reads HMM predictions from `market_state.meta["hmm_regime"]` and rejects trades when the predicted regime matches strategy-specific rejection rules. Wired into all 5 active strategies (mean_reversion_pro, trend_rider_pro, orb_v2, rsi_bounce, momentum_fade) with per-strategy reject lists and confidence thresholds configured in `backtest_v2.yaml`.
+
 ### Fixed
 
 - **Test suite preflight**: `uv sync --all-extras` is now required to install dev dependencies (pytest, ruff, etc.) into the venv; previously `uv sync` alone left pytest missing, causing 4 collection errors via the system pytest missing `filterpy` in its environment.

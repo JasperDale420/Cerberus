@@ -380,6 +380,10 @@ class MeanReversionProStrategy(BaseStrategy):
         if not self._daily_throttle_ok(bar):
             return None
 
+        # --- HMM regime gate ---
+        if not self._check_hmm_gate(market_state):
+            return None
+
         # --- VPIN toxicity gate ---
         if symbol not in self._vpin:
             self._vpin[symbol] = VPINCalculator(logger=self.logger)

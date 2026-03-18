@@ -276,6 +276,10 @@ class MomentumFadeStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
+        # --- HMM regime gate ---
+        if not self._check_hmm_gate(market_state):
+            return None
+
         # --- entropy filter ---
         if snapshot is not None and snapshot.entropy_score > self.entropy_threshold:
             self.logger.info(
