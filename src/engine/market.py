@@ -1,5 +1,9 @@
+from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+
+import pandas as pd
 
 from src.analysis.db import DatabaseDatabase
 from src.analysis.regime import MarketContextService, Regime
@@ -7,10 +11,18 @@ from src.analysis.schema import RegimeHistory
 from src.core.domain import MarketState, RiskMode
 from src.core.logger import StructuredLogger
 
+# HMM minimum bars required before prediction (rolling windows need warmup)
+_HMM_MIN_BARS = 25
+# Maximum bars to keep in the rolling buffer (memory-bounded)
+_HMM_MAX_BARS = 200
+
 
 class MarketStateManager:
     """
     Manages the global market state and regime detection.
+
+    Optionally runs a trained HMM regime model in shadow mode alongside the
+    rule-based detector and logs both predictions for comparison.
     """
 
     def __init__(
@@ -47,6 +59,101 @@ class MarketStateManager:
             vol_symbol=vol_sym,
         )
 
+        # HMM shadow mode: load trained model if enabled
+        self._hmm_service: Any = None
+        self._hmm_bar_buffer: deque[dict[str, Any]] = deque(maxlen=_HMM_MAX_BARS)
+        self._init_hmm(config)
+
+    def _init_hmm(self, config: Dict[str, Any]) -> None:
+        """Load the trained HMM model if enabled in config."""
+        hmm_cfg_raw = config.get("hmm_regime", {})
+        if not isinstance(hmm_cfg_raw, dict):
+            return
+
+        enabled = hmm_cfg_raw.get("enabled", False)
+        runtime_cfg = hmm_cfg_raw.get("runtime", {})
+        runtime_enabled = runtime_cfg.get("enabled", False) if isinstance(runtime_cfg, dict) else False
+
+        if not (enabled and runtime_enabled):
+            return
+
+        try:
+            from src.regime_models.hmm.config import HmmConfig
+            from src.regime_models.hmm.service import HmmRegimeService
+
+            hmm_config = HmmConfig.model_validate(hmm_cfg_raw)
+            artifact_path = Path(hmm_config.artifact_dir)
+            if not artifact_path.exists():
+                self.logger.warning(
+                    "hmm_artifacts_not_found",
+                    artifact_dir=str(artifact_path),
+                    msg="HMM enabled but no trained artifacts found. Run train_hmm_from_heber.py first.",
+                )
+                return
+
+            self._hmm_service = HmmRegimeService.load(
+                path=artifact_path,
+                config=hmm_config,
+                logger=self.logger,
+            )
+            self.logger.info(
+                "hmm_shadow_loaded",
+                artifact_dir=str(artifact_path),
+                mode=hmm_config.runtime.mode,
+                n_states=hmm_config.training.n_states,
+            )
+        except Exception:
+            self.logger.warning("hmm_init_failed", exc_info=True)
+
+    def _hmm_shadow_update(self, bar: Any) -> None:
+        """Run HMM prediction on accumulated bar history and store in meta."""
+        if self._hmm_service is None:
+            return
+
+        # Accumulate bar data for the rolling window
+        self._hmm_bar_buffer.append(
+            {
+                "time": getattr(bar, "time", getattr(bar, "timestamp", None)) or self.clock(),
+                "open": float(getattr(bar, "open", 0.0) or 0.0),
+                "high": float(getattr(bar, "high", 0.0) or 0.0),
+                "low": float(getattr(bar, "low", 0.0) or 0.0),
+                "close": float(getattr(bar, "close", 0.0) or 0.0),
+                "volume": float(getattr(bar, "volume", 0.0) or 0.0),
+            }
+        )
+
+        if len(self._hmm_bar_buffer) < _HMM_MIN_BARS:
+            return
+
+        try:
+            frame = pd.DataFrame(list(self._hmm_bar_buffer))
+            predictions = self._hmm_service.predict_ohlcv(frame)
+
+            # Take the most recent prediction
+            latest = predictions.iloc[-1]
+            hmm_result = {
+                "state": int(latest["hidden_state"]),
+                "label": str(latest["hidden_state_name"]),
+                "confidence": float(latest["hidden_state_confidence"]),
+            }
+
+            # Store in market state meta for observability
+            meta = self.state.meta if isinstance(self.state.meta, dict) else {}
+            meta = dict(meta)
+            meta["hmm_regime"] = hmm_result
+            self.state.meta = meta
+
+            # Log comparison with rule-based regime
+            self.logger.info(
+                "hmm_shadow_prediction",
+                hmm_label=hmm_result["label"],
+                hmm_confidence=round(hmm_result["confidence"], 3),
+                rule_based_regime=getattr(self.state.regime, "value", str(self.state.regime)),
+                bar_count=len(self._hmm_bar_buffer),
+            )
+        except Exception:
+            self.logger.warning("hmm_predict_failed", exc_info=True)
+
     def update(self, bar: Any, index_symbol: Optional[str] = None) -> None:
         """
         Updates the market state based on the provided bar.
@@ -76,6 +183,9 @@ class MarketStateManager:
             self.state.meta = meta
         except Exception:
             pass
+
+        # HMM shadow mode: predict alongside rule-based regime
+        self._hmm_shadow_update(bar)
 
         # Persist regime updates (skip in backtest mode)
         if self.db and self.persist_to_db:

@@ -7,12 +7,12 @@ index_symbol: "SPY"
 regime:
   vol_symbol: "VXX"
 hmm_regime:
-  enabled: false
+  enabled: true
   mode: "shadow"                  # shadow|primary
   compare_to_rule_based: true
   artifact_dir: "artifacts/regime_models/hmm/latest"
   runtime:
-    enabled: false
+    enabled: true
     mode: "shadow"
     compare_to_rule_based: true
     min_confidence: 0.5
