@@ -23,6 +23,7 @@ dependencies = [
     "pytz>=2025.2",
     "statsmodels>=0.14",
     "structlog>=24.1.0",
+    "filterpy>=1.4.5",
 ]
 
 [project.optional-dependencies]
