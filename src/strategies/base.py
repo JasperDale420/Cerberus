@@ -200,12 +200,12 @@ class BaseStrategy(ABC):
             return True
 
         spread_pct = abs(ema20 - ema50) / abs(ema50)
-        if spread_pct >= 0.003:  # 0.3% — EMAs diverged, trending
+        if spread_pct >= 0.008:  # 0.8% — only reject very strong trends
             return False
 
         adx = mtf.get_adx("15m")
-        if adx is not None and adx >= 25.0:
-            return False  # strong trend even if EMAs close
+        if adx is not None and adx >= 35.0:
+            return False  # only reject very strong trend
 
         return True
 
