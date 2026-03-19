@@ -11,6 +11,18 @@ from empire_core.ledger import LedgerWriter
 _logger = structlog.get_logger(__name__)
 
 
+def _to_python_datetime(val: Any) -> datetime | None:
+    """Convert pandas Timestamp or other datetime-like to Python datetime for SQLite."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    # pandas Timestamp has .to_pydatetime()
+    if hasattr(val, "to_pydatetime"):
+        return val.to_pydatetime()
+    return val
+
+
 class CerberusLedgerAdapter:
     """Wraps LedgerWriter to record Cerberus trades in the unified ledger.
 
@@ -119,7 +131,7 @@ class CerberusLedgerAdapter:
                     side=closed.side,
                     qty=closed.qty,
                     entry_price=closed.entry_price,
-                    entry_time=closed.entry_time,
+                    entry_time=_to_python_datetime(closed.entry_time),
                     strategy=closed.strategy,
                     initial_risk=closed.initial_risk,
                     regime_entry=regime_entry,
@@ -135,7 +147,7 @@ class CerberusLedgerAdapter:
             self._ledger.close_trade(
                 trade_id=trade_id,
                 exit_price=closed.exit_price,
-                exit_time=closed.exit_time,
+                exit_time=_to_python_datetime(closed.exit_time),
                 pnl_gross=closed.pnl_gross,
                 pnl_net=closed.pnl_net,
                 commission_total=closed.commission,
