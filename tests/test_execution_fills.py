@@ -8,9 +8,9 @@ from src.engine.execution import ExecutionEngine
 
 
 @pytest.mark.unit
-def test_on_fill_persistence():
-    # Setup
-    config: dict = {}
+def test_on_fill_persistence(tmp_path):
+    # Setup — use tmp_path for ledger to avoid polluting production ledger.db
+    config: dict = {"ledger_db_path": str(tmp_path / "test_ledger.db")}
     logger = MagicMock()
     db = MagicMock()
     mock_session = MagicMock()
