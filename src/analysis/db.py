@@ -144,6 +144,7 @@ class DatabaseDatabase:
                     buffer_len=len(self._write_buffer),
                     buffer_max=self.db_write_buffer_max,
                     error=str(e),
+                    exc_info=True,
                 )
                 return False
 
@@ -154,6 +155,7 @@ class DatabaseDatabase:
                 kind=kind,
                 buffer_len=len(self._write_buffer),
                 error=str(e),
+                exc_info=True,
             )
             return False
 
@@ -178,6 +180,7 @@ class DatabaseDatabase:
                     kind=kind,
                     buffer_len=len(self._write_buffer),
                     error=str(e),
+                    exc_info=True,
                 )
                 break
 
