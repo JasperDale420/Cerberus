@@ -1,4 +1,5 @@
 import os
+import traceback
 from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
@@ -144,6 +145,7 @@ class DatabaseDatabase:
                     buffer_len=len(self._write_buffer),
                     buffer_max=self.db_write_buffer_max,
                     error=str(e),
+                    error_type=type(e).__name__,
                 )
                 return False
 
@@ -154,6 +156,7 @@ class DatabaseDatabase:
                 kind=kind,
                 buffer_len=len(self._write_buffer),
                 error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
@@ -178,6 +181,8 @@ class DatabaseDatabase:
                     kind=kind,
                     buffer_len=len(self._write_buffer),
                     error=str(e),
+                    error_type=type(e).__name__,
+                    stack_trace=traceback.format_exc(),
                 )
                 break
 
