@@ -1,4 +1,5 @@
 import os
+import traceback
 from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
@@ -99,9 +100,13 @@ class DatabaseDatabase:
                     )
 
     @contextmanager
-    def get_session(self) -> Generator[Session, None, None]:
+    def get_session(self, operation: Optional[str] = None) -> Generator[Session, None, None]:
         """
         Context manager for database sessions.
+
+        Args:
+            operation: Optional description of the operation being performed,
+                       included in error logs for debugging.
         """
         session = self.SessionLocal()
         try:
@@ -109,7 +114,13 @@ class DatabaseDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            self.logger.error("Database session rollback", error=str(e))
+            self.logger.error(
+                "Database session rollback",
+                error=str(e),
+                error_type=type(e).__name__,
+                operation=operation,
+                traceback=traceback.format_exc(),
+            )
             raise
         finally:
             session.close()
@@ -122,7 +133,7 @@ class DatabaseDatabase:
         - On failure: buffers the write closure (bounded) unless db_fail_mode == 'raise'.
         """
         try:
-            with self.get_session() as session:
+            with self.get_session(operation=f"write:{kind}") as session:
                 fn(session)
 
             # Opportunistically flush any buffered writes after a successful write.
@@ -167,7 +178,7 @@ class DatabaseDatabase:
         for _ in range(to_flush):
             kind, fn = self._write_buffer[0]
             try:
-                with self.get_session() as session:
+                with self.get_session(operation=f"flush:{kind}") as session:
                     fn(session)
                 self._write_buffer.popleft()
                 flushed += 1
