@@ -64,14 +64,17 @@ class CerberusScheduler:
             cmd.extend(["--config", self.config["config_path"]])
 
         try:
-            # Run completely isolated subprocess
-            # capturing output is optional, but we probably want it streamed to stdout
-            result = subprocess.run(cmd, capture_output=False, check=False)
+            # Run completely isolated subprocess, capturing output for error diagnosis
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
             if result.returncode == 0:
                 logger.info("Daily session completed successfully.")
             else:
-                logger.error(f"Daily session failed with exit code {result.returncode}.")
+                logger.error(
+                    f"Daily session failed with exit code {result.returncode}.",
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
         except Exception as e:
             logger.error(f"Failed to launch subprocess: {e}")
 
@@ -88,12 +91,16 @@ class CerberusScheduler:
             cmd.extend(["--config", self.config["config_path"]])
 
         try:
-            result = subprocess.run(cmd, capture_output=False, check=False)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
             if result.returncode == 0:
                 logger.info("Weekly analysis completed successfully.")
             else:
-                logger.error(f"Weekly analysis failed with exit code {result.returncode}.")
+                logger.error(
+                    f"Weekly analysis failed with exit code {result.returncode}.",
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
         except Exception as e:
             logger.error(f"Failed to launch weekly analysis subprocess: {e}")
 

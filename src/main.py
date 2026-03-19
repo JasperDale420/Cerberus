@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import sys
 from collections.abc import Callable
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
@@ -192,6 +193,7 @@ async def async_main():
 
     Environment Variables:
         - CERBERUS_STAGE3_APPROVED: Required for Stage 3 agent proposals
+        - CERBERUS_DATA_BACKEND: Required for gateway order executor
         - Log levels and other config can be set via env vars
 
     Note:
@@ -287,8 +289,21 @@ async def async_main():
             data_backend=runtime_settings.cerberus_data_backend,
         )
     except ValueError as e:
-        bootstrap_logger.error("Startup settings validation failed", error=str(e))
-        raise
+        bootstrap_logger.error(
+            "Startup settings validation failed",
+            error=str(e),
+            order_executor=args.order_executor,
+            mode=args.mode,
+            hint="If using gateway order executor, ensure CERBERUS_DATA_BACKEND=gateway or CERBERUS_DATA_BACKEND=dual is set",
+        )
+        sys.exit(1)
+    except Exception as e:
+        bootstrap_logger.error(
+            "Unexpected error during startup validation",
+            error=str(e),
+            exc_info=True,
+        )
+        sys.exit(1)
 
     config_loader = ConfigLoader(logger=bootstrap_logger)
     config = config_loader.load_config(args.config)
