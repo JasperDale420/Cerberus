@@ -46,7 +46,8 @@ class DatabaseDatabase:
         self.db_write_buffer_max: int = int(self.config.get("db_write_buffer_max", 200))
         self.db_write_flush_max: int = int(self.config.get("db_write_flush_max", 50))
         self.db_fail_mode: str = str(self.config.get("db_fail_mode", "warn")).lower()
-        self._write_buffer: Deque[Tuple[str, Callable[[Session], None]]] = deque()
+        # Buffer stores tuples of (kind, fn, retry_count)
+        self._write_buffer: Deque[Tuple[str, Callable[[Session], None], int]] = deque()
         self.last_db_write_error: Optional[str] = None
 
         # Default to local SQLite if not configured
@@ -147,7 +148,8 @@ class DatabaseDatabase:
                 )
                 return False
 
-            self._write_buffer.append((kind, fn))
+            # Append with initial retry count 0
+            self._write_buffer.append((kind, fn, 0))
             log_fn = self.logger.warning if self.db_fail_mode == "warn" else self.logger.error
             log_fn(
                 "DB write failed; buffered for retry",
@@ -161,11 +163,18 @@ class DatabaseDatabase:
         """
         Attempts to flush buffered writes in FIFO order.
         Stops early on first failure to avoid busy-looping on persistent outages.
+        Drops items after 3 failed attempts to prevent blocking the queue indefinitely.
         """
         flushed = 0
         to_flush = min(len(self._write_buffer), self.db_write_flush_max)
+        max_retries = 3
+
         for _ in range(to_flush):
-            kind, fn = self._write_buffer[0]
+            # Safety check if buffer emptied during processing
+            if not self._write_buffer:
+                break
+
+            kind, fn, retries = self._write_buffer[0]
             try:
                 with self.get_session() as session:
                     fn(session)
@@ -173,6 +182,22 @@ class DatabaseDatabase:
                 flushed += 1
             except Exception as e:
                 self.last_db_write_error = str(e)
+                # Remove the failed item temporarily
+                self._write_buffer.popleft()
+
+                if retries >= max_retries:
+                    # Drop the item to unblock the queue
+                    self.logger.error(
+                        "DB flush max retries exceeded; dropping write",
+                        kind=kind,
+                        retries=retries,
+                        error=str(e),
+                    )
+                    # Continue to process next item
+                    continue
+
+                # Re-queue with incremented retry count
+                self._write_buffer.appendleft((kind, fn, retries + 1))
                 self.logger.error(
                     "DB flush failed; will retry later",
                     kind=kind,
