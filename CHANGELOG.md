@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Optuna-tunable quant gate thresholds**: Made hardcoded quant gate thresholds (Hurst, HMM confidence, BOCPD, kurtosis, entropy) into Optuna-optimizable parameters across all 5 active strategies. This allows WFO to find the right gate sensitivity per strategy instead of using fixed thresholds that were too restrictive (mean_reversion_pro had 0 trades in 11/21 WFO windows). The flat `hmm_min_confidence` param is automatically wired into the nested `hmm_gate.min_confidence` config structure by the optimization harness.
+
 - **Per-window HMM retraining in WFO**: The walk-forward optimizer now retrains the HMM regime model on each training window's daily bars before running the IS optimization and OOS backtest. This eliminates lookahead bias from using a globally-trained HMM during WFO. Artifacts are saved per-window under the run's artifact directory.
 - **HMM regime gate**: Added `_check_hmm_gate()` to BaseStrategy that reads HMM predictions from `market_state.meta["hmm_regime"]` and rejects trades when the predicted regime matches strategy-specific rejection rules. Wired into all 5 active strategies (mean_reversion_pro, trend_rider_pro, orb_v2, rsi_bounce, momentum_fade) with per-strategy reject lists and confidence thresholds configured in `backtest_v2.yaml`.
 

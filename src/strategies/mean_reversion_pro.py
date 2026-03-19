@@ -66,7 +66,7 @@ class MeanReversionProStrategy(BaseStrategy):
         self._hurst: dict[str, HurstExponent] = {}
         # Adaptive threshold engine (shared across symbols)
         self._threshold_engine = AdaptiveThresholdEngine()
-        # Hurst gate threshold: reject entries when H >= this value
+        # Hurst gate threshold: initialized here, updated via _set_params for Optuna override support
         self._hurst_gate_threshold: float = float(config.get("hurst_gate_threshold", 0.45))
 
     # ------------------------------------------------------------------
@@ -91,6 +91,11 @@ class MeanReversionProStrategy(BaseStrategy):
         self.bb_pos_threshold = float(overrides.get("bb_pos_threshold", config.get("bb_pos_threshold", 0.3)))
         self.stop_atr_mult = float(overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5)))
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 20)))
+
+        # Hurst gate threshold — also tunable via Optuna overrides
+        self._hurst_gate_threshold = float(
+            overrides.get("hurst_gate_threshold", config.get("hurst_gate_threshold", 0.45))
+        )
 
     # ------------------------------------------------------------------
     # Daily loss throttle

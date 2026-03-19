@@ -155,9 +155,13 @@ class RsiBounceStrategy(BaseStrategy):
             overrides.get("confluence_threshold", config.get("confluence_threshold", 60.0))
         )
 
-        # BOCPD / kurtosis gate thresholds
-        self.bocpd_reject_threshold = float(config.get("bocpd_reject_threshold", 0.7))
-        self.kurtosis_reject_threshold = float(config.get("kurtosis_reject_threshold", 6.0))
+        # BOCPD / kurtosis gate thresholds — tunable via Optuna overrides
+        self.bocpd_reject_threshold = float(
+            overrides.get("bocpd_reject_threshold", config.get("bocpd_reject_threshold", 0.7))
+        )
+        self.kurtosis_reject_threshold = float(
+            overrides.get("kurtosis_reject_threshold", config.get("kurtosis_reject_threshold", 6.0))
+        )
 
         # Mean-reversion mode for higher-TF alignment check
         self.tf_alignment_mode = "mean_reversion"

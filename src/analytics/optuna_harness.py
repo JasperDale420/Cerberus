@@ -522,14 +522,29 @@ def _apply_params_to_config(
         "bb_pos_threshold",
         "stop_atr_mult",
         "target_atr_mult",
+        "hurst_gate_threshold",
+        "hurst_trending_threshold",
+        "bocpd_reject_threshold",
+        "kurtosis_reject_threshold",
+        "entropy_threshold",
     }
 
     for key, value in params.items():
         if key in config_params:
             strat_cfg[key] = value
 
+    # Wire flat hmm_min_confidence into the nested hmm_gate.min_confidence config
+    if "hmm_min_confidence" in params:
+        hmm_gate = strat_cfg.setdefault("hmm_gate", {})
+        hmm_gate["min_confidence"] = params["hmm_min_confidence"]
+        # Ensure the HMM gate is enabled so the min_confidence value takes effect
+        hmm_gate.setdefault("enabled", True)
+
     # Store non-config params as overrides for the strategy to read
-    strat_cfg["_optuna_overrides"] = {k: v for k, v in params.items() if k not in config_params}
+    # (exclude hmm_min_confidence since it's handled above via nested config)
+    strat_cfg["_optuna_overrides"] = {
+        k: v for k, v in params.items() if k not in config_params and k != "hmm_min_confidence"
+    }
 
     # Inject max_hold_minutes into the exit_config if present
     if "max_hold_minutes" in params:

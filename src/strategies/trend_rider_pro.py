@@ -109,6 +109,11 @@ class TrendRiderProStrategy(BaseStrategy):
         self.trail_min_profit_r = float(overrides.get("trail_min_profit_r", config.get("trail_min_profit_r", 0.5)))
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 120)))
 
+        # Hurst trending gate — reject when H <= threshold (want trending, H > 0.5)
+        self.hurst_trending_threshold = float(
+            overrides.get("hurst_trending_threshold", config.get("hurst_trending_threshold", 0.55))
+        )
+
     # ------------------------------------------------------------------
     # Per-symbol quant component initialization
     # ------------------------------------------------------------------
@@ -182,7 +187,7 @@ class TrendRiderProStrategy(BaseStrategy):
 
         # --- Hurst trending gate ---
         hurst_result = self._hurst[symbol].update(bar.close)
-        if hurst_result is not None and hurst_result.H <= 0.55:
+        if hurst_result is not None and hurst_result.H <= self.hurst_trending_threshold:
             self.logger.debug(
                 "hurst_trending_gate_rejected",
                 symbol=symbol,

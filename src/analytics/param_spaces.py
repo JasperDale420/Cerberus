@@ -116,6 +116,23 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             step=15,
             description="Maximum hold time in minutes (floor raised from 30)",
         ),
+        # Quant gate thresholds
+        ParamDef(
+            "hurst_trending_threshold",
+            "float",
+            low=0.45,
+            high=0.65,
+            step=0.05,
+            description="Hurst trending gate — reject when H <= threshold. 1.0 disables gate.",
+        ),
+        ParamDef(
+            "hmm_min_confidence",
+            "float",
+            low=0.0,
+            high=0.8,
+            step=0.1,
+            description="HMM regime gate min confidence. 0.0 disables gate.",
+        ),
     ],
     # ------------------------------------------------------------------
     # Mean Reversion Pro — 5 params
@@ -166,6 +183,23 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             step=0.25,
             description="ATR multiplier for fallback stop",
         ),
+        # Quant gate thresholds
+        ParamDef(
+            "hurst_gate_threshold",
+            "float",
+            low=0.0,
+            high=0.55,
+            step=0.05,
+            description="Hurst exponent gate — reject when H >= threshold. 0.0 disables gate.",
+        ),
+        ParamDef(
+            "hmm_min_confidence",
+            "float",
+            low=0.0,
+            high=0.8,
+            step=0.1,
+            description="HMM regime gate min confidence. 0.0 disables gate.",
+        ),
     ],
     # ------------------------------------------------------------------
     # ORB V2 — 4 params (was 5; locked target_range_mult at 3.5)
@@ -204,6 +238,15 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             high=120,
             step=15,
             description="Maximum hold time (floor raised to 60 from 30)",
+        ),
+        # Quant gate thresholds
+        ParamDef(
+            "hmm_min_confidence",
+            "float",
+            low=0.0,
+            high=0.8,
+            step=0.1,
+            description="HMM regime gate min confidence. 0.0 disables gate.",
         ),
     ],
     # ------------------------------------------------------------------
@@ -284,6 +327,31 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             step=10,
             description="Maximum hold time in minutes",
         ),
+        # Quant gate thresholds
+        ParamDef(
+            "bocpd_reject_threshold",
+            "float",
+            low=0.5,
+            high=1.0,
+            step=0.1,
+            description="BOCPD changepoint reject threshold. 1.0 disables gate.",
+        ),
+        ParamDef(
+            "kurtosis_reject_threshold",
+            "float",
+            low=4.0,
+            high=10.0,
+            step=1.0,
+            description="Kurtosis reject threshold. 10.0 effectively disables gate.",
+        ),
+        ParamDef(
+            "hmm_min_confidence",
+            "float",
+            low=0.0,
+            high=0.8,
+            step=0.1,
+            description="HMM regime gate min confidence. 0.0 disables gate.",
+        ),
     ],
     # ------------------------------------------------------------------
     # Momentum Fade — 5 params
@@ -338,6 +406,31 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             high=120,
             step=15,
             description="Maximum hold time in minutes",
+        ),
+        # Quant gate thresholds
+        ParamDef(
+            "hurst_gate_threshold",
+            "float",
+            low=0.0,
+            high=0.6,
+            step=0.05,
+            description="Hurst gate — reject when H >= threshold. 0.0 disables gate.",
+        ),
+        ParamDef(
+            "entropy_threshold",
+            "float",
+            low=0.6,
+            high=1.0,
+            step=0.05,
+            description="Entropy filter — reject when entropy > threshold. 1.0 disables gate.",
+        ),
+        ParamDef(
+            "hmm_min_confidence",
+            "float",
+            low=0.0,
+            high=0.8,
+            step=0.1,
+            description="HMM regime gate min confidence. 0.0 disables gate.",
         ),
     ],
 }
