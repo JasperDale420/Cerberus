@@ -50,3 +50,7 @@ vectors.db
 .agents/tmp/**/*.db
 .agents/tmp/**/*.db-journal
 .agents/tmp/**/*.db-wal
+
+# Large binary files
+ledger.db
+.axon/

@@ -109,6 +109,12 @@ class TrendRiderProStrategy(BaseStrategy):
         self.trail_min_profit_r = float(overrides.get("trail_min_profit_r", config.get("trail_min_profit_r", 0.5)))
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 120)))
 
+        # HTF-aware exit overrides — applied when 15m/1h trend alignment is strong
+        self.htf_alignment_threshold = float(config.get("htf_alignment_threshold", 0.75))
+        self.htf_extended_hold_minutes = int(config.get("htf_extended_hold_minutes", 480))
+        self.htf_trail_min_profit_r = float(config.get("htf_trail_min_profit_r", 1.5))
+        self.htf_target_atr_mult = float(config.get("htf_target_atr_mult", 6.0))
+
         # Hurst trending gate — reject when H <= threshold (want trending, H > 0.5)
         self.hurst_trending_threshold = float(
             overrides.get("hurst_trending_threshold", config.get("hurst_trending_threshold", 0.55))
@@ -216,21 +222,30 @@ class TrendRiderProStrategy(BaseStrategy):
         if atr_5m is None or atr_5m <= 0:
             return None
 
+        # --- HTF trend alignment for exit decisions ---
+        htf_alignment = mtf.get_trend_alignment(side)
+        htf_strong = htf_alignment >= self.htf_alignment_threshold
+
+        # Select target multiplier based on HTF strength
+        effective_target_mult = self.htf_target_atr_mult if htf_strong else self.target_atr_mult
+
         stop_price = self._compute_stop(bar, side, mtf, atr_5m, symbol)
         stop_distance = abs(bar.close - stop_price)
         stop_distance = self._apply_regime_volatility_multiplier(stop_distance, market_state)
 
         if side == OrderSide.BUY:
             stop_price = bar.close - stop_distance
-            target_price = bar.close + self.target_atr_mult * atr_5m
+            target_price = bar.close + effective_target_mult * atr_5m
         else:
             stop_price = bar.close + stop_distance
-            target_price = bar.close - self.target_atr_mult * atr_5m
+            target_price = bar.close - effective_target_mult * atr_5m
 
         # --- build meta ---
         meta = scorer.to_meta()
-        meta["strategy_version"] = "trend_rider_pro_v2"
+        meta["strategy_version"] = "trend_rider_pro_v3"
         meta["atr_5m"] = round(atr_5m, 6)
+        meta["htf_alignment"] = round(htf_alignment, 4)
+        meta["htf_strong"] = htf_strong
         # Include quant state in meta for observability
         garch_result = self._garch[symbol]._last_result
         if garch_result is not None:
@@ -240,15 +255,31 @@ class TrendRiderProStrategy(BaseStrategy):
         markov_result = self._markov[symbol].last_result
         if markov_result is not None:
             meta["markov_trend_prob"] = round(markov_result.filtered_probability, 4)
-        meta["exit_config"] = {
-            "trailing_enabled": True,
-            "trail_timeframe": "5m",
-            "trail_lookback": 3,
-            "trail_min_profit_r": self.trail_min_profit_r,
-            "partial_exits": [(2.0, 0.33), (4.0, 0.33)],
-            "max_hold_minutes": self.max_hold_minutes,
-            "vol_adaptive": True,
-        }
+
+        # Exit config adapts to HTF trend strength:
+        # Strong HTF trend → wider trail, longer hold, fewer partial exits (let it ride)
+        # Weak HTF trend → tighter management, quicker partials
+        if htf_strong:
+            exit_config = {
+                "trailing_enabled": True,
+                "trail_timeframe": "5m",
+                "trail_lookback": 5,
+                "trail_min_profit_r": self.htf_trail_min_profit_r,
+                "partial_exits": [(3.0, 0.25), (6.0, 0.25)],
+                "max_hold_minutes": self.htf_extended_hold_minutes,
+                "vol_adaptive": True,
+            }
+        else:
+            exit_config = {
+                "trailing_enabled": True,
+                "trail_timeframe": "5m",
+                "trail_lookback": 3,
+                "trail_min_profit_r": self.trail_min_profit_r,
+                "partial_exits": [(2.0, 0.33), (4.0, 0.33)],
+                "max_hold_minutes": self.max_hold_minutes,
+                "vol_adaptive": True,
+            }
+        meta["exit_config"] = exit_config
 
         return self._create_signal(
             symbol=symbol,
