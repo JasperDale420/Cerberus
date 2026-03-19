@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import structlog
@@ -20,6 +20,12 @@ def _to_python_datetime(val: Any) -> datetime | None:
     # pandas Timestamp has .to_pydatetime()
     if hasattr(val, "to_pydatetime"):
         return val.to_pydatetime()
+    # Nanosecond epoch integer (e.g. 1672758300000000000) — convert to UTC datetime
+    if isinstance(val, (int, float)):
+        try:
+            return datetime.fromtimestamp(val / 1e9, tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return datetime.fromtimestamp(val, tz=timezone.utc)
     return val
 
 
