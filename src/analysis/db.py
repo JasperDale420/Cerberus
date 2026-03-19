@@ -44,9 +44,11 @@ class DatabaseDatabase:
 
         # PRD 11.4: bounded in-memory buffering for transient DB failures.
         self.db_write_buffer_max: int = int(self.config.get("db_write_buffer_max", 200))
-        self.db_write_flush_max: int = int(self.config.get("db_write_flush_max", 50))
+        self.db_flush_max: int = int(self.config.get("db_flush_max", 50))
+        self.db_max_retries: int = int(self.config.get("db_max_retries", 5))
         self.db_fail_mode: str = str(self.config.get("db_fail_mode", "warn")).lower()
-        self._write_buffer: Deque[Tuple[str, Callable[[Session], None]]] = deque()
+        # Buffer stores tuples of (kind, fn, retry_count)
+        self._write_buffer: Deque[Tuple[str, Callable[[Session], None], int]] = deque()
         self.last_db_write_error: Optional[str] = None
 
         # Default to local SQLite if not configured
@@ -147,7 +149,8 @@ class DatabaseDatabase:
                 )
                 return False
 
-            self._write_buffer.append((kind, fn))
+            # Buffer the write with retry_count=0
+            self._write_buffer.append((kind, fn, 0))
             log_fn = self.logger.warning if self.db_fail_mode == "warn" else self.logger.error
             log_fn(
                 "DB write failed; buffered for retry",
@@ -161,25 +164,56 @@ class DatabaseDatabase:
         """
         Attempts to flush buffered writes in FIFO order.
         Stops early on first failure to avoid busy-looping on persistent outages.
+        Drops writes that exceed db_max_retries to prevent poison pills from blocking the buffer.
         """
         flushed = 0
-        to_flush = min(len(self._write_buffer), self.db_write_flush_max)
-        for _ in range(to_flush):
-            kind, fn = self._write_buffer[0]
+        dropped = 0
+        to_flush = min(len(self._write_buffer), self.db_flush_max)
+
+        while to_flush > 0:
+            kind, fn, retry_count = self._write_buffer[0]
             try:
                 with self.get_session() as session:
                     fn(session)
                 self._write_buffer.popleft()
                 flushed += 1
+                to_flush -= 1
             except Exception as e:
                 self.last_db_write_error = str(e)
-                self.logger.error(
-                    "DB flush failed; will retry later",
-                    kind=kind,
-                    buffer_len=len(self._write_buffer),
-                    error=str(e),
-                )
-                break
+                retry_count += 1
+
+                if retry_count >= self.db_max_retries:
+                    # Drop the write after exceeding max retries
+                    self._write_buffer.popleft()
+                    dropped += 1
+                    to_flush -= 1
+                    self.logger.error(
+                        "DB flush failed; dropping write after max retries",
+                        kind=kind,
+                        retry_count=retry_count,
+                        max_retries=self.db_max_retries,
+                        buffer_len=len(self._write_buffer),
+                        error=str(e),
+                    )
+                else:
+                    # Update retry count and stop flushing to avoid hammering
+                    self._write_buffer[0] = (kind, fn, retry_count)
+                    self.logger.error(
+                        "DB flush failed; will retry later",
+                        kind=kind,
+                        retry_count=retry_count,
+                        max_retries=self.db_max_retries,
+                        buffer_len=len(self._write_buffer),
+                        error=str(e),
+                    )
+                    break
+
+        if dropped > 0:
+            self.logger.warning(
+                "Dropped buffered writes after exceeding max retries",
+                dropped_count=dropped,
+                remaining_buffer=len(self._write_buffer),
+            )
 
         return flushed
 
