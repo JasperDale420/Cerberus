@@ -178,11 +178,15 @@ def _retrain_hmm_for_window(
     window_idx: int,
     config: dict[str, Any],
     artifact_root: str = "artifacts/regime_models/hmm",
+    shared_hmm_root: str | None = None,
 ) -> str | None:
     """Train an HMM on training-window bars and save to a window-specific directory.
 
     Returns the artifact directory path on success, or ``None`` if HMM is
     disabled or there is insufficient data.
+
+    If ``shared_hmm_root`` is provided, HMM artifacts are cached there by window
+    index and reused across strategies (the HMM is market-level, not strategy-specific).
     """
     hmm_cfg_raw = config.get("hmm_regime", {})
     if not isinstance(hmm_cfg_raw, dict):
@@ -193,6 +197,17 @@ def _retrain_hmm_for_window(
     runtime_enabled = runtime_cfg.get("enabled", False) if isinstance(runtime_cfg, dict) else False
     if not (enabled and runtime_enabled):
         return None
+
+    # Check shared cache first — HMM is market-level (SPY), same for all strategies
+    if shared_hmm_root:
+        cached_dir = f"{shared_hmm_root}/wfo_window_{window_idx}"
+        model_file = os.path.join(cached_dir, "model.pkl")
+        if os.path.exists(model_file):
+            print(
+                f"  [HMM] Reusing cached model for window {window_idx} → {cached_dir}",
+                flush=True,
+            )
+            return cached_dir
 
     index_symbol = config.get("index_symbol", "SPY")
     daily_bars = _aggregate_bars_to_daily_for_hmm(bars_df, index_symbol)
@@ -209,7 +224,8 @@ def _retrain_hmm_for_window(
     from src.regime_models.hmm.config import HmmConfig
     from src.regime_models.hmm.service import HmmRegimeService
 
-    window_dir = f"{artifact_root}/wfo_window_{window_idx}"
+    # Save to shared root if available, otherwise per-strategy
+    window_dir = f"{shared_hmm_root or artifact_root}/wfo_window_{window_idx}"
     os.makedirs(window_dir, exist_ok=True)
 
     # Build HmmConfig from the raw config dict, overriding artifact_dir
@@ -808,11 +824,15 @@ class WalkForwardOptimizer:
             #    to a window-specific directory and the config is updated so that
             #    both IS workers and OOS backtest load the correct model.
             window_config = copy.deepcopy(base_config)
+            # Use a shared HMM cache keyed by run_tag so all strategies
+            # in the same WFO run share HMM artifacts (market-level model).
+            shared_hmm_dir = str(Path("artifacts/optimization/shared_hmm") / (run_context.run_tag or "default"))
             hmm_artifact_dir = _retrain_hmm_for_window(
                 bars_df=self._load_training_bars(data_dir, window_config, window),
                 window_idx=i,
                 config=window_config,
                 artifact_root=str(run_context.artifact_dir / "hmm"),
+                shared_hmm_root=shared_hmm_dir,
             )
             if hmm_artifact_dir is not None:
                 window_config.setdefault("hmm_regime", {})["artifact_dir"] = hmm_artifact_dir
