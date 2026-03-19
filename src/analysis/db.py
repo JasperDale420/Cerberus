@@ -73,7 +73,7 @@ class DatabaseDatabase:
             self._apply_sqlite_schema_patches()
             self.logger.info("Database tables verified/created")
         except Exception as e:
-            self.logger.error("Failed to initialize database", error=str(e))
+            self.logger.error("Failed to initialize database", error=str(e), exc_info=True)
             raise
 
     def _apply_sqlite_schema_patches(self) -> None:
@@ -109,7 +109,7 @@ class DatabaseDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            self.logger.error("Database session rollback", error=str(e))
+            self.logger.error("Database session rollback", error=str(e), exc_info=True)
             raise
         finally:
             session.close()
@@ -144,6 +144,7 @@ class DatabaseDatabase:
                     buffer_len=len(self._write_buffer),
                     buffer_max=self.db_write_buffer_max,
                     error=str(e),
+                    exc_info=True,
                 )
                 return False
 
@@ -154,6 +155,7 @@ class DatabaseDatabase:
                 kind=kind,
                 buffer_len=len(self._write_buffer),
                 error=str(e),
+                exc_info=True,
             )
             return False
 
@@ -178,6 +180,7 @@ class DatabaseDatabase:
                     kind=kind,
                     buffer_len=len(self._write_buffer),
                     error=str(e),
+                    exc_info=True,
                 )
                 break
 
