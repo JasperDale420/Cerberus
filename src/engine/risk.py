@@ -194,8 +194,11 @@ class RiskManager:
 
         return True
 
-    def _check_loss_gate(self) -> bool:
-        if self.current_daily_pnl <= -self.max_daily_loss:
+    def _check_loss_gate(self, account_equity: float = 0.0) -> bool:
+        # Compute pct-based limit, then take the smaller of pct-based and dollar ceiling
+        pct_limit = account_equity * self.risk_cfg.daily_loss_pct if account_equity > 0 else 0.0
+        effective_limit = min(pct_limit, self.max_daily_loss) if pct_limit > 0 else self.max_daily_loss
+        if self.current_daily_pnl <= -effective_limit:
             self.last_rejection_reason = "MAX_DAILY_LOSS"
             return False
         return True
@@ -204,6 +207,13 @@ class RiskManager:
         if self.risk_mode == "reduced":
             return effective_max_risk * 0.5
         return effective_max_risk
+
+    def _compute_base_risk(self, account_equity: float) -> float:
+        """Compute base risk per trade from equity percentage, capped by dollar ceiling."""
+        if account_equity > 0 and self.risk_cfg.risk_pct > 0:
+            pct_risk = account_equity * self.risk_cfg.risk_pct
+            return min(pct_risk, self.max_risk_per_trade)
+        return self.max_risk_per_trade
 
     def _get_regime_multiplier(self, market_state: MarketState, strategy_name: Optional[str] = None) -> float:
         """
@@ -347,7 +357,7 @@ class RiskManager:
     ) -> int:
         # Check if this is a pair trade leg
         if signal.meta.get("pair_trade"):
-            effective_max_risk = self.max_risk_per_trade
+            effective_max_risk = self._compute_base_risk(account_equity)
             effective_max_risk = self._apply_risk_mode(effective_max_risk)
             effective_max_risk = self._apply_strategy_limits(effective_max_risk, signal, strat_cfg)
             return self._calculate_pair_qty(signal, account_equity)
@@ -357,7 +367,7 @@ class RiskManager:
             self.last_rejection_reason = "INVALID_STOP"
             return 0
 
-        effective_max_risk = self.max_risk_per_trade
+        effective_max_risk = self._compute_base_risk(account_equity)
         effective_max_risk = self._apply_risk_mode(effective_max_risk)
         effective_max_risk = self._apply_strategy_limits(effective_max_risk, signal, strat_cfg)
 
@@ -619,13 +629,18 @@ class RiskManager:
             return False
         return self._check_symbol_notional(notional, symbol_state)
 
-    def _check_risk_exposure(self, risk_per_share: float, qty: int, current_positions: Optional[List[Any]]) -> bool:
-        if self.max_open_risk > 0 and current_positions is not None:
+    def _check_risk_exposure(
+        self, risk_per_share: float, qty: int, current_positions: Optional[List[Any]], account_equity: float = 0.0
+    ) -> bool:
+        # Compute pct-based open risk limit, capped by dollar ceiling
+        pct_limit = account_equity * self.risk_cfg.open_risk_pct if account_equity > 0 else 0.0
+        effective_limit = min(pct_limit, self.max_open_risk) if pct_limit > 0 else self.max_open_risk
+        if effective_limit > 0 and current_positions is not None:
             open_risk = 0.0
             for p in current_positions:
                 open_risk += float(getattr(p, "open_risk", 0.0) or 0.0)
             proposed_risk = risk_per_share * qty
-            if (open_risk + proposed_risk) > self.max_open_risk:
+            if (open_risk + proposed_risk) > effective_limit:
                 self.last_rejection_reason = "MAX_OPEN_RISK"
                 return False
         return True
@@ -681,7 +696,7 @@ class RiskManager:
             self._log_rejection(signal)
             return []
 
-        if not self._check_loss_gate():
+        if not self._check_loss_gate(account_equity):
             self._log_rejection(signal)
             return []
 
@@ -715,7 +730,7 @@ class RiskManager:
             return []
 
         risk_per_share = abs(signal.entry_price - signal.stop_price)
-        if not self._check_risk_exposure(risk_per_share, qty, current_positions):
+        if not self._check_risk_exposure(risk_per_share, qty, current_positions, account_equity):
             self._log_rejection(signal)
             return []
 

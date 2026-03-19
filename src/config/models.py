@@ -158,12 +158,17 @@ class CVaRConfig(BaseModel):
 
 
 class RiskConfig(BaseModel):
-    max_daily_loss: float = Field(default=1000.0)
-    max_risk_per_trade: float = Field(default=50.0)
-    max_open_risk: float = Field(default=0.0)
+    # Percentage-based sizing (primary — computed from account equity at runtime)
+    risk_pct: float = Field(default=0.01, description="Risk per trade as fraction of equity (1%)")
+    daily_loss_pct: float = Field(default=0.02, description="Max daily loss as fraction of equity (2%)")
+    open_risk_pct: float = Field(default=0.04, description="Max total open risk as fraction of equity (4%)")
+
+    # Hard dollar ceilings (safety nets — caps even if equity grows large)
+    max_daily_loss: float = Field(default=5000.0)
+    max_risk_per_trade: float = Field(default=2000.0)
+    max_open_risk: float = Field(default=8000.0)
     max_trades_per_day: int = Field(default=0)
     max_trades_per_strategy: int = Field(default=0)
-    # P2.1 fix: Add max_orders_per_day to Pydantic model
     max_orders_per_day: int = Field(default=100)
     max_open_positions: int = Field(default=5)
     max_positions_per_strategy: int = Field(default=3)
@@ -262,21 +267,21 @@ class RiskConfig(BaseModel):
     @field_validator("max_daily_loss")
     @classmethod
     def validate_max_daily_loss(cls, v: float) -> float:
-        """Ensure max_daily_loss is positive and reasonable (max $100k)."""
+        """Ensure max_daily_loss is positive and reasonable."""
         if v < 0:
             raise ValueError("max_daily_loss must be non-negative")
-        if v > 100000:
-            raise ValueError("max_daily_loss exceeds maximum allowed ($100,000)")
+        if v > 500000:
+            raise ValueError("max_daily_loss exceeds maximum allowed ($500,000)")
         return v
 
     @field_validator("max_risk_per_trade")
     @classmethod
     def validate_max_risk_per_trade(cls, v: float) -> float:
-        """Ensure max_risk_per_trade is positive and reasonable (max $10k)."""
+        """Ensure max_risk_per_trade is positive and reasonable."""
         if v < 0:
             raise ValueError("max_risk_per_trade must be non-negative")
-        if v > 10000:
-            raise ValueError("max_risk_per_trade exceeds maximum allowed ($10,000)")
+        if v > 50000:
+            raise ValueError("max_risk_per_trade exceeds maximum allowed ($50,000)")
         return v
 
     @field_validator("max_open_positions")
