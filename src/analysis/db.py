@@ -12,7 +12,7 @@ from src.core.logger import StructuredLogger
 
 
 class DatabaseDatabase:
-    SQLITE_SCHEMA_PATCHES: Dict[str, tuple[tuple[str, str], ...]] = {
+    SQLITE_SCHEMA_PATCHES: Dict[str, Tuple[Tuple[str, str], ...]] = {
         "trades": (
             ("regime_tags_entry_json", "TEXT"),
             ("regime_tags_exit_json", "TEXT"),
@@ -99,9 +99,13 @@ class DatabaseDatabase:
                     )
 
     @contextmanager
-    def get_session(self) -> Generator[Session, None, None]:
+    def get_session(self, context: Optional[Dict[str, Any]] = None) -> Generator[Session, None, None]:
         """
         Context manager for database sessions.
+
+        Args:
+            context: Optional dict with contextual information for error logging
+                     (e.g., {"operation": "write", "kind": "trade"})
         """
         session = self.SessionLocal()
         try:
@@ -109,7 +113,10 @@ class DatabaseDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            self.logger.error("Database session rollback", error=str(e))
+            error_context = context or {}
+            error_context["error"] = str(e)
+            error_context["error_type"] = type(e).__name__
+            self.logger.error("Database session rollback", **error_context)
             raise
         finally:
             session.close()
@@ -122,7 +129,7 @@ class DatabaseDatabase:
         - On failure: buffers the write closure (bounded) unless db_fail_mode == 'raise'.
         """
         try:
-            with self.get_session() as session:
+            with self.get_session(context={"operation": "write", "kind": kind}) as session:
                 fn(session)
 
             # Opportunistically flush any buffered writes after a successful write.
@@ -167,7 +174,7 @@ class DatabaseDatabase:
         for _ in range(to_flush):
             kind, fn = self._write_buffer[0]
             try:
-                with self.get_session() as session:
+                with self.get_session(context={"operation": "flush", "kind": kind}) as session:
                     fn(session)
                 self._write_buffer.popleft()
                 flushed += 1
