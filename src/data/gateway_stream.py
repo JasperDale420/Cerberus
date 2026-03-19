@@ -235,6 +235,7 @@ class GatewayStreamClient:
                         symbols=len(self._desired_symbols),
                     )
                     backoff = 1.0
+                    had_failure = False
                     while self._running:
                         raw = await ws.recv()
                         try:
@@ -250,10 +251,22 @@ class GatewayStreamClient:
             except asyncio.CancelledError:
                 self._running = False
                 raise
+            except OSError as e:
+                # Handles ConnectionRefusedError, etc.
+                had_failure = True
+                self.logger.warning(
+                    "Gateway stream connection failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    ws_url=self.ws_url,
+                    reconnect_in_seconds=round(backoff, 2),
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2.0, 30.0)
             except Exception as e:
                 had_failure = True
                 self.logger.warning(
-                    "Gateway stream disconnected",
+                    "Gateway stream disconnected or failed",
                     error=str(e),
                     reconnect_in_seconds=round(backoff, 2),
                 )
