@@ -1,4 +1,5 @@
 import os
+import time
 from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
@@ -46,8 +47,10 @@ class DatabaseDatabase:
         self.db_write_buffer_max: int = int(self.config.get("db_write_buffer_max", 200))
         self.db_write_flush_max: int = int(self.config.get("db_write_flush_max", 50))
         self.db_fail_mode: str = str(self.config.get("db_fail_mode", "warn")).lower()
+        self.db_flush_cooldown_seconds: float = float(self.config.get("db_flush_cooldown_seconds", 1.0))
         self._write_buffer: Deque[Tuple[str, Callable[[Session], None]]] = deque()
         self.last_db_write_error: Optional[str] = None
+        self._last_flush_attempt: Optional[float] = None
 
         # Default to local SQLite if not configured
         db_url = self.config.get("database_url", "sqlite:///cerberus.db")
@@ -60,7 +63,16 @@ class DatabaseDatabase:
                 # For now, just leave it as CWD relative or handle it
                 pass
 
-        self.engine = create_engine(db_url, echo=self.config.get("db_echo", False), pool_pre_ping=True)
+        # Build engine kwargs with SQLite-specific timeout
+        engine_kwargs = {
+            "echo": self.config.get("db_echo", False),
+            "pool_pre_ping": True,
+        }
+        if db_url.startswith("sqlite"):
+            # Increase SQLite timeout to 30 seconds to handle write contention
+            engine_kwargs["connect_args"] = {"timeout": 30}
+
+        self.engine = create_engine(db_url, **engine_kwargs)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         self.logger.info("Database engine initialized", url=db_url)
 
@@ -161,7 +173,21 @@ class DatabaseDatabase:
         """
         Attempts to flush buffered writes in FIFO order.
         Stops early on first failure to avoid busy-looping on persistent outages.
+        Implements cooldown between attempts to reduce load on struggling database.
         """
+        # Check cooldown to avoid hammering the database
+        if self._last_flush_attempt is not None:
+            elapsed = time.time() - self._last_flush_attempt
+            if elapsed < self.db_flush_cooldown_seconds:
+                self.logger.debug(
+                    "DB flush skipped due to cooldown",
+                    elapsed_seconds=elapsed,
+                    cooldown_seconds=self.db_flush_cooldown_seconds,
+                    buffer_len=len(self._write_buffer),
+                )
+                return 0
+
+        self._last_flush_attempt = time.time()
         flushed = 0
         to_flush = min(len(self._write_buffer), self.db_write_flush_max)
         for _ in range(to_flush):
@@ -178,6 +204,7 @@ class DatabaseDatabase:
                     kind=kind,
                     buffer_len=len(self._write_buffer),
                     error=str(e),
+                    error_type=type(e).__name__,
                 )
                 break
 
