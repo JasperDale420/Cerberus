@@ -41,3 +41,4 @@ logs/tests/full_test_output*.txt
 .env
 .env.local
 .env.*.local
+.aider*

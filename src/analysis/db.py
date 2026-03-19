@@ -1,4 +1,5 @@
 import os
+import traceback
 from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Deque, Dict, Generator, Optional, Tuple
@@ -109,7 +110,12 @@ class DatabaseDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            self.logger.error("Database session rollback", error=str(e))
+            self.logger.error(
+                "Database session rollback",
+                error=str(e),
+                error_type=type(e).__name__,
+                stack_trace=traceback.format_exc(),
+            )
             raise
         finally:
             session.close()
