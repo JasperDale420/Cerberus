@@ -490,9 +490,7 @@ class GatewayOrderExecutor:
         self.central_api_client = central_api_client
         self.logger = logger
         self.db = db
-        self.clock: Callable[[], datetime] = clock or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(timezone.utc))
 
     def configure_advanced_exits(self, risk_cfg: dict) -> None:
         """Gateway execution uses local exit management; keep broker exits disabled."""
@@ -518,9 +516,7 @@ class GatewayOrderExecutor:
                 qty=float(intent.qty),
                 order_type=intent.order_type.value,
                 time_in_force=intent.time_in_force,
-                limit_price=float(intent.limit_price)
-                if intent.limit_price is not None
-                else None,
+                limit_price=float(intent.limit_price) if intent.limit_price is not None else None,
                 client_order_id=intent.correlation_id,
             )
             order_id = str(order.get("id") or order.get("order_id") or "")
@@ -538,9 +534,7 @@ class GatewayOrderExecutor:
                 if isinstance(intent.meta, dict):
                     created_at = intent.meta.get("created_at")
                 placed = (
-                    datetime.fromisoformat(created_at)
-                    if isinstance(created_at, str) and created_at
-                    else self.clock()
+                    datetime.fromisoformat(created_at) if isinstance(created_at, str) and created_at else self.clock()
                 )
                 self.db.write(
                     "order",
@@ -636,13 +630,15 @@ class GatewayOrderExecutor:
                 cancelled=bool(cancelled),
             )
         except Exception as e:
-            self.logger.error(
-                "Gateway order cancel failed",
+            # Best-effort: log the failure but don't re-raise to allow other cancels to proceed.
+            # This prevents cascading failures when cancelling multiple orders (e.g., during
+            # symbol removal or stale order cleanup) where one failure shouldn't block others.
+            self.logger.warning(
+                "Gateway order cancel failed (best-effort)",
                 broker_order_id=broker_order_id,
                 error=str(e),
                 exc_info=True,
             )
-            raise
 
     def cancel_all_for_symbol(self, symbol: str) -> int:
         """Cancel all open orders for a symbol via Data-Gateway."""
