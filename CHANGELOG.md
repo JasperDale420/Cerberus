@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Fill model config wiring**: Added `create_fill_model()` factory function that builds the appropriate fill model (fixed or volume-aware) from backtest config. The backtest runner now passes the constructed fill model to `SimulatedOrderExecutor`.
+
+- **Post-backtest diagnostics engine**: New `src/analytics/diagnostics.py` module runs five analyses after a backtest — strategy ranking by P&L, regime mismatch detection, time-of-day edge mapping, hold/exit-type analysis, and a plain-text summary. Use `run_diagnostics(trades)` with a list of trade dicts.
+
 - **Benchmark comparison analytics**: New `src/analytics/benchmark.py` module computes alpha, beta, information ratio, and up/down capture ratios against a benchmark (e.g., SPY). Use `compute_benchmark_comparison()` with daily return arrays.
 
 - **Per-strategy overnight position handling**: Added `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` fields to `BaseStrategy._set_params()` for configuring overnight hold behavior per strategy instead of globally.
