@@ -562,12 +562,12 @@ class BacktestReportCard:
             "per_strategy": self.strategy_metrics if hasattr(self, "strategy_metrics") else {},
             **(
                 {"benchmark": {k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.benchmark).items()}}
-                if m.benchmark
+                if m.benchmark and hasattr(m.benchmark, "__dict__")
                 else {}
             ),
             **(
                 {"monte_carlo": {k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.monte_carlo).items()}}
-                if m.monte_carlo
+                if m.monte_carlo and hasattr(m.monte_carlo, "__dict__")
                 else {}
             ),
             **({"diagnostics_summary": m.diagnostics.summary} if m.diagnostics else {}),
