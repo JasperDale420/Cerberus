@@ -211,13 +211,13 @@ class TrendRiderProStrategy(BaseStrategy):
         """
         vwap_dist_1m = mtf.get_vwap_distance("1m")
 
-        # EMA alignment on 5m (8/21 — faster trend detection)
-        ema9_5m = mtf.get_ema("5m", 8)
-        ema20_5m = mtf.get_ema("5m", 21)
+        # EMA alignment on 5m
+        ema9_5m = mtf.get_ema("5m", 9)
+        ema20_5m = mtf.get_ema("5m", 20)
         if ema9_5m is None or ema20_5m is None:
             return None
 
-        # Kalman anchor (EMA-21 fallback)
+        # Kalman anchor (EMA-20 fallback)
         kalman_state = self._kalman[symbol].state if symbol in self._kalman else None
         pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
         if pullback_anchor is None or pullback_anchor <= 0:
@@ -268,7 +268,7 @@ class TrendRiderProStrategy(BaseStrategy):
 
         # 2. Pullback quality (weight 0.15) — widened range [0.0005, 0.01]
         kalman_state = self._kalman[symbol].state if symbol in self._kalman else None
-        ema20_5m = mtf.get_ema("5m", 21)
+        ema20_5m = mtf.get_ema("5m", 20)
         pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
         pullback_pct = 0.0
         if pullback_anchor is not None and pullback_anchor > 0:
