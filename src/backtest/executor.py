@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional
 
 from src.analysis.db import DatabaseDatabase
 from src.analysis.schema import Order as DbOrder
+from src.backtest.fill_models import FillModel, FixedSlippageFillModel
 from src.core.domain import OrderIntent
 from src.core.logger import StructuredLogger
 
@@ -26,6 +27,7 @@ class SimulatedOrderExecutor:
         account: Optional[Any] = None,
         backtest_cfg: Optional[Dict[str, Any]] = None,
         risk_cfg: Optional[Dict[str, Any]] = None,
+        fill_model: FillModel | None = None,
     ):
         self.logger = logger
         self.db = db
@@ -38,6 +40,13 @@ class SimulatedOrderExecutor:
         self._slippage_bps: float = float(rk.get("slippage_bps", 0.0) or 0.0)
         self._commission_per_share: float = float(rk.get("commission_per_share", 0.0) or 0.0)
         self._min_commission: float = float(rk.get("min_commission", 0.0) or 0.0)
+
+        # Fill model (defaults to FixedSlippageFillModel matching legacy inline behavior)
+        self.fill_model: FillModel = fill_model or FixedSlippageFillModel(
+            slippage_bps=self._slippage_bps,
+            commission_per_share=self._commission_per_share,
+            min_commission=self._min_commission,
+        )
 
         # Internal state
         self.open_orders: Dict[str, Dict[str, Any]] = {}
@@ -288,38 +297,54 @@ class SimulatedOrderExecutor:
             fill_price = 0.0
             is_filled = False
 
-            if order["type"] == "market":
-                fill_price = self._apply_slippage(open_p, order["side"])
+            raw_price = 0.0
+            order_type = order["type"]
+
+            if order_type == "market":
+                raw_price = open_p
                 is_filled = True
-            elif order["type"] == "limit":
+            elif order_type == "limit":
                 limit = float(order["limit_price"])
                 if order["side"] == "buy" and low_p <= limit:
-                    fill_price = self._apply_slippage(min(limit, open_p), order["side"])
+                    raw_price = min(limit, open_p)
                     is_filled = True
                 elif order["side"] == "sell" and high_p >= limit:
-                    fill_price = self._apply_slippage(max(limit, open_p), order["side"])
+                    raw_price = max(limit, open_p)
                     is_filled = True
-            elif order["type"] == "stop":
+            elif order_type == "stop":
                 stop = float(order.get("stop_price", 0.0))
                 if order["side"] == "sell" and low_p <= stop:
-                    fill_price = self._apply_slippage(min(stop, open_p), order["side"])
+                    raw_price = min(stop, open_p)
                     is_filled = True
                 elif order["side"] == "buy" and high_p >= stop:
-                    fill_price = self._apply_slippage(max(stop, open_p), order["side"])
+                    raw_price = max(stop, open_p)
                     is_filled = True
 
             if is_filled:
+                fill_qty = float(order["qty"])
+
+                # Use fill model for slippage and commission
+                fill_result = self.fill_model.compute_fill(
+                    order_side=order["side"],
+                    order_qty=fill_qty,
+                    order_price=raw_price,
+                    order_type=order_type,
+                    bar=bar,
+                )
+                fill_price = fill_result.fill_price
+                commission = fill_result.commission
+
                 order["status"] = "filled"
 
                 # Mark parent as having a filled child (OCO guard)
                 if parent_id:
                     filled_parent_ids.add(parent_id)
 
-                fill_qty = float(order["qty"])
                 fill_val = fill_qty * fill_price
 
                 # Deduct commission from account
-                self._deduct_commission(fill_qty)
+                if commission > 0.0 and self.account is not None and hasattr(self.account, "cash"):
+                    self.account.cash -= commission
 
                 if self.account is not None:
                     if hasattr(self.account, "cash") and hasattr(self.account, "positions_qty"):
