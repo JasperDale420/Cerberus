@@ -8,11 +8,17 @@ All notable changes to this project will be documented in this file.
 
 - **Fill model config wiring**: Added `create_fill_model()` factory function that builds the appropriate fill model (fixed or volume-aware) from backtest config. The backtest runner now passes the constructed fill model to `SimulatedOrderExecutor`.
 
+- **Data quality checks in backtest**: The backtest runner now runs data quality checks after loading bars, excluding symbols with insufficient coverage and logging warnings for gaps, outliers, and stale prices. Configurable via `analytics.data_quality` in config.
+
 - **Post-backtest diagnostics engine**: New `src/analytics/diagnostics.py` module runs five analyses after a backtest — strategy ranking by P&L, regime mismatch detection, time-of-day edge mapping, hold/exit-type analysis, and a plain-text summary. Use `run_diagnostics(trades)` with a list of trade dicts.
 
 - **Benchmark comparison analytics**: New `src/analytics/benchmark.py` module computes alpha, beta, information ratio, and up/down capture ratios against a benchmark (e.g., SPY). Use `compute_benchmark_comparison()` with daily return arrays.
 
 - **Per-strategy overnight position handling**: Added `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` fields to `BaseStrategy._set_params()` for configuring overnight hold behavior per strategy instead of globally.
+
+- **Strategy name on Position**: Added `strategy_name` field to `Position` dataclass, set automatically when a new position is opened via `PositionManager`.
+
+- **Per-strategy EOD flatten logic**: The backtest runner's `force_flat_at_1600` now checks each position's strategy overnight config individually instead of flattening all positions globally. Strategies with `allow_overnight=True` will hold positions overnight unless `max_hold_days` is exceeded.
 
 - **FillModel protocol and FillResult dataclass**: Added pluggable fill model interface (`src/backtest/fill_models/protocol.py`) with a `FillModel` runtime-checkable Protocol and a frozen `FillResult` dataclass. This is the foundation for swappable fill simulation in the backtest engine.
 - **FixedSlippageFillModel**: Extracted the fixed-BPS slippage logic from `SimulatedOrderExecutor` into a standalone `FixedSlippageFillModel` class that satisfies the `FillModel` protocol. Supports configurable slippage (basis points) and per-share commission.
