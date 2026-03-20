@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+#### Backtest & WFO Robustness
+
 - **FastAPI backtest API**: New REST API at `src/api/backtest_api.py` exposes backtest runs, equity curves, trades, Monte Carlo results, regime splits, and WFO parameter sensitivity for dashboard consumption. CORS configured for EmpireUI (localhost:5173).
 
 - **Diagnostics engine wired into backtest pipeline**: When `analytics.diagnostics.enabled: true` is set in config, the backtest runner now runs post-backtest diagnostics (strategy rankings, regime mismatches, time-of-day edge map, hold/exit analysis) and attaches the results to the report card. Summary is logged and included in JSON output.
@@ -39,38 +41,39 @@ All notable changes to this project will be documented in this file.
 - **VolumeAwareFillModel**: Added volume-aware fill model that scales slippage based on order participation rate (order size / bar volume). Supports configurable base slippage, impact coefficient, and max slippage cap. Replaces fixed-BPS slippage as the more realistic default for backtesting.
 - **Pre-backtest data quality checker**: Added `DataQualityReport` and `check_data_quality()` to validate bar data before replay. Detects gaps, zero-volume bars, price outliers, stale prices, and low-coverage symbols with configurable thresholds and automatic exclusion.
 
-### Changed
+- **Per-window HMM retraining in WFO**: The walk-forward optimizer now retrains the HMM regime model on each training window's daily bars before running the IS optimization and OOS backtest. This eliminates lookahead bias from using a globally-trained HMM during WFO. Artifacts are saved per-window under the run's artifact directory.
 
-- **SimulatedOrderExecutor now uses FillModel protocol**: The backtest executor accepts an optional `fill_model` parameter and delegates slippage/commission calculations to it instead of using inline math. Defaults to `FixedSlippageFillModel` with the same behavior as before, making the change backward-compatible. Custom fill models can now be injected for more realistic simulation.
+- **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
+  - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
+  - Volume-impact slippage: `slippage_mode` (fixed|volume_impact) with `slippage_impact_mult` for market impact simulation
+  - ATR-based spread: `spread_mode` (fixed|atr_based) for volatility-sensitive spread modeling
+  - Flow strategy gating: `disable_flow_strategies` config to skip flow-dependent strategies in backtest
+  - New `backtest:` config section in `config.yaml` with all realism settings
+  - Unit tests in `tests/unit/test_backtest_parity_unit.py` (13 new tests)
 
-### Fixed
+- **Backtest Session VWAP Injection** (`src/backtest/runner.py`):
+  - Added `_vwap_state` tracking dict for cumulative TPV/volume per symbol per session
+  - Session VWAP calculated and injected as `bar.vwap` attribute for VWAP-based strategies
+  - Enables `vwap_trend_rider` and `vwap_reversion` in offline backtests
 
-- **Replace deprecated `datetime.utcnow()` with timezone-aware `datetime.now(timezone.utc)`**: Updated 5 instances across `schema.py` (3 SQLAlchemy column defaults) and `causal_filter.py` (2 direct calls). All timestamps are now timezone-aware per Empire conventions.
+- **Backtest Gap Calculation** (`src/backtest/runner.py`):
+  - Added `_prev_day_closes` tracking for gap percentage calculation
+  - `gap_pct` injected into `symbol_state.meta` for `gap_fill` strategy
 
-### Changed
+- **Enhanced Regime Analysis Script** (`scripts/analyze_regime_ci.py`):
+  - Wilson score 95% confidence intervals for statistically robust win rate estimation
+  - Confidence ratings based on sample size (insufficient/low/medium/high)
+  - High-confidence deployment recommendations (CI lower > 25%)
 
-- **Trend Rider Pro v4 — dramatic simplification for more trades**: Rewrote `trend_rider_pro` to remove ~8 gates that were suppressing trade frequency. Removed Markov regime switcher, HMM gate, Hurst gate (now observability-only), 15m HTF trend hard gate, and `_regime_allows` methods. Direction detection now uses simple VWAP filter + EMA-9/20 alignment + Kalman pullback. Confluence reduced from 6 to 4 factors, threshold lowered from 65 to 50. Default `stop_atr_mult` raised from 1.5 to 2.0, `pullback_threshold` widened from 0.003 to 0.005. Single exit config replaces HTF-strong/weak split. ADX minimum lowered from 20 to 15. Targets 2-5 trades/day across 30+ symbols.
-- **Param spaces updated for Trend Rider Pro v4**: Removed `hurst_trending_threshold` and `hmm_min_confidence` params. Added `pullback_threshold` as tunable (0.002-0.008). Lowered `confluence_threshold` range to 30-60. Widened `min_trend_alignment` range to 0.15-0.55.
-
-### Fixed
-
-- **Regime stop multiplier now applied to stop distance**: The `regime_stop_multiplier` (low=0.75, normal=1.0, high=1.5, shock=2.0) was computed and stored on positions at open time but never used to adjust the stop price. It is now applied to the stop distance when a position is opened — in high vol regimes stops are 1.5x wider, in low vol they are 0.75x tighter.
-
-### Added
+#### Strategy Upgrades
 
 - **Optuna-tunable quant gate thresholds**: Made hardcoded quant gate thresholds (Hurst, HMM confidence, BOCPD, kurtosis, entropy) into Optuna-optimizable parameters across all 5 active strategies. This allows WFO to find the right gate sensitivity per strategy instead of using fixed thresholds that were too restrictive (mean_reversion_pro had 0 trades in 11/21 WFO windows). The flat `hmm_min_confidence` param is automatically wired into the nested `hmm_gate.min_confidence` config structure by the optimization harness.
 
-- **Per-window HMM retraining in WFO**: The walk-forward optimizer now retrains the HMM regime model on each training window's daily bars before running the IS optimization and OOS backtest. This eliminates lookahead bias from using a globally-trained HMM during WFO. Artifacts are saved per-window under the run's artifact directory.
 - **HMM regime gate**: Added `_check_hmm_gate()` to BaseStrategy that reads HMM predictions from `market_state.meta["hmm_regime"]` and rejects trades when the predicted regime matches strategy-specific rejection rules. Wired into all 5 active strategies (mean_reversion_pro, trend_rider_pro, orb_v2, rsi_bounce, momentum_fade) with per-strategy reject lists and confidence thresholds configured in `backtest_v2.yaml`.
 
-### Fixed
+- **Strategy data_requirements declarations**: Added `data_requirements` class attribute to `BaseStrategy` (default: bars stream only) and overrides on all 12 strategies that need non-default feeds. Strategies now declare their WebSocket streams (bars/quotes/trades) and on-scan REST fetches (flow/gex/prior_day) so the engine can auto-subscribe to the right data.
 
-- **Test suite preflight**: `uv sync --all-extras` is now required to install dev dependencies (pytest, ruff, etc.) into the venv; previously `uv sync` alone left pytest missing, causing 4 collection errors via the system pytest missing `filterpy` in its environment.
-- **MTF flat-gate tests** (`test_hierarchical_mtf_gate_unit.py`): Updated `test_rejects_when_15m_emas_diverged` and `test_rejects_when_15m_adx_high` to match the relaxed thresholds introduced in commit `9efc9d9` (EMA spread threshold 0.3% → 0.8%, ADX rejection threshold 25 → 35).
-- **Risk manager notional-cap test** (`test_risk_manager_additional_unit.py`): Updated `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` to reflect the capping behavior introduced in commit `5fcdce9` — when a signal's notional exceeds the per-order limit, qty is now capped to fit rather than rejected. Added a complementary assertion for the MAX_NOTIONAL rejection path (triggered when entry_price > cap, so capped qty rounds to 0).
-- **Ruff lint** (34 → 0 errors): Fixed import ordering, removed unused imports and variables (`valid_pnls`, `sys`, `datetime/timezone` in scripts), removed f-strings without placeholders, renamed unused loop variables to `_sym`/`_mh`, and added `# noqa: E402` to intentional post-sys.path imports in diagnostic/runner scripts.
-
-### Added
+#### Quant Foundation
 
 - **Quant foundation layer** (`src/quant/`): GARCH conditional volatility, Kalman filters, Engle-Granger/Johansen cointegration, Hurst exponent, CUSUM breakout detection, Granger causality, Markov regime-switching, adaptive thresholds, walk-forward validation, deflated Sharpe ratio
 - **Portfolio optimization layer** (`src/portfolio/`): IC-weighted signal aggregation, risk-parity allocation with drawdown throttle, portfolio VaR/CVaR with concentration limits, strategy attribution with rolling Sharpe/Sortino
@@ -86,69 +89,7 @@ All notable changes to this project will be documented in this file.
 - **Lo-MacKinlay variance ratio test module** (`src/analysis/variance_ratio.py`): Implements VR(k) with heteroscedasticity-robust z-statistic for detecting mean-reverting vs trending price regimes. Zero external dependencies (uses pure-Python normal distribution helpers). Includes 29 unit tests covering statistical properties, edge cases, and numeric helpers.
 - **RSI Bounce v2 — institutional-grade mean reversion**: Upgraded from 3-factor (RSI + BB + trend context) to 6-factor confluence model: z-score extremity, OU half-life validity (primary gate), RSI percentile rank, volume climax, momentum deceleration, and Lo-MacKinlay variance ratio gate. Adds VPIN toxicity filter to skip entries during informed trading. Drop-in replacement with same class name and strategy interface.
 
-### Changed
-
-- **pair_trading_v2**: Kalman hedge ratio replaces EMA, Engle-Granger entry gate, GARCH-conditional z-score, OU half-life hard gate, rolling correlation monitor
-- **mean_reversion_pro**: GARCH-conditional z-score, Hurst exponent filter (H<0.45), adaptive confluence thresholds, OU half-life hard gate
-- **trend_rider_pro**: Kalman mean tracker replaces EMA-20, Hurst trending gate (H>0.55), Markov regime probability replaces ADX threshold, GARCH-forecasted stops
-- **flow_alpha**: IC-weighted signal combination, Granger causality validation, VPIN toxicity gate, GARCH-conditional normalization
-- **orb_v2**: CUSUM statistical breakout detection, variance ratio gate, BOCPD confidence multiplier, GARCH-relative volume gate
-- **rsi_bounce**: GARCH-conditional z-score, BOCPD structural break awareness, kurtosis filter, adaptive thresholds
-- **momentum_fade**: GARCH-conditional z-score, momentum exhaustion model (velocity + acceleration), Hurst gate (H<0.5), entropy filter, intraday seasonal volume
-- **WFO v3 optimized params applied to trend_rider_pro and orb_v2**: Applied walk-forward optimization mean parameters with stability annotations. trend_rider_pro: confluence_threshold=63.3, stop_atr_mult=2.08, target_atr_mult=4.5, trail_min_profit_r=0.60, max_hold_minutes=138. orb_v2: confluence_threshold=54.2, vol_gate_mult=1.53, trail_min_profit_r=0.96, max_hold_minutes=93.
-- **Disabled unprofitable strategies**: rsi_bounce (WFO v4 REJECT: 1/6 windows profitable, PF=0.42), momentum_fade (WFO v4 REJECT: 0 trades on 4-symbol universe), mean_reversion_pro (excluded from WFO, PF=0.72), flow_alpha (needs live options flow data).
-- **Disabled all V1 legacy strategies in backtest_v2.yaml**: Added explicit `enabled: false` for 14 V1 strategies (vwap_reversion, failed_breakout, trend_pullback, etc.) to prevent ConfigLoader deep-merge from strategies.yaml activating them during V2 backtests.
-- **Verification backtest results**: With only WFO-approved strategies (trend_rider_pro + orb_v2), full-year 2024 backtest achieves PF=0.91, max DD=1.96%, 1,082 trades. Strategies are near-breakeven — edge consumed by commission/friction model.
-
-### Fixed
-
-- **TRP `_regime_allows` rejecting FLAT trends again**: The trend_rider_pro upgrade relaxed `_regime_allows` to accept FLAT regime, but trend-following should not enter during choppy conditions. Restored strict directional gating (BUY requires UP, SELL requires DOWN). Markov upgrade path via `_regime_allows_with_markov` is unaffected.
-- **`MomentumFadeStrategy` and `RsiBounceStrategy` wrong `tf_alignment_mode`**: Both strategies are mean-reversion types but inherited the base class default of `"trend"` for `tf_alignment_mode`. Added explicit `self.tf_alignment_mode = "mean_reversion"` in `_set_params` for both, consistent with all other mean-reversion strategies (gap_fill, vwap_reversion, etc.).
-- **`MomentumFadeStrategy` undefined `mr_alignment` in signal meta**: The signal metadata referenced an `mr_alignment` variable that was never computed, which would cause a `NameError` at runtime when a signal was generated. Fixed by computing `mr_alignment = mtf.get_mean_reversion_alignment()` before building the meta dict.
-- **Stale test for `rsi_bounce` confluence factor name**: `test_confluence_factors_in_meta` asserted `"mr_alignment"` was in the factor names, but the strategy's confluence scorer was updated to use `"trend_context"` instead. Updated the test to match the current implementation.
-- **Stale test for `MeanReversionProStrategy` regime gate**: `test_rejects_trending_in_normal_vol` expected `_regime_ok` to return `False` for trending + NORMAL vol, but the regime gate was intentionally relaxed (commit 9c0a6ef) to allow NORMAL vol in trending markets. Renamed the test to `test_allows_trending_in_normal_vol` and updated the assertion to match the current behavior.
-
-- **OCO double-fill in SimulatedOrderExecutor**: When a bar's price range spanned both take-profit and stop-loss levels, both OCO legs filled on the same bar before cancellation ran. This created negative ghost positions and double cash credits, causing equity to explode to trillions. Fixed by tracking filled parent IDs during `process_bar` and skipping sibling OCO legs.
-- **Risk config key mismatch**: `SimulatedOrderExecutor` was initialized with `config.get("risk_management")` but the YAML key is `"risk"`. This caused zero slippage and zero commissions in all backtests. Now tries `"risk"` first, falls back to `"risk_management"`.
-- **rsi_bounce/momentum_fade zero trades from daily trade cap**: Both strategies generated valid signals but `MAX_TRADES_PER_DAY=10` was exhausted by other strategies first. Increased to 50, added both to `strategy_routing` buckets, tuned entry thresholds (momentum_fade: confluence 45, vwap 0.5%, vol surge 1.5x; rsi_bounce: confluence 50, RSI 20/80, band tolerance 1.5%).
-- **Missing strategy registrations**: `rsi_bounce` and `momentum_fade` were never registered in `_build_strategy_registry()`, so they silently produced 0 trades despite being enabled in config. Added both to the registry.
-- **RSI Bounce extreme thresholds**: Default RSI oversold/overbought thresholds were 10/90, making the strategy nearly impossible to trigger. Changed to 25/75 for realistic mean-reversion signals.
-- **Backtest fill flush performance**: `await asyncio.sleep(0)` after every bar was very slow (~200K yields per month). Now only yields when executor had open orders that could have filled.
-- **Backtest fill dispatch chain**: `SimulatedOrderExecutor._dispatch_event` wrapped fill data in `_MockUpdate` objects that `handle_trade_update` couldn't extract, so `PositionManager.on_fill` was never called in backtests. Fixed by: (1) extracting `_MockUpdate` attributes including `fill_qty`/`fill_price` mapping, (2) adding `await asyncio.sleep(0)` after each `process_bar` call to flush async fill tasks immediately instead of deferring them. This enables max_hold exits, trailing stops, and partial exits in backtests.
-- **Backtest EOD flatten timing**: Positions were held overnight because the backtest runner only flattened at the next day's first bar (9:30 AM), not at market close. Added intraday flatten at 15:55 ET when `force_flat_at_1600` is configured, matching live engine behavior. This reduced average hold times from 400-800 minutes to realistic intraday values.
-- **Risk manager unit test for `MAX_SYMBOL_NOTIONAL`**: Test `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` was failing because `size_hint=1` is treated as a 100% conviction multiplier (not 1 absolute share), resulting in qty=50 and notional=5000 which triggered `MAX_NOTIONAL` before reaching the `MAX_SYMBOL_NOTIONAL` check. Fixed by setting `rm.max_risk_per_trade = 1.0` before the symbol-notional assertion (yielding qty=1) and restoring it to `50.0` before the open-risk assertion.
-- **Position sizing bug**: `size_hint` values between 0-1 (conviction multipliers from strategies) were truncated to 0 by `int()`, causing all signals to be rejected with `ZERO_QTY`. Now correctly treated as a scaling factor on the risk-based quantity limit, so `size_hint=0.6` means 60% of the max allowed position size.
-- Sorted import block in `src/engine/execution.py` to comply with ruff I001 rule (import order within try block for ledger adapter initialization).
-
-### Added
-
-- **Ledger adapter wired into execution flow**: `ExecutionEngine` now creates a `CerberusLedgerAdapter` and passes it to `PositionManager`, so all trade opens and closes are recorded in the unified ledger (`ledger.db`). Adapter creation is wrapped in try/except so failures never break trading. The ledger DB path is configurable via `ledger_db_path` in the engine config (defaults to `ledger.db`).
-
-### Changed
-
-- **Flow alerts now read from Heber**: Option flow data is read from Heber Silver (populated by Data-Gateway's UW poller) instead of making duplicate direct API calls to Unusual Whales. Falls back to Gateway REST proxy if Heber is not configured. Set `CERBERUS_HEBER_DATA_ROOT` to enable.
-
-### Removed
-
-- Removed `AlpacaClient` (`src/data/alpaca.py`), `GatewayStreamClient` (`src/data/gateway_stream.py`), and `CentralApiClient` (`src/data/api_client.py`) legacy data clients — all data now flows through `UnifiedDataClient`
-- Removed legacy/dual/gateway failover integration tests, Heber shadow parity tests, and old AlpacaClient/CentralApiClient unit and contract tests
-- Removed direct AlpacaClient usage from options strategies, agent evaluators, backtest runner, LLM client, and utility scripts — all rewired to `UnifiedDataClient` or simplified
-
-- **ExecutionEngine gateway_client and alpaca_client dependencies**: Removed direct `AlpacaClient` and `GatewayStreamClient` imports, constructor parameters, and instance variables from `ExecutionEngine`. Subscription management now uses an `on_subscription_change` callback. Flatten/reconciliation uses an optional `broker_client` attribute (set externally). Order execution already routed through `order_executor` (set by `main.py`).
-
-- **Legacy/dual/gateway backend mode settings**: Removed `cerberus_data_backend`, `cerberus_storage_backend`, `cerberus_dual_read_compare`, and `cerberus_failover_to_legacy` fields from Settings. Removed `use_gateway_data` and `use_heber_storage` properties. Simplified `validate_startup_mode()` to only check that `CERBERUS_GATEWAY_KEY` is set. All data now flows exclusively through Data-Gateway via UnifiedDataClient.
-
-### Changed
-
-- **Simplified main.py to use UnifiedDataClient exclusively**: Removed all `AlpacaClient`, `GatewayStreamClient`, and legacy data backend branching from the startup and main loop. Streaming now goes through `UnifiedDataClient.start_stream()` with automatic reconnect on session boundaries. Subscriptions update after each scan cycle via `update_subscriptions()`. Removed dead helper functions (`_should_initialize_alpaca_client`, `_should_start_alpaca_stream`, `_capture_screener_snapshot`) and their associated imports. Engine construction no longer passes `alpaca_client` or `gateway_client` params.
-
-- **FeaturePipeline and UniverseBuilder rewired to UnifiedDataClient**: Replaced `AlpacaClient` + `CentralApiClient` params with single `UnifiedDataClient` in both `FeaturePipeline` and `UniverseBuilder`. Removed `ConfigLoader`, `get_settings()`, `use_gateway_data`, and `allow_legacy_failover` from `UniverseBuilder`. Simplified `_get_historical_bars`, `_get_screener_most_actives`, and `_get_screener_movers` to direct delegation. Updated `src/main.py`, `scripts/paper_live_test.py`, and `tools/paper_live_harness.py` construction sites. All tests updated.
-
-- **GatewayOrderExecutor rewired to UnifiedDataClient**: Replaced `CentralApiClient` with `UnifiedDataClient` in `GatewayOrderExecutor`. Order submission now calls `unified_client.submit_order()`, cancellation calls `unified_client.cancel_order()`, and order listing calls `unified_client.get_orders()` with local symbol filtering (since `get_orders` doesn't accept a `symbols` parameter). Updated `src/main.py` to construct a `UnifiedDataClient` for the gateway executor path.
-
-- **DataFetcher rewired to UnifiedDataClient**: Replaced `AlpacaClient`, `CentralApiClient`, and `HeberReadClient` with single `UnifiedDataClient` in `src/data/fetcher.py`. Removed all dual-read comparison methods, legacy failover logic, Heber fallback chain, and gateway/backend mode flags. File reduced from ~746 lines to ~210 lines. All data now flows through Data-Gateway via `UnifiedDataClient`. LRU cache pattern preserved for bars. 17 new tests in `tests/data/test_fetcher_unified.py`.
-
-### Added
+#### Data Client & Streaming
 
 - **UnifiedDataClient WebSocket streaming**: Added WebSocket methods to `UnifiedDataClient` for real-time bar, quote, and trade streaming via Data-Gateway. Includes `connect()`/`disconnect()`, `subscribe()`/`unsubscribe()`, `update_subscriptions()` with delta diffing, `start_stream()` with auto-reconnect and exponential backoff, and `StreamQuote`/`StreamTrade` dataclasses. Feed name mapping (`bars` -> `stock_bars`, etc.), heartbeat handling, and both sync/async callback dispatch. 25 tests in `tests/data/test_unified_client_ws.py`.
 
@@ -156,53 +97,20 @@ All notable changes to this project will be documented in this file.
 
 - **DataRequirements dataclass**: Added `src/data/requirements.py` with `DataRequirements` dataclass and `aggregate_requirements()` function for strategies to declare needed data feeds (bars, quotes, trades streams and on-scan REST fetches like flow/gex). Part of the unified data client migration.
 
-- **Strategy data_requirements declarations**: Added `data_requirements` class attribute to `BaseStrategy` (default: bars stream only) and overrides on all 12 strategies that need non-default feeds. Strategies now declare their WebSocket streams (bars/quotes/trades) and on-scan REST fetches (flow/gex/prior_day) so the engine can auto-subscribe to the right data.
+- **Dynamic Ticker Discovery**: True live-parity stock discovery using Alpaca Screener API
+  - `AlpacaClient.get_most_actives()` - Fetch top volume stocks
+  - `AlpacaClient.get_movers()` - Fetch top gainers/losers
+  - `UniverseBuilder` screener dynamic source with configurable `most_actives_top_n` and `movers_top_n`
+  - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
+  - Setup guide: `docs/screener_snapshot_setup.md`
+
+#### Ledger & Persistence
 
 - **Ledger Adapter**: Added `CerberusLedgerAdapter` (`src/core/ledger_adapter.py`) to record all trade opens and closes in the unified empire-core ledger. Maps Cerberus-specific fields (regime tags, R-multiples, MAE/MFE, features) to the standardized ledger schema. Back-fills open records for trades that started before the adapter was initialized. Integrated into `PositionManager` with best-effort try/except so ledger failures never interrupt trading.
 
-### Removed
+- **Ledger adapter wired into execution flow**: `ExecutionEngine` now creates a `CerberusLedgerAdapter` and passes it to `PositionManager`, so all trade opens and closes are recorded in the unified ledger (`ledger.db`). Adapter creation is wrapped in try/except so failures never break trading. The ledger DB path is configurable via `ledger_db_path` in the engine config (defaults to `ledger.db`).
 
-- **Scanner Profiles**: Deleted `src/scanner/profiles.py` and all ScannerProfile classes (VWAPReversion, ORB, GapFill, FlowMomentum, TrendPullback, FailedBreakout, VWAPTrendRider, IndexMeanReversion, VixSpikeFade, MomentumContinuation). Profiles were bypassed by `strategy_routing` config — all validated symbols received the same regime-routed strategies regardless of profile scoring. Scanner pipeline simplified from 7 stages to 5 stages: universe → technicals+validation → flow+ranking → watchlist. Strategies are now assigned purely via `strategy_routing` config per regime. ~200 lines of dead/bypassed code removed.
-
-### Fixed
-
-- **Health check: dev dependencies not installed, test suite broken** (2026-03-13):
-  - Ran `uv sync --all-extras` to install dev dependencies (`pytest`, `pytest-asyncio`, `ruff`, etc.) which were missing from the virtualenv, causing all 109 test collection errors with `ModuleNotFoundError: No module named 'empire_core'`.
-  - Fixed `test_structured_logger_emits_json_with_extra_fields` in `tests/unit/test_structured_logger_unit.py`: switched from `capsys` to `caplog` fixture because pytest's log capture plugin intercepts stdlib logging records before they reach the stdout handler, making `capsys` unable to see the output.
-  - Added `__all__` to `src/core/logger.py` to declare the public re-export surface and fix five `F401` (unused import) ruff violations.
-  - Excluded `unusualwhales_python_client-5.0.1/` (vendored third-party package) from ruff linting in `pyproject.toml` to suppress 33 spurious `UP042`/`UP046` violations in library code we do not own.
-  - Result: 915 tests pass, 0 failures; ruff reports no violations.
-
-- **Ignore temp agent DB artifacts** (2026-03-10):
-  - Added `.agents/tmp/**/*.db`, `.agents/tmp/**/*.db-journal`, and `.agents/tmp/**/*.db-wal` to `.gitignore`.
-  - Removed committed temporary optimization/trial SQLite databases from `.agents/tmp/` so future runs do not accumulate in git history.
-- **Pre-commit** (`detect-secrets`): ignore `logs/` directories during secret scans so generated operational logs no longer block commits.
-
-- **Deterministic WFO result discovery and per-run result labeling** (2026-03-06):
-  - Updated `scripts/wfo_dashboard.py` to discover completed WFO runs from `artifacts/optimization/runs/<strategy>/<run-tag>/` instead of relying on the old flat artifact layout.
-  - Added deterministic summary export to `artifacts/optimization/wfo_dashboard_summary.json` so finished WFO runs can be checked programmatically.
-  - Added per-run labeled result files alongside `wfo_results.json`, for example `trend_rider_pro_<run-tag>_wfo_results.json`, so each run is stored separately even outside its run directory.
-  - Added a no-`plotly` fallback so result processing still writes the HTML shell and summary JSON even when chart dependencies are missing.
-  - Added regression coverage for run discovery ordering, summary payload generation, and labeled WFO result paths.
-
-- **Backtest helper regressions** (2026-02-15):
-  - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
-  - Restored Alpaca stream gating based on `data_backend` in startup helpers.
-
-- **HTTP error logging guard** (2026-02-15):
-  - Avoided `ResponseNotRead` when logging streaming response bodies.
-
-- **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
-  - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
-  - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
-  - Gateway bar stream now always starts when `data_backend=gateway`, independent of order executor.
-  - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
-  - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
-  - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
-
-### Added
-
-- Automated hourly report generated (2026-02-13 04:03 UTC).
+#### Integration & Tooling
 
 - **Cerberus/Data-Gateway/Heber integration gate tooling** (2026-02-11):
   - Added one-command integration smoke script:
@@ -235,40 +143,172 @@ All notable changes to this project will be documented in this file.
     - Created `tests/integration/test_gateway_failover_integration.py` with 11 test scenarios
     - Created `tests/unit/test_startup_validation_unit.py` with 14 validation tests
 
+- Automated hourly report generated (2026-02-13 04:03 UTC).
+
+- **Config: pydantic-settings for runtime env vars** (2026-02-09)
+  - Created `src/core/settings.py` with `Settings(BaseSettings)` for Alpaca credentials
+  - Migrated `health.py` from `os.getenv` to settings with `resolved_*` property helpers
+  - Supports both `ALPACA_*` and `APCA_*` naming conventions via resolved properties
+  - Added `pydantic-settings>=2.0` dependency
+
+#### Alpha Overhaul
+
+- **Alpha Overhaul Phase 4: Order Flow & Microstructure**:
+  - `Trade Flow Imbalance (TFI)`: High-fidelity microstructure edge using Tick Test (Lee-Ready).
+  - `Net Gamma Exposure (GEX)`: Integrated Unusual Whales greek exposure API for MM pinning analysis.
+- **Alpha Overhaul Phase 5: Statistical & Regime Alpha**:
+  - `Fractional Differentiation`: achieved stationarity while preserving memory ($d \approx 0.4$).
+  - `Hurst Exponent`: R/S analysis for regime classification (MR vs Trending).
+- **Alpha Overhaul Phase 6: Meta-Labeling & Probabilistic Execution**:
+  - `Signal Enrichment`: Every `Signal` now carries a `feature_snapshot` representing the full alpha context at time of generation.
+  - `MetaLabeler`: Implementation of a heuristic v1 vetteur using Hurst, TFI, and GEX to reject low-probability trades.
+  - `Database Persistence`: Enhanced `signals` table schema to log feature snapshots for future model training.
+- **Alpha Overhaul Phase 7: Automated Parameter Tuning & Walk-Forward**:
+  - `Dynamic Parameter Updates`: Refactored `BaseStrategy` and all strategies to support `update_params` for runtime parameter injection.
+  - `GridSearchOptimizer`: Modular parameter search with custom scoring functions.
+  - `WalkForwardManager`: Rolling window stability checks to prevent overfitting.
+  - `Stage2Tuner Integration`: Enhanced agent tuning with walk-forward validation.
+
+#### Historical Replay & Snapshot
+
+- **Historical Replay Data Architecture**:
+  - `ExternalSnapshot`: Layer 1 table for raw API data (GEX, flow) capture.
+  - `FeatureSnapshot`: Layer 2 table for computed features at point-in-time.
+  - `DailyUniverse`: Tracks which symbols passed filtering each day.
+  - `SnapshotManager`: Orchestrates capture of external API data and computed features.
+  - `ReplayProvider`: Provides historical data from snapshots for offline backtesting.
+  - `FeaturePipeline Integration`: Auto-persists snapshots when `snapshots.enabled: true`.
+
+#### Agent & Scheduling
+
+- **Agent Stage 2 Pipeline Integration** (PRD 9.2): Parameter tuning now runs as part of daily agent cycle in `run_cycle_with_db()`. Strategies not disabled by Stage 1 are evaluated for parameter improvements.
+- **Agent Stage 3 Weekly Analysis** (PRD 9.3): New `run_weekly_analysis()` method generates weekly performance reports with LLM-powered feature/model recommendations. Reports saved to `artifacts/weekly_reports/`.
+- **Scheduler Weekly Job**: Added Friday 16:30 ET job for automatic Stage 3 weekly analysis.
+- **Stage 2 Search Space Config**: Added parameter search space for `vwap_reversion`, `orb`, `gap_fill`, `vwap_trend_rider`, and `index_mean_reversion` strategies.
+
+#### Schema & Regime
+
+- **Multi-Axis Regime Schema** (PRD Regime Upgrade Patch §7):
+  - Trade table: Added `regime_tags_entry_json` and `regime_tags_exit_json` columns for full regime context
+  - RegimeHistory table: Added `model_version`, `trend`, `vol_regime`, `liquidity`, `risk`, `session`, `vol_of_vol`, `liquidity_score`, `risk_score`, `confidence_json` columns
+- **Signal Fusion Core (Phase 2)**: Added propagation of `atr`, `orb_high`, `orb_low`, `dof_score`, and `relative_strength` from features to strategy execution metadata.
+- **Relative Strength (RS) Calculation**: Implemented benchmark-anchored RS calculation in `BacktestFeaturePipeline` and `FeaturePipeline`.
+- **Directional Options Flow (DOF) Support**: Added skeleton and metadata mapping for DOF/UW flow features in `SymbolFeatures`.
+- **Scanner Profiles**: Added `VixSpikeFadeProfile` and `MomentumContinuationProfile` to complete scanner coverage for all active strategies
+- **Statistical Dependencies**: Added `statsmodels==0.14.4` to `requirements.txt`.
+
+#### Error Logging & Observability
+
+- **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
+  - Added `exc_info=True` to 16 critical ERROR-level logs for full stack traces in production debugging
+  - Added DEBUG-level logging to 5 silent exception handlers for best-effort operation visibility
+  - Expanded ErrorCode enum from 15 to 50+ codes organized by category (Config, Analytics, Alpaca, Engine, Scanner, Risk, Orders, Agent, Database, Backtest)
+  - Improved production debugging capability, observability, and error categorization for operational monitoring
+  - Commits: `5eb2db6`, `b7b7788`, `61fcd7b`
+
+#### Repository Hygiene
+
+- **Repository Hygiene (PR #1)**: Added project identity files for open-source readiness
+  - LICENSE file (MIT License) for legal clarity
+  - SECURITY.md with vulnerability disclosure policy and trading-specific security guidelines
+  - .env.example template with safe defaults and comprehensive documentation
+  - Updated README.md to reference LICENSE, SECURITY.md, and .env.example
+- **Repository Hygiene (PR #2)**: Reorganized root-level utilities for clarity
+  - Created `tools/` directory with comprehensive README
+  - Moved `verify_architecture.py`, `verify_deepseek.py`, `paper_live_harness.py` to tools/
+  - Archived obsolete `codereview_notes.md` to artifacts/archive/
+- **Repository Hygiene (PR #3)**: Added operational maturity tooling
+  - Created `docs/runbook.md` with 6 failure scenarios, diagnostics, and recovery procedures
+  - Implemented `src/core/health.py` with database/API/system health checks
+  - Added `--healthcheck` CLI flag for operational readiness verification
+  - Updated README.md with healthcheck usage documentation
+
+#### Strategies (Original Suite)
+
+- **Strategies**: Implemented full suite of 8 remediation strategies:
+  - VWAP Mean Reversion
+  - Opening Range Breakout (ORB)
+  - Trend Pullback
+  - Failed Breakout Fade
+  - VWAP Trend Rider
+  - Index Mean Reversion
+  - Flow-Confirmed Momentum
+  - Gap-Fill Scalper
+- **Scanner**: Implemented `ScannerProfile` interface and specific profiles for all 8 strategies. Filters based on technicals (ADX, RSI, BB) and Option Flow (Unusual Whales Z-Score).
+- **Pipeline**: Added comprehensive feature generation:
+  - `prior_day_high`, `prior_day_low`
+  - `bb_upper`, `bb_lower`, `price_zscore`
+  - `flow_zscore`, `call_put_ratio` (Unusual Whales)
+  - `premarket_volume` calculation
+- **Architecture**:
+  - `Agent` meta-loop for daily analysis and config updates.
+  - `Analytics` layer for trade statistics and efficiency auditing.
+  - `Scheduler` integration for automated functionality.
+- **Testing**: Added unit tests for all strategies (`tests/test_strategy_*.py`).
+- **Docker**: Added `Dockerfile`, `.dockerignore`, `docker-compose.yml` and `make` targets (`up`, `down`, `logs`) for full containerized orchestration.
+- **Scheduler**: Added internal `APScheduler` implementation (`src/scheduler.py`) to replace external Chronos dependency. Run via `python -m src.main --scheduler`.
+
 ### Changed
 
+#### Backtest & WFO
+
+- **SimulatedOrderExecutor now uses FillModel protocol**: The backtest executor accepts an optional `fill_model` parameter and delegates slippage/commission calculations to it instead of using inline math. Defaults to `FixedSlippageFillModel` with the same behavior as before, making the change backward-compatible. Custom fill models can now be injected for more realistic simulation.
 - **Backtest fill safeguards** (2026-02-15):
   - Defaulted to skipping zero-volume bars for fills (configurable `min_bar_volume_for_fill`).
   - Validated `partial_fill_mode` with warning fallback to `none`.
   - Added unit coverage for invalid fill modes and low-volume fill deferral.
+- **Backtest Feature Parity**: Aligned `BacktestFeaturePipeline` SymbolFeatures construction with live `FeaturePipeline` to ensure consistent alpha signal availability.
+- **Disabled Partial Exits** (`config/backtest_5yr/config.yaml`):
+  - Set `partial_exits.enabled: false` - analysis showed early profit-taking harmed overall performance
+  - Trades held >60 min had 51% WR and +$101K profit vs early exits losing money
+  - Reduced slippage from 5.0 to 2.0 bps for more realistic execution modeling
+- **Verification backtest results**: With only WFO-approved strategies (trend_rider_pro + orb_v2), full-year 2024 backtest achieves PF=0.91, max DD=1.96%, 1,082 trades. Strategies are near-breakeven — edge consumed by commission/friction model.
+- **WFO v3 optimized params applied to trend_rider_pro and orb_v2**: Applied walk-forward optimization mean parameters with stability annotations. trend_rider_pro: confluence_threshold=63.3, stop_atr_mult=2.08, target_atr_mult=4.5, trail_min_profit_r=0.60, max_hold_minutes=138. orb_v2: confluence_threshold=54.2, vol_gate_mult=1.53, trail_min_profit_r=0.96, max_hold_minutes=93.
+- **Disabled unprofitable strategies**: rsi_bounce (WFO v4 REJECT: 1/6 windows profitable, PF=0.42), momentum_fade (WFO v4 REJECT: 0 trades on 4-symbol universe), mean_reversion_pro (excluded from WFO, PF=0.72), flow_alpha (needs live options flow data).
+- **Disabled all V1 legacy strategies in backtest_v2.yaml**: Added explicit `enabled: false` for 14 V1 strategies (vwap_reversion, failed_breakout, trend_pullback, etc.) to prevent ConfigLoader deep-merge from strategies.yaml activating them during V2 backtests.
 
-- Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
-  - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
-  - Tightened startup validation test precision:
-    - Gateway required-field test now uses explicit empty URL value for deterministic assertions
-    - Added a focused unit test confirming custom gateway URL only flags missing gateway key
+#### Strategy Changes
 
-### Documentation
+- **Trend Rider Pro v4 — dramatic simplification for more trades**: Rewrote `trend_rider_pro` to remove ~8 gates that were suppressing trade frequency. Removed Markov regime switcher, HMM gate, Hurst gate (now observability-only), 15m HTF trend hard gate, and `_regime_allows` methods. Direction detection now uses simple VWAP filter + EMA-9/20 alignment + Kalman pullback. Confluence reduced from 6 to 4 factors, threshold lowered from 65 to 50. Default `stop_atr_mult` raised from 1.5 to 2.0, `pullback_threshold` widened from 0.003 to 0.005. Single exit config replaces HTF-strong/weak split. ADX minimum lowered from 20 to 15. Targets 2-5 trades/day across 30+ symbols.
+- **Param spaces updated for Trend Rider Pro v4**: Removed `hurst_trending_threshold` and `hmm_min_confidence` params. Added `pullback_threshold` as tunable (0.002-0.008). Lowered `confluence_threshold` range to 30-60. Widened `min_trend_alignment` range to 0.15-0.55.
 
-- Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
-  - `docs/cerberus-data-gateway-heber-architecture.md`
-  - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
-  - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
-- Added Data-Gateway/Heber runtime variable reference updates to:
-  - `docs/environment-variables.md`
-  - `.env.example`
-- Comprehensive documentation audit and remediation completed.
-- Rewrote `README.md` to match current runtime architecture, commands, and modules.
-- Reworked `docs/architecture.md` with updated system/data-flow diagrams and module map.
-- Added `docs/environment-variables.md` as source-of-truth env var reference.
-- Updated `.env.example` to include current runtime vars and APCA aliases.
-- Updated `docs/runbook.md`, `docs/order_flow.md`, and `docs/strategy_guide.md` for current interfaces/CLI behavior.
-- Updated `CONTRIBUTING.md`, `TESTING.md`, and `SECURITY.md` for current workflows.
-- Removed stale auto-generated `codebase.md`.
+#### Quant Upgrade Summary
 
-### Changed
+- **pair_trading_v2**: Kalman hedge ratio replaces EMA, Engle-Granger entry gate, GARCH-conditional z-score, OU half-life hard gate, rolling correlation monitor
+- **mean_reversion_pro**: GARCH-conditional z-score, Hurst exponent filter (H<0.45), adaptive confluence thresholds, OU half-life hard gate
+- **trend_rider_pro**: Kalman mean tracker replaces EMA-20, Hurst trending gate (H>0.55), Markov regime probability replaces ADX threshold, GARCH-forecasted stops
+- **flow_alpha**: IC-weighted signal combination, Granger causality validation, VPIN toxicity gate, GARCH-conditional normalization
+- **orb_v2**: CUSUM statistical breakout detection, variance ratio gate, BOCPD confidence multiplier, GARCH-relative volume gate
+- **rsi_bounce**: GARCH-conditional z-score, BOCPD structural break awareness, kurtosis filter, adaptive thresholds
+- **momentum_fade**: GARCH-conditional z-score, momentum exhaustion model (velocity + acceleration), Hurst gate (H<0.5), entropy filter, intraday seasonal volume
 
-- Deduplicated Stage 3 approval checks into shared helper used by weekly report and proposals.
+#### Data Client Migration
+
+- **Flow alerts now read from Heber**: Option flow data is read from Heber Silver (populated by Data-Gateway's UW poller) instead of making duplicate direct API calls to Unusual Whales. Falls back to Gateway REST proxy if Heber is not configured. Set `CERBERUS_HEBER_DATA_ROOT` to enable.
+
+- **Simplified main.py to use UnifiedDataClient exclusively**: Removed all `AlpacaClient`, `GatewayStreamClient`, and legacy data backend branching from the startup and main loop. Streaming now goes through `UnifiedDataClient.start_stream()` with automatic reconnect on session boundaries. Subscriptions update after each scan cycle via `update_subscriptions()`. Removed dead helper functions (`_should_initialize_alpaca_client`, `_should_start_alpaca_stream`, `_capture_screener_snapshot`) and their associated imports. Engine construction no longer passes `alpaca_client` or `gateway_client` params.
+
+- **FeaturePipeline and UniverseBuilder rewired to UnifiedDataClient**: Replaced `AlpacaClient` + `CentralApiClient` params with single `UnifiedDataClient` in both `FeaturePipeline` and `UniverseBuilder`. Removed `ConfigLoader`, `get_settings()`, `use_gateway_data`, and `allow_legacy_failover` from `UniverseBuilder`. Simplified `_get_historical_bars`, `_get_screener_most_actives`, and `_get_screener_movers` to direct delegation. Updated `src/main.py`, `scripts/paper_live_test.py`, and `tools/paper_live_harness.py` construction sites. All tests updated.
+
+- **GatewayOrderExecutor rewired to UnifiedDataClient**: Replaced `CentralApiClient` with `UnifiedDataClient` in `GatewayOrderExecutor`. Order submission now calls `unified_client.submit_order()`, cancellation calls `unified_client.cancel_order()`, and order listing calls `unified_client.get_orders()` with local symbol filtering (since `get_orders` doesn't accept a `symbols` parameter). Updated `src/main.py` to construct a `UnifiedDataClient` for the gateway executor path.
+
+- **DataFetcher rewired to UnifiedDataClient**: Replaced `AlpacaClient`, `CentralApiClient`, and `HeberReadClient` with single `UnifiedDataClient` in `src/data/fetcher.py`. Removed all dual-read comparison methods, legacy failover logic, Heber fallback chain, and gateway/backend mode flags. File reduced from ~746 lines to ~210 lines. All data now flows through Data-Gateway via `UnifiedDataClient`. LRU cache pattern preserved for bars. 17 new tests in `tests/data/test_fetcher_unified.py`.
+
+#### Regime & Infrastructure
+
+- **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
+  - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
+  - `Position.regime_at_entry` replaced with `Position.regime_tags_at_entry: Dict[str, str]`
+  - `ClosedTradeInfo` now stores `regime_tags_at_entry/exit` dicts with 5 axes
+  - Trades record full regime context: `{trend, vol, liquidity, risk, session}` at entry and exit
+  - Removed legacy regime config checks from `RiskManager`
+  - Updated `base.py._create_signal()` to populate regime_tags from `MarketState.regime_snapshot`
+- **VXX-Based Risk Axis**: Risk axis now properly uses VXX momentum (rising VXX = RISK_OFF, falling = RISK_ON)
+  - Added `update_vol(bar)` to `MarketContextService` and `MarketStateManager`
+  - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
+  - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
+
+#### Gateway & Execution
 
 - **Gateway-first trading execution path** (2026-02-13):
   - Set gateway-first runtime defaults in `src/core/settings.py`:
@@ -320,80 +360,125 @@ All notable changes to this project will be documented in this file.
   - Injected `CentralApiClient` into `UniverseBuilder` in `src/main.py`.
   - Added contract coverage for `get_alpaca_most_actives` and `get_alpaca_movers`.
 - **HTTP Client: requests → httpx** — Migrated `scripts/update_universe_lists.py` from `requests` to `httpx`
-- **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
-  - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
-  - `Position.regime_at_entry` replaced with `Position.regime_tags_at_entry: Dict[str, str]`
-  - `ClosedTradeInfo` now stores `regime_tags_at_entry/exit` dicts with 5 axes
-  - Trades record full regime context: `{trend, vol, liquidity, risk, session}` at entry and exit
-  - Removed legacy regime config checks from `RiskManager`
-  - Updated `base.py._create_signal()` to populate regime_tags from `MarketState.regime_snapshot`
-- **VXX-Based Risk Axis**: Risk axis now properly uses VXX momentum (rising VXX = RISK_OFF, falling = RISK_ON)
-  - Added `update_vol(bar)` to `MarketContextService` and `MarketStateManager`
-  - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
-  - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
 
-### Added
+#### WebSocket & Resilience
 
-- **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
-  - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
-  - Volume-impact slippage: `slippage_mode` (fixed|volume_impact) with `slippage_impact_mult` for market impact simulation
-  - ATR-based spread: `spread_mode` (fixed|atr_based) for volatility-sensitive spread modeling
-  - Flow strategy gating: `disable_flow_strategies` config to skip flow-dependent strategies in backtest
-  - New `backtest:` config section in `config.yaml` with all realism settings
-  - Unit tests in `tests/unit/test_backtest_parity_unit.py` (13 new tests)
-- **Dynamic Ticker Discovery**: True live-parity stock discovery using Alpaca Screener API
-  - `AlpacaClient.get_most_actives()` - Fetch top volume stocks
-  - `AlpacaClient.get_movers()` - Fetch top gainers/losers
-  - `UniverseBuilder` screener dynamic source with configurable `most_actives_top_n` and `movers_top_n`
-  - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
-  - Setup guide: `docs/screener_snapshot_setup.md`
+- **WebSocket Resilience Hardening** (`src/data/alpaca.py`):
+  - Added explicit `feed` parameter (`DataFeed.SIP`/`IEX`) to prevent IEX fallback on premium accounts
+  - Added jitter to exponential backoff (0-0.5s random)
+  - Added terminal error detection (`connection limit exceeded`) to enable REST fallback
+  - Limited retries to 5 with 30s max backoff
+  - Stored `config_loader` for feed configuration access
+  - Added resilience constants from KI: `HEARTBEAT_TIMEOUT_SEC=120`, `FIRST_BAR_TIMEOUT_SEC=10`
 
-### Added
+#### SonarQube Refactoring
 
-- **Config: pydantic-settings for runtime env vars** (2026-02-09)
-  - Created `src/core/settings.py` with `Settings(BaseSettings)` for Alpaca credentials
-  - Migrated `health.py` from `os.getenv` to settings with `resolved_*` property helpers
-  - Supports both `ALPACA_*` and `APCA_*` naming conventions via resolved properties
-  - Added `pydantic-settings>=2.0` dependency
+- **SonarQube Refactoring**: Refactored `FlowMomentumStrategy.on_bar()` by extracting `_validate_flow_direction()`, `_get_average_volume()`, and `_build_signal()` helper methods. Reduced cognitive complexity from 26 to ~12.
+- **SonarQube Refactoring**: Refactored `PositionManager.on_fill()` by extracting 8 helper methods: `_extract_fill_data()`, `_extract_risk_config()`, `_get_entry_context()`, `_apply_costs_to_position()`, `_open_new_position()`, `_increase_position()`, `_calculate_pnl()`, `_build_closed_trade_info()`, `_reduce_or_close_position()`. Reduced cognitive complexity from ~72 to ~15.
+- **SonarQube Refactoring**: Refactored `PositionManager.on_bar()` by extracting 4 helper methods: `_update_mae_mfe()`, `_check_max_hold_exit()`, `_check_stop_target_exit()`, `_create_exit_intent()`. Reduced cognitive complexity from 40 to ~12.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._update_symbol_state()` by extracting 4 helpers: `_get_or_create_symbol_state()`, `_extract_current_date()`, `_handle_index_bar_update()`, `_update_session_vwap()`. Reduced complexity from 40 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._update_indicator_cache()` by extracting 5 helpers: `_collect_indicator_periods()`, `_update_ema_indicators()`, `_update_rsi_indicators()`, `_update_vol_sma_indicators()`, `_update_bb_indicators()`. Reduced complexity from 31 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_signal()` by extracting 5 helpers: `_bind_signal_logger()`, `_log_risk_failure()`, `_persist_signal()`, `_store_pending_entry()`, `_get_max_hold_seconds()`. Reduced complexity from 26 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_positions()` by extracting 3 helpers: `_should_skip_reconcile()`, `_reconcile_single_position()`, `_handle_position_mismatch()`. Reduced complexity from 33 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._execute_signal_intents()` by extracting 2 helpers: `_should_halt_trading_for_db()`, `_submit_single_intent()`. Reduced complexity from 23 to ~8.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine.on_fill()` by extracting 3 helpers: `_normalize_fill_correlation_id()`, `_process_fill_with_position_manager()`, `_handle_closed_trade()`. Reduced complexity from 19 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine.flatten_all()` by extracting 5 helpers: `_flatten_cancel_orders()`, `_flatten_close_positions()`, `_flatten_confirm_state()`, `_flatten_reset_local_state()`, `_flatten_handle_result()`. Reduced complexity from 17 to ~8.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._refresh_strategy_engine()` by extracting 2 helpers: `_get_regime_strategies()`, `_is_strategy_enabled()`. Reduced complexity from 25 to ~8.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_scan_removals()` by extracting 2 helpers: `_cleanup_orders_for_symbol()`, `_get_pending_order_ids()`. Reduced complexity from 21 to ~8.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_scan_additions()` by extracting 3 helpers: `_build_scan_meta()`, `_determine_flow_bias()`, `_enrich_meta_from_features()`. Reduced complexity from 21 to ~6.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_orders()` by extracting 2 helpers: `_sync_open_orders_to_state()`, `_cancel_stale_orders()`. Reduced complexity from 29 to ~10.
+- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_db_orders()` by extracting 4 helpers: `_update_open_order_statuses()`, `_update_closed_order_statuses()`, `_mark_stale_orders_cancelled()`, `_apply_reconcile_status()`. Reduced complexity from 34 to ~8.
 
-### Added
+#### Logic Audit Improvements
 
-- **Alpha Overhaul Phase 4: Order Flow & Microstructure**:
-  - `Trade Flow Imbalance (TFI)`: High-fidelity microstructure edge using Tick Test (Lee-Ready).
-  - `Net Gamma Exposure (GEX)`: Integrated Unusual Whales greek exposure API for MM pinning analysis.
-- **Alpha Overhaul Phase 5: Statistical & Regime Alpha**:
-  - `Fractional Differentiation`: achieved stationarity while preserving memory ($d \approx 0.4$).
-  - `Hurst Exponent`: R/S analysis for regime classification (MR vs Trending).
-- **Alpha Overhaul Phase 6: Meta-Labeling & Probabilistic Execution**:
-  - `Signal Enrichment`: Every `Signal` now carries a `feature_snapshot` representing the full alpha context at time of generation.
-  - `MetaLabeler`: Implementation of a heuristic v1 vetteur using Hurst, TFI, and GEX to reject low-probability trades.
-  - `Database Persistence`: Enhanced `signals` table schema to log feature snapshots for future model training.
-- **Alpha Overhaul Phase 7: Automated Parameter Tuning & Walk-Forward**:
-  - `Dynamic Parameter Updates`: Refactored `BaseStrategy` and all strategies to support `update_params` for runtime parameter injection.
-  - `GridSearchOptimizer`: Modular parameter search with custom scoring functions.
-  - `WalkForwardManager`: Rolling window stability checks to prevent overfitting.
-  - `Stage2Tuner Integration`: Enhanced agent tuning with walk-forward validation.
-- **Historical Replay Data Architecture**:
-  - `ExternalSnapshot`: Layer 1 table for raw API data (GEX, flow) capture.
-  - `FeatureSnapshot`: Layer 2 table for computed features at point-in-time.
-  - `DailyUniverse`: Tracks which symbols passed filtering each day.
-  - `SnapshotManager`: Orchestrates capture of external API data and computed features.
-  - `ReplayProvider`: Provides historical data from snapshots for offline backtesting.
-  - `FeaturePipeline Integration`: Auto-persists snapshots when `snapshots.enabled: true`.
-- **Statistical Dependencies**: Added `statsmodels==0.14.4` to `requirements.txt`.
-- **Agent Stage 2 Pipeline Integration** (PRD 9.2): Parameter tuning now runs as part of daily agent cycle in `run_cycle_with_db()`. Strategies not disabled by Stage 1 are evaluated for parameter improvements.
-- **Agent Stage 3 Weekly Analysis** (PRD 9.3): New `run_weekly_analysis()` method generates weekly performance reports with LLM-powered feature/model recommendations. Reports saved to `artifacts/weekly_reports/`.
-- **Scheduler Weekly Job**: Added Friday 16:30 ET job for automatic Stage 3 weekly analysis.
-- **Stage 2 Search Space Config**: Added parameter search space for `vwap_reversion`, `orb`, `gap_fill`, `vwap_trend_rider`, and `index_mean_reversion` strategies.
-- **Scanner Profiles**: Added `VixSpikeFadeProfile` and `MomentumContinuationProfile` to complete scanner coverage for all active strategies
-- **Multi-Axis Regime Schema** (PRD Regime Upgrade Patch §7):
-  - Trade table: Added `regime_tags_entry_json` and `regime_tags_exit_json` columns for full regime context
-  - RegimeHistory table: Added `model_version`, `trend`, `vol_regime`, `liquidity`, `risk`, `session`, `vol_of_vol`, `liquidity_score`, `risk_score`, `confidence_json` columns
-- **Signal Fusion Core (Phase 2)**: Added propagation of `atr`, `orb_high`, `orb_low`, `dof_score`, and `relative_strength` from features to strategy execution metadata.
-- **Relative Strength (RS) Calculation**: Implemented benchmark-anchored RS calculation in `BacktestFeaturePipeline` and `FeaturePipeline`.
-- **Directional Options Flow (DOF) Support**: Added skeleton and metadata mapping for DOF/UW flow features in `SymbolFeatures`.
+- **H4 Logic Audit**: Add comprehensive fill input validation to `position_manager.on_fill()` to prevent position corruption from malformed broker data. Guards against negative quantities, zero/NaN/Inf values, and invalid types. ([#a994e0e](https://github.com/JasperDale420/Cerberus/commit/a994e0e))
+- **H2 Logic Audit**: Document safe R-multiple calculation with division by zero protection for breakeven stops (initial_risk = 0). Added comprehensive test suite covering all edge cases. ([#3ec7125](https://github.com/JasperDale420/Cerberus/commit/3ec7125))
+- **H3 Logic Audit**: Standardize position side comparisons to use enum (`Side.LONG`/`Side.SHORT`) consistently instead of string comparisons (`pos.side.value == "long"`). Makes code more type-safe and refactoring-friendly. ([#df32aa3](https://github.com/JasperDale420/Cerberus/commit/df32aa3))
+- **H1 Logic Audit**: Add timestamp-based reconciliation race condition prevention. Position now tracks `last_updated` timestamp, and reconciliation skips positions modified within last 2 seconds to prevent fill data loss during async broker reconciliation. ([#74a1979](https://github.com/JasperDale420/Cerberus/commit/74a1979))
+- **M1 Logic Audit**: Clear feature cache on market regime changes, not just daily boundaries. Prevents strategies from using stale regime-sensitive indicators (VWAP, RSI, etc.) for hours after regime transitions. Cache now clears 2-6 times per day instead of once. ([#2b88542](https://github.com/JasperDale420/Cerberus/commit/2b88542))
+- **M2 Logic Audit**: Track positions carried forward at session rollover for observability. RiskManager now logs number of overnight positions at session boundaries to help diagnose position limit issues. ([#7e2a665](https://github.com/JasperDale420/Cerberus/commit/7e2a665))
+- **M3 Logic Audit**: Prioritize target over stop when both exit conditions trigger on same bar. More trader-friendly since target is the better exit. Updated test to verify new behavior. ([#5514691](https://github.com/JasperDale420/Cerberus/commit/5514691))
+- **M4 Logic Audit**: Skip position reconciliation for symbols with pending orders. Prevents partial fill state corruption during mid-fill broker queries. ([#dd857ee](https://github.com/JasperDale420/Cerberus/commit/dd857ee))
+- **M5 Logic Audit**: Already fixed - MAE/MFE tracking happens before broker_managed_exits check, so updates on every bar
+- **M6 Logic Audit**: Added optional est_exit_commission parameter to update_unrealized_pnl() for more accurate net PnL (subtracts estimated exit costs)
+- **L5 Logic Audit**: Added Pydantic field_validators to RiskConfig for bounds checking: max_daily_loss (0-$100k), max_risk_per_trade (0-$10k), max_open_positions (0-100), risk_mode (normal/reduced/off). ([#a4dd8f0](https://github.com/JasperDale420/Cerberus/commit/a4dd8f0))
+
+#### Other
+
+- Deduplicated Stage 3 approval checks into shared helper used by weekly report and proposals.
+- Feature pipeline now reuses extracted close prices per symbol to avoid duplicate passes.
+  - Test coverage for: legacy mode, gateway mode, dual mode, failover behavior, parity logging
+  - Tightened startup validation test precision:
+    - Gateway required-field test now uses explicit empty URL value for deterministic assertions
+    - Added a focused unit test confirming custom gateway URL only flags missing gateway key
+- **Scanner Core**: Fixed duplicate watchlist entry bug and added sorting by score.
+- **Pipeline**: Removed hardcoded `premarket_volume`; now calculates from intraday data.
+- **Config**: Extended `config.yaml` to support all new strategies and parameters.
+- **Agent**: Updated Stage 3 System and User prompts to be "self-annealing" and PRD-aligned, prioritizing incremental refinement over radical changes.
+- **Config**: Added `unusual_whales.enabled` flags to toggle external flow data integration (disabled by default).
 
 ### Fixed
+
+- **Replace deprecated `datetime.utcnow()` with timezone-aware `datetime.now(timezone.utc)`**: Updated 5 instances across `schema.py` (3 SQLAlchemy column defaults) and `causal_filter.py` (2 direct calls). All timestamps are now timezone-aware per Empire conventions.
+
+- **Regime stop multiplier now applied to stop distance**: The `regime_stop_multiplier` (low=0.75, normal=1.0, high=1.5, shock=2.0) was computed and stored on positions at open time but never used to adjust the stop price. It is now applied to the stop distance when a position is opened — in high vol regimes stops are 1.5x wider, in low vol they are 0.75x tighter.
+
+- **Test suite preflight**: `uv sync --all-extras` is now required to install dev dependencies (pytest, ruff, etc.) into the venv; previously `uv sync` alone left pytest missing, causing 4 collection errors via the system pytest missing `filterpy` in its environment.
+- **MTF flat-gate tests** (`test_hierarchical_mtf_gate_unit.py`): Updated `test_rejects_when_15m_emas_diverged` and `test_rejects_when_15m_adx_high` to match the relaxed thresholds introduced in commit `9efc9d9` (EMA spread threshold 0.3% → 0.8%, ADX rejection threshold 25 → 35).
+- **Risk manager notional-cap test** (`test_risk_manager_additional_unit.py`): Updated `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` to reflect the capping behavior introduced in commit `5fcdce9` — when a signal's notional exceeds the per-order limit, qty is now capped to fit rather than rejected. Added a complementary assertion for the MAX_NOTIONAL rejection path (triggered when entry_price > cap, so capped qty rounds to 0).
+- **Ruff lint** (34 → 0 errors): Fixed import ordering, removed unused imports and variables (`valid_pnls`, `sys`, `datetime/timezone` in scripts), removed f-strings without placeholders, renamed unused loop variables to `_sym`/`_mh`, and added `# noqa: E402` to intentional post-sys.path imports in diagnostic/runner scripts.
+
+- **TRP `_regime_allows` rejecting FLAT trends again**: The trend_rider_pro upgrade relaxed `_regime_allows` to accept FLAT regime, but trend-following should not enter during choppy conditions. Restored strict directional gating (BUY requires UP, SELL requires DOWN). Markov upgrade path via `_regime_allows_with_markov` is unaffected.
+- **`MomentumFadeStrategy` and `RsiBounceStrategy` wrong `tf_alignment_mode`**: Both strategies are mean-reversion types but inherited the base class default of `"trend"` for `tf_alignment_mode`. Added explicit `self.tf_alignment_mode = "mean_reversion"` in `_set_params` for both, consistent with all other mean-reversion strategies (gap_fill, vwap_reversion, etc.).
+- **`MomentumFadeStrategy` undefined `mr_alignment` in signal meta**: The signal metadata referenced an `mr_alignment` variable that was never computed, which would cause a `NameError` at runtime when a signal was generated. Fixed by computing `mr_alignment = mtf.get_mean_reversion_alignment()` before building the meta dict.
+- **Stale test for `rsi_bounce` confluence factor name**: `test_confluence_factors_in_meta` asserted `"mr_alignment"` was in the factor names, but the strategy's confluence scorer was updated to use `"trend_context"` instead. Updated the test to match the current implementation.
+- **Stale test for `MeanReversionProStrategy` regime gate**: `test_rejects_trending_in_normal_vol` expected `_regime_ok` to return `False` for trending + NORMAL vol, but the regime gate was intentionally relaxed (commit 9c0a6ef) to allow NORMAL vol in trending markets. Renamed the test to `test_allows_trending_in_normal_vol` and updated the assertion to match the current behavior.
+
+- **OCO double-fill in SimulatedOrderExecutor**: When a bar's price range spanned both take-profit and stop-loss levels, both OCO legs filled on the same bar before cancellation ran. This created negative ghost positions and double cash credits, causing equity to explode to trillions. Fixed by tracking filled parent IDs during `process_bar` and skipping sibling OCO legs.
+- **Risk config key mismatch**: `SimulatedOrderExecutor` was initialized with `config.get("risk_management")` but the YAML key is `"risk"`. This caused zero slippage and zero commissions in all backtests. Now tries `"risk"` first, falls back to `"risk_management"`.
+- **rsi_bounce/momentum_fade zero trades from daily trade cap**: Both strategies generated valid signals but `MAX_TRADES_PER_DAY=10` was exhausted by other strategies first. Increased to 50, added both to `strategy_routing` buckets, tuned entry thresholds (momentum_fade: confluence 45, vwap 0.5%, vol surge 1.5x; rsi_bounce: confluence 50, RSI 20/80, band tolerance 1.5%).
+- **Missing strategy registrations**: `rsi_bounce` and `momentum_fade` were never registered in `_build_strategy_registry()`, so they silently produced 0 trades despite being enabled in config. Added both to the registry.
+- **RSI Bounce extreme thresholds**: Default RSI oversold/overbought thresholds were 10/90, making the strategy nearly impossible to trigger. Changed to 25/75 for realistic mean-reversion signals.
+- **Backtest fill flush performance**: `await asyncio.sleep(0)` after every bar was very slow (~200K yields per month). Now only yields when executor had open orders that could have filled.
+- **Backtest fill dispatch chain**: `SimulatedOrderExecutor._dispatch_event` wrapped fill data in `_MockUpdate` objects that `handle_trade_update` couldn't extract, so `PositionManager.on_fill` was never called in backtests. Fixed by: (1) extracting `_MockUpdate` attributes including `fill_qty`/`fill_price` mapping, (2) adding `await asyncio.sleep(0)` after each `process_bar` call to flush async fill tasks immediately instead of deferring them. This enables max_hold exits, trailing stops, and partial exits in backtests.
+- **Backtest EOD flatten timing**: Positions were held overnight because the backtest runner only flattened at the next day's first bar (9:30 AM), not at market close. Added intraday flatten at 15:55 ET when `force_flat_at_1600` is configured, matching live engine behavior. This reduced average hold times from 400-800 minutes to realistic intraday values.
+- **Risk manager unit test for `MAX_SYMBOL_NOTIONAL`**: Test `test_risk_manager_rejects_notional_symbol_and_open_risk_caps` was failing because `size_hint=1` is treated as a 100% conviction multiplier (not 1 absolute share), resulting in qty=50 and notional=5000 which triggered `MAX_NOTIONAL` before reaching the `MAX_SYMBOL_NOTIONAL` check. Fixed by setting `rm.max_risk_per_trade = 1.0` before the symbol-notional assertion (yielding qty=1) and restoring it to `50.0` before the open-risk assertion.
+- **Position sizing bug**: `size_hint` values between 0-1 (conviction multipliers from strategies) were truncated to 0 by `int()`, causing all signals to be rejected with `ZERO_QTY`. Now correctly treated as a scaling factor on the risk-based quantity limit, so `size_hint=0.6` means 60% of the max allowed position size.
+- Sorted import block in `src/engine/execution.py` to comply with ruff I001 rule (import order within try block for ledger adapter initialization).
+
+- **Health check: dev dependencies not installed, test suite broken** (2026-03-13):
+  - Ran `uv sync --all-extras` to install dev dependencies (`pytest`, `pytest-asyncio`, `ruff`, etc.) which were missing from the virtualenv, causing all 109 test collection errors with `ModuleNotFoundError: No module named 'empire_core'`.
+  - Fixed `test_structured_logger_emits_json_with_extra_fields` in `tests/unit/test_structured_logger_unit.py`: switched from `capsys` to `caplog` fixture because pytest's log capture plugin intercepts stdlib logging records before they reach the stdout handler, making `capsys` unable to see the output.
+  - Added `__all__` to `src/core/logger.py` to declare the public re-export surface and fix five `F401` (unused import) ruff violations.
+  - Excluded `unusualwhales_python_client-5.0.1/` (vendored third-party package) from ruff linting in `pyproject.toml` to suppress 33 spurious `UP042`/`UP046` violations in library code we do not own.
+  - Result: 915 tests pass, 0 failures; ruff reports no violations.
+
+- **Ignore temp agent DB artifacts** (2026-03-10):
+  - Added `.agents/tmp/**/*.db`, `.agents/tmp/**/*.db-journal`, and `.agents/tmp/**/*.db-wal` to `.gitignore`.
+  - Removed committed temporary optimization/trial SQLite databases from `.agents/tmp/` so future runs do not accumulate in git history.
+- **Pre-commit** (`detect-secrets`): ignore `logs/` directories during secret scans so generated operational logs no longer block commits.
+
+- **Deterministic WFO result discovery and per-run result labeling** (2026-03-06):
+  - Updated `scripts/wfo_dashboard.py` to discover completed WFO runs from `artifacts/optimization/runs/<strategy>/<run-tag>/` instead of relying on the old flat artifact layout.
+  - Added deterministic summary export to `artifacts/optimization/wfo_dashboard_summary.json` so finished WFO runs can be checked programmatically.
+  - Added per-run labeled result files alongside `wfo_results.json`, for example `trend_rider_pro_<run-tag>_wfo_results.json`, so each run is stored separately even outside its run directory.
+  - Added a no-`plotly` fallback so result processing still writes the HTML shell and summary JSON even when chart dependencies are missing.
+  - Added regression coverage for run discovery ordering, summary payload generation, and labeled WFO result paths.
+
+- **Backtest helper regressions** (2026-02-15):
+  - Handled `None` close values when extracting mixed bar shapes in the feature pipeline.
+  - Restored Alpaca stream gating based on `data_backend` in startup helpers.
+
+- **HTTP error logging guard** (2026-02-15):
+  - Avoided `ResponseNotRead` when logging streaming response bodies.
+
+- **Critical: Zero-Trade Pipeline Fix** (2026-02-13):
+  - Root cause: `_should_start_alpaca_stream()` returned `False` in `gateway+noop` mode, preventing bar WebSocket stream from starting. Without bars, `on_bar()` never fired — zero signals, zero trades.
+  - Synced local `main.py` with Docker image (session control, strategy registry, market-hours helpers).
+  - Gateway bar stream now always starts when `data_backend=gateway`, independent of order executor.
+  - `_should_start_alpaca_stream()` scoped to only control direct Alpaca streams (executor=alpaca).
+  - Added `--order-executor gateway` with `GatewayOrderExecutor` for Data-Gateway routing.
+  - Changed `docker-compose.yml` default from `--order-executor noop` to `--order-executor gateway`.
 
 - **Stability and quality gate fixes** (2026-02-10):
   - Restored compatibility imports for archived strategies via `src/strategies/failed_breakout.py` and `src/strategies/trend_pullback.py`.
@@ -414,102 +499,11 @@ All notable changes to this project will be documented in this file.
 - **Strategy Execution Fix**: Fixed missing `time` import in `FusionStrategyV1.py`.
 - **Backtest Determinism**: Updated `Scanner` cache TTL to use simulated `scan_time` instead of `datetime.now()`.
 
-### Changed
-
-- **Backtest Feature Parity**: Aligned `BacktestFeaturePipeline` SymbolFeatures construction with live `FeaturePipeline` to ensure consistent alpha signal availability.
-
-- **Disabled Partial Exits** (`config/backtest_5yr/config.yaml`):
-  - Set `partial_exits.enabled: false` - analysis showed early profit-taking harmed overall performance
-  - Trades held >60 min had 51% WR and +$101K profit vs early exits losing money
-  - Reduced slippage from 5.0 to 2.0 bps for more realistic execution modeling
-
-### Removed
-
-- **Archived Strategies** (`src/strategies/archived/`):
-  - Moved `failed_breakout.py` to archive - 5-year backtest showed no profitable edge in any regime
-  - Moved `trend_pullback.py` to archive - 5-year backtest showed -$1.8M loss with no profitable conditions
-  - Removed from isolation config generator (`scripts/generate_isolation_configs.py`)
-
-### Performance
-
-- **Backtest Engine Optimizations** - ~7x speedup for large backtests:
-  - **Order List Indexing** (`src/backtest/mock_executor.py`): Added `_pending_by_symbol` dict for O(1) order lookup per bar instead of O(N) scanning through all pending orders
-  - **Sync Core Loop** (`src/backtest/runner.py`): Extracted synchronous `_process_loop_event_core()` from async wrapper to eliminate async overhead for CPU-bound bar processing
-  - **Lazy Event Stream Merge** (`src/backtest/runner.py`): Replaced eager `list.sort()` with `heapq.merge()` for O(N) lazy merging of pre-sorted per-symbol bar streams
-  - Verified: All 27 backtest tests pass; 5-year 25M bar backtest completes in ~8.5 minutes vs ~1 hour previously
-
-### Fixed
-
 - **Critical: Backtest Session Filters Now Enforced** (`src/engine/strategy_engine.py`):
   - Fixed `scanner_bypass=True` causing ALL activation policy checks to be skipped
   - Session filters (e.g., `session: [opening, midday]`) now properly block premarket trades
   - Before: 97% of trades occurred in premarket despite config filters
   - After: 0% premarket trades, proper RTH-only execution
-
-### Added
-
-- **Backtest Session VWAP Injection** (`src/backtest/runner.py`):
-  - Added `_vwap_state` tracking dict for cumulative TPV/volume per symbol per session
-  - Session VWAP calculated and injected as `bar.vwap` attribute for VWAP-based strategies
-  - Enables `vwap_trend_rider` and `vwap_reversion` in offline backtests
-
-- **Backtest Gap Calculation** (`src/backtest/runner.py`):
-  - Added `_prev_day_closes` tracking for gap percentage calculation
-  - `gap_pct` injected into `symbol_state.meta` for `gap_fill` strategy
-
-- **Enhanced Regime Analysis Script** (`scripts/analyze_regime_ci.py`):
-  - Wilson score 95% confidence intervals for statistically robust win rate estimation
-  - Confidence ratings based on sample size (insufficient/low/medium/high)
-  - High-confidence deployment recommendations (CI lower > 25%)
-
-### Documentation
-
-- **PRD.md Audit Update (Dec 2025)**: Comprehensive alignment of PRD with implementation
-  - Added Section 12: Advanced Exit System (trailing stops, partial profits, regime-aware stops)
-  - Added Section 13: Backtesting Engine (volume-aware fills, slippage modeling, ATR spreads)
-  - Added strategies 9 (Momentum Continuation) and 10 (VIX Spike Fade) to Section 7.2
-  - Marked PRD Regime Upgrade Patch as IMPLEMENTED
-- **README.md**: Updated capabilities to include 5-axis regime system, advanced exits, and backtesting engine
-- **architecture.md**: Updated Key Design Principles with 5-axis regime system replacing legacy routing
-
-### Changed
-
-- **WebSocket Resilience Hardening** (`src/data/alpaca.py`):
-  - Added explicit `feed` parameter (`DataFeed.SIP`/`IEX`) to prevent IEX fallback on premium accounts
-  - Added jitter to exponential backoff (0-0.5s random)
-  - Added terminal error detection (`connection limit exceeded`) to enable REST fallback
-  - Limited retries to 5 with 30s max backoff
-  - Stored `config_loader` for feed configuration access
-  - Added resilience constants from KI: `HEARTBEAT_TIMEOUT_SEC=120`, `FIRST_BAR_TIMEOUT_SEC=10`
-- **Multi-Axis Regime Migration**: Replaced legacy BULL/BEAR/CHOP regime classification with full 5-axis multi-axis regime system
-  - `Signal.regime` field removed, now uses `Signal.regime_tags: Dict[str, str]` and `Signal.regime_confidence: Dict[str, float]`
-  - `Position.regime_at_entry` replaced with `Position.regime_tags_at_entry: Dict[str, str]`
-  - `ClosedTradeInfo` now stores `regime_tags_at_entry/exit` dicts with 5 axes
-  - Trades record full regime context: `{trend, vol, liquidity, risk, session}` at entry and exit
-  - Removed legacy regime config checks from `RiskManager`
-  - Updated `base.py._create_signal()` to populate regime_tags from `MarketState.regime_snapshot`
-- **VXX-Based Risk Axis**: Risk axis now properly uses VXX momentum (rising VXX = RISK_OFF, falling = RISK_ON)
-  - Added `update_vol(bar)` to `MarketContextService` and `MarketStateManager`
-  - Wired VXX bar processing in both `BacktestRunner` and `ExecutionEngine` for parity
-  - Risk distribution improved from 84% neutral to 44% neutral / 40% risk_off / 16% risk_on
-
-### Added
-
-- **Backtest Parity Improvements**: Enhanced backtest realism with configurable simulation settings
-  - Volume-aware partial fills: `partial_fill_mode` (none|fixed|volume_aware) with `partial_fill_rate` for liquidity modeling
-  - Volume-impact slippage: `slippage_mode` (fixed|volume_impact) with `slippage_impact_mult` for market impact simulation
-  - ATR-based spread: `spread_mode` (fixed|atr_based) for volatility-sensitive spread modeling
-  - Flow strategy gating: `disable_flow_strategies` config to skip flow-dependent strategies in backtest
-  - New `backtest:` config section in `config.yaml` with all realism settings
-  - Unit tests in `tests/unit/test_backtest_parity_unit.py` (13 new tests)
-- **Dynamic Ticker Discovery**: True live-parity stock discovery using Alpaca Screener API
-  - `AlpacaClient.get_most_actives()` - Fetch top volume stocks
-  - `AlpacaClient.get_movers()` - Fetch top gainers/losers
-  - `UniverseBuilder` screener dynamic source with configurable `most_actives_top_n` and `movers_top_n`
-  - `scripts/capture_screener_snapshot.py` - Daily snapshot capture for future historical replay
-  - Setup guide: `docs/screener_snapshot_setup.md`
-
-### Fixed
 
 - **H1 Logic Audit (New)**: Fix `VWAPReversionStrategy.on_bar()` unbound variable crash when price is within VWAP bands. Initialize `signal = None` before conditional blocks.
 - **H2 Logic Audit (New)**: Fix `FlowMomentumStrategy` threshold logic that allowed weak flow signals. Now properly rejects all signals below `min_flow_zscore`.
@@ -534,96 +528,59 @@ All notable changes to this project will be documented in this file.
 - **Dead Code Removal**: Remove unused `data/models.py` (Trade/Quote classes) and test file. ~30 lines removed.
 - **Indicator Consolidation**: Refactor `_compute_atr()` and `_compute_adx()` in `calculator.py` to use `RollingATR` and `RollingADX` incremental indicators. Removes ~50 lines of duplicate Wilder smoothing code.
 
-### Changed
-
-- **SonarQube Refactoring**: Refactored `FlowMomentumStrategy.on_bar()` by extracting `_validate_flow_direction()`, `_get_average_volume()`, and `_build_signal()` helper methods. Reduced cognitive complexity from 26 to ~12.
-- **SonarQube Refactoring**: Refactored `PositionManager.on_fill()` by extracting 8 helper methods: `_extract_fill_data()`, `_extract_risk_config()`, `_get_entry_context()`, `_apply_costs_to_position()`, `_open_new_position()`, `_increase_position()`, `_calculate_pnl()`, `_build_closed_trade_info()`, `_reduce_or_close_position()`. Reduced cognitive complexity from ~72 to ~15.
-- **SonarQube Refactoring**: Refactored `PositionManager.on_bar()` by extracting 4 helper methods: `_update_mae_mfe()`, `_check_max_hold_exit()`, `_check_stop_target_exit()`, `_create_exit_intent()`. Reduced cognitive complexity from 40 to ~12.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._update_symbol_state()` by extracting 4 helpers: `_get_or_create_symbol_state()`, `_extract_current_date()`, `_handle_index_bar_update()`, `_update_session_vwap()`. Reduced complexity from 40 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._update_indicator_cache()` by extracting 5 helpers: `_collect_indicator_periods()`, `_update_ema_indicators()`, `_update_rsi_indicators()`, `_update_vol_sma_indicators()`, `_update_bb_indicators()`. Reduced complexity from 31 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_signal()` by extracting 5 helpers: `_bind_signal_logger()`, `_log_risk_failure()`, `_persist_signal()`, `_store_pending_entry()`, `_get_max_hold_seconds()`. Reduced complexity from 26 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_positions()` by extracting 3 helpers: `_should_skip_reconcile()`, `_reconcile_single_position()`, `_handle_position_mismatch()`. Reduced complexity from 33 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._execute_signal_intents()` by extracting 2 helpers: `_should_halt_trading_for_db()`, `_submit_single_intent()`. Reduced complexity from 23 to ~8.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine.on_fill()` by extracting 3 helpers: `_normalize_fill_correlation_id()`, `_process_fill_with_position_manager()`, `_handle_closed_trade()`. Reduced complexity from 19 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine.flatten_all()` by extracting 5 helpers: `_flatten_cancel_orders()`, `_flatten_close_positions()`, `_flatten_confirm_state()`, `_flatten_reset_local_state()`, `_flatten_handle_result()`. Reduced complexity from 17 to ~8.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._refresh_strategy_engine()` by extracting 2 helpers: `_get_regime_strategies()`, `_is_strategy_enabled()`. Reduced complexity from 25 to ~8.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_scan_removals()` by extracting 2 helpers: `_cleanup_orders_for_symbol()`, `_get_pending_order_ids()`. Reduced complexity from 21 to ~8.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._process_scan_additions()` by extracting 3 helpers: `_build_scan_meta()`, `_determine_flow_bias()`, `_enrich_meta_from_features()`. Reduced complexity from 21 to ~6.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_orders()` by extracting 2 helpers: `_sync_open_orders_to_state()`, `_cancel_stale_orders()`. Reduced complexity from 29 to ~10.
-- **SonarQube Refactoring**: Refactored `ExecutionEngine._reconcile_db_orders()` by extracting 4 helpers: `_update_open_order_statuses()`, `_update_closed_order_statuses()`, `_mark_stale_orders_cancelled()`, `_apply_reconcile_status()`. Reduced complexity from 34 to ~8.
-- **H4 Logic Audit**: Add comprehensive fill input validation to `position_manager.on_fill()` to prevent position corruption from malformed broker data. Guards against negative quantities, zero/NaN/Inf values, and invalid types. ([#a994e0e](https://github.com/JasperDale420/Cerberus/commit/a994e0e))
-- **H2 Logic Audit**: Document safe R-multiple calculation with division by zero protection for breakeven stops (initial_risk = 0). Added comprehensive test suite covering all edge cases. ([#3ec7125](https://github.com/JasperDale420/Cerberus/commit/3ec7125))
-- **H3 Logic Audit**: Standardize position side comparisons to use enum (`Side.LONG`/`Side.SHORT`) consistently instead of string comparisons (`pos.side.value == "long"`). Makes code more type-safe and refactoring-friendly. ([#df32aa3](https://github.com/JasperDale420/Cerberus/commit/df32aa3))
-- **H1 Logic Audit**: Add timestamp-based reconciliation race condition prevention. Position now tracks `last_updated` timestamp, and reconciliation skips positions modified within last 2 seconds to prevent fill data loss during async broker reconciliation. ([#74a1979](https://github.com/JasperDale420/Cerberus/commit/74a1979))
-- **M1 Logic Audit**: Clear feature cache on market regime changes, not just daily boundaries. Prevents strategies from using stale regime-sensitive indicators (VWAP, RSI, etc.) for hours after regime transitions. Cache now clears 2-6 times per day instead of once. ([#2b88542](https://github.com/JasperDale420/Cerberus/commit/2b88542))
-- **M2 Logic Audit**: Track positions carried forward at session rollover for observability. RiskManager now logs number of overnight positions at session boundaries to help diagnose position limit issues. ([#7e2a665](https://github.com/JasperDale420/Cerberus/commit/7e2a665))
-- **M3 Logic Audit**: Prioritize target over stop when both exit conditions trigger on same bar. More trader-friendly since target is the better exit. Updated test to verify new behavior. ([#5514691](https://github.com/JasperDale420/Cerberus/commit/5514691))
-- **M4 Logic Audit**: Skip position reconciliation for symbols with pending orders. Prevents partial fill state corruption during mid-fill broker queries. ([#dd857ee](https://github.com/JasperDale420/Cerberus/commit/dd857ee))
-- **M5 Logic Audit**: Already fixed - MAE/MFE tracking happens before broker_managed_exits check, so updates on every bar
-- **M6 Logic Audit**: Added optional est_exit_commission parameter to update_unrealized_pnl() for more accurate net PnL (subtracts estimated exit costs)
-- **L5 Logic Audit**: Added Pydantic field_validators to RiskConfig for bounds checking: max_daily_loss (0-$100k), max_risk_per_trade (0-$10k), max_open_positions (0-100), risk_mode (normal/reduced/off). ([#a4dd8f0](https://github.com/JasperDale420/Cerberus/commit/a4dd8f0))
-
-### Added
-
-- **Error Logging Improvements**: Comprehensive audit and enhancement of error logging across the codebase
-  - Added `exc_info=True` to 16 critical ERROR-level logs for full stack traces in production debugging
-  - Added DEBUG-level logging to 5 silent exception handlers for best-effort operation visibility
-  - Expanded ErrorCode enum from 15 to 50+ codes organized by category (Config, Analytics, Alpaca, Engine, Scanner, Risk, Orders, Agent, Database, Backtest)
-  - Improved production debugging capability, observability, and error categorization for operational monitoring
-  - Commits: `5eb2db6`, `b7b7788`, `61fcd7b`
-
-### Added
-
-- **Repository Hygiene (PR #1)**: Added project identity files for open-source readiness
-  - LICENSE file (MIT License) for legal clarity
-  - SECURITY.md with vulnerability disclosure policy and trading-specific security guidelines
-  - .env.example template with safe defaults and comprehensive documentation
-  - Updated README.md to reference LICENSE, SECURITY.md, and .env.example
-- **Repository Hygiene (PR #2)**: Reorganized root-level utilities for clarity
-  - Created `tools/` directory with comprehensive README
-  - Moved `verify_architecture.py`, `verify_deepseek.py`, `paper_live_harness.py` to tools/
-  - Archived obsolete `codereview_notes.md` to artifacts/archive/
-- **Repository Hygiene (PR #3)**: Added operational maturity tooling
-  - Created `docs/runbook.md` with 6 failure scenarios, diagnostics, and recovery procedures
-  - Implemented `src/core/health.py` with database/API/system health checks
-  - Added `--healthcheck` CLI flag for operational readiness verification
-  - Updated README.md with healthcheck usage documentation
-- **Strategies**: Implemented full suite of 8 remediation strategies:
-  - VWAP Mean Reversion
-  - Opening Range Breakout (ORB)
-  - Trend Pullback
-  - Failed Breakout Fade
-  - VWAP Trend Rider
-  - Index Mean Reversion
-  - Flow-Confirmed Momentum
-  - Gap-Fill Scalper
-- **Scanner**: Implemented `ScannerProfile` interface and specific profiles for all 8 strategies. Filters based on technicals (ADX, RSI, BB) and Option Flow (Unusual Whales Z-Score).
-- **Pipeline**: Added comprehensive feature generation:
-  - `prior_day_high`, `prior_day_low`
-  - `bb_upper`, `bb_lower`, `price_zscore`
-  - `flow_zscore`, `call_put_ratio` (Unusual Whales)
-  - `premarket_volume` calculation
-- **Architecture**:
-  - `Agent` meta-loop for daily analysis and config updates.
-  - `Analytics` layer for trade statistics and efficiency auditing.
-  - `Scheduler` integration for automated functionality.
-- **Testing**: Added unit tests for all strategies (`tests/test_strategy_*.py`).
-- **Docker**: Added `Dockerfile`, `.dockerignore`, `docker-compose.yml` and `make` targets (`up`, `down`, `logs`) for full containerized orchestration.
-- **Scheduler**: Added internal `APScheduler` implementation (`src/scheduler.py`) to replace external Chronos dependency. Run via `python -m src.main --scheduler`.
-
-### Changed
-
-- **Scanner Core**: Fixed duplicate watchlist entry bug and added sorting by score.
-- **Pipeline**: Removed hardcoded `premarket_volume`; now calculates from intraday data.
-- **Config**: Extended `config.yaml` to support all new strategies and parameters.
-- **Agent**: Updated Stage 3 System and User prompts to be "self-annealing" and PRD-aligned, prioritizing incremental refinement over radical changes.
-- **Config**: Added `unusual_whales.enabled` flags to toggle external flow data integration (disabled by default).
-
-### Fixed
-
 - **Pre-commit**: Resolved all Ruff linting errors, Mypy type-check failures, and Black formatting inconsistencies across the codebase.
 - **Data Pipeline**: Fix incorrect usage of `zip(strict=False)` and unused variables.
 - **Testing**: Fix mock type injection errors in unit tests.
+
+### Removed
+
+- Removed `AlpacaClient` (`src/data/alpaca.py`), `GatewayStreamClient` (`src/data/gateway_stream.py`), and `CentralApiClient` (`src/data/api_client.py`) legacy data clients — all data now flows through `UnifiedDataClient`
+- Removed legacy/dual/gateway failover integration tests, Heber shadow parity tests, and old AlpacaClient/CentralApiClient unit and contract tests
+- Removed direct AlpacaClient usage from options strategies, agent evaluators, backtest runner, LLM client, and utility scripts — all rewired to `UnifiedDataClient` or simplified
+
+- **ExecutionEngine gateway_client and alpaca_client dependencies**: Removed direct `AlpacaClient` and `GatewayStreamClient` imports, constructor parameters, and instance variables from `ExecutionEngine`. Subscription management now uses an `on_subscription_change` callback. Flatten/reconciliation uses an optional `broker_client` attribute (set externally). Order execution already routed through `order_executor` (set by `main.py`).
+
+- **Legacy/dual/gateway backend mode settings**: Removed `cerberus_data_backend`, `cerberus_storage_backend`, `cerberus_dual_read_compare`, and `cerberus_failover_to_legacy` fields from Settings. Removed `use_gateway_data` and `use_heber_storage` properties. Simplified `validate_startup_mode()` to only check that `CERBERUS_GATEWAY_KEY` is set. All data now flows exclusively through Data-Gateway via UnifiedDataClient.
+
+- **Scanner Profiles**: Deleted `src/scanner/profiles.py` and all ScannerProfile classes (VWAPReversion, ORB, GapFill, FlowMomentum, TrendPullback, FailedBreakout, VWAPTrendRider, IndexMeanReversion, VixSpikeFade, MomentumContinuation). Profiles were bypassed by `strategy_routing` config — all validated symbols received the same regime-routed strategies regardless of profile scoring. Scanner pipeline simplified from 7 stages to 5 stages: universe → technicals+validation → flow+ranking → watchlist. Strategies are now assigned purely via `strategy_routing` config per regime. ~200 lines of dead/bypassed code removed.
+
+- **Archived Strategies** (`src/strategies/archived/`):
+  - Moved `failed_breakout.py` to archive - 5-year backtest showed no profitable edge in any regime
+  - Moved `trend_pullback.py` to archive - 5-year backtest showed -$1.8M loss with no profitable conditions
+  - Removed from isolation config generator (`scripts/generate_isolation_configs.py`)
+
+### Performance
+
+- **Backtest Engine Optimizations** - ~7x speedup for large backtests:
+  - **Order List Indexing** (`src/backtest/mock_executor.py`): Added `_pending_by_symbol` dict for O(1) order lookup per bar instead of O(N) scanning through all pending orders
+  - **Sync Core Loop** (`src/backtest/runner.py`): Extracted synchronous `_process_loop_event_core()` from async wrapper to eliminate async overhead for CPU-bound bar processing
+  - **Lazy Event Stream Merge** (`src/backtest/runner.py`): Replaced eager `list.sort()` with `heapq.merge()` for O(N) lazy merging of pre-sorted per-symbol bar streams
+  - Verified: All 27 backtest tests pass; 5-year 25M bar backtest completes in ~8.5 minutes vs ~1 hour previously
+
+### Documentation
+
+- Added integration planning docs for Cerberus migration to Data-Gateway + Heber:
+  - `docs/cerberus-data-gateway-heber-architecture.md`
+  - `docs/cerberus-data-gateway-heber-migration-roadmap.md`
+  - `docs/cerberus-data-gateway-heber-implementation-checklist.md`
+- Added Data-Gateway/Heber runtime variable reference updates to:
+  - `docs/environment-variables.md`
+  - `.env.example`
+- Comprehensive documentation audit and remediation completed.
+- Rewrote `README.md` to match current runtime architecture, commands, and modules.
+- Reworked `docs/architecture.md` with updated system/data-flow diagrams and module map.
+- Added `docs/environment-variables.md` as source-of-truth env var reference.
+- Updated `.env.example` to include current runtime vars and APCA aliases.
+- Updated `docs/runbook.md`, `docs/order_flow.md`, and `docs/strategy_guide.md` for current interfaces/CLI behavior.
+- Updated `CONTRIBUTING.md`, `TESTING.md`, and `SECURITY.md` for current workflows.
+- Removed stale auto-generated `codebase.md`.
+- **PRD.md Audit Update (Dec 2025)**: Comprehensive alignment of PRD with implementation
+  - Added Section 12: Advanced Exit System (trailing stops, partial profits, regime-aware stops)
+  - Added Section 13: Backtesting Engine (volume-aware fills, slippage modeling, ATR spreads)
+  - Added strategies 9 (Momentum Continuation) and 10 (VIX Spike Fade) to Section 7.2
+  - Marked PRD Regime Upgrade Patch as IMPLEMENTED
+- **README.md**: Updated capabilities to include 5-axis regime system, advanced exits, and backtesting engine
+- **architecture.md**: Updated Key Design Principles with 5-axis regime system replacing legacy routing
 
 ## 2026-01-05
 

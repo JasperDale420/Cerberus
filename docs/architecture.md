@@ -116,6 +116,51 @@ Cerberus supports both legacy regime (`bull|bear|chop`) and multi-axis regime sn
 
 These are carried through signal/trade metadata for routing and analytics.
 
+## Backtest & Analytics Architecture
+
+The backtest engine uses a layered composition pattern with pluggable modules:
+
+```mermaid
+flowchart TB
+  subgraph Backtest Engine
+    RUNNER[Runner] --> DQ[Data Quality Checker]
+    RUNNER --> EXEC[SimulatedOrderExecutor]
+    EXEC --> FM[FillModel Protocol]
+    FM --> FIXED[FixedSlippageFillModel]
+    FM --> VAWARE[VolumeAwareFillModel]
+    RUNNER --> EOD[Per-Strategy EOD Logic]
+  end
+
+  subgraph Post-Backtest Analytics
+    RUNNER --> BENCH[Benchmark Comparison]
+    RUNNER --> MC[Monte Carlo Bootstrap]
+    RUNNER --> DIAG[Diagnostics Engine]
+    RUNNER --> REPORT[BacktestReportCard]
+    REPORT --> STORE[Result Store JSON]
+  end
+
+  subgraph WFO Enhancements
+    WFO[Optuna Harness] --> HOLD[Holdout Validation]
+    WFO --> SENS[Parameter Sensitivity]
+  end
+
+  subgraph API Layer
+    STORE --> API[FastAPI Backtest API]
+    API --> UI[EmpireUI Dashboard]
+  end
+```
+
+| Module | Path | Purpose |
+|---|---|---|
+| Fill Models | `src/backtest/fill_models/` | Pluggable slippage simulation (fixed BPS, volume-aware) |
+| Data Quality | `src/backtest/data_quality.py` | Pre-backtest bar validation and symbol exclusion |
+| Benchmark | `src/analytics/benchmark.py` | Alpha, beta, information ratio, capture ratios vs SPY |
+| Monte Carlo | `src/analytics/monte_carlo.py` | Bootstrap P&L resampling for confidence intervals |
+| Diagnostics | `src/analytics/diagnostics.py` | Strategy ranking, regime mismatches, time-of-day edge |
+| Param Sensitivity | `src/analytics/param_sensitivity.py` | Spearman rank correlation of WFO trial params |
+| Result Store | `src/backtest/result_store.py` | JSON persistence for backtest results |
+| Backtest API | `src/api/backtest_api.py` | FastAPI endpoints for EmpireUI dashboard |
+
 ## Deployment Topology
 
 - Local Python process: `python -m src.main ...`

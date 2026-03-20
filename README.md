@@ -66,6 +66,9 @@ flowchart LR
 | `src/backtest/` | Offline replay runner + mock executor |
 | `src/analysis/` | DB schema, persistence, reporting |
 | `src/analytics/` | Optimization, walk-forward, meta-labeling utilities |
+| `src/backtest/fill_models/` | Pluggable fill simulation (fixed BPS, volume-aware) |
+| `src/backtest/result_store.py` | JSON result persistence for dashboard API |
+| `src/api/` | FastAPI backtest API for EmpireUI dashboard |
 | `src/agent/` | Stage-based analysis/tuning/report generation |
 | `config/` | Runtime config overlays (`config.yaml`, `risk.yaml`, etc.) |
 | `tests/` | Unit/integration/contract/e2e/smoke tests |
@@ -143,7 +146,27 @@ Offline deterministic replay:
 python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/jsonl_bars
 ```
 
-Backtest realism controls are under the `backtest:` section in config (partial fills, slippage mode, spread mode, flow-strategy gating, strict session flatten options).
+### Realism Controls
+
+- **Pluggable fill models**: Choose between fixed-BPS slippage or volume-aware market impact via `backtest.fill_model` config (`fixed` or `volume_aware`)
+- **Per-strategy overnight handling**: Configure `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` per strategy instead of global EOD flattening
+- **Data quality checks**: Pre-backtest validation for gaps, zero-volume bars, price outliers, and stale prices. Enable via `analytics.data_quality` in config
+
+### Post-Backtest Analytics
+
+- **Benchmark comparison**: Alpha, beta, information ratio, up/down capture ratios vs SPY
+- **Monte Carlo simulation**: Bootstrap resampling for probability of loss/ruin, equity confidence intervals, Sharpe distribution. Enable via `analytics.monte_carlo.enabled: true`
+- **Diagnostics engine**: Strategy ranking, regime mismatch detection, time-of-day edge analysis, hold/exit analysis. Enable via `analytics.diagnostics.enabled: true`
+- **Parameter sensitivity**: Spearman rank correlation analysis of Optuna trial params vs objective scores (auto-runs after WFO)
+
+### Results API
+
+Backtest results are persisted as JSON and served via FastAPI:
+```bash
+uvicorn src.api.backtest_api:app --port 8004
+```
+
+Endpoints: `/api/backtest/runs`, `/api/backtest/runs/{id}/equity`, `/api/backtest/runs/{id}/trades`, `/api/backtest/runs/{id}/monte-carlo`, `/api/backtest/runs/{id}/regime-splits`
 
 ## Development
 
