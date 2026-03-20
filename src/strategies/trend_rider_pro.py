@@ -133,13 +133,6 @@ class TrendRiderProStrategy(BaseStrategy):
         if avg_vol > 0 and float(bar.volume) < avg_vol * 1.2:
             return None
 
-        # --- candle body filter: reject doji/indecision bars ---
-        candle_range = float(bar.high) - float(bar.low)
-        if candle_range > 0:
-            body = abs(float(bar.close) - float(bar.open))
-            if body / candle_range < 0.4:
-                return None
-
         # --- confluence scoring ---
         scorer = self._score_confluence(bar, side, mtf, symbol_state, symbol)
         if not scorer.passes_threshold():
