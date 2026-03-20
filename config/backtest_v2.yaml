@@ -67,7 +67,7 @@ strategies:
     max_hold_minutes: 120           # autoresearch 2025 iter6: shorter hold reduces mean reversion
     activation:
       session: [opening, midday]          # autoresearch iter17: drop power_hour
-      trend: [up, down]
+      trend: [up]                        # autoresearch iter28: long-only, uptrend only
       vol: [low, normal]               # autoresearch iter18: avoid high vol whipsaws
       liquidity: [good, thin]
       risk: [risk_on, neutral]
