@@ -296,16 +296,16 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=avg_vol > 0 and float(bar.volume) >= avg_vol * 0.8,
         )
 
-        # 4. ADX strength (weight 0.20) — require ADX >= 25 for strong trend
+        # 4. ADX strength (weight 0.20) — require ADX >= 30 for very strong trend
         adx_5m = mtf.get_adx("5m")
         adx_val = adx_5m if adx_5m is not None else 0.0
-        adx_score = score_threshold(adx_val, 25.0, 45.0)
+        adx_score = score_threshold(adx_val, 30.0, 50.0)
         scorer.add_factor(
             "adx_strength",
             raw_value=adx_val,
             score=adx_score,
             weight=0.20,
-            passed=adx_val >= 25.0,
+            passed=adx_val >= 30.0,
         )
 
         return scorer
