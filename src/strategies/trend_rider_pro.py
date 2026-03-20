@@ -330,14 +330,23 @@ class TrendRiderProStrategy(BaseStrategy):
             garch_distance = self.stop_atr_mult * garch_result.conditional_vol * bar.close
             vol_distance = max(vol_distance, garch_distance)
 
+        min_distance = 1.5 * atr_5m  # minimum stop distance to survive noise
+
         if side == OrderSide.BUY:
             swings = mtf.get_swing_lows("5m", lookback=5)
             if swings:
-                return swings[0]
+                swing_stop = swings[0]
+                # Ensure minimum distance from entry
+                if bar.close - swing_stop < min_distance:
+                    swing_stop = bar.close - min_distance
+                return swing_stop
             return bar.low - vol_distance
         swings = mtf.get_swing_highs("5m", lookback=5)
         if swings:
-            return swings[0]
+            swing_stop = swings[0]
+            if swing_stop - bar.close < min_distance:
+                swing_stop = bar.close + min_distance
+            return swing_stop
         return bar.high + vol_distance
 
     # ------------------------------------------------------------------
