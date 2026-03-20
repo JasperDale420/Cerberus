@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **JSON result persistence**: Backtest results are now saved as JSON files, enabling the dashboard API to list and retrieve past runs. Use `save_backtest_result()`, `load_backtest_result()`, and `list_backtest_runs()` from `src/backtest/result_store`.
+
 - **Holdout validation dataclass**: Added `HoldoutResult` dataclass to the WFO harness for structured holdout window validation results, including OOS-to-holdout ratio and pass/fail status.
 
 - **Parameter sensitivity in WFO results**: Walk-forward optimization now runs parameter sensitivity analysis on completed Optuna trials and includes ranked sensitivity data in the returned results under `param_sensitivity`.
