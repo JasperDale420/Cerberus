@@ -128,9 +128,9 @@ class TrendRiderProStrategy(BaseStrategy):
         if not self._require_higher_tf_trend(mtf, side):
             return None
 
-        # --- volume confirmation: require 1.2x avg volume ---
+        # --- volume confirmation: require at least avg volume ---
         avg_vol = self._get_avg_volume(symbol_state)
-        if avg_vol > 0 and float(bar.volume) < avg_vol * 1.2:
+        if avg_vol > 0 and float(bar.volume) < avg_vol:
             return None
 
         # --- confluence scoring ---
