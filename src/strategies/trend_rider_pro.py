@@ -133,6 +133,13 @@ class TrendRiderProStrategy(BaseStrategy):
         if avg_vol > 0 and float(bar.volume) < avg_vol * 1.2:
             return None
 
+        # --- close position filter: require close in favorable part of range ---
+        candle_range = float(bar.high) - float(bar.low)
+        if candle_range > 0:
+            close_position = (float(bar.close) - float(bar.low)) / candle_range
+            if side == OrderSide.BUY and close_position < 0.4:
+                return None  # for buys, close must be in upper 60% of range
+
         # --- confluence scoring ---
         scorer = self._score_confluence(bar, side, mtf, symbol_state, symbol)
         if not scorer.passes_threshold():
