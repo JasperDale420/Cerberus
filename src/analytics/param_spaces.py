@@ -60,17 +60,18 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
     # ------------------------------------------------------------------
-    # Trend Rider Pro v4 — simplified, 7 params
-    #   Focus: entry threshold, trend gate, pullback, stop/target, exit
+    # Trend Rider Pro v4 — 7 params, ranges informed by 72-iter autoresearch
+    #   Autoresearch best: confluence 65, stop 2.5, target 4.0, trail 0.75,
+    #   hold 120, pullback 0.008, alignment 0.30
     # ------------------------------------------------------------------
     "trend_rider_pro": [
         ParamDef(
             "confluence_threshold",
             "float",
-            low=30.0,
-            high=60.0,
+            low=55.0,
+            high=75.0,
             step=5.0,
-            description="Minimum confluence score to enter (lowered for more trades)",
+            description="Minimum confluence score (autoresearch: 65 optimal)",
         ),
         ParamDef(
             "min_trend_alignment",
@@ -78,47 +79,47 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             low=0.15,
             high=0.55,
             step=0.05,
-            description="MTF trend alignment gate (widened range for v4)",
+            description="MTF trend alignment gate",
         ),
         ParamDef(
             "pullback_threshold",
             "float",
-            low=0.002,
-            high=0.008,
+            low=0.004,
+            high=0.012,
             step=0.001,
             description="Max distance from Kalman/EMA anchor for pullback detection",
         ),
         ParamDef(
             "stop_atr_mult",
             "float",
-            low=1.5,
-            high=3.0,
+            low=1.75,
+            high=3.25,
             step=0.25,
-            description="ATR multiplier for stop",
+            description="ATR multiplier for stop (autoresearch: 2.5 optimal)",
         ),
         ParamDef(
             "target_atr_mult",
             "float",
-            low=2.5,
+            low=3.0,
             high=5.0,
             step=0.5,
-            description="ATR multiplier for target",
+            description="ATR multiplier for target (autoresearch: 4.0 optimal)",
         ),
         ParamDef(
             "trail_min_profit_r",
             "float",
-            low=0.4,
-            high=0.8,
-            step=0.1,
-            description="R-multiple before trailing activates",
+            low=0.5,
+            high=1.0,
+            step=0.05,
+            description="R-multiple before trailing activates (autoresearch: 0.75)",
         ),
         ParamDef(
             "max_hold_minutes",
             "int",
-            low=60,
-            high=210,
+            low=90,
+            high=180,
             step=15,
-            description="Maximum hold time in minutes",
+            description="Maximum hold time in minutes (autoresearch: 120)",
         ),
     ],
     # ------------------------------------------------------------------
