@@ -165,13 +165,13 @@ class TrendRiderProStrategy(BaseStrategy):
         if kalman_state is not None:
             meta["kalman_state"] = round(kalman_state, 4)
 
-        # Exit config — let winners run to target
+        # Exit config — single consistent config
         exit_config = {
             "trailing_enabled": True,
             "trail_timeframe": "5m",
             "trail_lookback": 3,
-            "trail_min_profit_r": 1.5,  # trail only after 1.5R (was 0.5R)
-            "partial_exits": [],  # no partial exits — let full position ride
+            "trail_min_profit_r": self.trail_min_profit_r,
+            "partial_exits": [(2.0, 0.33)],
             "max_hold_minutes": self.max_hold_minutes,
             "vol_adaptive": True,
         }
