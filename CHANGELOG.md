@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Holdout validation dataclass**: Added `HoldoutResult` dataclass to the WFO harness for structured holdout window validation results, including OOS-to-holdout ratio and pass/fail status.
+
+- **Parameter sensitivity in WFO results**: Walk-forward optimization now runs parameter sensitivity analysis on completed Optuna trials and includes ranked sensitivity data in the returned results under `param_sensitivity`.
+
 - **Fill model config wiring**: Added `create_fill_model()` factory function that builds the appropriate fill model (fixed or volume-aware) from backtest config. The backtest runner now passes the constructed fill model to `SimulatedOrderExecutor`.
 
 - **Data quality checks in backtest**: The backtest runner now runs data quality checks after loading bars, excluding symbols with insufficient coverage and logging warnings for gaps, outliers, and stale prices. Configurable via `analytics.data_quality` in config.

@@ -41,6 +41,7 @@ import optuna
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
+from src.analytics.param_sensitivity import analyze_param_sensitivity
 from src.analytics.param_spaces import suggest_params
 
 
@@ -56,6 +57,20 @@ class WFORunContext:
 
     def study_name_for_window(self, window_index: int) -> str:
         return f"{self.study_prefix}_wfo_{window_index}"
+
+
+@dataclass
+class HoldoutResult:
+    """Result of validating best WFO params on the untouched holdout window."""
+
+    params_used: dict
+    holdout_sharpe: float
+    holdout_pf: float
+    holdout_max_dd: float
+    holdout_n_trades: int
+    holdout_score: float
+    oos_to_holdout_ratio: float
+    passed: bool
 
 
 def _normalize_symbols_for_run(base_config: dict[str, Any]) -> list[str]:
@@ -997,6 +1012,35 @@ class WalkForwardOptimizer:
         else:
             wfo_dsr = None
 
+        # 6. Parameter sensitivity analysis across all completed trials
+        #    Aggregate trial params + scores from the last window's study
+        #    (largest training set = most representative param landscape).
+        param_sensitivity_results = []
+        try:
+            last_study = optuna.load_study(
+                study_name=run_context.study_name_for_window(len(windows) - 1),
+                storage=storage,
+            )
+            trials_data: dict[str, list] = {}
+            for trial in last_study.trials:
+                if trial.state == optuna.trial.TrialState.COMPLETE:
+                    for param_name, param_value in trial.params.items():
+                        trials_data.setdefault(param_name, []).append(param_value)
+                    trials_data.setdefault("score", []).append(trial.value)
+
+            if len(trials_data.get("score", [])) >= 5:
+                sensitivity = analyze_param_sensitivity(trials_data)
+                param_sensitivity_results = [
+                    {
+                        "param_name": s.param_name,
+                        "correlation": round(s.correlation, 4),
+                        "sensitivity_rank": s.sensitivity_rank,
+                    }
+                    for s in sensitivity
+                ]
+        except Exception:
+            pass
+
         result = {
             "strategy": strategy_name,
             "run_tag": run_context.run_tag,
@@ -1011,6 +1055,7 @@ class WalkForwardOptimizer:
             "deflated_sharpe_ratio": wfo_dsr,
             "holdout_window": self.get_holdout_window(),
             "param_stability": param_stability,
+            "param_sensitivity": param_sensitivity_results,
         }
 
         # Save results
