@@ -17,7 +17,7 @@ class FillModel(Protocol):
         order_qty: int,
         order_price: float | None,
         order_type: str,
-        bar: Bar,
+        bar: Bar | None,
     ) -> FillResult: ...
 
 

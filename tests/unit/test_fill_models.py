@@ -64,8 +64,20 @@ def test_fixed_fill_model_sell_slippage():
 
 
 @pytest.mark.unit
-def test_fixed_fill_model_satisfies_protocol():
-    from src.backtest.fill_models.protocol import FillModel
+def test_fixed_fill_model_min_commission():
+    model = FixedSlippageFillModel(slippage_bps=2.0, commission_per_share=0.001, min_commission=1.0)
+    result = model.compute_fill(
+        order_side="buy",
+        order_qty=10,
+        order_price=150.00,
+        order_type="market",
+        bar=None,
+    )
+    # 10 * 0.001 = 0.01, but min_commission = 1.0
+    assert result.commission == pytest.approx(1.0)
 
+
+@pytest.mark.unit
+def test_fixed_fill_model_satisfies_protocol():
     model = FixedSlippageFillModel(slippage_bps=2.0, commission_per_share=0.001)
     assert isinstance(model, FillModel)
