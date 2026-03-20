@@ -59,7 +59,7 @@ strategies:
     cooldown_bars: 4                    # autoresearch trp iter1: 4 * 5m = 20 min cooldown
     min_trend_alignment: 0.30        # autoresearch trp iter9: 15m hard gate handles confirmation
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
-    pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
+    pullback_threshold: 0.012        # autoresearch iter11: wider to catch deeper pullbacks
     stop_atr_mult: 2.0              # autoresearch 2025 iter2: survive more noise
     target_atr_mult: 3.0            # autoresearch 2025 iter2: more achievable targets
     trail_min_profit_r: 0.50        # autoresearch trp iter13: trail earlier
