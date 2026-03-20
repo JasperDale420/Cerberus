@@ -104,6 +104,7 @@ class ReportMetrics:
     # Optional analytics attachments (set post-construction)
     benchmark: object | None = None
     monte_carlo: object | None = None
+    diagnostics: object | None = None
 
 
 class BacktestReportCard:
@@ -569,6 +570,7 @@ class BacktestReportCard:
                 if m.monte_carlo
                 else {}
             ),
+            **({"diagnostics_summary": m.diagnostics.summary} if m.diagnostics else {}),
         }
 
     def write_markdown(self, path: str | Path) -> Path:

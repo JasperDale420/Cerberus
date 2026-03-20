@@ -936,6 +936,29 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             )
             report.metrics.monte_carlo = mc_result
 
+    # ── Diagnostics engine ──────────────────────────────────────────
+    diag_cfg = config.get("analytics", {}).get("diagnostics", {})
+    if diag_cfg.get("enabled", False):
+        from src.analytics.diagnostics import run_diagnostics
+
+        min_trades = diag_cfg.get("min_trades_for_analysis", 20)
+        trades_dicts = [
+            {
+                "strategy": t.strategy or "unknown",
+                "pnl": t.pnl,
+                "regime_trend": "UNKNOWN",
+                "entry_hour": t.entry_time.hour if t.entry_time else 10,
+                "hold_minutes": (
+                    (t.exit_time - t.entry_time).total_seconds() / 60.0 if t.exit_time and t.entry_time else 0.0
+                ),
+                "exit_type": "unknown",
+            }
+            for t in trades
+        ]
+        diag = run_diagnostics(trades_dicts, min_trades=min_trades)
+        report.metrics.diagnostics = diag
+        logger.info("diagnostics_summary", summary=diag.summary)
+
     report.print_summary(logger)
 
     # Save markdown report

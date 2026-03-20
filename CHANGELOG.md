@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **FastAPI backtest API**: New REST API at `src/api/backtest_api.py` exposes backtest runs, equity curves, trades, Monte Carlo results, regime splits, and WFO parameter sensitivity for dashboard consumption. CORS configured for EmpireUI (localhost:5173).
+
+- **Diagnostics engine wired into backtest pipeline**: When `analytics.diagnostics.enabled: true` is set in config, the backtest runner now runs post-backtest diagnostics (strategy rankings, regime mismatches, time-of-day edge map, hold/exit analysis) and attaches the results to the report card. Summary is logged and included in JSON output.
+
 - **JSON result persistence**: Backtest results are now saved as JSON files, enabling the dashboard API to list and retrieve past runs. Use `save_backtest_result()`, `load_backtest_result()`, and `list_backtest_runs()` from `src/backtest/result_store`.
 
 - **Holdout validation dataclass**: Added `HoldoutResult` dataclass to the WFO harness for structured holdout window validation results, including OOS-to-holdout ratio and pass/fail status.
