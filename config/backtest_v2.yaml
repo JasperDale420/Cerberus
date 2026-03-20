@@ -52,7 +52,7 @@ strategies:
     enabled: true        # ACTIVE: best strategy
     hmm_gate:
       enabled: true
-      reject_regimes: ["trend_down", "chop"]
+      reject_regimes: ["trend_down"]
       min_confidence: 0.6
     signal_timeframe: 5               # evaluate pullbacks on 5m closes only
     confluence_threshold: 65.0        # autoresearch iter32: slight relaxation with hard gates
