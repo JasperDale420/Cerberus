@@ -59,7 +59,7 @@ strategies:
     cooldown_bars: 4                    # autoresearch trp iter1: 4 * 5m = 20 min cooldown
     min_trend_alignment: 0.30        # autoresearch trp iter9: 15m hard gate handles confirmation
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
-    time_window_end: "15:00"         # autoresearch iter54: test 30 min extension
+    time_window_end: "14:30"         # autoresearch iter22: stop entering before EOD
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
     stop_atr_mult: 2.5              # autoresearch iter23: wider stop for noise survival
     target_atr_mult: 4.0            # autoresearch iter37: test 4.0 with hardened gates
