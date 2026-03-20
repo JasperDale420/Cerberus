@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Trend Rider Pro v4 — dramatic simplification for more trades**: Rewrote `trend_rider_pro` to remove ~8 gates that were suppressing trade frequency. Removed Markov regime switcher, HMM gate, Hurst gate (now observability-only), 15m HTF trend hard gate, and `_regime_allows` methods. Direction detection now uses simple VWAP filter + EMA-9/20 alignment + Kalman pullback. Confluence reduced from 6 to 4 factors, threshold lowered from 65 to 50. Default `stop_atr_mult` raised from 1.5 to 2.0, `pullback_threshold` widened from 0.003 to 0.005. Single exit config replaces HTF-strong/weak split. ADX minimum lowered from 20 to 15. Targets 2-5 trades/day across 30+ symbols.
+- **Param spaces updated for Trend Rider Pro v4**: Removed `hurst_trending_threshold` and `hmm_min_confidence` params. Added `pullback_threshold` as tunable (0.002-0.008). Lowered `confluence_threshold` range to 30-60. Widened `min_trend_alignment` range to 0.15-0.55.
+
 ### Fixed
 
 - **Regime stop multiplier now applied to stop distance**: The `regime_stop_multiplier` (low=0.75, normal=1.0, high=1.5, shock=2.0) was computed and stored on positions at open time but never used to adjust the stop price. It is now applied to the stop distance when a position is opened — in high vol regimes stops are 1.5x wider, in low vol they are 0.75x tighter.

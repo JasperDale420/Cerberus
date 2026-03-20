@@ -50,10 +50,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         # Converged to 3.5 in 5/7 WFO windows (CV 0.18)
         "target_range_mult": 3.5,
     },
-    "trend_rider_pro": {
-        # CV 0.53 — too unstable to optimize; lock at WFO mean
-        "pullback_threshold": 0.004,
-    },
+    "trend_rider_pro": {},
 }
 
 
@@ -63,27 +60,34 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
     # ------------------------------------------------------------------
-    # Trend Rider Pro — 5 params (was 7; locked pullback_threshold)
-    #   Focus: entry threshold, trend gate, stop/target geometry, exit
+    # Trend Rider Pro v4 — simplified, 7 params
+    #   Focus: entry threshold, trend gate, pullback, stop/target, exit
     # ------------------------------------------------------------------
     "trend_rider_pro": [
         ParamDef(
             "confluence_threshold",
             "float",
-            low=40.0,
-            high=75.0,
+            low=30.0,
+            high=60.0,
             step=5.0,
-            description="Minimum confluence score to enter (lowered floor to 40 for more trades)",
+            description="Minimum confluence score to enter (lowered for more trades)",
         ),
         ParamDef(
             "min_trend_alignment",
             "float",
-            low=0.2,
-            high=0.7,
+            low=0.15,
+            high=0.55,
             step=0.05,
-            description="MTF trend alignment gate (lowered floor to 0.2 for choppy regimes)",
+            description="MTF trend alignment gate (widened range for v4)",
         ),
-        # pullback_threshold LOCKED at 0.004 (CV 0.53 — unstable)
+        ParamDef(
+            "pullback_threshold",
+            "float",
+            low=0.002,
+            high=0.008,
+            step=0.001,
+            description="Max distance from Kalman/EMA anchor for pullback detection",
+        ),
         ParamDef(
             "stop_atr_mult",
             "float",
@@ -98,7 +102,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             low=2.5,
             high=5.0,
             step=0.5,
-            description="ATR multiplier for target (floor raised to 2.5 from WFO)",
+            description="ATR multiplier for target",
         ),
         ParamDef(
             "trail_min_profit_r",
@@ -106,7 +110,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             low=0.4,
             high=0.8,
             step=0.1,
-            description="R-multiple before trailing activates (tightened from WFO profitable windows)",
+            description="R-multiple before trailing activates",
         ),
         ParamDef(
             "max_hold_minutes",
@@ -114,24 +118,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             low=60,
             high=210,
             step=15,
-            description="Maximum hold time in minutes (floor raised from 30)",
-        ),
-        # Quant gate thresholds
-        ParamDef(
-            "hurst_trending_threshold",
-            "float",
-            low=0.45,
-            high=0.65,
-            step=0.05,
-            description="Hurst trending gate — reject when H <= threshold. 1.0 disables gate.",
-        ),
-        ParamDef(
-            "hmm_min_confidence",
-            "float",
-            low=0.0,
-            high=0.8,
-            step=0.1,
-            description="HMM regime gate min confidence. 0.0 disables gate.",
+            description="Maximum hold time in minutes",
         ),
     ],
     # ------------------------------------------------------------------
