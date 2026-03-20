@@ -45,7 +45,14 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default=START)
     parser.add_argument("--end", default=END)
+    parser.add_argument("--cv", action="store_true", help="Cross-validated mode: score across 5 regime windows")
     args = parser.parse_args()
+
+    if args.cv:
+        from scripts.autoresearch_score_cv import main as cv_main
+
+        await cv_main()
+        return
 
     report = await run_backtest(args.start, args.end, CONFIG, data_dir=DATA_DIR)
 
