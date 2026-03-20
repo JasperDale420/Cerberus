@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **FillModel protocol and FillResult dataclass**: Added pluggable fill model interface (`src/backtest/fill_models/protocol.py`) with a `FillModel` runtime-checkable Protocol and a frozen `FillResult` dataclass. This is the foundation for swappable fill simulation in the backtest engine.
+- **FixedSlippageFillModel**: Extracted the fixed-BPS slippage logic from `SimulatedOrderExecutor` into a standalone `FixedSlippageFillModel` class that satisfies the `FillModel` protocol. Supports configurable slippage (basis points) and per-share commission.
 
 ### Fixed
 
