@@ -174,7 +174,7 @@ class TrendRiderProStrategy(BaseStrategy):
         exit_config = {
             "trailing_enabled": True,
             "trail_timeframe": "5m",
-            "trail_lookback": 3,
+            "trail_lookback": 4,
             "trail_min_profit_r": self.trail_min_profit_r,
             "partial_exits": [(1.5, 0.50), (2.5, 0.25)],  # scale out: 50% at 1.5R, 25% at 2.5R
             "max_hold_minutes": self.max_hold_minutes,
