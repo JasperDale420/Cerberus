@@ -101,6 +101,10 @@ class ReportMetrics:
     negative_days: int = 0
     trading_days: int = 0
 
+    # Optional analytics attachments (set post-construction)
+    benchmark: object | None = None
+    monte_carlo: object | None = None
+
 
 class BacktestReportCard:
     """Generates a standardized report card from backtest results."""
@@ -555,6 +559,16 @@ class BacktestReportCard:
             "negative_days": m.negative_days,
             "trading_days": m.trading_days,
             "per_strategy": self.strategy_metrics if hasattr(self, "strategy_metrics") else {},
+            **(
+                {"benchmark": {k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.benchmark).items()}}
+                if m.benchmark
+                else {}
+            ),
+            **(
+                {"monte_carlo": {k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.monte_carlo).items()}}
+                if m.monte_carlo
+                else {}
+            ),
         }
 
     def write_markdown(self, path: str | Path) -> Path:
@@ -625,6 +639,46 @@ class BacktestReportCard:
             lines.append(f"| Negative Days | {m.negative_days} |\n")
             lines.append(f"| Best Day | {m.best_day_pct:.2f}% |\n")
             lines.append(f"| Worst Day | {m.worst_day_pct:.2f}% |\n\n")
+
+        # Benchmark comparison
+        if m.benchmark:
+            bm = m.benchmark
+            lines.append("## Benchmark Comparison\n\n")
+            lines.append(_TBL_HDR)
+            lines.append(f"| Benchmark | {getattr(bm, 'benchmark_symbol', 'SPY')} |\n")
+            lines.append(f"| Benchmark Return | {getattr(bm, 'benchmark_return_pct', 0):.2f}% |\n")
+            lines.append(f"| Strategy Return | {getattr(bm, 'strategy_return_pct', 0):.2f}% |\n")
+            lines.append(f"| Alpha | {getattr(bm, 'strategy_alpha', 0):.2f}% |\n")
+            lines.append(f"| Beta | {getattr(bm, 'strategy_beta', 0):.3f} |\n")
+            lines.append(f"| Information Ratio | {getattr(bm, 'information_ratio', 0):.3f} |\n")
+            lines.append(f"| Up Capture | {getattr(bm, 'up_capture', 0):.2f} |\n")
+            lines.append(f"| Down Capture | {getattr(bm, 'down_capture', 0):.2f} |\n\n")
+
+        # Monte Carlo simulation
+        if m.monte_carlo:
+            mc = m.monte_carlo
+            lines.append("## Monte Carlo Simulation\n\n")
+            lines.append(_TBL_HDR)
+            for attr_name in (
+                "n_simulations",
+                "prob_loss_pct",
+                "prob_ruin_pct",
+                "median_final_equity",
+                "p5_final_equity",
+                "p95_final_equity",
+                "worst_drawdown_pct",
+                "median_sharpe",
+                "p5_sharpe",
+                "p95_sharpe",
+            ):
+                val = getattr(mc, attr_name, None)
+                if val is not None:
+                    label = attr_name.replace("_", " ").title()
+                    if isinstance(val, float):
+                        lines.append(f"| {label} | {val:.2f} |\n")
+                    else:
+                        lines.append(f"| {label} | {val} |\n")
+            lines.append("\n")
 
         # Per-strategy breakdown
         if hasattr(self, "strategy_metrics") and self.strategy_metrics:

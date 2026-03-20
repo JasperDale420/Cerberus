@@ -897,6 +897,45 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
         start_date=start_dt,
         end_date=end_dt,
     )
+
+    # ── Benchmark comparison ────────────────────────────────────────
+    import numpy as np
+
+    from src.analytics.benchmark import compute_benchmark_comparison
+
+    strategy_daily_returns = np.array(report._compute_daily_returns())
+    index_bars = bars_df[bars_df["symbol"] == index_symbol].sort_values("timestamp")
+    if not index_bars.empty and len(strategy_daily_returns) > 1:
+        # Compute benchmark daily returns from index (SPY) bars
+        daily_index = index_bars.groupby(index_bars["timestamp"].dt.date)["close"].last()
+        daily_index = daily_index.sort_index()
+        if len(daily_index) > 1:
+            bench_returns = daily_index.pct_change().dropna().values
+            # Align lengths (use the shorter series)
+            min_len = min(len(strategy_daily_returns), len(bench_returns))
+            if min_len > 1:
+                bm_result = compute_benchmark_comparison(
+                    strategy_daily_returns=strategy_daily_returns[-min_len:],
+                    benchmark_daily_returns=bench_returns[-min_len:],
+                    benchmark_symbol=index_symbol,
+                )
+                report.metrics.benchmark = bm_result
+
+    # ── Monte Carlo simulation ──────────────────────────────────────
+    mc_cfg = config.get("analytics", {}).get("monte_carlo", {})
+    if mc_cfg.get("enabled", False):
+        from src.analytics.monte_carlo import run_monte_carlo
+
+        trade_pnls = [t.pnl for t in trades]
+        if len(trade_pnls) >= 5:  # Need minimum trades for meaningful MC
+            mc_result = run_monte_carlo(
+                trade_pnls,
+                initial_capital=config.get("initial_cash", 100_000),
+                n_simulations=mc_cfg.get("n_simulations", 10_000),
+                ruin_threshold_pct=mc_cfg.get("ruin_threshold_pct", 30.0),
+            )
+            report.metrics.monte_carlo = mc_result
+
     report.print_summary(logger)
 
     # Save markdown report
