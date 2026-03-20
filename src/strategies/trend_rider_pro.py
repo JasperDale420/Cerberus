@@ -230,15 +230,9 @@ class TrendRiderProStrategy(BaseStrategy):
             if alignment >= self.min_trend_alignment:
                 return OrderSide.BUY
 
-        # --- SELL side ---
-        sell_vwap_ok = vwap_dist_1m is None or vwap_dist_1m <= 0
-        sell_ema_aligned = ema9_5m < ema20_5m
-        near_anchor = pullback_pct <= self.pullback_threshold
-
-        if sell_vwap_ok and sell_ema_aligned and near_anchor:
-            alignment = mtf.get_trend_alignment(OrderSide.SELL)
-            if alignment >= self.min_trend_alignment:
-                return OrderSide.SELL
+        # --- SELL side disabled ---
+        # 2025 analysis: short signals had negative edge, removing sell side
+        # to focus capital on higher-quality long pullback setups.
 
         return None
 
