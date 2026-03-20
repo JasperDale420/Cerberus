@@ -6,12 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Benchmark comparison analytics**: New `src/analytics/benchmark.py` module computes alpha, beta, information ratio, and up/down capture ratios against a benchmark (e.g., SPY). Use `compute_benchmark_comparison()` with daily return arrays.
+
 - **Per-strategy overnight position handling**: Added `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` fields to `BaseStrategy._set_params()` for configuring overnight hold behavior per strategy instead of globally.
 
 - **FillModel protocol and FillResult dataclass**: Added pluggable fill model interface (`src/backtest/fill_models/protocol.py`) with a `FillModel` runtime-checkable Protocol and a frozen `FillResult` dataclass. This is the foundation for swappable fill simulation in the backtest engine.
 - **FixedSlippageFillModel**: Extracted the fixed-BPS slippage logic from `SimulatedOrderExecutor` into a standalone `FixedSlippageFillModel` class that satisfies the `FillModel` protocol. Supports configurable slippage (basis points) and per-share commission.
 - **VolumeAwareFillModel**: Added volume-aware fill model that scales slippage based on order participation rate (order size / bar volume). Supports configurable base slippage, impact coefficient, and max slippage cap. Replaces fixed-BPS slippage as the more realistic default for backtesting.
 - **Pre-backtest data quality checker**: Added `DataQualityReport` and `check_data_quality()` to validate bar data before replay. Detects gaps, zero-volume bars, price outliers, stale prices, and low-coverage symbols with configurable thresholds and automatic exclusion.
+
+### Changed
+
+- **SimulatedOrderExecutor now uses FillModel protocol**: The backtest executor accepts an optional `fill_model` parameter and delegates slippage/commission calculations to it instead of using inline math. Defaults to `FixedSlippageFillModel` with the same behavior as before, making the change backward-compatible. Custom fill models can now be injected for more realistic simulation.
 
 ### Fixed
 
