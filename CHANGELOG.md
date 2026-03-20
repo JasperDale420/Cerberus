@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Replace deprecated `datetime.utcnow()` with timezone-aware `datetime.now(timezone.utc)`**: Updated 5 instances across `schema.py` (3 SQLAlchemy column defaults) and `causal_filter.py` (2 direct calls). All timestamps are now timezone-aware per Empire conventions.
+
 ### Changed
 
 - **Trend Rider Pro v4 — dramatic simplification for more trades**: Rewrote `trend_rider_pro` to remove ~8 gates that were suppressing trade frequency. Removed Markov regime switcher, HMM gate, Hurst gate (now observability-only), 15m HTF trend hard gate, and `_regime_allows` methods. Direction detection now uses simple VWAP filter + EMA-9/20 alignment + Kalman pullback. Confluence reduced from 6 to 4 factors, threshold lowered from 65 to 50. Default `stop_atr_mult` raised from 1.5 to 2.0, `pullback_threshold` widened from 0.003 to 0.005. Single exit config replaces HTF-strong/weak split. ADX minimum lowered from 20 to 15. Targets 2-5 trades/day across 30+ symbols.

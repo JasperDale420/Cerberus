@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
@@ -168,7 +168,7 @@ class SecTicker(Base):
     ticker: Mapped[str] = mapped_column(String, primary_key=True)
     cik: Mapped[str] = mapped_column(String, index=True)
     title: Mapped[str] = mapped_column(String)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ExternalSnapshot(Base):
@@ -183,7 +183,7 @@ class ExternalSnapshot(Base):
     source: Mapped[str] = mapped_column(String(32), index=True)  # 'gex', 'flow'
     symbol: Mapped[str] = mapped_column(String(16), index=True)
     snapshot_time: Mapped[datetime] = mapped_column(DateTime, index=True)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     data_json: Mapped[dict] = mapped_column(JSON)
 
 
@@ -230,7 +230,7 @@ class DailyUniverse(Base):
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     symbol: Mapped[str] = mapped_column(String(16), index=True)
     source: Mapped[str] = mapped_column(String(32))  # 'scanner', 'static', 'dynamic'
-    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     meta_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 

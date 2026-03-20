@@ -8,7 +8,7 @@ strategies that appear profitable only due to spurious correlation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -148,7 +148,7 @@ class CausalSignalFilter:
                 granger_p_value=1.0,
                 optimal_lag=1,
                 n_observations=len(y),
-                last_updated=datetime.utcnow(),
+                last_updated=datetime.now(timezone.utc),
             )
 
         n_total = len(y)
@@ -181,7 +181,7 @@ class CausalSignalFilter:
             granger_p_value=p_value,
             optimal_lag=best_lag,
             n_observations=n_used,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
         )
 
     # ---- helpers ----
