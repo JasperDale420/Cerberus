@@ -10,6 +10,7 @@ from src.core.domain import (
     SessionRegime,
     Signal,
     SymbolState,
+    TrendRegime,
     VolRegime,
 )
 from src.core.logger import StructuredLogger
@@ -374,3 +375,18 @@ class TrendRiderProStrategy(BaseStrategy):
         if not recent:
             return 0.0
         return sum(float(b.volume) for b in recent) / len(recent)
+
+    @staticmethod
+    def _regime_allows(side: OrderSide, snapshot: Any, mtf: Any) -> bool:
+        """Gate signal direction against the current trend regime.
+
+        Returns True only when the regime trend matches the requested side.
+        If no snapshot is available, allow the signal (backward compatibility).
+        """
+        if snapshot is None:
+            return True
+        if side == OrderSide.BUY:
+            return snapshot.trend == TrendRegime.UP
+        if side == OrderSide.SELL:
+            return snapshot.trend == TrendRegime.DOWN
+        return False

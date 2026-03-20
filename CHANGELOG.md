@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.
+
+- **Dev dependencies not installed in venv**: The Cerberus virtualenv was missing pytest and other dev extras, causing `uv run pytest` to fall back to the system conda pytest which lacked `filterpy`. Running `uv sync --extra dev` resolves this; all 1271 tests now pass.
+
 ### Added
 
 #### Backtest & WFO Robustness
