@@ -256,14 +256,14 @@ class TrendRiderProStrategy(BaseStrategy):
     ) -> ConfluenceScorer:
         scorer = ConfluenceScorer(threshold=self.confluence_threshold)
 
-        # 1. MTF trend alignment (weight 0.50) — strongest predictor
+        # 1. MTF trend alignment (weight 0.45) — strongest predictor
         alignment = mtf.get_trend_alignment(side)
         alignment_score = alignment * 100.0
         scorer.add_factor(
             "mtf_trend_alignment",
             raw_value=alignment,
             score=alignment_score,
-            weight=0.50,
+            weight=0.45,
             passed=alignment > 0.3,
         )
 
@@ -284,7 +284,7 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=0.0005 <= pullback_pct <= 0.01,
         )
 
-        # 3. Volume (weight 0.10) — minimal since hard 1.2x gate already filters
+        # 3. Volume (weight 0.15) — reduced since hard 1.2x gate already filters
         avg_vol = self._get_avg_volume(symbol_state)
         vol_score = 0.0
         if avg_vol > 0:
@@ -293,7 +293,7 @@ class TrendRiderProStrategy(BaseStrategy):
             "volume",
             raw_value=float(bar.volume),
             score=vol_score,
-            weight=0.10,
+            weight=0.15,
             passed=avg_vol > 0 and float(bar.volume) >= avg_vol * 0.8,
         )
 
