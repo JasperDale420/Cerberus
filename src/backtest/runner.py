@@ -28,6 +28,15 @@ _BAR_DATAFRAME_CACHE: dict[tuple[str, tuple[str, ...], str, str, int], pd.DataFr
 _ET_TZ = ZoneInfo("America/New_York")
 
 
+def _should_flatten_position(strategy, hold_days: int) -> bool:
+    """Determine if a position should be flattened at EOD."""
+    if not getattr(strategy, "allow_overnight", False):
+        return True
+    if getattr(strategy, "max_hold_days", 0) > 0 and hold_days >= strategy.max_hold_days:
+        return True
+    return False
+
+
 class BacktestClock:
     def __init__(self, start_time: datetime):
         self._now = start_time
@@ -561,6 +570,28 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     # Survivorship bias check
     _validate_survivorship(bars_df, symbols, start_dt, end_dt, logger, bar_resolution_minutes)
 
+    # ── Data quality checks ─────────────────────────────────────────
+    from src.backtest.data_quality import check_data_quality
+
+    bars_by_symbol = {sym: grp for sym, grp in bars_df.groupby("symbol")}
+    dq_cfg = config.get("analytics", {}).get("data_quality", {})
+    dq_report = check_data_quality(
+        bars_by_symbol,
+        min_coverage_pct=dq_cfg.get("min_coverage_pct", 80.0),
+        exclude_below_pct=dq_cfg.get("exclude_below_pct", 50.0),
+    )
+    for sym in dq_report.excluded_symbols:
+        logger.warning("data_quality_excluded", symbol=sym)
+        bars_by_symbol.pop(sym, None)
+    for sym, sq in dq_report.symbols.items():
+        for w in sq.warnings:
+            logger.warning("data_quality_warning", symbol=sym, warning=w)
+    if dq_report.excluded_symbols:
+        bars_df = pd.concat(bars_by_symbol.values(), ignore_index=True) if bars_by_symbol else pd.DataFrame()
+        if bars_df.empty:
+            logger.warning("All symbols excluded by data quality checks.")
+            return
+
     # ── Pre-compute multi-timeframe indicators ───────────────────────
     # V2 strategies depend on 5m/15m EMA, ATR, RSI, ADX etc. via
     # MultiTimeframeAnalyzer.  Pre-computing them in batch (Numba) and
@@ -646,26 +677,37 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
                 engine.register_strategy(cls(strat_cfg, logger))
 
     # ── Backtest-aware flatten ───────────────────────────────────────
-    def _backtest_flatten_all(reason: str) -> None:
-        """Close all open positions and cancel pending orders in simulation.
+    def _backtest_flatten_all(reason: str, symbols: list[str] | None = None) -> None:
+        """Close open positions and cancel pending orders in simulation.
 
         Uses account.positions_qty (synchronously updated by executor) as the
         source of truth. Bypasses executor.submit/process_bar to avoid partial
         fill logic — EOD flattens must be full fills to prevent position dust
         from carrying over to the next day.
+
+        Args:
+            reason: Log reason for the flatten.
+            symbols: If provided, only flatten these symbols. None = flatten all.
         """
-        # 1. Cancel all pending orders
+        # 1. Cancel pending orders (for targeted symbols or all)
         cancelled = 0
-        for symbol in list(engine.symbol_states.keys()):
+        cancel_symbols = symbols if symbols is not None else list(engine.symbol_states.keys())
+        for symbol in cancel_symbols:
             cancelled += executor.cancel_all_for_symbol(symbol)
 
-        # 2. Close all positions at last known price (full fill, no partials)
+        # 2. Close positions at last known price (full fill, no partials)
         closed = 0
         prices = getattr(engine, "_latest_prices", {})
         QTY_EPSILON = 1e-6  # Ignore floating-point dust
         now = clock()
 
-        for symbol, qty in list(engine.account.positions_qty.items()):
+        flatten_items = (
+            [(s, engine.account.positions_qty.get(s, 0.0)) for s in symbols]
+            if symbols is not None
+            else list(engine.account.positions_qty.items())
+        )
+
+        for symbol, qty in flatten_items:
             if abs(qty) < QTY_EPSILON:
                 engine.account.positions_qty[symbol] = 0.0
                 continue
@@ -718,7 +760,10 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             closed += 1
 
         # 3. Reset local position/order state so strategies see clean slate
-        for state in engine.symbol_states.values():
+        reset_symbols = set(symbols) if symbols is not None else None
+        for sym, state in engine.symbol_states.items():
+            if reset_symbols is not None and sym not in reset_symbols:
+                continue
             state.position = None
             state.open_orders = {}
 
@@ -759,12 +804,31 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
             equity_curve.append((ts, engine.account.equity))
         prev_day = current_day
 
-        # Intraday flatten at 15:55 ET (5 min before close) when force_flat_at_1600 is set
+        # Intraday flatten at 15:55 ET (5 min before close) — per-strategy overnight logic
         if backtest_cfg.get("force_flat_at_1600", False):
             et_time = ts.astimezone(_ET_TZ)
             if et_time.hour == 15 and et_time.minute >= 55:
-                if any(abs(q) > 1e-6 for q in engine.account.positions_qty.values()):
-                    _backtest_flatten_all(reason="Force flat before 16:00")
+                # Check each position individually against its strategy's overnight config
+                symbols_to_flatten: list[str] = []
+                for sym, qty in list(engine.account.positions_qty.items()):
+                    if abs(qty) < 1e-6:
+                        continue
+                    sym_state = engine.symbol_states.get(sym)
+                    pos = sym_state.position if sym_state else None
+                    strat_name = (pos.strategy_name or pos.strategy) if pos else ""
+                    strat = engine.strategies.get(strat_name)
+                    if strat is None:
+                        # Unknown strategy — flatten for safety
+                        symbols_to_flatten.append(sym)
+                        continue
+                    # Calculate hold days from entry
+                    hold_days = 0
+                    if pos and pos.entry_time:
+                        hold_days = (ts.date() - pos.entry_time.date()).days
+                    if _should_flatten_position(strat, hold_days):
+                        symbols_to_flatten.append(sym)
+                if symbols_to_flatten:
+                    _backtest_flatten_all(reason="Force flat before 16:00", symbols=symbols_to_flatten)
 
         mock_bar = Bar(
             symbol=row.symbol,
