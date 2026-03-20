@@ -60,8 +60,8 @@ strategies:
     min_trend_alignment: 0.30        # autoresearch trp iter9: 15m hard gate handles confirmation
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
-    stop_atr_mult: 1.25             # autoresearch trp iter11: even tighter
-    target_atr_mult: 4.5            # autoresearch trp iter7: wider target with 15m trend confirmation
+    stop_atr_mult: 2.0              # autoresearch 2025 iter2: survive more noise
+    target_atr_mult: 3.0            # autoresearch 2025 iter2: more achievable targets
     trail_min_profit_r: 0.50        # autoresearch trp iter13: trail earlier
     max_hold_minutes: 240           # autoresearch iter11: near full-day hold
     activation:
