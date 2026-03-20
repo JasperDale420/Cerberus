@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **FillModel protocol and FillResult dataclass**: Added pluggable fill model interface (`src/backtest/fill_models/protocol.py`) with a `FillModel` runtime-checkable Protocol and a frozen `FillResult` dataclass. This is the foundation for swappable fill simulation in the backtest engine.
+
 ### Fixed
 
 - **Replace deprecated `datetime.utcnow()` with timezone-aware `datetime.now(timezone.utc)`**: Updated 5 instances across `schema.py` (3 SQLAlchemy column defaults) and `causal_filter.py` (2 direct calls). All timestamps are now timezone-aware per Empire conventions.
