@@ -614,6 +614,10 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     # Inject our mock executor with backtest config for slippage
     backtest_cfg = config.get("backtest", {})
     risk_cfg = config.get("risk", config.get("risk_management", {}))
+
+    from src.backtest.fill_models import create_fill_model
+
+    fill_model = create_fill_model(config)
     executor = SimulatedOrderExecutor(
         logger=logger,
         db=db,
@@ -622,6 +626,7 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
         account=engine.account,
         backtest_cfg=backtest_cfg,
         risk_cfg=risk_cfg,
+        fill_model=fill_model,
     )
     # Wire advanced exits config so executor delegates stop/TP to PositionManager
     executor.configure_advanced_exits(risk_cfg)

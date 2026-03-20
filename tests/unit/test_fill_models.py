@@ -165,3 +165,28 @@ def test_volume_aware_sell_slippage_direction():
 def test_volume_aware_satisfies_protocol():
     model = VolumeAwareFillModel()
     assert isinstance(model, FillModel)
+
+
+# --- create_fill_model factory tests ---
+
+
+@pytest.mark.unit
+def test_create_fill_model_default_is_fixed():
+    from src.backtest.fill_models import create_fill_model
+
+    model = create_fill_model({})
+    assert isinstance(model, FixedSlippageFillModel)
+
+
+@pytest.mark.unit
+def test_create_fill_model_volume_aware():
+    from src.backtest.fill_models import create_fill_model
+
+    model = create_fill_model(
+        {
+            "backtest": {"fill_model": "volume_aware", "fill_model_params": {"impact_coefficient": 300.0}},
+            "risk": {"slippage_bps": 3.0},
+        }
+    )
+    assert isinstance(model, VolumeAwareFillModel)
+    assert model.impact_coefficient == 300.0

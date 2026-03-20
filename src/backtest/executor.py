@@ -26,12 +26,14 @@ class SimulatedOrderExecutor:
         account: Optional[Any] = None,
         backtest_cfg: Optional[Dict[str, Any]] = None,
         risk_cfg: Optional[Dict[str, Any]] = None,
+        fill_model: Optional[Any] = None,
     ):
         self.logger = logger
         self.db = db
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.on_trade_update = on_trade_update
         self.account = account
+        self.fill_model = fill_model
 
         # Slippage & cost config
         rk = risk_cfg or {}
