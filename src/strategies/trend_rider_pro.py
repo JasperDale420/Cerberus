@@ -209,7 +209,7 @@ class TrendRiderProStrategy(BaseStrategy):
         - EMA alignment: Buy if EMA-9 > EMA-20 on 5m, Sell if EMA-9 < EMA-20
         - Pullback: Price within pullback_threshold of Kalman anchor (EMA-20 fallback)
         """
-        vwap_dist_1m = mtf.get_vwap_distance("1m")
+        mtf.get_vwap_distance("1m")
 
         # EMA alignment on 5m
         ema9_5m = mtf.get_ema("5m", 9)
@@ -225,12 +225,11 @@ class TrendRiderProStrategy(BaseStrategy):
 
         pullback_pct = abs(bar.close - pullback_anchor) / bar.close
 
-        # --- BUY side ---
-        buy_vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= 0
+        # --- BUY side (VWAP removed — HTF + EMA + ADX + vol gates suffice) ---
         buy_ema_aligned = ema9_5m > ema20_5m
         near_anchor = pullback_pct <= self.pullback_threshold
 
-        if buy_vwap_ok and buy_ema_aligned and near_anchor:
+        if buy_ema_aligned and near_anchor:
             alignment = mtf.get_trend_alignment(OrderSide.BUY)
             if alignment >= self.min_trend_alignment:
                 return OrderSide.BUY
