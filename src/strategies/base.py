@@ -29,6 +29,10 @@ class BaseStrategy(ABC):
         self.signal_timeframe = int(config.get("signal_timeframe", 1))
         # HMM regime gate
         self._hmm_gate_enabled = config.get("hmm_gate", {}).get("enabled", False)
+        # Per-strategy overnight position handling
+        self.allow_overnight = bool(config.get("allow_overnight", False))
+        self.max_hold_days = int(config.get("max_hold_days", 0))
+        self.overnight_stop_mult = float(config.get("overnight_stop_mult", 1.0))
 
     def update_params(self, config: Dict[str, Any]) -> None:
         """

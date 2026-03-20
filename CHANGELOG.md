@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Per-strategy overnight position handling**: Added `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` fields to `BaseStrategy._set_params()` for configuring overnight hold behavior per strategy instead of globally.
+
 - **FillModel protocol and FillResult dataclass**: Added pluggable fill model interface (`src/backtest/fill_models/protocol.py`) with a `FillModel` runtime-checkable Protocol and a frozen `FillResult` dataclass. This is the foundation for swappable fill simulation in the backtest engine.
 - **FixedSlippageFillModel**: Extracted the fixed-BPS slippage logic from `SimulatedOrderExecutor` into a standalone `FixedSlippageFillModel` class that satisfies the `FillModel` protocol. Supports configurable slippage (basis points) and per-share commission.
 - **VolumeAwareFillModel**: Added volume-aware fill model that scales slippage based on order participation rate (order size / bar volume). Supports configurable base slippage, impact coefficient, and max slippage cap. Replaces fixed-BPS slippage as the more realistic default for backtesting.
