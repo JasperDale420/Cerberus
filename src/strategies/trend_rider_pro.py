@@ -69,7 +69,7 @@ class TrendRiderProStrategy(BaseStrategy):
 
     def _ensure_quant_state(self, symbol: str) -> None:
         if symbol not in self._kalman:
-            self._kalman[symbol] = KalmanMeanTracker(process_noise=0.03, measurement_noise=0.5)
+            self._kalman[symbol] = KalmanMeanTracker(process_noise=0.03, measurement_noise=1.0)
         if symbol not in self._hurst:
             self._hurst[symbol] = HurstExponent(min_observations=100, lookback=500)
         if symbol not in self._garch:
