@@ -300,6 +300,25 @@ class PositionManager:
             safe_float(entry_ctx.get("regime_stop_multiplier")) if isinstance(entry_ctx, dict) else 1.0
         ) or 1.0
 
+        # Apply regime stop multiplier to widen/narrow stop distance from entry price.
+        # In high vol regimes the stop is wider (1.5x); in low vol it is tighter (0.75x).
+        entry_price = fill_data["price"]
+        if initial_stop is not None and regime_multiplier != 1.0:
+            stop_distance = abs(entry_price - initial_stop)
+            adjusted_distance = stop_distance * regime_multiplier
+            if side == Side.LONG:
+                initial_stop = entry_price - adjusted_distance
+            else:
+                initial_stop = entry_price + adjusted_distance
+            _logger.debug(
+                "Regime stop multiplier applied",
+                symbol=fill_data["symbol"],
+                regime_multiplier=regime_multiplier,
+                original_distance=stop_distance,
+                adjusted_distance=adjusted_distance,
+                new_stop=initial_stop,
+            )
+
         symbol_state.position = Position(
             symbol=fill_data["symbol"],
             side=side,

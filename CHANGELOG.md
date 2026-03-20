@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Regime stop multiplier now applied to stop distance**: The `regime_stop_multiplier` (low=0.75, normal=1.0, high=1.5, shock=2.0) was computed and stored on positions at open time but never used to adjust the stop price. It is now applied to the stop distance when a position is opened — in high vol regimes stops are 1.5x wider, in low vol they are 0.75x tighter.
+
 ### Added
 
 - **Optuna-tunable quant gate thresholds**: Made hardcoded quant gate thresholds (Hurst, HMM confidence, BOCPD, kurtosis, entropy) into Optuna-optimizable parameters across all 5 active strategies. This allows WFO to find the right gate sensitivity per strategy instead of using fixed thresholds that were too restrictive (mean_reversion_pro had 0 trades in 11/21 WFO windows). The flat `hmm_min_confidence` param is automatically wired into the nested `hmm_gate.min_confidence` config structure by the optimization harness.
