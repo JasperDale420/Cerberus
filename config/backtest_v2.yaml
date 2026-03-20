@@ -62,7 +62,7 @@ strategies:
     time_window_end: "14:30"         # autoresearch iter22: stop entering before EOD
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
     stop_atr_mult: 2.5              # autoresearch iter23: wider stop for noise survival
-    target_atr_mult: 3.5            # autoresearch iter35: slightly wider target for runners
+    target_atr_mult: 3.75           # autoresearch iter36: push target slightly wider
     trail_min_profit_r: 0.75        # autoresearch iter31: trail from higher profit
     max_hold_minutes: 120           # autoresearch 2025 iter6: shorter hold reduces mean reversion
     activation:
