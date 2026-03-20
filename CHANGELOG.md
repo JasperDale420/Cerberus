@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 
 - **Data quality checks in backtest**: The backtest runner now runs data quality checks after loading bars, excluding symbols with insufficient coverage and logging warnings for gaps, outliers, and stale prices. Configurable via `analytics.data_quality` in config.
 
+- **Benchmark comparison in backtest report**: The backtest runner now computes benchmark comparison (alpha, beta, information ratio, capture ratios) against SPY after each backtest and includes it in the markdown report and JSON output.
+
+- **Monte Carlo simulation in backtest report**: New `src/analytics/monte_carlo.py` module runs bootstrap resampling of trade P&Ls. Enable via `analytics.monte_carlo.enabled: true` in config to get probability of loss/ruin, equity confidence intervals, and Sharpe distribution in the backtest report.
+
 - **Post-backtest diagnostics engine**: New `src/analytics/diagnostics.py` module runs five analyses after a backtest — strategy ranking by P&L, regime mismatch detection, time-of-day edge mapping, hold/exit-type analysis, and a plain-text summary. Use `run_diagnostics(trades)` with a list of trade dicts.
 
 - **Benchmark comparison analytics**: New `src/analytics/benchmark.py` module computes alpha, beta, information ratio, and up/down capture ratios against a benchmark (e.g., SPY). Use `compute_benchmark_comparison()` with daily return arrays.
