@@ -330,15 +330,11 @@ class TrendRiderProStrategy(BaseStrategy):
             garch_distance = self.stop_atr_mult * garch_result.conditional_vol * bar.close
             vol_distance = max(vol_distance, garch_distance)
 
+        # Always use ATR-based stops for consistent risk control.
+        # Swing lows were too variable and sometimes placed stops too far away.
         if side == OrderSide.BUY:
-            swings = mtf.get_swing_lows("5m", lookback=5)
-            if swings:
-                return swings[0]
-            return bar.low - vol_distance
-        swings = mtf.get_swing_highs("5m", lookback=5)
-        if swings:
-            return swings[0]
-        return bar.high + vol_distance
+            return bar.close - vol_distance
+        return bar.close + vol_distance
 
     # ------------------------------------------------------------------
     # Helpers
