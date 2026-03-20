@@ -261,7 +261,7 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=alignment > 0.3,
         )
 
-        # 2. Pullback quality (weight 0.25) — widened range [0.0005, 0.01]
+        # 2. Pullback quality (weight 0.20) — widened range [0.0005, 0.01]
         kalman_state = self._kalman[symbol].state if symbol in self._kalman else None
         ema20_5m = mtf.get_ema("5m", 20)
         pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
@@ -274,7 +274,7 @@ class TrendRiderProStrategy(BaseStrategy):
             "pullback_quality",
             raw_value=pullback_pct,
             score=pb_score,
-            weight=0.25,
+            weight=0.20,
             passed=0.0005 <= pullback_pct <= 0.01,
         )
 
@@ -291,16 +291,16 @@ class TrendRiderProStrategy(BaseStrategy):
             passed=avg_vol > 0 and float(bar.volume) >= avg_vol * 0.8,
         )
 
-        # 4. ADX strength (weight 0.15) — lowered minimum from 20 to 15
+        # 4. ADX strength (weight 0.20) — require ADX >= 20 for real trend
         adx_5m = mtf.get_adx("5m")
         adx_val = adx_5m if adx_5m is not None else 0.0
-        adx_score = score_threshold(adx_val, 15.0, 35.0)
+        adx_score = score_threshold(adx_val, 20.0, 40.0)
         scorer.add_factor(
             "adx_strength",
             raw_value=adx_val,
             score=adx_score,
-            weight=0.15,
-            passed=adx_val >= 15.0,
+            weight=0.20,
+            passed=adx_val >= 20.0,
         )
 
         return scorer
