@@ -143,6 +143,10 @@ class TrendRiderProStrategy(BaseStrategy):
         if atr_5m is None or atr_5m <= 0:
             return None
 
+        # --- minimum volatility: skip low-vol / tight-range setups ---
+        if bar.close > 0 and atr_5m / bar.close < 0.003:
+            return None
+
         stop_price = self._compute_stop(bar, side, mtf, atr_5m, symbol)
         stop_distance = abs(bar.close - stop_price)
         stop_distance = self._apply_regime_volatility_multiplier(stop_distance, market_state)
