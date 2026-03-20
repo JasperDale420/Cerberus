@@ -67,7 +67,7 @@ strategies:
     activation:
       session: [opening, midday]          # autoresearch iter17: drop power_hour
       trend: [up, down]
-      vol: [low, normal, high]
+      vol: [low, normal]               # autoresearch iter18: avoid high vol whipsaws
       liquidity: [good, thin]
       risk: [risk_on, neutral]
       min_confidence: 0.6
