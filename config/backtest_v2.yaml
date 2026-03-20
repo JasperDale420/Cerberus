@@ -70,7 +70,7 @@ strategies:
       trend: [up, down]
       vol: [low, normal]               # autoresearch iter18: avoid high vol whipsaws
       liquidity: [good, thin]
-      risk: [risk_on, neutral, risk_off]  # autoresearch iter29: add risk_off
+      risk: [risk_on, neutral]
       min_confidence: 0.6
   flow_alpha:
     enabled: false
