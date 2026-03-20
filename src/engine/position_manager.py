@@ -352,6 +352,7 @@ class PositionManager:
             ),
             regime_stop_multiplier=regime_multiplier,
             entry_bar_time=(getattr(symbol_state.bars[-1], "time", None) if symbol_state.bars else None),
+            strategy_name=str(strategy),
         )
 
         self._apply_costs_to_position(symbol_state.position, fill_data["qty"], fill_data["price"], cfg)

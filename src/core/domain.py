@@ -300,6 +300,9 @@ class Position:
     # Bar timestamp at entry — used to skip exit checks on the entry bar
     entry_bar_time: Optional[datetime] = None
 
+    # Explicit strategy name for per-strategy EOD logic (e.g. overnight hold decisions)
+    strategy_name: str = ""
+
 
 @dataclass
 class SymbolState:
