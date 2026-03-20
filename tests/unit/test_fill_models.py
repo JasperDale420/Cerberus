@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import pytest
 
 from src.backtest.fill_models.fixed import FixedSlippageFillModel
 from src.backtest.fill_models.protocol import FillModel, FillResult
+from src.backtest.fill_models.volume_aware import VolumeAwareFillModel
 
 
 @pytest.mark.unit
@@ -85,9 +88,6 @@ def test_fixed_fill_model_satisfies_protocol():
 
 # --- VolumeAwareFillModel tests ---
 
-from types import SimpleNamespace
-from src.backtest.fill_models.volume_aware import VolumeAwareFillModel
-
 
 @pytest.mark.unit
 def test_volume_aware_low_participation():
@@ -95,7 +95,11 @@ def test_volume_aware_low_participation():
     model = VolumeAwareFillModel(base_slippage_bps=2.0, impact_coefficient=200.0, commission_per_share=0.001)
     bar = SimpleNamespace(volume=100_000)
     result = model.compute_fill(
-        order_side="buy", order_qty=100, order_price=150.00, order_type="market", bar=bar,
+        order_side="buy",
+        order_qty=100,
+        order_price=150.00,
+        order_type="market",
+        bar=bar,
     )
     # participation = 100/100_000 = 0.001
     # effective_slip = 2.0 + (0.001 * 200) = 2.2 bps
@@ -111,7 +115,11 @@ def test_volume_aware_high_participation():
     model = VolumeAwareFillModel(base_slippage_bps=2.0, impact_coefficient=200.0, commission_per_share=0.001)
     bar = SimpleNamespace(volume=1_000)
     result = model.compute_fill(
-        order_side="buy", order_qty=100, order_price=150.00, order_type="market", bar=bar,
+        order_side="buy",
+        order_qty=100,
+        order_price=150.00,
+        order_type="market",
+        bar=bar,
     )
     # participation = 100/1_000 = 0.10
     # effective_slip = 2.0 + (0.10 * 200) = 22.0 bps
@@ -123,12 +131,18 @@ def test_volume_aware_high_participation():
 def test_volume_aware_zero_volume_bar_uses_max_slippage():
     """Zero volume bar — cap slippage at max_slippage_bps."""
     model = VolumeAwareFillModel(
-        base_slippage_bps=2.0, impact_coefficient=200.0,
-        commission_per_share=0.001, max_slippage_bps=50.0,
+        base_slippage_bps=2.0,
+        impact_coefficient=200.0,
+        commission_per_share=0.001,
+        max_slippage_bps=50.0,
     )
     bar = SimpleNamespace(volume=0)
     result = model.compute_fill(
-        order_side="buy", order_qty=100, order_price=150.00, order_type="market", bar=bar,
+        order_side="buy",
+        order_qty=100,
+        order_price=150.00,
+        order_type="market",
+        bar=bar,
     )
     assert result.slippage_bps == pytest.approx(50.0)
 
@@ -138,13 +152,16 @@ def test_volume_aware_sell_slippage_direction():
     model = VolumeAwareFillModel(base_slippage_bps=2.0, impact_coefficient=200.0, commission_per_share=0.001)
     bar = SimpleNamespace(volume=100_000)
     result = model.compute_fill(
-        order_side="sell", order_qty=100, order_price=150.00, order_type="market", bar=bar,
+        order_side="sell",
+        order_qty=100,
+        order_price=150.00,
+        order_type="market",
+        bar=bar,
     )
     assert result.fill_price < 150.00  # Sell gets worse price
 
 
 @pytest.mark.unit
 def test_volume_aware_satisfies_protocol():
-    from src.backtest.fill_models.protocol import FillModel
     model = VolumeAwareFillModel()
     assert isinstance(model, FillModel)
