@@ -6,10 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **Parameter sensitivity analysis**: New `src/analytics/param_sensitivity.py` module ranks strategy parameters by influence on score using Spearman correlation. Use `analyze_param_sensitivity()` with a dict of parameter value lists and scores to get ranked `SensitivityResult` objects.
-
-- **Monte Carlo bootstrap simulation engine**: New `src/analytics/monte_carlo.py` module that runs bootstrap resampling of trade P&Ls to estimate probability of loss, probability of ruin, worst-case drawdown, Sharpe distribution, and 95% confidence intervals on final equity.
-
 - **Benchmark comparison analytics**: New `src/analytics/benchmark.py` module computes alpha, beta, information ratio, and up/down capture ratios against a benchmark (e.g., SPY). Use `compute_benchmark_comparison()` with daily return arrays.
 
 - **Per-strategy overnight position handling**: Added `allow_overnight`, `max_hold_days`, and `overnight_stop_mult` fields to `BaseStrategy._set_params()` for configuring overnight hold behavior per strategy instead of globally.
