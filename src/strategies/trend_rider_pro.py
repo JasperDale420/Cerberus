@@ -338,7 +338,7 @@ class TrendRiderProStrategy(BaseStrategy):
         min_distance = 1.5 * atr_5m  # minimum stop distance to survive noise
 
         if side == OrderSide.BUY:
-            swings = mtf.get_swing_lows("5m", lookback=5)
+            swings = mtf.get_swing_lows("5m", lookback=8)
             if swings:
                 swing_stop = swings[0]
                 # Ensure minimum distance from entry
@@ -346,7 +346,7 @@ class TrendRiderProStrategy(BaseStrategy):
                     swing_stop = bar.close - min_distance
                 return swing_stop
             return bar.low - vol_distance
-        swings = mtf.get_swing_highs("5m", lookback=5)
+        swings = mtf.get_swing_highs("5m", lookback=8)
         if swings:
             swing_stop = swings[0]
             if swing_stop - bar.close < min_distance:
