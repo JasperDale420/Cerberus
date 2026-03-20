@@ -220,8 +220,12 @@ class TrendRiderProStrategy(BaseStrategy):
 
         pullback_pct = abs(bar.close - pullback_anchor) / bar.close
 
+        # Require VWAP data — skip if unavailable (early session noise)
+        if vwap_dist_1m is None:
+            return None
+
         # --- BUY side ---
-        buy_vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= 0
+        buy_vwap_ok = vwap_dist_1m >= 0
         buy_ema_aligned = ema9_5m > ema20_5m
         near_anchor = pullback_pct <= self.pullback_threshold
 
@@ -231,7 +235,7 @@ class TrendRiderProStrategy(BaseStrategy):
                 return OrderSide.BUY
 
         # --- SELL side ---
-        sell_vwap_ok = vwap_dist_1m is None or vwap_dist_1m <= 0
+        sell_vwap_ok = vwap_dist_1m <= 0
         sell_ema_aligned = ema9_5m < ema20_5m
         near_anchor = pullback_pct <= self.pullback_threshold
 
