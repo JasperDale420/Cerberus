@@ -61,7 +61,7 @@ strategies:
     time_window_start: "09:40"       # autoresearch iter27: avoid first 10min volatility
     pullback_threshold: 0.008        # autoresearch trp iter4: wider for 5m candle closes
     stop_atr_mult: 2.0              # autoresearch 2025 iter2: survive more noise
-    target_atr_mult: 3.0            # autoresearch 2025 iter2: more achievable targets
+    target_atr_mult: 4.0            # autoresearch iter21: wider target in strong trends
     trail_min_profit_r: 0.50        # autoresearch trp iter13: trail earlier
     max_hold_minutes: 120           # autoresearch 2025 iter6: shorter hold reduces mean reversion
     activation:
