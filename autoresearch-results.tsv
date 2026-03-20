@@ -1,0 +1,77 @@
+# metric_direction: higher_is_better
+# goal: Drastically improve Trend Rider Pro on full 2025 data
+# scope: trend_rider_pro.py, backtest_v2.yaml, confluence.py, multi_timeframe.py, base.py
+# verify: uv run python scripts/autoresearch_score.py
+iteration	commit	metric	delta	guard	status	description
+0	3e27d28	-1.4814	0.0	-	baseline	initial state — PnL -$37k, Sharpe -2.15, PF 0.67, WR 39.1%, 1539 trades
+1	015cfe7	-1.3384	+0.1430	-	keep	add 15m HTF trend gate + raise confluence_threshold 63.3→70
+2	1eaa5b4	-1.2319	+0.1065	-	keep	widen stop 1.25→2.0 ATR, tighten target 4.5→3.0 ATR
+3	-	-1.3061	-0.0742	-	discard	require VWAP + tighten pullback 0.008→0.005
+4	f4f8a51	-0.7942	+0.4377	-	keep	disable sell side — long-only
+5	-	-0.9988	-0.2046	-	discard	ATR-only stops (swing lows were better)
+6	f6e44f7	-0.6005	+0.1937	-	keep	reduce max_hold 240→120
+7	-	-0.6005	+0.0000	-	discard	increase cooldown 4→8 bars — zero impact
+8	-	-0.8764	-0.2759	-	discard	tighten target 3.0→2.0 ATR — R:R collapsed to 0.97
+9	-	-0.9135	-0.3130	-	discard	raise confluence 70→80 — fewer trades, worse R:R (0.85)
+10	4e91a0b	-0.0280	+0.5725	-	keep	disable other strategies — TRP alone: PF 0.96, R:R 1.28, near breakeven
+11	-	-0.0623	-0.0343	-	discard	widen pullback 0.008→0.012 — diluted quality
+12	-	-0.0280	+0.0000	-	discard	raise min_trend_alignment 0.30→0.50 — no effect (HTF gate dominates)
+13	-	-0.2697	-0.2417	-	discard	lower confluence 70→55 — more trades but worse quality (PF 0.88)
+14	-	-0.1244	-0.0964	-	discard	delay trail 0.5R→1.5R + remove partials — R:R dropped to 1.08
+15	-	-0.3277	-0.2997	-	discard	reduce max_hold 120→90 — killed profitable trades early
+16	6a5624a	+0.1929	+0.2209	-	keep	min 1.5 ATR stop distance — PROFITABLE: PnL +$1.8k, PF 1.04, WR 47.9%
+17	08c718f	+0.2017	+0.0088	-	keep	drop power_hour — WR 48.6%, 418 trades
+18	24633fc	+0.2192	+0.0175	-	keep	drop high vol — PF 1.05, WR 48.7%, EV $4.31/trade
+19	-	+0.1752	-0.0440	-	discard	good-only liquidity — too few trades (331)
+20	5155fe3	+0.3856	+0.1664	-	keep	ADX min 20 + weight 0.20 — PnL +$5.3k, PF 1.13, WR 49.3%
+21	-	-0.0237	-0.4093	-	discard	widen target 3→4 ATR — WR dropped to 44.9%
+22	7c734a3	+0.4472	+0.0616	-	keep	end entries at 14:30 — WR 51%, PF 1.17, PnL +$6k
+23	b565ed2	+0.4636	+0.0164	-	keep	widen stop 2.0→2.5 ATR — PnL +$6.4k, PF 1.18
+24	74f24c1	+0.4797	+0.0161	-	keep	volume 1.2x gate — WR 55.6%, PF 1.27, but only 196 trades
+25	-	+0.4442	-0.0355	-	discard	relax volume 1.2→1.0 — quality dropped
+26	-	+0.4608	-0.0189	-	discard	start entries 09:35 — marginal harm
+27	6209a75	+0.4989	+0.0192	-	keep	rebalance weights MTF 0.45/vol 0.15 — Sharpe 1.40, PF 1.28
+28	-	+0.1739	-0.3250	-	discard	uptrend-only — too few trades (92), lost downtrend pullback profits
+29	-	+0.2620	-0.2369	-	discard	add risk_off — low quality trades, PF dropped to 1.08
+30	5b73514	+0.5277	+0.0288	-	keep	partial 50% at 1.5R — WR 57.9%, 209 trades
+31	ac42a68	+0.5629	+0.0352	-	keep	trail_min_profit 0.50→0.75R — PF 1.32, WR 59.5%, PnL +$6.2k
+32	d2b6136	+0.5784	+0.0155	-	keep	lower confluence 70→65 with hard gates — PF 1.32, WR 59.8%, PnL +$6.6k
+33	-	+0.3849	-0.1935	-	discard	Kalman process_noise 0.01→0.005 — too smooth, lagged entries, PF 1.21
+34	-	+0.4236	-0.1548	-	discard	candle body ≥40% filter — too restrictive, 156 trades, PnL $4k
+35	cc600db	+0.6805	+0.1021	-	keep	widen target 3.0→3.5 ATR — PnL +$8.3k, PF 1.41, WR 60.8%, Sharpe 1.34
+36	f2b6a51	+0.7034	+0.0229	-	keep	widen target 3.5→3.75 ATR — PnL +$8.7k, PF 1.43, Sharpe 1.38, Calmar 4.15
+37	04e5130	+0.7499	+0.0465	-	keep	widen target 3.75→4.0 ATR — PnL +$9.5k, PF 1.47, WR 61.2%, Sharpe 1.45
+38	-	+0.7441	-0.0058	-	discard	target 4.0→4.25 ATR — diminishing returns, Sharpe slightly lower
+39	-	+0.7007	-0.0492	-	discard	partial 1.5R→2.0R — WR dropped 61→58%, too late to lock profit
+40	78559c8	+0.7530	+0.0031	-	keep	add 2nd partial 25% at 2.5R — WR 61.6%, 211 trades
+41	-	+0.4027	-0.3503	-	discard	max_hold 120→150 — mean reversion eats profits, PnL $3.8k, DD 2.77%
+42	-	+0.7530	+0.0000	-	discard	cooldown 4→3 bars — zero impact, other gates dominate
+43	-	+0.3072	-0.4458	-	discard	close-position filter (>40% range) — rejects valid pullbacks, PnL $2.9k
+44	-	+0.7530	+0.0000	-	discard	trail lookback 3→4 — zero impact
+45	-	+0.7537	+0.0007	-	discard	stop 2.5→2.75 ATR — negligible +0.0007, not worth parameter change
+46	-	+0.7530	+0.0000	-	discard	min volatility ATR/price ≥ 0.3% — zero impact, existing gates suffice
+47	-	+0.7028	-0.0502	-	discard	confluence 65→60 — quality dropped, PF 1.43, Sharpe 1.33
+48	-	+0.7524	-0.0006	-	discard	trail 0.75→1.0R — negligible change
+49	-	+0.7530	+0.0000	-	discard	HMM reject chop — zero impact, regime never triggers
+50	047807a	+0.7592	+0.0062	-	keep	swing lookback 5→8 — stronger support levels, PF 1.48, PnL $9.6k
+51	07e8f6c	+0.7785	+0.0193	-	keep	min stop 1.5→1.75 ATR — PnL +$10.8k, PF 1.56, avg $54.69/trade
+52	4937b20	+0.7975	+0.0190	-	keep	min stop 1.75→2.0 ATR — PnL +$11.3k, PF 1.59, Sharpe 1.52, Calmar 5.21
+53	-	+0.7458	-0.0517	-	discard	min stop 2.0→2.25 ATR — too wide, DD 2.44%, PnL dropped to $10.5k
+54	-	+0.6003	-0.1972	-	discard	end time 14:30→15:00 — late entries garbage, PF 1.35, DD 2.57%
+55	-	+0.2888	-0.5087	-	discard	volume 1.2→1.5x — too restrictive, 113 trades, PnL $2.6k
+56	18aabc3	+0.8057	+0.0082	-	keep	ADX gate 20→25, range 25-45 — PF 1.60, Sharpe 1.53, PnL $11.3k
+57	-	+0.8058	+0.0001	-	discard	ADX gate 25→30 — negligible, marginal DD improvement not enough
+58	7b08f12	+0.8079	+0.0022	-	keep	weights PB 0.20→0.15, ADX 0.20→0.25 — PnL $11.5k, avg $60.76/trade
+59	4b31cbb	+0.8996	+0.0917	-	keep	Kalman noise 0.01→0.02 — PnL $13.2k, Sharpe 1.63, DD 1.85%, Calmar 7.32!
+60	6599ba8	+1.1500	+0.2504	-	keep	Kalman noise 0.02→0.03 — PnL $18.2k, Sharpe 1.99, PF 1.77, Calmar 9.63!!!
+61	-	+0.9958	-0.1542	-	discard	Kalman noise 0.03→0.04 — too noisy, PnL $15.8k, Sharpe 1.72
+62	-	+0.9963	-0.1537	-	discard	Kalman measurement 1.0→0.5 — too responsive, DD 2.24%
+63	-	+0.8444	-0.3056	-	discard	Kalman measurement 1.0→2.0 — too smooth, PnL $12.4k
+64	-	-0.6000	-1.7500	-	discard	EMA 9/20→8/21 — zero trades, non-standard periods not in MTF analyzer
+65	-	+1.0424	-0.1076	-	discard	pullback 0.008→0.010 — 240 trades but DD 2.51%, lower quality
+66	-	+0.9126	-0.2374	-	discard	pullback 0.008→0.006 — too tight, 204 trades, DD 2.71%
+67	-	+1.1384	-0.0116	-	discard	confluence 65→67.5 — marginal worse, not enough to justify
+68	-	+0.8999	-0.2501	-	discard	drop thin liquidity — lost 39 profitable trades, PnL $13.3k
+69	-	+1.1260	-0.0240	-	discard	start 09:40→09:35 — early entries slightly worse quality
+70	-	+1.0881	-0.0619	-	discard	3-stage 33/33/33 at 1R/2R — WR 65.6% but PnL $16.2k, too early partials
+71	-	+0.9262	-0.2238	-	discard	remove VWAP filter — 443 trades, DD 6.38%, 16 consec losers!
