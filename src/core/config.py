@@ -199,10 +199,11 @@ class ConfigLoader:
         Looks for keys like 'APP_SETTING_SUBSET_KEY' to override config['setting']['subset']['key'].
         """
         for env_key, env_value in os.environ.items():
-            # Convert env_key (e.g., 'APP_STRATEGIES_MYSTRAT_ENABLED') to config path (e.g., ['strategies', 'mystrat', 'enabled'])
-            # Assuming a prefix like 'APP_'
+            # Convert env_key to config path using double-underscore as nesting separator.
+            # Single underscores are preserved within key names (e.g., max_daily_loss).
+            # Example: APP_RISK__MAX_DAILY_LOSS=1000 -> config["risk"]["max_daily_loss"] = 1000
             if env_key.startswith("APP_"):
-                path_parts = env_key[len("APP_") :].lower().split("_")
+                path_parts = env_key[len("APP_") :].lower().split("__")
 
                 current_level = config
                 for i, part in enumerate(path_parts):

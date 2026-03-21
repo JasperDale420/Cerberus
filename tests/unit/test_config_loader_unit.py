@@ -24,18 +24,15 @@ def test_load_config_loads_yaml_suite_and_applies_env_overrides(tmp_path: Path, 
     (tmp_path / "scanner.yaml").write_text(yaml.safe_dump({"scanner": {"top_n": 10}}))
     (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 5}}))
 
-    monkeypatch.setenv("APP_RISK_MAX_DAILY_LOSS", "2")
-    monkeypatch.setenv("APP_SCANNER_TOP_N", "20")
+    # Double-underscore separates nesting levels; single underscores are preserved in key names
+    monkeypatch.setenv("APP_RISK__MAX_DAILY_LOSS", "2")
+    monkeypatch.setenv("APP_SCANNER__TOP_N", "20")
 
     loader = ConfigLoader(config_dir=str(tmp_path))
     cfg = loader.load_config()
-    # The current override scheme splits on underscores, so `APP_RISK_MAX_DAILY_LOSS`
-    # maps to `risk.max.daily.loss` rather than `risk.max_daily_loss`.
-    assert cfg["risk"]["max_daily_loss"] == 1
-    assert cfg["risk"]["max"]["daily"]["loss"] == 2
+    assert cfg["risk"]["max_daily_loss"] == 2  # overridden via env
     assert cfg["risk"]["max_risk_per_trade"] == 5
-    assert cfg["scanner"]["top_n"] == 10
-    assert cfg["scanner"]["top"]["n"] == 20
+    assert cfg["scanner"]["top_n"] == 20  # overridden via env
 
 
 @pytest.mark.unit

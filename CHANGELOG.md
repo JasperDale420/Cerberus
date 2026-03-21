@@ -210,6 +210,12 @@ All notable changes to this project will be documented in this file.
 
 - **Pair trading bar_count incremented per-leg, halving effective warmup**: Each leg's bar incremented the shared `bar_count`, so with 2 legs receiving bars at the same rate, the `min_bars` warmup completed after only half the intended synchronized observations. Fixed to only increment when a synchronized observation is available.
 
+- **ENV VAR override splits on single underscore — overrides silently fail**: `_override_from_env` split env var names on single underscores to derive config paths. Since YAML keys contain underscores (e.g., `max_daily_loss`), `APP_RISK_MAX_DAILY_LOSS` created phantom nested dicts (`config["risk"]["max"]["daily"]["loss"]`) instead of setting `config["risk"]["max_daily_loss"]`. Risk limits and strategy parameters could not be overridden via env vars. Fixed to use double-underscore (`__`) as the nesting separator.
+
+- **Hard stop time compared in UTC instead of Eastern**: `is_past_hard_stop()` compared `current_time.hour` directly against the configured hard stop time (e.g., "15:30" ET), but bar timestamps are in UTC. A "15:30" hard stop would trigger at 15:30 UTC (10:30-11:30 AM ET), stopping trading ~5 hours early. Fixed to convert to Eastern Time before comparison.
+
+- **Activation policy min_confidence rejects on unconstrained axes**: `StrategyActivationPolicy.is_active()` checked min_confidence against ALL regime axes, including axes the strategy doesn't constrain. A strategy filtering only on `session` with `min_confidence: 0.6` would be blocked by low confidence on `trend` or `vol` (which it doesn't care about). During warmup, all non-session axes have confidence 0.0, blocking every strategy with any min_confidence setting. Fixed to only check constrained axes.
+
 - **VRP z-score uses population std inconsistent with other axes**: `vrp.py` used `np.std(ddof=0)` while all other regime axis z-scores used `ddof=1` (sample std). This misalignment shifted VRP z-score thresholds slightly, affecting RISK_ON/RISK_OFF classification consistency. Fixed to use `ddof=1`.
 
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.

@@ -61,6 +61,9 @@ class BaseStrategy(ABC):
     def is_past_hard_stop(self, current_time: datetime) -> bool:
         """
         Returns True if the current time is at or past the configured hard stop.
+
+        hard_stop_time is in US/Eastern (market hours). If current_time is
+        timezone-aware, it is converted to ET before comparison.
         """
         hard_stop = self.config.get("hard_stop_time")
         if not hard_stop:
@@ -68,10 +71,15 @@ class BaseStrategy(ABC):
 
         try:
             stop_h, stop_m = map(int, hard_stop.split(":"))
-            # Compare only hour and minute
-            if current_time.hour > stop_h:
+            # Convert to Eastern Time since hard_stop_time is in market hours
+            compare_time = current_time
+            if current_time.tzinfo is not None:
+                from zoneinfo import ZoneInfo
+
+                compare_time = current_time.astimezone(ZoneInfo("America/New_York"))
+            if compare_time.hour > stop_h:
                 return True
-            if current_time.hour == stop_h and current_time.minute >= stop_m:
+            if compare_time.hour == stop_h and compare_time.minute >= stop_m:
                 return True
         except (ValueError, AttributeError):
             self.logger.warning("hard_stop_time_parse_failed", hard_stop=hard_stop)

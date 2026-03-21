@@ -54,10 +54,21 @@ class StrategyActivationPolicy:
         if self.risk and regime.risk not in self.risk:
             return False
 
-        # Check minimum confidence across all axes
+        # Check minimum confidence only for axes the strategy constrains
         if self.min_confidence > 0.0:
-            for axis_conf in regime.confidence.values():
-                if axis_conf < self.min_confidence:
+            constrained_axes: list[str] = []
+            if self.session:
+                constrained_axes.append("session")
+            if self.trend:
+                constrained_axes.append("trend")
+            if self.vol:
+                constrained_axes.append("vol")
+            if self.liquidity:
+                constrained_axes.append("liquidity")
+            if self.risk:
+                constrained_axes.append("risk")
+            for axis in constrained_axes:
+                if regime.confidence.get(axis, 0.0) < self.min_confidence:
                     return False
 
         return True
