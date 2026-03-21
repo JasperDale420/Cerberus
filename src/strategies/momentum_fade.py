@@ -307,8 +307,9 @@ class MomentumFadeStrategy(BaseStrategy):
         vwap_dist = (bar.close - vwap) / vwap
 
         # === GARCH-CONDITIONAL Z-SCORE ===
-        garch_zscore = self._garch[symbol].conditional_zscore(vwap_dist)
-        use_garch = garch_zscore != 0.0  # GARCH fitted and producing forecasts
+        garch = self._garch[symbol]
+        garch_zscore = garch.conditional_zscore(vwap_dist)
+        use_garch = garch._last_result is not None  # GARCH fitted and producing forecasts
 
         if use_garch:
             # Use GARCH-normalized z-score threshold

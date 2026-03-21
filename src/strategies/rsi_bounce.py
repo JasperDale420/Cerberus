@@ -253,14 +253,18 @@ class RsiBounceStrategy(BaseStrategy):
         is desirable.
         """
         history = self._rsi_history[symbol]
-        history.append(rsi)
 
         if len(history) < 20:
+            history.append(rsi)
             return None
 
+        # Compute percentile against prior history BEFORE appending current
         rsi_list = list(history)
         count_below = sum(1 for r in rsi_list if r <= rsi)
-        return (count_below / len(rsi_list)) * 100.0
+        pctile = (count_below / len(rsi_list)) * 100.0
+
+        history.append(rsi)
+        return pctile
 
     def _compute_volume_climax(self, symbol: str, volume: float) -> tuple[bool, float]:
         """Check if current volume represents a climax (capitulation/exhaustion).

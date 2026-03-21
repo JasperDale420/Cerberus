@@ -214,6 +214,10 @@ All notable changes to this project will be documented in this file.
 
 - **Hard stop time compared in UTC instead of Eastern**: `is_past_hard_stop()` compared `current_time.hour` directly against the configured hard stop time (e.g., "15:30" ET), but bar timestamps are in UTC. A "15:30" hard stop would trigger at 15:30 UTC (10:30-11:30 AM ET), stopping trading ~5 hours early. Fixed to convert to Eastern Time before comparison.
 
+- **RSI bounce percentile rank includes current observation**: `_compute_rsi_percentile_rank` appended the current RSI to history before computing the rank, inflating the percentile by 1/N. At the typical 100-bar window, extreme oversold readings appeared ~1% less extreme than they actually were. Fixed to compute rank against prior history, then append.
+
+- **Momentum fade GARCH validity uses zero-check instead of fitted state**: `use_garch = garch_zscore != 0.0` treated a true z-score of exactly 0.0 (valid when deviation equals mean) as "GARCH not fitted," falling back to the raw percentage threshold. Fixed to check `_last_result is not None` to determine if GARCH has been fitted.
+
 - **Flow trade aggressive detection has operator precedence bug**: `t.get("ask_side") or t.get("sentiment") in [...]` evaluated as `(truthy_ask_side) or (membership_test)` due to Python operator precedence. Any truthy `ask_side` value (e.g., a premium string) would mark all trades as aggressive regardless of actual side. Fixed by adding parentheses around the `in` expression.
 
 - **Flow trade field names not normalized for different API formats**: `_process_single_flow_trade` only read `put_call` and `size` fields, missing the `type` and `total_size` fields used by some API responses. Also compared against uppercase `"CALL"`/`"PUT"` but some sources return lowercase. Fixed to check both field names and normalize case.
