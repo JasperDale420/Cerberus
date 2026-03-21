@@ -708,7 +708,7 @@ def compute_entry_exit_efficiency(
         entry_price = t.get("entry_price", 0.0)
         exit_price = t.get("exit_price", 0.0)
         if entry_price > 0:
-            pnl_from_entry = (exit_price / entry_price - 1.0) * 100.0
+            pnl_from_entry = exit_price / entry_price - 1.0
         else:
             pnl_from_entry = 0.0
         exit_eff = (pnl_from_entry - mae_val) / range_val
