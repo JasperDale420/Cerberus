@@ -194,6 +194,10 @@ All notable changes to this project will be documented in this file.
 
 - **Backtest higher-TF indicator look-ahead bias**: Before the first higher-TF bar completed (e.g., first 4 bars for 5m), the index was clipped to 0, reading from a bar whose OHLCV included future 1m data. Fixed to return no indicators until the first higher-TF bar has fully completed.
 
+- **Permutation test always returns p-value=1.0**: The statistical significance test shuffled the returns array, but shuffling preserves the mean — so every permutation produced the same mean as the original, yielding p=1.0 unconditionally. Fixed to use sign-flip permutation test (random sign multiplication) which properly tests whether the mean is significantly different from zero.
+
+- **Ulcer Index misses initial drawdown**: `np.cumprod(1 + returns)` started at `1 + returns[0]` instead of 1.0, so the running peak began at the post-first-return level rather than the initial equity. A strategy that drops on the first bar and never recovers would show a smaller Ulcer Index than it should. Fixed by prepending 1.0 to the equity series.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

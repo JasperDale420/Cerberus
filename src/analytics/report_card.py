@@ -243,14 +243,13 @@ def compute_statistical_tests(
         float(np.percentile(boot_means, 97.5)),
     ]
 
-    # Permutation test
+    # Sign-flip permutation test (shuffling preserves mean, so use random signs)
     observed_abs_mean = abs(mean_ret)
     count_ge = 0
     perm_rng = np.random.default_rng(seed + 1)
     for _ in range(n_permutations):
-        shuffled = arr.copy()
-        perm_rng.shuffle(shuffled)
-        if abs(float(np.mean(shuffled))) >= observed_abs_mean:
+        signs = perm_rng.choice([-1.0, 1.0], size=len(arr))
+        if abs(float(np.mean(arr * signs))) >= observed_abs_mean:
             count_ge += 1
     result["permutation_pvalue"] = float(count_ge / n_permutations)
 
@@ -401,7 +400,7 @@ def compute_risk_metrics(returns: list[float], threshold: float = 0.0) -> dict[s
     cvar_95 = float(np.mean(arr[mask])) if np.any(mask) else var_95
 
     # Ulcer Index: sqrt(mean(drawdown_pct^2)) from running peak equity
-    equity = np.cumprod(1.0 + arr)
+    equity = np.concatenate(([1.0], np.cumprod(1.0 + arr)))
     running_peak = np.maximum.accumulate(equity)
     drawdown_pct = (running_peak - equity) / running_peak
     ulcer_index = float(np.sqrt(np.mean(drawdown_pct**2)))
