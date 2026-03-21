@@ -543,6 +543,12 @@ def _apply_params_to_config(
         "bocpd_reject_threshold",
         "kurtosis_reject_threshold",
         "entropy_threshold",
+        # Pair trading V2 params
+        "entry_z_threshold",
+        "stop_z_threshold",
+        "spread_lookback",
+        "min_correlation",
+        "freshness_seconds",
     }
 
     for key, value in params.items():
@@ -1201,7 +1207,7 @@ def deflated_sharpe_ratio(
 
     euler_mascheroni = 0.5772156649
     expected_max = sp_stats.norm.ppf(1 - 1 / num_trials) * (1 - euler_mascheroni / math.log(max(num_trials, 2)))
-    se = math.sqrt((1 - skewness * observed_sharpe + (kurtosis - 1) / 4 * observed_sharpe**2) / n_returns)
+    se = math.sqrt((1 - skewness * observed_sharpe + (kurtosis - 3) / 4 * observed_sharpe**2) / n_returns)
     if se <= 0:
         return 0.0
 

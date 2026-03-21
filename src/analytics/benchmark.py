@@ -34,9 +34,11 @@ def compute_benchmark_comparison(
 
     alpha = strat_total - beta * bench_total
 
-    # Information ratio
-    tracking_error = float(np.std(strategy_daily_returns - benchmark_daily_returns)) * np.sqrt(252)
-    ir = alpha / tracking_error if tracking_error > 1e-10 else 0.0
+    # Information ratio — use daily excess returns for consistent annualization
+    daily_excess = strategy_daily_returns - benchmark_daily_returns
+    mean_excess = float(np.mean(daily_excess))
+    std_excess = float(np.std(daily_excess, ddof=1)) if len(daily_excess) > 1 else 0.0
+    ir = (mean_excess / std_excess * np.sqrt(252)) if std_excess > 1e-10 else 0.0
 
     # Capture ratios
     up_mask = benchmark_daily_returns > 0

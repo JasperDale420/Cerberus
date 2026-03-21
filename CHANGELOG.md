@@ -152,6 +152,12 @@ All notable changes to this project will be documented in this file.
 
 - **EMA slope not normalized — incomparable across price levels**: `ema20_slope` was computed as raw price difference (`ema_val - ema_prev`), making it price-level dependent. A $500 stock produces 100x larger slopes than a $5 stock. Fixed to normalize as percentage change (`(ema_val - ema_prev) / ema_prev`), consistent with `distance_from_ema20`.
 
+- **Information Ratio mixes total-period alpha with annualized tracking error**: IR divided total-period alpha (which scales with backtest length) by annualized tracking error, producing IR values that grew proportionally with backtest duration. Fixed to compute IR from daily excess returns with consistent annualization.
+
+- **Rolling Sharpe annualized by sqrt(98280) on daily returns**: `compute_rolling_metrics()` used `bars_per_year=98280` (minute-bar frequency) but operated on daily equity curve returns, inflating rolling Sharpe by ~19.7x. Fixed to use 252 (daily frequency).
+
+- **Deflated Sharpe Ratio kurtosis formula wrong for raw kurtosis input**: DSR formula used `(kurtosis - 1) / 4` but the `kurtosis` parameter defaulted to 3.0 (raw kurtosis). The Bailey & Lopez de Prado formula expects excess kurtosis, so the term should be `(kurtosis - 3) / 4`. With raw kurtosis=3 (normal distribution), the standard error was inflated instead of being zero.
+
 - **HRP out-of-order same-day returns replace instead of accumulate**: The out-of-order insert path in `record_daily_return()` replaced existing same-day entries instead of accumulating PnL (unlike the in-order path which correctly accumulates). Multiple trades completing on the same day for the same strategy would lose prior trade PnL, corrupting the HRP correlation matrix.
 
 - **Notional limit ignores dollar ceiling when equity available**: `_get_effective_notional_limit()` returned only the percentage-based limit when account equity was positive, completely ignoring the hard dollar ceiling `max_notional_per_order`. Unlike every other dual-limit in risk.py (which takes the min), this allowed orders far exceeding the intended dollar cap. Fixed to take `min(pct_limit, dollar_limit)`.

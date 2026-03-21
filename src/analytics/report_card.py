@@ -781,7 +781,7 @@ def generate_report(
 
     # Tier 2
     report["risk_metrics"] = compute_risk_metrics(returns)
-    report["rolling_metrics"] = compute_rolling_metrics(returns, window=rolling_window, bars_per_year=bars_per_year)
+    report["rolling_metrics"] = compute_rolling_metrics(returns, window=rolling_window, bars_per_year=252.0)
     report["drawdown_catalog"] = catalog_drawdowns(equity_curve, top_n=5)
     report["trade_clustering"] = analyze_trade_clustering(trades, pnl_key=pnl_key)
     report["cost_sensitivity"] = compute_cost_sensitivity(trade_pnls, len(trades), base_cost_bps=base_cost_bps)
