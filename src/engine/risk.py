@@ -636,8 +636,11 @@ class RiskManager:
     def _get_effective_notional_limit(self, account_equity: float = 0.0) -> float:
         """Calculate the effective per-order notional limit."""
         max_notional_pct = getattr(self.risk_cfg, "max_notional_pct", 0.50)
-        if account_equity > 0 and max_notional_pct > 0:
-            return account_equity * max_notional_pct
+        pct_limit = account_equity * max_notional_pct if account_equity > 0 and max_notional_pct > 0 else 0.0
+        if pct_limit > 0 and self.max_notional_per_order > 0:
+            return min(pct_limit, self.max_notional_per_order)
+        elif pct_limit > 0:
+            return pct_limit
         elif self.max_notional_per_order > 0:
             return self.max_notional_per_order
         return float("inf")

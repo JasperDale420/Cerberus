@@ -66,7 +66,7 @@ class HRPAllocator:
             # Out-of-order insert (rare)
             for i, (d, _) in enumerate(history):
                 if d == dt:
-                    history[i] = (dt, daily_return)
+                    history[i] = (dt, history[i][1] + daily_return)
                     return
                 if d > dt:
                     history.insert(i, (dt, daily_return))
