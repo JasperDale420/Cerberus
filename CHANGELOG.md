@@ -80,6 +80,12 @@ All notable changes to this project will be documented in this file.
 
 - **Bar parser drops zero-volume bars**: `_parse_bars()` used Python `or` chaining to pick between dict key names, but `or` treats `0` as falsy. A legitimate zero-volume bar (common in premarket/extended hours) would fall through all alternatives, return `None`, and get silently discarded. This corrupted volume-weighted indicators (VWAP) and bar counts. Replaced with explicit `is not None` checks.
 
+- **IV surface analyze() called with wrong arguments**: `MarketContextService.update_iv_surface()` passed `current_price`, `risk_free_rate`, and `time_to_expiry` as keyword arguments, but `IVSurfaceAnalyzer.analyze()` expects positional `term_data`, `strikes`, `call_prices` and keyword `rate`, `tte`. This would crash with `TypeError` if ever called. Fixed to extract strikes and call prices from chain data and pass correct argument names.
+
+- **VRP realized vol not annualized**: VRP compares `(VXX/10)^2` (annualized implied variance, ~1-10) against `realized_vol^2` (per-bar EWMA, ~1e-8). The 8 orders of magnitude difference made the RV component meaningless — VRP tracked only VXX price, not the implied-vs-realized spread. Fixed by annualizing per-bar realized vol (`* sqrt(252*390)`) before squaring.
+
+- **Hurst exponent computed on raw price diffs instead of log-returns**: R/S analysis used `np.diff(prices)` which is not scale-invariant — a $500 stock produces 10x larger diffs than a $50 stock. Fixed to use `np.diff(np.log(prices))` (log-returns). Also fixed off-by-one using `len(prices)` instead of `len(returns)` in the R/S formula denominator.
+
 - **Prior day stats returns wrong day before market open**: `get_prior_day_stats()` unconditionally took `bars[-2]` assuming `bars[-1]` was today's incomplete bar. Before market open, today's bar doesn't exist yet, so `bars[-1]` is yesterday's complete bar and `bars[-2]` is two days ago. This produced incorrect gap percentages for gap_fill and ORB strategies during premarket. Now checks whether the last bar's date matches today.
 
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.

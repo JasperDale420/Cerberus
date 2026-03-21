@@ -189,13 +189,27 @@ class MarketContextService:
         current_price: float = 0.0,
         risk_free_rate: float = 0.05,
         time_to_expiry: float = 30 / 365,
+        term_data: list | None = None,
     ) -> None:
         """Update IV surface from options chain data. Call when chain refreshes (typically EOD)."""
+        # Extract strikes and call prices from chain for RND computation
+        strikes: list[float] = []
+        call_prices: list[float] = []
+        for row in chain_data:
+            delta = float(row.get("delta", 0))
+            if delta > 0:  # Calls have positive delta
+                strike = float(row.get("strike", 0))
+                mid = float(row.get("mid", 0) or row.get("mark", 0) or row.get("last", 0))
+                if strike > 0 and mid > 0:
+                    strikes.append(strike)
+                    call_prices.append(mid)
         result = self._iv_surface.analyze(
-            chain_data,
-            current_price=current_price,
-            risk_free_rate=risk_free_rate,
-            time_to_expiry=time_to_expiry,
+            chain=chain_data,
+            term_data=term_data or [],
+            strikes=strikes,
+            call_prices=call_prices,
+            rate=risk_free_rate,
+            tte=time_to_expiry,
         )
         if result is not None:
             self._last_iv_skew_zscore = result.skew_zscore
@@ -402,7 +416,12 @@ class MarketContextService:
         if len(prices) < 5:
             return 0.5  # Random walk default
 
-        returns = np.diff(prices)
+        # Use log-returns for scale invariance across price levels
+        log_prices = np.log(prices[prices > 0]) if np.all(prices > 0) else np.log(np.maximum(prices, 1e-10))
+        returns = np.diff(log_prices)
+        if len(returns) < 3:
+            return 0.5
+
         std_dev = np.std(returns)
 
         # If standard deviation is exactly zero, price is a straight line
@@ -420,7 +439,8 @@ class MarketContextService:
         # Range of the cumulative deviations
         r_range = max(np.max(cum_deviations) - np.min(cum_deviations), 1e-8)
 
-        h_exponent = np.log(r_range / std_dev) / np.log(len(prices))
+        # R/S Hurst: H = log(R/S) / log(n) where n = number of returns
+        h_exponent = np.log(r_range / std_dev) / np.log(len(returns))
 
         return float(np.clip(h_exponent, 0.0, 1.0))
 
@@ -452,7 +472,11 @@ class MarketContextService:
         """UP/DOWN/FLAT based on Hurst exponent and cumulative return direction."""
         if hurst < hurst_thresh:
             return self._trend_regime.FLAT
-        return self._trend_regime.UP if cum_ret > 0 else self._trend_regime.DOWN
+        if cum_ret > 0:
+            return self._trend_regime.UP
+        if cum_ret < 0:
+            return self._trend_regime.DOWN
+        return self._trend_regime.FLAT
 
     def _classify_vol(
         self,

@@ -22,6 +22,9 @@ class VRPCalculator:
     Academic basis: Bollerslev, Tauchen & Zhou (2009).
     """
 
+    # Annualization factor for 1-minute bar returns: sqrt(252 trading days * 390 min/day)
+    _ANNUALIZATION_FACTOR = np.sqrt(252 * 390)
+
     def __init__(
         self,
         window: int = 60,
@@ -38,7 +41,7 @@ class VRPCalculator:
 
         Args:
             vxx_price: Current VXX price
-            realized_vol: Current realized volatility (from EWMA, already computed in regime.py)
+            realized_vol: Current realized volatility (per-bar EWMA from regime.py)
 
         Returns:
             VRPResult or None if insufficient data for z-score
@@ -46,8 +49,11 @@ class VRPCalculator:
         if vxx_price <= 0:
             return None
 
+        # IV proxy: VXX/10 approximates VIX/100, giving annualized implied vol as a decimal.
+        # Squaring gives annualized implied variance.
         iv_proxy = (vxx_price / 10.0) ** 2
-        rv = realized_vol**2
+        # Annualize per-bar realized vol before squaring to match IV proxy scale
+        rv = (realized_vol * self._ANNUALIZATION_FACTOR) ** 2
         vrp_raw = iv_proxy - rv
 
         self._vrp_history.append(vrp_raw)

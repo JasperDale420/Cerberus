@@ -126,3 +126,11 @@ iteration	type	hypothesis	result	severity	location	description
 124	hypothesis	RollingStd numerical instability	confirmed	MEDIUM	indicators.py:54-78	Naive running variance accumulates cancellation error over trading day
 125	hypothesis	Hurst exponent comment mismatch	confirmed	LOW	calculator.py:699	Comment says n/2 but code uses n; code is correct, comment is wrong
 126	hypothesis	replay_provider temporal ordering	disproven	-	replay_provider.py	Simple DB lookup with ORDER BY DESC LIMIT 1; correct
+127	hypothesis	IV surface analyze() argument mismatch	confirmed	CRITICAL	regime.py:194 / iv_surface.py:304	Keyword args don't match parameter names; TypeError on call
+128	hypothesis	VRP realized vol not annualized	confirmed	HIGH	vrp.py:49-51	Per-bar vol vs annualized IV proxy; 8 orders of magnitude mismatch
+129	hypothesis	Hurst exponent uses price diffs not log-returns	confirmed	MEDIUM	regime.py:419	np.diff(prices) not scale-invariant; also off-by-one in denominator
+130	hypothesis	EWMA vol no persistent state	confirmed	MEDIUM	regime.py:441-463	Recomputes from mean each call instead of maintaining running state
+131	hypothesis	IV surface finite diff for non-uniform strikes	confirmed	MEDIUM	iv_surface.py:253	Formula only exact for uniform spacing; biases RND in wings
+132	hypothesis	LZC normalization uses ln(n) not log2(n)	confirmed	LOW	entropy.py:175	Compressed ~30% but LZC not used in regime classification
+133	hypothesis	Population vs sample std inconsistency	confirmed	LOW	momentum_crash.py:183 / vrp.py:61	ddof=0 vs entropy.py ddof=1; negligible for large windows
+134	hypothesis	Permutation entropy max calculation	disproven	-	entropy.py:73	ln(order!) is correct max PE for order! possible patterns

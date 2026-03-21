@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from src.analysis.vrp import VRPCalculator, VRPResult
 from src.core.domain import Bar, RiskRegime
+
+# Per-bar vol that annualizes to ~15%: 0.15 / sqrt(252*390) ≈ 4.78e-4
+_PER_BAR_VOL = 0.15 / math.sqrt(252 * 390)
 
 # ---------------------------------------------------------------------------
 # VRPCalculator unit tests
@@ -14,20 +18,21 @@ class TestVRPCalculatorComputation:
     """Test VRP raw computation from known values."""
 
     def test_vrp_known_values(self):
-        """VXX=20, RV=0.15 => IV_proxy=4.0, RV²=0.0225, VRP=3.9775."""
-        calc = VRPCalculator(window=1)  # window=1 so we get a result immediately
-        result = calc.update(vxx_price=20.0, realized_vol=0.15)
+        """VXX=20, per-bar vol that annualizes to 15% => IV_proxy=4.0, annualized RV²≈0.0225."""
+        calc = VRPCalculator(window=1)
+        result = calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert abs(result.iv_proxy - 4.0) < 1e-9
-        assert abs(result.realized_vol - 0.15) < 1e-9
+        assert abs(result.realized_vol - _PER_BAR_VOL) < 1e-9
+        # Annualized RV = _PER_BAR_VOL * sqrt(252*390) = 0.15, so RV² = 0.0225
         expected_vrp = 4.0 - 0.15**2
-        assert abs(result.vrp_raw - expected_vrp) < 1e-9
+        assert abs(result.vrp_raw - expected_vrp) < 1e-6
 
     def test_returns_none_insufficient_data(self):
         """Fewer than window observations returns None."""
         calc = VRPCalculator(window=60)
         for _ in range(59):
-            result = calc.update(vxx_price=20.0, realized_vol=0.15)
+            result = calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         assert result is None
 
     def test_returns_result_at_window(self):
@@ -35,20 +40,20 @@ class TestVRPCalculatorComputation:
         calc = VRPCalculator(window=60)
         result = None
         for _ in range(60):
-            result = calc.update(vxx_price=20.0, realized_vol=0.15)
+            result = calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert isinstance(result, VRPResult)
 
     def test_zero_vxx_returns_none(self):
         """Zero VXX price returns None."""
         calc = VRPCalculator(window=1)
-        result = calc.update(vxx_price=0.0, realized_vol=0.15)
+        result = calc.update(vxx_price=0.0, realized_vol=_PER_BAR_VOL)
         assert result is None
 
     def test_negative_vxx_returns_none(self):
         """Negative VXX price returns None."""
         calc = VRPCalculator(window=1)
-        result = calc.update(vxx_price=-5.0, realized_vol=0.15)
+        result = calc.update(vxx_price=-5.0, realized_vol=_PER_BAR_VOL)
         assert result is None
 
     def test_zero_realized_vol(self):
@@ -63,7 +68,7 @@ class TestVRPCalculatorComputation:
         calc = VRPCalculator(window=60)
         result = None
         for _ in range(100):
-            result = calc.update(vxx_price=20.0, realized_vol=0.15)
+            result = calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert abs(result.vrp_zscore) < 1e-6
 
@@ -79,7 +84,7 @@ class TestVRPZScoreClassification:
         calc = VRPCalculator(window=60)
         # Feed 100 bars of baseline (VXX=20, RV=0.15)
         for _ in range(100):
-            calc.update(vxx_price=20.0, realized_vol=0.15)
+            calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         return calc
 
     def test_high_vrp_zscore_risk_on(self):
@@ -87,9 +92,9 @@ class TestVRPZScoreClassification:
         calc = VRPCalculator(window=60)
         # Feed baseline
         for _ in range(100):
-            calc.update(vxx_price=20.0, realized_vol=0.15)
+            calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         # Spike VXX to 30 => IV_proxy = 9.0, a big jump from baseline ~4.0
-        result = calc.update(vxx_price=30.0, realized_vol=0.15)
+        result = calc.update(vxx_price=30.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert result.vrp_zscore > 1.0, f"Expected z > 1.0, got {result.vrp_zscore}"
 
@@ -98,9 +103,9 @@ class TestVRPZScoreClassification:
         calc = VRPCalculator(window=60)
         # Feed baseline with high VXX
         for _ in range(100):
-            calc.update(vxx_price=25.0, realized_vol=0.15)
+            calc.update(vxx_price=25.0, realized_vol=_PER_BAR_VOL)
         # Drop VXX sharply => IV_proxy drops well below baseline
-        result = calc.update(vxx_price=10.0, realized_vol=0.15)
+        result = calc.update(vxx_price=10.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert result.vrp_zscore < -1.0, f"Expected z < -1.0, got {result.vrp_zscore}"
 
@@ -108,9 +113,9 @@ class TestVRPZScoreClassification:
         """VRP z-score near 0 (between -1 and 1) should classify as NEUTRAL."""
         calc = VRPCalculator(window=60)
         for _ in range(100):
-            calc.update(vxx_price=20.0, realized_vol=0.15)
+            calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         # Same VXX as baseline => z-score near 0
-        result = calc.update(vxx_price=20.0, realized_vol=0.15)
+        result = calc.update(vxx_price=20.0, realized_vol=_PER_BAR_VOL)
         assert result is not None
         assert -1.0 <= result.vrp_zscore <= 1.0
 

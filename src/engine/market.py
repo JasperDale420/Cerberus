@@ -182,7 +182,7 @@ class MarketStateManager:
             meta["regime_tags"] = snapshot.regime_tags if snapshot is not None else meta.get("regime_tags")
             self.state.meta = meta
         except Exception:
-            pass
+            self.logger.warning("market_state_meta_update_failed", exc_info=True)
 
         # HMM shadow mode: predict alongside rule-based regime
         self._hmm_shadow_update(bar)
@@ -220,7 +220,7 @@ class MarketStateManager:
                 RiskMode.OFF if m_str == "off" else RiskMode.REDUCED if m_str == "reduced" else RiskMode.NORMAL
             )
         except Exception:
-            pass
+            self.logger.error("set_risk_mode_failed", mode=str(mode), exc_info=True)
 
     def update_vol(self, bar: Any) -> None:
         """
@@ -235,6 +235,7 @@ class MarketStateManager:
         current_price: float = 0.0,
         risk_free_rate: float = 0.05,
         time_to_expiry: float = 30 / 365,
+        term_data: list | None = None,
     ) -> None:
         """Update IV surface dynamics from options chain data."""
         self.market_context.update_iv_surface(
@@ -242,6 +243,7 @@ class MarketStateManager:
             current_price=current_price,
             risk_free_rate=risk_free_rate,
             time_to_expiry=time_to_expiry,
+            term_data=term_data,
         )
 
     def update_etf_flow(
