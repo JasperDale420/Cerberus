@@ -213,9 +213,9 @@ class ConfigLoader:
                                 current_level[part] = True
                             elif env_value.lower() == "false":
                                 current_level[part] = False
-                            elif env_value.isdigit():
+                            elif env_value.lstrip("-").isdigit():
                                 current_level[part] = int(env_value)
-                            elif env_value.replace(".", "", 1).isdigit():  # Check for float
+                            elif env_value.lstrip("-").replace(".", "", 1).isdigit():  # Check for float
                                 current_level[part] = float(env_value)
                             else:
                                 current_level[part] = env_value

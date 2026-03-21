@@ -47,7 +47,7 @@ class HeberReadClient:
         rows = self._read_asof_rows(
             dataset="bars",
             symbol=sym,
-            instrument_key=f"equity:{sym}",
+            instrument_key=f"{self.instrument_type}:{sym}",
             start=start,
             end=end,
             as_of=as_of or end,
@@ -92,7 +92,7 @@ class HeberReadClient:
         rows = self._read_asof_rows(
             dataset="trades",
             symbol=sym,
-            instrument_key=f"equity:{sym}",
+            instrument_key=f"{self.instrument_type}:{sym}",
             start=start,
             end=end,
             as_of=as_of or end,

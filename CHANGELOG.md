@@ -124,6 +124,10 @@ All notable changes to this project will be documented in this file.
 
 - **VWAP reversion fallback VWAP computed from wrong bar set**: When no pre-computed VWAP was available, the fallback calculated VWAP from all bars (potentially multi-day) while standard deviation used session-only bars. This mismatch produced bands that were too tight relative to the VWAP level, generating spurious entries. Fixed to use session bars for both.
 
+- **Heber read client hardcodes `equity:` instrument key**: `get_bars()` and `get_trades()` always used `instrument_key=f"equity:{sym}"` regardless of the `instrument_type` set at initialization. Crypto and options reads would match no rows, returning empty results. Fixed to use `self.instrument_type`.
+
+- **Config env var override rejects negative numbers**: `APP_*` environment variable overrides used `str.isdigit()` which returns `False` for negative numbers. Values like `"-0.5"` were stored as strings instead of floats. Fixed to strip leading `-` before digit check.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.
