@@ -302,7 +302,7 @@ def run_monte_carlo(
         hit_ruin = False
 
         for ret in shuffled:
-            equity *= 1.0 + ret
+            equity += ret * starting_equity * 0.01  # additive: treat each unit as 1% of capital
             if equity > peak:
                 peak = equity
             dd = (peak - equity) / peak if peak > 0 else 0.0

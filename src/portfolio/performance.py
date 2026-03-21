@@ -145,11 +145,9 @@ class PortfolioPerformance:
             return None
 
         arr = np.array(returns[-w:])
-        downside = arr[arr < 0]
-        if len(downside) == 0:
-            return None
-
-        downside_std = float(np.std(downside, ddof=1))
+        # Downside deviation: sqrt(sum(min(r, 0)^2) / N) using all observations
+        downside_sq = np.minimum(arr, 0.0) ** 2
+        downside_std = float(np.sqrt(np.mean(downside_sq)))
         if downside_std == 0.0:
             return None
 

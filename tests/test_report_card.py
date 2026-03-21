@@ -139,8 +139,8 @@ class TestMonteCarlo:
         assert result["median_final_equity"] == 10000.0
 
     def test_ruin(self):
-        # Large negative returns should trigger ruin
-        returns = [-0.3, -0.3, -0.3, -0.3, -0.3]
+        # Large negative R-multiples should trigger ruin (additive: each -20R = -$2000)
+        returns = [-20.0, -20.0, -20.0, -20.0, -20.0]
         result = run_monte_carlo(returns, n_simulations=200, seed=42, ruin_threshold=0.5)
         assert result["ruin_probability"] > 0
 
