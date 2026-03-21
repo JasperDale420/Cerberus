@@ -128,6 +128,12 @@ All notable changes to this project will be documented in this file.
 
 - **Config env var override rejects negative numbers**: `APP_*` environment variable overrides used `str.isdigit()` which returns `False` for negative numbers. Values like `"-0.5"` were stored as strings instead of floats. Fixed to strip leading `-` before digit check.
 
+- **Drawdown throttle is always a no-op**: When no historical max drawdown data is provided, the allocator fell back to `historical_dd = current_dd`, making the check `current_dd > 1.5 * current_dd` — mathematically impossible. The drawdown safety mechanism was silently disabled for any strategy without pre-computed historical max drawdown. Fixed to skip throttling when no historical baseline exists.
+
+- **Marginal CVaR percentage limit never enforced**: `max_marginal_cvar_pct` was accepted, stored, and `marginal_cvar` was computed, but no conditional check was ever performed. A single position could consume an arbitrarily large fraction of the total CVaR budget. Added the missing check before the absolute budget gate.
+
+- **Pair trading leg 2 hedge ratio hardcoded to 1.0**: The scanner always set the second leg's hedge ratio to 1.0 regardless of the actual cointegration-derived ratio. Downstream pair execution using this metadata for position sizing would compute incorrect notional ratios, leaving the pair unhedged. Fixed to use the reciprocal (`1.0 / hedge_ratio`).
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

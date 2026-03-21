@@ -106,6 +106,19 @@ class PortfolioRiskBudget:
                     ),
                 )
 
+        # --- Marginal CVaR concentration check ---
+        if self.max_portfolio_cvar > 0 and marginal_cvar / self.max_portfolio_cvar > self.max_marginal_cvar_pct:
+            return RiskBudgetResult(
+                is_allowed=False,
+                portfolio_var=current_var,
+                portfolio_cvar=current_cvar,
+                marginal_cvar=marginal_cvar,
+                rejection_reason=(
+                    f"Marginal CVaR {marginal_cvar / self.max_portfolio_cvar:.1%} exceeds"
+                    f" limit {self.max_marginal_cvar_pct:.0%} of portfolio budget"
+                ),
+            )
+
         # --- Budget check ---
         if prospective_cvar > self.max_portfolio_cvar:
             return RiskBudgetResult(

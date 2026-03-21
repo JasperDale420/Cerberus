@@ -436,9 +436,10 @@ class Scanner:
 
                 pair_id = f"pair_{s1}_{s2}_{scan_time.strftime('%H%M%S')}"
 
+                hr = pair["hedge_ratio"]
                 metadata = [
-                    (s1, side_1, s2, pair["hedge_ratio"], z_score, p2),
-                    (s2, side_2, s1, 1.0, -z_score, p1),
+                    (s1, side_1, s2, hr, z_score, p2),
+                    (s2, side_2, s1, 1.0 / hr if hr != 0 else 1.0, -z_score, p1),
                 ]
 
                 for sym, side, other, h_ratio, zs, other_price in metadata:

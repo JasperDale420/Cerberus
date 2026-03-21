@@ -118,13 +118,15 @@ class PortfolioAllocator:
             if current_dd < 1e-12:
                 continue
 
-            if strategy_max_dd and name in strategy_max_dd:
-                historical_dd = strategy_max_dd[name]
-            else:
-                historical_dd = current_dd
+            if not strategy_max_dd or name not in strategy_max_dd:
+                # Cannot throttle without historical max drawdown baseline
+                continue
+            historical_dd = strategy_max_dd[name]
+            if historical_dd < 1e-12:
+                continue
 
             threshold = self.drawdown_throttle_mult * historical_dd
-            if current_dd > threshold and threshold > 1e-12:
+            if current_dd > threshold:
                 result[name] *= 0.5
                 throttled.append(name)
 
