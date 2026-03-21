@@ -150,3 +150,10 @@ iteration	type	hypothesis	result	severity	location	description
 148	hypothesis	Adaptive sizer conviction scaling	disproven	-	adaptive_sizer.py	Correct multiplicative scaling with proper clamping
 149	hypothesis	Daily loss limit bypass via partial fills	disproven	-	risk.py:201	Cumulative PnL tracking cannot be bypassed
 150	hypothesis	Position count re-entry tracking	disproven	-	risk.py:741	Entry count increments on signal approval; correct
+151	hypothesis	RSI bounce conditional_zscore dollar vs return units	confirmed	HIGH	rsi_bounce.py:231	Passes dollar deviation; conditional_vol is in decimal returns
+152	hypothesis	Monte Carlo Sharpe annualization factor	confirmed	MEDIUM	monte_carlo.py:101	min(n_trades,252) wrong for multi-year backtests
+153	hypothesis	Fallback rolling std ddof=0 vs ddof=1	confirmed	LOW	volatility.py:161	Population std in fallback; sample std in GARCH path
+154	hypothesis	Pair trading conditional_zscore units	confirmed	MEDIUM	pair_trading_v2.py:200	Spread deviation vs spread-return conditional vol
+155	hypothesis	Calmar ratio percent/percent	disproven	-	backtest_report.py:341	Units cancel correctly
+156	hypothesis	Monte Carlo bootstrap autocorrelation	disproven	-	monte_carlo.py:79	i.i.d. bootstrap correct for trade-level P&L
+157	hypothesis	Max drawdown peak-to-trough	disproven	-	backtest_report.py	Correctly uses equity curve running max

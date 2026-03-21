@@ -228,9 +228,13 @@ class RsiBounceStrategy(BaseStrategy):
         if garch is not None:
             garch.update(price)
             if garch._last_result is not None:
-                cond_z = garch.conditional_zscore(deviation)
-                if cond_z != 0.0:
-                    return cond_z
+                # Convert deviation to fractional return units to match conditional_vol
+                # (conditional_vol is in decimal log-return units from GARCH on prices)
+                if mean > 0:
+                    frac_deviation = deviation / mean
+                    cond_z = garch.conditional_zscore(frac_deviation)
+                    if cond_z != 0.0:
+                        return cond_z
 
         # Fallback: rolling standard deviation z-score
         var = sum((p - mean) ** 2 for p in prices) / n

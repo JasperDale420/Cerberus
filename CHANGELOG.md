@@ -88,6 +88,10 @@ All notable changes to this project will be documented in this file.
 
 - **CPPI floor decay applied per-call instead of per-day**: `floor_decay_rate` was documented as "Daily floor decay rate" but applied on every `update_equity()` call (~390 times/day for 1-min bars). A 1% daily decay became 98% actual daily decay, destroying CPPI drawdown protection within a single session when enabled.
 
+- **RSI bounce GARCH z-score passes dollar deviation instead of fractional return**: `_compute_zscore()` passed `price - mean` (dollar units, e.g. $2.50) to `conditional_zscore()` which divides by `conditional_vol` (decimal return units, ~0.015). This produced z-scores ~167x too large, making the GARCH path trivially pass any threshold and effectively disabling it as a discriminator. Fixed to convert deviation to fractional return units (`deviation / mean`).
+
+- **Monte Carlo Sharpe annualization uses wrong factor**: Used `min(n_trades, 252)` as the annualization factor, assuming all trades occurred in one year. For multi-year backtests this under-annualizes; for sub-year backtests this over-annualizes. Added optional `calendar_days` parameter to compute proper trades-per-year.
+
 - **Risk sizers force minimum 1 share, bypassing risk reduction**: CPPI, CVaR, and momentum crash sizers used `max(1, int(qty * multiplier))`, preventing them from reducing position size to zero even in extreme conditions. This contradicted the regime gate which correctly rejected when sizing went below 1. Fixed to reject signals (return 0) when risk-adjusted sizing goes below 1 share.
 
 - **Pair trading OU estimator double-updated per bar**: `_compute_spread_zscore()` and `_process_pair()` both called `ou_estimators[key].update(spread)`, feeding each spread value twice. Consecutive identical values inflate autocorrelation, underestimate theta, and overestimate half-life — causing the half-life gate to reject valid mean-reversion opportunities. Removed the update from `_compute_spread_zscore()`.

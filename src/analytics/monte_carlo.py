@@ -36,6 +36,7 @@ def run_monte_carlo(
     n_simulations: int = 10_000,
     ruin_threshold_pct: float = 30.0,
     seed: int | None = None,
+    calendar_days: int | None = None,
 ) -> MonteCarloResult:
     """Run bootstrap Monte Carlo simulation on trade P&Ls.
 
@@ -52,6 +53,20 @@ def run_monte_carlo(
     rng = np.random.default_rng(seed)
     pnls = np.array(trade_pnls, dtype=np.float64)
     n_trades = len(pnls)
+
+    if n_trades == 0:
+        return MonteCarloResult(
+            n_simulations=n_simulations,
+            prob_loss_pct=0.0,
+            prob_ruin_pct=0.0,
+            median_final_equity=initial_capital,
+            p5_final_equity=initial_capital,
+            p95_final_equity=initial_capital,
+            worst_drawdown_pct=0.0,
+            median_sharpe=0.0,
+            p5_sharpe=0.0,
+            p95_sharpe=0.0,
+        )
 
     final_equities = np.empty(n_simulations)
     max_drawdowns = np.empty(n_simulations)
@@ -80,11 +95,16 @@ def run_monte_carlo(
         if max_dd >= ruin_threshold:
             ruin_count += 1
 
-        # Per-simulation Sharpe (annualized assuming ~252 trades/year scaling)
+        # Per-simulation Sharpe (annualized by trades-per-year)
         mean_pnl = np.mean(sampled)
         std_pnl = np.std(sampled, ddof=1) if n_trades > 1 else 0.0
         if std_pnl > 0:
-            sharpes[i] = (mean_pnl / std_pnl) * math.sqrt(min(n_trades, 252))
+            if calendar_days is not None and calendar_days > 0:
+                years = calendar_days / 365.0
+                trades_per_year = n_trades / years if years > 0 else n_trades
+            else:
+                trades_per_year = min(n_trades, 252)
+            sharpes[i] = (mean_pnl / std_pnl) * math.sqrt(trades_per_year)
         else:
             sharpes[i] = 0.0
 
