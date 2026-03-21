@@ -81,6 +81,8 @@ class FlowAlphaStrategy(BaseStrategy):
         self._ic_trackers: dict[str, InformationCoefficientTracker] = {
             name: InformationCoefficientTracker(window=50) for name in self._FLOW_SIGNAL_NAMES
         }
+        # Lagged signal values per symbol for proper IC computation (predict at T, realize at T+1)
+        self._prev_signals: dict[str, dict[str, float]] = {}
         # Granger causality state per symbol
         self._granger_valid: dict[str, bool] = {}
         self._granger_bar_count: dict[str, int] = {}
@@ -138,10 +140,13 @@ class FlowAlphaStrategy(BaseStrategy):
         else:
             norm_flow = max(-1.0, min(1.0, flow_zscore / 3.0))
 
+        # Map dof_score from [0,1] to [-1,1], but treat 0.0 (missing data) as neutral
+        dof_mapped = (dof_score * 2.0 - 1.0) if dof_score > 0.0 else 0.0
+
         signal_values = (
             norm_flow,
             tfi,
-            dof_score * 2.0 - 1.0,
+            dof_mapped,
             max(-1.0, min(1.0, ofi)),
         )
 
@@ -170,22 +175,25 @@ class FlowAlphaStrategy(BaseStrategy):
 
         return tuple(ic / total for ic in positive_ics)
 
-    def _update_ic_trackers(self, symbol_state: SymbolState, forward_return: float) -> None:
-        """Update IC trackers with current signal values and realized return."""
-        flow_zscore = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
-        tfi = float(symbol_state.meta.get("tfi", 0.0) or 0.0)
-        dof_score = float(symbol_state.meta.get("dof_score", 0.0) or 0.0)
-        ofi = float(symbol_state.meta.get("ofi", 0.0) or 0.0)
+    def _update_ic_trackers(self, symbol: str, symbol_state: SymbolState, forward_return: float) -> None:
+        """Update IC trackers with PREVIOUS bar's signal values and current realized return.
 
-        predictions = {
-            "flow_zscore": flow_zscore,
-            "tfi": tfi,
-            "dof_score": dof_score,
-            "ofi": ofi,
+        IC measures predictive power: signals at T predict returns at T+1.
+        Using same-bar signals and returns would measure contemporaneous correlation.
+        """
+        # Use lagged (previous bar's) signals for IC computation
+        prev = self._prev_signals.get(symbol)
+        if prev is not None:
+            for name, pred in prev.items():
+                self._ic_trackers[name].update(pred, forward_return)
+
+        # Store current bar's signals for next iteration
+        self._prev_signals[symbol] = {
+            "flow_zscore": float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0),
+            "tfi": float(symbol_state.meta.get("tfi", 0.0) or 0.0),
+            "dof_score": float(symbol_state.meta.get("dof_score", 0.0) or 0.0),
+            "ofi": float(symbol_state.meta.get("ofi", 0.0) or 0.0),
         }
-
-        for name, pred in predictions.items():
-            self._ic_trackers[name].update(pred, forward_return)
 
     # ------------------------------------------------------------------
     # Average volume helper
@@ -322,7 +330,7 @@ class FlowAlphaStrategy(BaseStrategy):
             prev_close = bars_list[-2].close
             if prev_close > 0:
                 fwd_return = (bar.close - prev_close) / prev_close
-                self._update_ic_trackers(symbol_state, fwd_return)
+                self._update_ic_trackers(symbol, symbol_state, fwd_return)
 
         # --- Accumulate history for Granger testing ---
         flow_zscore_raw = float(symbol_state.meta.get("flow_zscore", 0.0) or 0.0)
@@ -461,7 +469,7 @@ class FlowAlphaStrategy(BaseStrategy):
             raw_risk,
             market_state,
         )
-        target_distance = self.target_r_mult * raw_risk
+        target_distance = self.target_r_mult * stop_distance
 
         if side == OrderSide.BUY:
             stop_price = bar.close - stop_distance

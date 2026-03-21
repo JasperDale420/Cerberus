@@ -125,8 +125,10 @@ class VWAPReversionStrategy(BaseStrategy):
             # Not enough session bars for meaningful std
             session_bars = bars[-20:]  # Fallback to recent 20 bars
 
-        typical_prices = np.array([(b.high + b.low + b.close) / 3.0 for b in bars])
-        volumes = np.array([b.volume for b in bars])
+        # Use session bars for VWAP fallback to match std dev (both intraday)
+        vwap_bars = session_bars if session_bars else bars
+        typical_prices = np.array([(b.high + b.low + b.close) / 3.0 for b in vwap_bars])
+        volumes = np.array([b.volume for b in vwap_bars])
 
         # Avoid division by zero
         total_volume = np.sum(volumes)

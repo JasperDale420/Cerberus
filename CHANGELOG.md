@@ -116,6 +116,14 @@ All notable changes to this project will be documented in this file.
 
 - **CUSUM z-score normalization includes current observation**: The CUSUM detector appended the current value to the rolling window before computing mean and std, making the z-score self-referential. This dampens detection sensitivity because the observation being tested biases the statistics toward itself. Fixed to compute mean/std from prior observations only.
 
+- **flow_alpha dof_score=0 maps to max bearish signal**: When DOF data is missing (default 0.0), the `dof_score * 2.0 - 1.0` transform produced -1.0 (strongest bearish signal), systematically biasing flow_direction toward SELL for any symbol without directional options flow data. Fixed to treat 0.0 as neutral.
+
+- **flow_alpha IC tracker uses same-bar correlation instead of lagged**: The Information Coefficient tracker paired current bar's signal values with current bar's return (contemporaneous correlation), not the prior bar's signals with current return (predictive correlation). This inflated IC estimates and produced unreliable adaptive signal weights. Fixed to lag signals by one bar.
+
+- **flow_alpha target distance ignores regime volatility adjustment**: Stop distance was regime-adjusted (widened in HIGH/SHOCK vol) but target distance used un-adjusted raw risk, causing the effective R:R ratio to silently drift from the configured value. In SHOCK regime (1.5x multiplier), a configured 3R target became effective 2R. Fixed to compute target from regime-adjusted stop distance.
+
+- **VWAP reversion fallback VWAP computed from wrong bar set**: When no pre-computed VWAP was available, the fallback calculated VWAP from all bars (potentially multi-day) while standard deviation used session-only bars. This mismatch produced bands that were too tight relative to the VWAP level, generating spurious entries. Fixed to use session bars for both.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.
