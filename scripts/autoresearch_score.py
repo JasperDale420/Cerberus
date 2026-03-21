@@ -1,14 +1,23 @@
-"""Autoresearch scoring wrapper for Trend Rider Pro backtests."""
+"""Autoresearch scoring wrapper for portfolio backtests."""
 
 import asyncio
 import json
+import os
 import sys
+import warnings
 
-from src.backtest.runner import run_backtest
+warnings.filterwarnings("ignore")
+os.environ.setdefault("EMPIRE_LOG_LEVEL", "CRITICAL")
+os.environ.setdefault("EMPIRE_LOG_FORMAT", "json")
+
+os.chdir("/Users/jacobmcmillan/Empire/Cerberus")
+sys.path.insert(0, ".")
+
+from src.backtest.runner import run_backtest  # noqa: E402
 
 START = "2025-01-02"
-END = "2025-12-31"
-CONFIG = "config/backtest_v2.yaml"
+END = "2025-03-20"
+CONFIG = "config/backtest_portfolio.yaml"
 DATA_DIR = "data/bars_2023_2025"
 
 
@@ -45,6 +54,8 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default=START)
     parser.add_argument("--end", default=END)
+    parser.add_argument("--config", default=CONFIG)
+    parser.add_argument("--data-dir", default=DATA_DIR)
     parser.add_argument("--cv", action="store_true", help="Cross-validated mode: score across 5 regime windows")
     args = parser.parse_args()
 
@@ -54,7 +65,7 @@ async def main():
         await cv_main()
         return
 
-    report = await run_backtest(args.start, args.end, CONFIG, data_dir=DATA_DIR)
+    report = await run_backtest(args.start, args.end, args.config, data_dir=args.data_dir)
 
     if report is None:
         print(json.dumps({"autoresearch_score": -999, "error": "backtest_failed"}))
