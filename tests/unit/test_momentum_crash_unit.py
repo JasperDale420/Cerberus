@@ -317,8 +317,8 @@ class TestMomentumSpreadZScore:
             market_return_cumulative=0.0,
             momentum_spread=0.06,
         )
-        # mean=0.04, std=0.02, z=(0.06-0.04)/0.02 = 1.0
-        assert result.momentum_spread_zscore == pytest.approx(1.0, abs=1e-6)
+        # mean=0.04, sample std (ddof=1) = 0.02*sqrt(2), z = (0.06-0.04)/(0.02*sqrt(2)) ≈ 0.7071
+        assert result.momentum_spread_zscore == pytest.approx(1.0 / (2**0.5), abs=1e-6)
 
 
 # ---------------------------------------------------------------------------

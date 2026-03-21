@@ -134,6 +134,14 @@ All notable changes to this project will be documented in this file.
 
 - **Pair trading leg 2 hedge ratio hardcoded to 1.0**: The scanner always set the second leg's hedge ratio to 1.0 regardless of the actual cointegration-derived ratio. Downstream pair execution using this metadata for position sizing would compute incorrect notional ratios, leaving the pair unhedged. Fixed to use the reciprocal (`1.0 / hedge_ratio`).
 
+- **IV surface RND uses wrong finite difference for non-uniform strikes**: The second derivative computation used `(C[i+1] - 2C[i] + C[i-1]) / dk_avg²`, which is only correct for uniform strike spacing. Options chains have non-uniform spacing (wider away from ATM), producing incorrect risk-neutral density values. Fixed to use the proper non-uniform central difference formula.
+
+- **EWMA volatility is not actually EWMA**: `_compute_ewma_vol()` had no persistent state — it recomputed from scratch each call using `np.mean(sq_returns)` as a "previous" value, with an alpha that shrank as the buffer grew. This produced non-stationary behavior (completely different sensitivity during warmup vs steady state). Fixed to use proper recursive EWMA with fixed alpha and persistent state variables.
+
+- **Unsorted strikes passed to risk-neutral density computation**: `update_iv_surface()` collected strikes and call prices in whatever order they appeared in chain data, but the finite difference formula requires monotonically increasing strikes. Unsorted data produces garbage density values. Fixed to sort by strike before passing to `compute_rnd`.
+
+- **Momentum crash spread z-score uses population std**: `np.std(spread_array)` used `ddof=0` (population std), systematically inflating z-scores and overestimating crash probability. Fixed to use `ddof=1` (sample std), consistent with the entropy analyzer.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

@@ -249,9 +249,12 @@ class IVSurfaceAnalyzer:
             if dk_left <= 0 or dk_right <= 0:
                 continue
 
-            # Central difference second derivative
-            dk_avg = 0.5 * (dk_left + dk_right)
-            d2c = (call_prices[i + 1] - 2 * call_prices[i] + call_prices[i - 1]) / (dk_avg * dk_avg)
+            # Non-uniform spacing second derivative: d²C/dK² for unequal dk_left, dk_right
+            d2c = 2.0 * (
+                call_prices[i + 1] / (dk_right * (dk_left + dk_right))
+                - call_prices[i] / (dk_left * dk_right)
+                + call_prices[i - 1] / (dk_left * (dk_left + dk_right))
+            )
 
             density = discount * d2c
             # Density must be non-negative; negative values indicate arbitrage / noise

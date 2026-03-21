@@ -180,7 +180,7 @@ class MomentumCrashDetector:
 
         spread_array = np.array(self._spread_history)
         mean = float(np.mean(spread_array))
-        std = float(np.std(spread_array))
+        std = float(np.std(spread_array, ddof=1))
 
         if std < 1e-12:
             return 0.0

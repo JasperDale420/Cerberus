@@ -95,6 +95,11 @@ class MarketContextService:
         self.prices: deque[float] = deque(maxlen=window)
         # We track squared returns directly for EWMA variance
         self.sq_returns: deque[float] = deque(maxlen=vol_baseline_window)
+        # Persistent EWMA variance state (proper recursive EWMA)
+        self._short_ewma_var: float | None = None
+        self._long_ewma_var: float | None = None
+        self._alpha_short = 2.0 / (10 + 1)  # ~10-bar span
+        self._alpha_long = 2.0 / (vol_baseline_window + 1)  # ~120-bar span
 
         # Track liquidity scores for dynamic percentile thresholds
         self.liquidity_window = liquidity_window
@@ -193,16 +198,18 @@ class MarketContextService:
     ) -> None:
         """Update IV surface from options chain data. Call when chain refreshes (typically EOD)."""
         # Extract strikes and call prices from chain for RND computation
-        strikes: list[float] = []
-        call_prices: list[float] = []
+        strike_price_pairs: list[tuple[float, float]] = []
         for row in chain_data:
             delta = float(row.get("delta", 0))
             if delta > 0:  # Calls have positive delta
                 strike = float(row.get("strike", 0))
                 mid = float(row.get("mid", 0) or row.get("mark", 0) or row.get("last", 0))
                 if strike > 0 and mid > 0:
-                    strikes.append(strike)
-                    call_prices.append(mid)
+                    strike_price_pairs.append((strike, mid))
+        # Sort by strike — RND finite difference requires monotonically increasing strikes
+        strike_price_pairs.sort()
+        strikes = [s for s, _ in strike_price_pairs]
+        call_prices = [p for _, p in strike_price_pairs]
         result = self._iv_surface.analyze(
             chain=chain_data,
             term_data=term_data or [],
@@ -449,24 +456,18 @@ class MarketContextService:
         if len(returns) == 0:
             return 1e-9, 1e-9, 0.0
 
-        # Short term EWMA variance (e.g., span=10 bars)
-        alpha_short = 2 / (10 + 1)
-        # Long term EWMA variance (baseline)
-        alpha_long = 2 / (len(self.sq_returns) + 1) if len(self.sq_returns) > 0 else 1.0
-
         current_sq_ret = returns[-1] ** 2
 
-        # If we have history, bootstrap from it
-        if len(self.sq_returns) > 0:
-            previous_long_var = np.mean(self.sq_returns)  # Baseline start
-            long_var = (current_sq_ret * alpha_long) + (previous_long_var * (1 - alpha_long))
+        # Recursive EWMA with persistent state and fixed alpha
+        if self._long_ewma_var is None:
+            self._long_ewma_var = current_sq_ret
+            self._short_ewma_var = current_sq_ret
         else:
-            long_var = current_sq_ret
+            self._long_ewma_var = self._alpha_long * current_sq_ret + (1 - self._alpha_long) * self._long_ewma_var
+            self._short_ewma_var = self._alpha_short * current_sq_ret + (1 - self._alpha_short) * self._short_ewma_var
 
-        short_var = (current_sq_ret * alpha_short) + (long_var * (1 - alpha_short))
-
-        realized_vol = float(np.sqrt(long_var))
-        return float(short_var), float(long_var), realized_vol
+        realized_vol = float(np.sqrt(self._long_ewma_var))
+        return float(self._short_ewma_var), float(self._long_ewma_var), realized_vol
 
     def _classify_trend(self, cum_ret: float, hurst: float, hurst_thresh: float = 0.55) -> "TrendRegime":
         """UP/DOWN/FLAT based on Hurst exponent and cumulative return direction."""
