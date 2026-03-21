@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Comprehensive analytics report card**: Ported 11 analysis functions from trading-bot covering MAE/MFE, statistical tests, Monte Carlo, PnL distribution, risk metrics (Omega/Ulcer/VaR/CVaR), rolling metrics, drawdown catalog, trade clustering, cost sensitivity, time breakdowns, and entry/exit efficiency. Adapted for Cerberus dict-based trades with configurable R-multiple PnL keys and equity minute-bar conventions (98,280 bars/year).
+
 ### Fixed
 
 - **MetaLabeler missing symmetric GEX filter for shorts**: The GEX heuristic only blocked longs in deeply negative GEX but did not block shorts in deeply positive GEX (where dealer hedging pins price up). Added the symmetric check and extracted the threshold into a named constant.
