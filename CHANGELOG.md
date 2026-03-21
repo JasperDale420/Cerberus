@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Exit efficiency wrong for short trades**: `compute_entry_exit_efficiency` computed `pnl_from_entry` as `exit_price/entry_price - 1` (long-only formula). Profitable shorts showed negative PnL, clamped to 0% exit efficiency. Now uses direction-adjusted `pnl_r` directly.
+
 - **Sortino ratio denominator uses wrong formula**: `portfolio/performance.py` computed std of only negative returns (`np.std(negatives, ddof=1)`) instead of proper downside deviation (`sqrt(sum(min(r,0)^2) / N)` across all observations). Overstated Sortino when few returns were negative.
 
 - **Monte Carlo treats R-multiples as multiplicative returns**: `report_card.py` applied `equity *= 1 + R` which treats a 2R gain as a +200% return. Changed to additive PnL (each 1R = 1% of starting capital), matching the separate `monte_carlo.py` implementation.

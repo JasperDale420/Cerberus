@@ -705,12 +705,8 @@ def compute_entry_exit_efficiency(
         entry_eff = max(0.0, min(1.0, entry_eff))
         entry_effs.append(entry_eff)
 
-        entry_price = t.get("entry_price", 0.0)
-        exit_price = t.get("exit_price", 0.0)
-        if entry_price > 0:
-            pnl_from_entry = exit_price / entry_price - 1.0
-        else:
-            pnl_from_entry = 0.0
+        # Use pnl_r directly — already direction-adjusted for both longs and shorts
+        pnl_from_entry = float(t.get("pnl_r", 0.0) or 0.0)
         exit_eff = (pnl_from_entry - mae_val) / range_val
         exit_eff = max(0.0, min(1.0, exit_eff))
         exit_effs.append(exit_eff)
