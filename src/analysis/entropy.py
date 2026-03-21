@@ -172,10 +172,10 @@ class EntropyAnalyzer:
 
         complexity = self._lempel_ziv_count(binary)
 
-        # Normalise: upper bound for random binary ≈ n / ln(n)
+        # Normalise: upper bound for random binary ≈ n / log2(n)
         if n <= 1:
             return 0.0
-        normalizer = n / log(n)
+        normalizer = n / (log(n) / log(2))
         return min(complexity / normalizer, 1.0)
 
     @staticmethod

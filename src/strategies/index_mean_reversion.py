@@ -67,6 +67,7 @@ class IndexMeanReversionStrategy(BaseStrategy):
         # 4. Check Signals
         signal = None
         price = bar.close
+        actual_zscore = (price - mean_f) / std_f if std_f > 0 else 0.0
 
         # LONG: Price < Lower Band (Oversold)
         if price < current_bbl:
@@ -87,7 +88,7 @@ class IndexMeanReversionStrategy(BaseStrategy):
                     market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    meta={"z_score": -2.0, "full_reversion": True},
+                    meta={"z_score": actual_zscore, "full_reversion": True},
                 )
 
         # SHORT: Price > Upper Band (Overbought)
@@ -107,7 +108,7 @@ class IndexMeanReversionStrategy(BaseStrategy):
                     market_state=market_state,
                     stop_price=stop_price,
                     target_price=target_price,
-                    meta={"z_score": 2.0, "full_reversion": True},
+                    meta={"z_score": actual_zscore, "full_reversion": True},
                 )
 
         return signal

@@ -139,6 +139,13 @@ class ORBV2Strategy(BaseStrategy):
         state["gap_pct"] = gap_pct
         state["range_minutes"] = self._adaptive_range_minutes(gap_pct)
 
+        # Reset intraday quant state so prior-day accumulation doesn't leak.
+        symbol = ss.symbol
+        if symbol in self._cusum:
+            self._cusum[symbol] = CUSUMDetector(threshold=4.0, drift=0.5)
+        if symbol in self._vr:
+            self._vr[symbol] = VarianceRatioCalculator(lookback=30, period=5, min_observations=15)
+
     def _is_in_range_period(self, bar: Bar, state: dict[str, Any]) -> bool:
         t: time_type = time_utils.get_eastern_time_of_day(bar.time)
         if t < time_type(9, 30):

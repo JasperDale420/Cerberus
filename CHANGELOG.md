@@ -162,6 +162,20 @@ All notable changes to this project will be documented in this file.
 
 - **WFO param stability uses population variance**: With typical 3-6 WFO windows, population variance (N) underestimates true variance by up to 18%, making unstable parameters appear stable. Fixed to use sample variance (N-1).
 
+- **ORB v2 CUSUM/VR state leaks across sessions**: The CUSUM detector and Variance Ratio calculator accumulated values from prior trading days but were never reset at session boundaries. Yesterday's CUSUM cumulative sum (relative to yesterday's range midpoint) could cause false breakout detection or suppress legitimate breakouts on today's fresh range. Fixed to reset both on daily session reset.
+
+- **Index mean reversion reports hardcoded z-score in signal metadata**: Signal meta always reported `z_score: -2.0` (long) or `z_score: 2.0` (short) regardless of actual price deviation. Fixed to compute and report the actual z-score.
+
+- **Antifragile regime overrides discard liquidity/complexity multipliers**: `_apply_antifragile_overrides` computed the class-specific vol/risk multiplier from scratch but discarded the `base_combined` parameter entirely, losing liquidity and complexity axis adjustments. Convex strategies in STRESSED liquidity would trade at full size instead of reduced. Fixed to preserve non-overridden axes while replacing vol/risk with class-specific values.
+
+- **Hurst exponent uses biased single-scale estimator**: `_compute_hurst()` in `regime.py` used single-scale R/S analysis (`H = log(R/S) / log(n)`), which is known to be upward-biased for short series. This over-classified FLAT markets as trending (UP/DOWN), sending incorrect trend regime signals to strategy activation policies. Replaced with multi-scale R/S regression matching the implementation in `src/quant/statistics.py`.
+
+- **Yang-Zhang volatility includes fabricated overnight return**: The first bar's overnight return was hardcoded to `0.0` (no prior close), biasing the overnight variance estimate downward. For small lookback windows (20 bars), this pulls the Yang-Zhang estimate down by ~5%. Fixed to exclude the first bar from overnight return statistics.
+
+- **Lempel-Ziv complexity normalization uses wrong log base**: The LZC upper bound formula used `ln(n)` instead of `log2(n)`, underestimating normalized complexity by ~31%. Fixed to use `log2(n)` per Lempel & Ziv (1976).
+
+- **GARCH fallback volatility uses population std**: The rolling-std fallback path used `np.std()` with default `ddof=0` (population), slightly underestimating volatility. Fixed to use `ddof=1` (sample) for consistency.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

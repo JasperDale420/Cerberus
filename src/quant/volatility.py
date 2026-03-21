@@ -158,7 +158,7 @@ class GARCHForecaster:
 
     def _fallback_rolling_std(self, returns: np.ndarray) -> GARCHResult:
         """Simple rolling-std fallback when GARCH MLE fails."""
-        std = float(np.std(returns[-self._min_obs :]))
+        std = float(np.std(returns[-self._min_obs :], ddof=1))
         cond_vol = std / 100  # percentage → decimal
 
         return GARCHResult(
@@ -256,15 +256,16 @@ class RealizedVolEstimator:
         closes = list(self._closes)
 
         # Overnight returns (use previous close as proxy; first bar uses open)
-        log_oc = [math.log(opens[i] / closes[i - 1]) if i > 0 else 0.0 for i in range(n)]
+        log_oc = [math.log(opens[i] / closes[i - 1]) for i in range(1, n)]
         # Close-to-open of same bar
         log_co = [math.log(closes[i] / opens[i]) for i in range(n)]
 
-        mean_oc = sum(log_oc) / n
+        n_oc = len(log_oc)
+        mean_oc = sum(log_oc) / n_oc if n_oc > 0 else 0.0
         mean_co = sum(log_co) / n
 
-        # Overnight variance
-        sigma_o_sq = sum((r - mean_oc) ** 2 for r in log_oc) / (n - 1) if n > 1 else 0.0
+        # Overnight variance (n-1 observations, starting from second bar)
+        sigma_o_sq = sum((r - mean_oc) ** 2 for r in log_oc) / (n_oc - 1) if n_oc > 1 else 0.0
         # Close variance
         sigma_c_sq = sum((r - mean_co) ** 2 for r in log_co) / (n - 1) if n > 1 else 0.0
 

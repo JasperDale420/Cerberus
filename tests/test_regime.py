@@ -82,8 +82,11 @@ def test_smoothing():
     # We can't easily force the internal logic without mocking, but we can test the smoothing logic if we exposed it or via careful input.
     # Instead, let's trust the logic and just verify it doesn't flip flop instantly on one data point if we had a stable history.
 
-    # Establish BULL
-    prices = np.linspace(100, 110, 20)
+    # Establish BULL with realistic trending data (noisy upward drift)
+    np.random.seed(42)
+    base = np.linspace(100, 115, 50)
+    noise = np.random.normal(0, 0.3, 50)
+    prices = base + noise
     for i, p in enumerate(prices):
         svc.update(_bar(float(p), i=i))
     assert svc.get_legacy_regime() == Regime.BULL

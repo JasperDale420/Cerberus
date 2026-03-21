@@ -419,37 +419,52 @@ class MarketContextService:
         )
 
     def _compute_hurst(self, prices: np.ndarray) -> float:
-        """Compute the Hurst exponent of the price series using Rescaled Range (R/S)."""
-        if len(prices) < 5:
+        """Compute the Hurst exponent via multi-scale Rescaled Range (R/S) regression."""
+        if len(prices) < 20:
             return 0.5  # Random walk default
 
         # Use log-returns for scale invariance across price levels
         log_prices = np.log(prices[prices > 0]) if np.all(prices > 0) else np.log(np.maximum(prices, 1e-10))
         returns = np.diff(log_prices)
-        if len(returns) < 3:
+        if len(returns) < 10:
             return 0.5
 
-        std_dev = np.std(returns)
+        n = len(returns)
+        # Multi-scale: compute R/S at several sub-period sizes
+        sizes = []
+        for s in [8, 16, 32, 64, 128, 256]:
+            if s <= n // 2:
+                sizes.append(s)
+        if len(sizes) < 2:
+            sizes = [s for s in range(max(4, n // 8), n // 2 + 1, max(1, n // 8))]
+        if len(sizes) < 2:
+            return 0.5
 
-        # If standard deviation is exactly zero, price is a straight line
-        if std_dev < 1e-8:
-            if np.abs(np.mean(returns)) > 1e-8:
-                return 1.0  # Perfectly trending
-            return 0.5  # Perfectly flat
+        log_sizes = []
+        log_rs = []
+        for size in sizes:
+            n_blocks = n // size
+            if n_blocks < 1:
+                continue
+            rs_vals = []
+            for b in range(n_blocks):
+                block = returns[b * size : (b + 1) * size]
+                std_b = float(np.std(block, ddof=1))
+                if std_b < 1e-12:
+                    continue
+                mean_b = float(np.mean(block))
+                cum = np.cumsum(block - mean_b)
+                r_range = float(np.max(cum) - np.min(cum))
+                rs_vals.append(r_range / std_b)
+            if rs_vals:
+                log_sizes.append(np.log(size))
+                log_rs.append(np.log(np.mean(rs_vals)))
 
-        mean_ret = np.mean(returns)
+        if len(log_sizes) < 2:
+            return 0.5
 
-        # Mean centered deviations
-        deviations = returns - mean_ret
-        cum_deviations = np.cumsum(deviations)
-
-        # Range of the cumulative deviations
-        r_range = max(np.max(cum_deviations) - np.min(cum_deviations), 1e-8)
-
-        # R/S Hurst: H = log(R/S) / log(n) where n = number of returns
-        h_exponent = np.log(r_range / std_dev) / np.log(len(returns))
-
-        return float(np.clip(h_exponent, 0.0, 1.0))
+        coeffs = np.polyfit(log_sizes, log_rs, 1)
+        return float(np.clip(coeffs[0], 0.0, 1.0))
 
     def _compute_ewma_vol(self, returns: np.ndarray) -> Tuple[float, float, float]:
         """Compute short and long-term EWMA of squared returns for volatility clustering."""

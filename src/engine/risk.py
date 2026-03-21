@@ -248,11 +248,11 @@ class RiskManager:
 
         combined = vol_mult * liq_mult * risk_mult * complexity_mult
 
-        # Antifragile: apply per-class overrides if strategy has a convexity class
+        # Antifragile: replace vol/risk axes with per-class overrides, keep liquidity/complexity
         if strategy_name:
             convexity = self._get_convexity_class(strategy_name)
             if convexity != "linear":
-                combined = self._apply_antifragile_overrides(combined, snapshot, convexity)
+                combined = self._apply_antifragile_overrides(liq_mult * complexity_mult, snapshot, convexity)
 
         return max(combined, 0.0)
 
@@ -263,11 +263,17 @@ class RiskManager:
             return "linear"
         return getattr(strat_cfg, "convexity_class", "linear")
 
-    def _apply_antifragile_overrides(self, base_combined: float, snapshot, convexity: str) -> float:
-        """Apply antifragile per-class regime overrides to the base multiplier."""
+    def _apply_antifragile_overrides(self, base_non_overridden: float, snapshot, convexity: str) -> float:
+        """Replace vol/risk axes with per-class overrides, preserving other axes.
+
+        Args:
+            base_non_overridden: Product of non-overridden axis multipliers (liquidity, complexity).
+            snapshot: Current regime snapshot.
+            convexity: Strategy convexity class.
+        """
         overrides = self.risk_cfg.antifragile_overrides.get(convexity)
         if not overrides:
-            return base_combined
+            return base_non_overridden
 
         # Compute the override multiplier from vol and risk axes
         override_mult = 1.0
@@ -280,7 +286,7 @@ class RiskManager:
         if risk_overrides and getattr(snapshot, "vol_symbol", None):
             override_mult *= risk_overrides.get(snapshot.risk.value, 1.0)
 
-        return max(override_mult, 0.0)
+        return max(base_non_overridden * override_mult, 0.0)
 
     def _apply_strategy_limits(
         self,
