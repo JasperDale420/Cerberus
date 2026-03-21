@@ -84,6 +84,12 @@ All notable changes to this project will be documented in this file.
 
 - **VRP realized vol not annualized**: VRP compares `(VXX/10)^2` (annualized implied variance, ~1-10) against `realized_vol^2` (per-bar EWMA, ~1e-8). The 8 orders of magnitude difference made the RV component meaningless — VRP tracked only VXX price, not the implied-vs-realized spread. Fixed by annualizing per-bar realized vol (`* sqrt(252*390)`) before squaring.
 
+- **CVaR GPD formula wrong sign — understates tail risk ~15%**: The GPD-based Expected Shortfall formula added the correction term instead of subtracting it (return-space vs loss-space sign convention). This understated tail risk by ~15%, causing the CVaR sizer to allow ~18% larger positions than justified during elevated tail risk — precisely when it should be most protective.
+
+- **CPPI floor decay applied per-call instead of per-day**: `floor_decay_rate` was documented as "Daily floor decay rate" but applied on every `update_equity()` call (~390 times/day for 1-min bars). A 1% daily decay became 98% actual daily decay, destroying CPPI drawdown protection within a single session when enabled.
+
+- **Risk sizers force minimum 1 share, bypassing risk reduction**: CPPI, CVaR, and momentum crash sizers used `max(1, int(qty * multiplier))`, preventing them from reducing position size to zero even in extreme conditions. This contradicted the regime gate which correctly rejected when sizing went below 1. Fixed to reject signals (return 0) when risk-adjusted sizing goes below 1 share.
+
 - **Pair trading OU estimator double-updated per bar**: `_compute_spread_zscore()` and `_process_pair()` both called `ou_estimators[key].update(spread)`, feeding each spread value twice. Consecutive identical values inflate autocorrelation, underestimate theta, and overestimate half-life — causing the half-life gate to reject valid mean-reversion opportunities. Removed the update from `_compute_spread_zscore()`.
 
 - **TrendRiderPro Hurst exponent double-updated**: `_update_quant_state()` called `hurst.update(close)` per bar, then `generate_signal()` called it again for metadata. Double-feeding prices corrupts R/S analysis. Fixed to recompute from cached prices without appending.

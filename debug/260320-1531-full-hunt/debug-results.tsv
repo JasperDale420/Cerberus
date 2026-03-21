@@ -143,3 +143,10 @@ iteration	type	hypothesis	result	severity	location	description
 141	hypothesis	RSI_Bounce percentile self-reference	confirmed	LOW	rsi_bounce.py:244-259	Includes current value; minimum rank 1/n instead of 0
 142	hypothesis	ORB_V2 stop placement inverted	disproven	-	orb_v2.py:244-254	Standard ORB stop; regime multiplier adjusts tightness correctly
 143	hypothesis	RSI_Bounce trend filter inverted	disproven	-	rsi_bounce.py:387-389	Correct: don't fade strong trends
+144	hypothesis	CVaR GPD formula wrong sign on correction term	confirmed	CRITICAL	cvar_sizer.py:212	Adds instead of subtracts; understates tail risk ~15%
+145	hypothesis	CPPI floor decay per-call not per-day	confirmed	HIGH	cppi.py:76-77	390x/day application destroys floor protection
+146	hypothesis	Risk sizers max(1,...) bypasses risk reduction	confirmed	MEDIUM	risk.py:454,494,509	CPPI/CVaR/crash can't reduce to zero unlike regime gate
+147	hypothesis	GPD MoM uses sample variance (ddof=1)	confirmed	LOW	cvar_sizer.py:166	Population variance correct for MoM; 10% bias at min n_tail=10
+148	hypothesis	Adaptive sizer conviction scaling	disproven	-	adaptive_sizer.py	Correct multiplicative scaling with proper clamping
+149	hypothesis	Daily loss limit bypass via partial fills	disproven	-	risk.py:201	Cumulative PnL tracking cannot be bypassed
+150	hypothesis	Position count re-entry tracking	disproven	-	risk.py:741	Entry count increments on signal approval; correct

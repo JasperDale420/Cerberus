@@ -451,7 +451,18 @@ class RiskManager:
             cppi_mult = self.cppi_sizer.get_cppi_multiplier()
             if cppi_mult < 1.0:
                 orig_qty = qty
-                qty = max(1, int(qty * cppi_mult))
+                adjusted_qty = int(qty * cppi_mult)
+                if adjusted_qty < 1:
+                    self.last_rejection_reason = "CPPI_BELOW_MIN"
+                    self.logger.info(
+                        "Signal rejected: CPPI-adjusted qty below minimum",
+                        symbol=signal.symbol,
+                        strategy=signal.strategy,
+                        orig_qty=orig_qty,
+                        cppi_mult=round(cppi_mult, 3),
+                    )
+                    return 0
+                qty = adjusted_qty
                 if qty != orig_qty:
                     self.logger.debug(
                         "Qty adjusted by CPPI",
@@ -491,7 +502,18 @@ class RiskManager:
             cvar_mult = self.cvar_sizer.get_cvar_multiplier()
             if cvar_mult < 1.0:
                 orig_qty = qty
-                qty = max(1, int(qty * cvar_mult))
+                adjusted_qty = int(qty * cvar_mult)
+                if adjusted_qty < 1:
+                    self.last_rejection_reason = "CVAR_BELOW_MIN"
+                    self.logger.info(
+                        "Signal rejected: CVaR-adjusted qty below minimum",
+                        symbol=signal.symbol,
+                        strategy=signal.strategy,
+                        orig_qty=orig_qty,
+                        cvar_mult=round(cvar_mult, 3),
+                    )
+                    return 0
+                qty = adjusted_qty
                 if qty != orig_qty:
                     self.logger.debug(
                         "Qty adjusted by CVaR tail risk",
@@ -506,7 +528,18 @@ class RiskManager:
             crash_result = self.momentum_crash_detector.get_crash_probability()
             if crash_result is not None and crash_result.exposure_scalar < 1.0:
                 orig_qty = qty
-                qty = max(1, int(qty * crash_result.exposure_scalar))
+                adjusted_qty = int(qty * crash_result.exposure_scalar)
+                if adjusted_qty < 1:
+                    self.last_rejection_reason = "MOMENTUM_CRASH_BELOW_MIN"
+                    self.logger.info(
+                        "Signal rejected: Momentum crash-adjusted qty below minimum",
+                        symbol=signal.symbol,
+                        strategy=signal.strategy,
+                        orig_qty=orig_qty,
+                        exposure_scalar=round(crash_result.exposure_scalar, 3),
+                    )
+                    return 0
+                qty = adjusted_qty
                 if qty != orig_qty:
                     self.logger.debug(
                         "Qty adjusted by momentum crash hedging",

@@ -14,6 +14,7 @@ Algorithm:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 from src.config.models import CPPIConfig
@@ -52,6 +53,7 @@ class CPPISizer:
         self._high_water_mark = initial_equity
         self._floor = initial_equity * (1.0 - config.max_drawdown)
         self._exposure_fraction = self._compute_exposure(initial_equity, self._floor)
+        self._last_decay_date: date | None = None
 
     def update_equity(self, equity: float) -> CPPIState:
         """Update with current equity, recompute floor/cushion/exposure.
@@ -72,9 +74,12 @@ class CPPISizer:
         # Ratchet floor up with equity growth
         self._floor = max(self._floor, equity * (1.0 - self._config.max_drawdown))
 
-        # Apply floor decay if configured (allows recovery after drawdowns)
+        # Apply floor decay once per day (config documents it as "Daily floor decay rate")
         if self._config.floor_decay_rate > 0:
-            self._floor = self._floor * (1.0 - self._config.floor_decay_rate)
+            today = date.today()
+            if self._last_decay_date != today:
+                self._floor = self._floor * (1.0 - self._config.floor_decay_rate)
+                self._last_decay_date = today
 
         # Compute exposure
         self._exposure_fraction = self._compute_exposure(equity, self._floor)

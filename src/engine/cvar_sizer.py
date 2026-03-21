@@ -202,10 +202,15 @@ class CVaRSizer:
             self._logger.debug("evt_gpd_var_overflow")
             return None
 
-        # CVaR (Expected Shortfall) from GPD
-        # CVaR = VaR / (1 - xi) + (sigma - xi * |threshold|) / (1 - xi)
+        # CVaR (Expected Shortfall) from GPD — McNeil/Frey/Embrechts formulation
+        # In the returns space (losses negative): ES = VaR/(1-xi) - (sigma - xi*|u|)/(1-xi)
+        # The subtraction converts from the loss-space formula to return-space.
+        # Formula valid only for xi < 1 (GPD mean must exist)
+        if xi_hat >= 1.0:
+            self._logger.warning("evt_gpd_xi_ge_1", xi=xi_hat)
+            return None
         denom = 1.0 - xi_hat
-        cvar_gpd = var_gpd / denom + (sigma_hat - xi_hat * abs(threshold)) / denom
+        cvar_gpd = var_gpd / denom - (sigma_hat - xi_hat * abs(threshold)) / denom
 
         if not np.isfinite(cvar_gpd):
             self._logger.debug("evt_gpd_nonfinite_cvar", cvar=cvar_gpd)
@@ -231,12 +236,15 @@ class CVaRSizer:
         if abs_cvar < 1e-12:
             # Effectively zero CVaR — no tail risk detected
             mult = self._MULTIPLIER_MAX
+        elif self._max_acceptable_cvar < 1e-12:
+            # Zero threshold configured — treat as maximally conservative
+            mult = self._MULTIPLIER_MIN
         else:
             mult = self._max_acceptable_cvar / abs_cvar
 
         mult = max(self._MULTIPLIER_MIN, min(self._MULTIPLIER_MAX, mult))
 
-        if abs_cvar > 2.0 * self._max_acceptable_cvar:
+        if self._max_acceptable_cvar > 1e-12 and abs_cvar > 2.0 * self._max_acceptable_cvar:
             self._logger.critical(
                 "cvar_exceeds_threshold",
                 cvar=cvar,
