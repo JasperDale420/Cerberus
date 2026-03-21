@@ -125,14 +125,18 @@ class CUSUMDetector:
         self._count = 0
 
     def update(self, value: float) -> CUSUMResult | None:
-        self._values.append(value)
         self._count += 1
         if self._count < self._WARMUP:
+            self._values.append(value)
             return None
 
+        # Compute mean/std from PRIOR observations (exclude current value)
         arr = np.array(self._values, dtype=np.float64)
         mean = float(np.mean(arr))
         std = float(np.std(arr, ddof=1))
+
+        # Now append current value for future windows
+        self._values.append(value)
         if std < 1e-12:
             return CUSUMResult(
                 is_breakout=False,

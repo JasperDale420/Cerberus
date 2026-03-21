@@ -61,14 +61,15 @@ class KalmanHedgeRatio:
         self._kf.x = np.array([[0.0], [0.0]])  # [intercept, slope]
 
     def update(self, x: float, y: float) -> float:
-        """Update with new (x, y) pair. Returns current spread (residual)."""
+        """Update with new (x, y) pair. Returns innovation residual (prior prediction error)."""
         self._kf.predict()
         # Dynamic observation matrix: y = intercept + slope * x
         self._kf.H = np.array([[1.0, x]])
+        # Compute innovation BEFORE update (prior prediction vs observation)
+        predicted_y = float(self._kf.x[0, 0]) + float(self._kf.x[1, 0]) * x
+        innovation = float(y - predicted_y)
         self._kf.update(np.array([[y]]))
-        # Residual: y - (intercept + slope * x)
-        predicted_y = self.intercept + self.hedge_ratio * x
-        return float(y - predicted_y)
+        return innovation
 
     @property
     def hedge_ratio(self) -> float:

@@ -110,6 +110,12 @@ All notable changes to this project will be documented in this file.
 
 - **Prior day stats returns wrong day before market open**: `get_prior_day_stats()` unconditionally took `bars[-2]` assuming `bars[-1]` was today's incomplete bar. Before market open, today's bar doesn't exist yet, so `bars[-1]` is yesterday's complete bar and `bars[-2]` is two days ago. This produced incorrect gap percentages for gap_fill and ORB strategies during premarket. Now checks whether the last bar's date matches today.
 
+- **Kalman hedge ratio returns posterior residual instead of innovation**: `KalmanHedgeRatio.update()` computed the residual after the Kalman update (posterior state), not before (prior prediction). Innovation should measure how surprising the new observation is given the prior — using the posterior dampens the signal since the filter has already partially absorbed it. Fixed to compute innovation before calling `kf.update()`.
+
+- **Johansen cointegrating vector count overcounts**: Simple summation counted all eigenvalues exceeding critical values, even after a non-rejection. The Johansen sequential testing procedure requires stopping at the first non-rejection — otherwise you overcount cointegrating relationships. Fixed to break on first non-rejection.
+
+- **CUSUM z-score normalization includes current observation**: The CUSUM detector appended the current value to the rolling window before computing mean and std, making the z-score self-referential. This dampens detection sensitivity because the observation being tested biases the statistics toward itself. Fixed to compute mean/std from prior observations only.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

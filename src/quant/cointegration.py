@@ -107,7 +107,13 @@ class JohansenTest:
         trace_stats = result.lr1  # trace statistics
         cvt_95 = result.cvt[:, 1]  # 95% critical values (column index 1)
 
-        n_vectors = int(np.sum(trace_stats > cvt_95))
+        # Sequential testing: stop at first non-rejection (simple count can overcount)
+        n_vectors = 0
+        for i in range(len(trace_stats)):
+            if trace_stats[i] > cvt_95[i]:
+                n_vectors += 1
+            else:
+                break
 
         return {
             "n_cointegrating_vectors": n_vectors,
