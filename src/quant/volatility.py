@@ -158,7 +158,8 @@ class GARCHForecaster:
 
     def _fallback_rolling_std(self, returns: np.ndarray) -> GARCHResult:
         """Simple rolling-std fallback when GARCH MLE fails."""
-        std = float(np.std(returns[-self._min_obs :], ddof=1))
+        slice_ = returns[-self._min_obs :]
+        std = float(np.std(slice_, ddof=1)) if len(slice_) >= 2 else 0.0
         cond_vol = std / 100  # percentage → decimal
 
         return GARCHResult(

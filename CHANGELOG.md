@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **GARCH fallback NaN on single-element array**: `_fallback_rolling_std` called `np.std(ddof=1)` on a 1-element array when all prices were non-positive, producing NaN that silently poisoned GARCH conditional volatility and downstream z-scores. Added length guard.
+
+- **VPIN infinite loop on zero bucket volume**: When `set_daily_volume(0)` was called (or `daily_volume_estimate=0`), `bucket_volume` was 0, causing the volume bucketing `while` loop to run forever. Added early return guard.
+
+- **MomentumCrashDetector API mismatch**: `RiskManager.update_momentum_crash()` passed `is_bear` and `credit_spread_zscore` but `MomentumCrashDetector.update()` expected `market_return_cumulative` and `momentum_spread`. Would crash with `TypeError` when momentum crash detection was enabled. Aligned the caller signature to the detector interface.
+
+- **Pullback percentage divides by current price instead of anchor**: `trend_rider_pro.py` computed `pullback_pct` relative to `bar.close` instead of `pullback_anchor`, which is both semantically wrong and crashes with `ZeroDivisionError` on zero-price bars.
+
 - **ORB off-by-one in scanner feature pipeline**: `_compute_opening_range` in calculator.py used `<=` for the end boundary, including the bar at `orb_end` time and making the opening range 31 minutes instead of 30. Changed to strict `<` to match strategy-level ORB logic.
 
 - **GEX replay cache serves stale intraday data**: `ReplayProvider.get_gex` cached at date granularity, so the first GEX lookup for a symbol on a given day was returned for all subsequent queries regardless of time. Changed to minute-level cache key (matching `get_flow` convention).

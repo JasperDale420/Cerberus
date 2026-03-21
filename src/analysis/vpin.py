@@ -96,6 +96,9 @@ class VPINCalculator:
         remaining_sell = bar_sell
         remaining_vol = bar.volume
 
+        if self.bucket_volume <= 0:
+            return None
+
         while remaining_vol > 0:
             space_left = self.bucket_volume - self._bucket_total
 

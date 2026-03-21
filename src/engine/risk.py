@@ -819,15 +819,15 @@ class RiskManager:
     def update_momentum_crash(
         self,
         realized_vol: float,
-        is_bear: bool,
-        credit_spread_zscore: float = 0.0,
+        market_return_cumulative: float,
+        momentum_spread: float,
     ) -> None:
         """Feed market conditions to momentum crash detector."""
         if self.risk_cfg.momentum_crash.enabled:
             self.momentum_crash_detector.update(
                 realized_vol=realized_vol,
-                is_bear=is_bear,
-                credit_spread_zscore=credit_spread_zscore,
+                market_return_cumulative=market_return_cumulative,
+                momentum_spread=momentum_spread,
             )
 
     def record_completed_trade(
@@ -856,11 +856,13 @@ class RiskManager:
                 from datetime import datetime as dt_type
                 from datetime import timezone
 
-                as_of_dt = (
-                    dt_type.fromtimestamp(as_of / 1000, tz=timezone.utc)
-                    if as_of > 1e10
-                    else dt_type.fromtimestamp(as_of, tz=timezone.utc)
-                )
+                # Detect epoch unit: >1e15 = microseconds, >1e10 = milliseconds, else seconds
+                if as_of > 1e15:
+                    as_of_dt = dt_type.fromtimestamp(as_of / 1_000_000, tz=timezone.utc)
+                elif as_of > 1e10:
+                    as_of_dt = dt_type.fromtimestamp(as_of / 1000, tz=timezone.utc)
+                else:
+                    as_of_dt = dt_type.fromtimestamp(as_of, tz=timezone.utc)
                 trade_date = as_of_dt.date()
             else:
                 trade_date = as_of.date()

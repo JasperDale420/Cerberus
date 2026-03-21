@@ -227,7 +227,7 @@ class TrendRiderProStrategy(BaseStrategy):
         if pullback_anchor is None or pullback_anchor <= 0:
             return None
 
-        pullback_pct = abs(bar.close - pullback_anchor) / bar.close
+        pullback_pct = abs(bar.close - pullback_anchor) / pullback_anchor
 
         # --- BUY side ---
         buy_vwap_ok = vwap_dist_1m is None or vwap_dist_1m >= 0
@@ -276,7 +276,7 @@ class TrendRiderProStrategy(BaseStrategy):
         pullback_anchor = kalman_state if kalman_state is not None and kalman_state > 0 else ema20_5m
         pullback_pct = 0.0
         if pullback_anchor is not None and pullback_anchor > 0:
-            pullback_pct = abs(bar.close - pullback_anchor) / bar.close
+            pullback_pct = abs(bar.close - pullback_anchor) / pullback_anchor
         pb_score = score_deviation(pullback_pct, 0.0005, 0.01)
         pb_score = max(0.0, 100.0 - pb_score)
         scorer.add_factor(
