@@ -56,15 +56,16 @@ class VRPCalculator:
         rv = (realized_vol * self._ANNUALIZATION_FACTOR) ** 2
         vrp_raw = iv_proxy - rv
 
-        self._vrp_history.append(vrp_raw)
-
         if len(self._vrp_history) < self._window:
+            self._vrp_history.append(vrp_raw)
             return None
 
-        # Z-score normalization
+        # Z-score normalization — compute from prior history before appending
         vrp_array = np.array(self._vrp_history)
         vrp_mean = float(np.mean(vrp_array))
         vrp_std = float(np.std(vrp_array, ddof=1))
+
+        self._vrp_history.append(vrp_raw)
 
         if vrp_std < 1e-12:
             vrp_zscore = 0.0

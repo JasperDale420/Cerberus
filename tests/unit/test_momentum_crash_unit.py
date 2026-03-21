@@ -279,11 +279,11 @@ class TestMomentumSpreadZScore:
         """A sudden spread increase should produce a positive z-score."""
         detector = MomentumCrashDetector()
 
-        for _ in range(59):
+        for i in range(59):
             detector.update(
                 realized_vol=0.15,
                 market_return_cumulative=0.0,
-                momentum_spread=0.03,
+                momentum_spread=0.03 + 0.001 * (i % 3),
             )
 
         result = detector.update(
@@ -304,21 +304,22 @@ class TestMomentumSpreadZScore:
         )
         assert result.momentum_spread_zscore == 0.0
 
-    def test_two_observations_computes_zscore(self) -> None:
-        """With two observations, z-score should be computable."""
+    def test_two_observations_zscore_zero(self) -> None:
+        """With only two observations, z-score is 0 (need 2+ prior for std)."""
         detector = MomentumCrashDetector()
-        detector.update(
-            realized_vol=0.15,
-            market_return_cumulative=0.0,
-            momentum_spread=0.02,
-        )
-        result = detector.update(
-            realized_vol=0.15,
-            market_return_cumulative=0.0,
-            momentum_spread=0.06,
-        )
-        # mean=0.04, sample std (ddof=1) = 0.02*sqrt(2), z = (0.06-0.04)/(0.02*sqrt(2)) ≈ 0.7071
-        assert result.momentum_spread_zscore == pytest.approx(1.0 / (2**0.5), abs=1e-6)
+        detector.update(realized_vol=0.15, market_return_cumulative=0.0, momentum_spread=0.02)
+        result = detector.update(realized_vol=0.15, market_return_cumulative=0.0, momentum_spread=0.06)
+        assert result.momentum_spread_zscore == 0.0
+
+    def test_three_observations_computes_zscore(self) -> None:
+        """With three observations, z-score is computed from two prior values."""
+        detector = MomentumCrashDetector()
+        detector.update(realized_vol=0.15, market_return_cumulative=0.0, momentum_spread=0.02)
+        detector.update(realized_vol=0.15, market_return_cumulative=0.0, momentum_spread=0.06)
+        result = detector.update(realized_vol=0.15, market_return_cumulative=0.0, momentum_spread=0.08)
+        # Prior: [0.02, 0.06], mean=0.04, std(ddof=1)=0.02*sqrt(2)
+        # z = (0.08 - 0.04) / (0.02*sqrt(2)) ≈ 1.4142
+        assert result.momentum_spread_zscore == pytest.approx(2**0.5, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

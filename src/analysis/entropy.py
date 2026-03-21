@@ -214,14 +214,15 @@ class EntropyAnalyzer:
 
     def _compute_zscore(self, pe_norm: float) -> float:
         """Compute z-score of the current PE against the trailing history."""
-        self._pe_history.append(pe_norm)
-
         if len(self._pe_history) < 2:
+            self._pe_history.append(pe_norm)
             return 0.0
 
         arr = np.array(self._pe_history, dtype=np.float64)
         mean = float(np.mean(arr))
         std = float(np.std(arr, ddof=1))
+
+        self._pe_history.append(pe_norm)
 
         if std < 1e-12:
             return 0.0

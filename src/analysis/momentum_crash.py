@@ -122,9 +122,9 @@ class MomentumCrashDetector:
         bear_indicator = 1.0 if market_return_cumulative < cfg.bear_threshold else 0.0
         self._last_bear_market = bear_indicator == 1.0
 
-        # Track momentum spread for z-score
-        self._spread_history.append(momentum_spread)
+        # Track momentum spread for z-score (append AFTER computing to avoid self-inclusion)
         spread_zscore = self._compute_spread_zscore(momentum_spread)
+        self._spread_history.append(momentum_spread)
         self._last_spread_zscore = spread_zscore
 
         # Store realized vol

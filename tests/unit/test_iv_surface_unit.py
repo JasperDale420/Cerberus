@@ -125,14 +125,15 @@ class TestSkewZscore:
     """Tests for skew z-score and steepening detection."""
 
     def test_zscore_insufficient_data(self) -> None:
-        """Fewer than 3 observations returns 0.0."""
+        """Fewer than 4 observations returns 0.0 (need prior history for z-score)."""
         analyzer = IVSurfaceAnalyzer()
+        analyzer.compute_skew(_make_chain(0.20, 0.30))
         analyzer.compute_skew(_make_chain(0.20, 0.30))
         analyzer.compute_skew(_make_chain(0.20, 0.30))
         assert analyzer.skew_zscore() == 0.0
 
     def test_zscore_constant_history(self) -> None:
-        """Constant skew history yields 0.0 z-score (zero std)."""
+        """Constant skew history yields 0.0 z-score (zero std in prior)."""
         analyzer = IVSurfaceAnalyzer()
         for _ in range(5):
             analyzer.compute_skew(_make_chain(0.20, 0.30))
@@ -141,9 +142,10 @@ class TestSkewZscore:
     def test_zscore_spike_detected(self) -> None:
         """A large spike produces a positive z-score."""
         analyzer = IVSurfaceAnalyzer()
-        # 10 observations at skew = 0.10
-        for _ in range(10):
-            analyzer.compute_skew(_make_chain(0.20, 0.30))
+        # 10 observations with slight variation (so prior std > 0)
+        for i in range(10):
+            put_iv = 0.30 + 0.001 * (i % 3)
+            analyzer.compute_skew(_make_chain(0.20, put_iv))
         # One big spike: skew = 0.40
         analyzer.compute_skew(_make_chain(0.10, 0.50))
         zscore = analyzer.skew_zscore()
@@ -153,8 +155,9 @@ class TestSkewZscore:
         """is_skew_steepening returns True when z-score > threshold."""
         config = IVSurfaceConfig(skew_sigma_threshold=1.5)
         analyzer = IVSurfaceAnalyzer(config=config)
-        for _ in range(10):
-            analyzer.compute_skew(_make_chain(0.20, 0.30))
+        for i in range(10):
+            put_iv = 0.30 + 0.001 * (i % 3)
+            analyzer.compute_skew(_make_chain(0.20, put_iv))
         analyzer.compute_skew(_make_chain(0.10, 0.50))
         assert analyzer.is_skew_steepening() is True
 
@@ -414,9 +417,10 @@ class TestAnalyze:
         config = IVSurfaceConfig(skew_sigma_threshold=1.5, min_strikes_for_rnd=5)
         analyzer = IVSurfaceAnalyzer(config=config)
 
-        # Build stable skew history at 0.10
-        for _ in range(15):
-            analyzer.compute_skew(_make_chain(0.20, 0.30))
+        # Build stable skew history with slight variation (so prior std > 0)
+        for i in range(15):
+            put_iv = 0.30 + 0.001 * (i % 3)
+            analyzer.compute_skew(_make_chain(0.20, put_iv))
 
         # Now spike skew + inversion
         inputs = self._build_inputs(call_iv=0.10, put_iv=0.55, near_iv=0.35, far_iv=0.20)

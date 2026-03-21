@@ -142,14 +142,15 @@ class IVSurfaceAnalyzer:
         return skew
 
     def skew_zscore(self) -> float:
-        """Return z-score of the latest skew relative to rolling history.
+        """Return z-score of the latest skew relative to prior history.
 
         Requires at least 3 observations.  Returns 0.0 if insufficient data.
         """
-        if len(self._skew_history) < 3:
+        if len(self._skew_history) < 4:
             return 0.0
 
-        arr = np.array(self._skew_history)
+        # Exclude the latest observation from its own z-score statistics
+        arr = np.array(list(self._skew_history)[:-1])
         mean = float(np.mean(arr))
         std = float(np.std(arr, ddof=1))
         if std < 1e-12:

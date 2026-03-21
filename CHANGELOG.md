@@ -152,6 +152,8 @@ All notable changes to this project will be documented in this file.
 
 - **EMA slope not normalized — incomparable across price levels**: `ema20_slope` was computed as raw price difference (`ema_val - ema_prev`), making it price-level dependent. A $500 stock produces 100x larger slopes than a $5 stock. Fixed to normalize as percentage change (`(ema_val - ema_prev) / ema_prev`), consistent with `distance_from_ema20`.
 
+- **Z-score self-inclusion across 4 analysis modules**: Entropy PE, momentum crash spread, VRP, and IV surface skew all appended the current observation to the history before computing its z-score, biasing results toward zero. This systematically attenuated anomaly detection and delayed regime change classification. Fixed to compute statistics from prior history only.
+
 - **Information Ratio mixes total-period alpha with annualized tracking error**: IR divided total-period alpha (which scales with backtest length) by annualized tracking error, producing IR values that grew proportionally with backtest duration. Fixed to compute IR from daily excess returns with consistent annualization.
 
 - **Rolling Sharpe annualized by sqrt(98280) on daily returns**: `compute_rolling_metrics()` used `bars_per_year=98280` (minute-bar frequency) but operated on daily equity curve returns, inflating rolling Sharpe by ~19.7x. Fixed to use 252 (daily frequency).
