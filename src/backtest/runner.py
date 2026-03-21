@@ -374,6 +374,21 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                         strategy = "_flatten"
                     else:
                         strategy = corr_to_strategy.get(entry_corr, "")
+                        # Fallback: parse strategy from correlation_id format
+                        # (strategy-SYMBOL-timestamp-hash). In backtest mode,
+                        # signals aren't persisted to DB so the lookup is empty.
+                        if not strategy and entry_corr:
+                            parts = entry_corr.split("-")
+                            if len(parts) >= 4:
+                                # Strategy name may contain hyphens (e.g. "pair_trading_v2")
+                                # but symbols and timestamps don't contain underscores at
+                                # this position, so take everything before the symbol segment.
+                                # The format is: {strategy}-{SYMBOL}-{epoch_ms}-{hex_hash}
+                                # Find the symbol segment (all uppercase letters)
+                                for i, part in enumerate(parts[1:], 1):
+                                    if part.isupper() or (part.isalpha() and part == part.upper()):
+                                        strategy = "-".join(parts[:i])
+                                        break
 
                     # Commission: entry leg + exit leg
                     entry_leg_commission = max(min_commission, commission_per_share * match_qty)
