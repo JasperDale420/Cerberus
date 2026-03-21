@@ -26,6 +26,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
+from src.analytics.report_card import generate_report
 from src.core.logger import StructuredLogger
 
 
@@ -131,7 +134,37 @@ class BacktestReportCard:
         self._compute_equity_metrics(m)
         self._compute_trade_level_sharpe(m)
         self.strategy_metrics = self._compute_per_strategy()
+        self.analytics = self._generate_analytics()
         return m
+
+    def _generate_analytics(self) -> dict[str, Any]:
+        """Run the comprehensive analytics report card on this backtest's data."""
+        try:
+            equity_values = [eq for _, eq in self.equity_curve]
+
+            trade_dicts: list[dict[str, Any]] = []
+            for idx, t in enumerate(self.trades):
+                trade_dicts.append(
+                    {
+                        "pnl_r": t.pnl_r,
+                        "mae_r": 0.0,  # MAE/MFE not tracked in BacktestReportCard trades
+                        "mfe_r": 0.0,
+                        "entry_price": t.entry_price,
+                        "exit_price": t.exit_price,
+                        "entry_bar": idx,
+                        "exit_bar": idx,
+                    }
+                )
+
+            return generate_report(
+                equity_curve=equity_values,
+                trades=trade_dicts,
+                bar_data=pd.DataFrame(),
+                bars_per_year=98280,
+                save=False,
+            )
+        except Exception:
+            return {}
 
     def _compute_per_strategy(self) -> dict[str, dict[str, Any]]:
         """Compute key metrics grouped by strategy."""
@@ -574,6 +607,7 @@ class BacktestReportCard:
                 else {}
             ),
             **({"diagnostics_summary": m.diagnostics.summary} if m.diagnostics else {}),
+            "analytics": self.analytics if hasattr(self, "analytics") else {},
         }
 
     def write_markdown(self, path: str | Path) -> Path:
@@ -684,6 +718,24 @@ class BacktestReportCard:
                     else:
                         lines.append(f"| {label} | {val} |\n")
             lines.append("\n")
+
+        # Advanced Analytics (from report_card)
+        if hasattr(self, "analytics") and self.analytics:
+            a = self.analytics
+            lines.append("## Advanced Analytics\n\n")
+            lines.append(_TBL_HDR)
+            risk = a.get("risk_metrics", {})
+            mc = a.get("monte_carlo", {})
+            stat = a.get("statistical_tests", {})
+            lines.append(f"| Omega Ratio | {risk.get('omega_ratio', 0.0):.3f} |\n")
+            lines.append(f"| Ulcer Index | {risk.get('ulcer_index', 0.0):.4f} |\n")
+            lines.append(f"| VaR 95% | {risk.get('var_95', 0.0):.4f} |\n")
+            lines.append(f"| CVaR 95% | {risk.get('cvar_95', 0.0):.4f} |\n")
+            lines.append(f"| Gain-to-Pain | {risk.get('gain_to_pain', 0.0):.3f} |\n")
+            lines.append(f"| Monte Carlo Ruin Prob | {mc.get('ruin_probability', 0.0):.2%} |\n")
+            ci = stat.get("bootstrap_ci_95", [0.0, 0.0])
+            lines.append(f"| Bootstrap CI 95% | [{ci[0]:.6f}, {ci[1]:.6f}] |\n")
+            lines.append(f"| T-test p-value | {stat.get('t_pvalue', 1.0):.4f} |\n\n")
 
         # Per-strategy breakdown
         if hasattr(self, "strategy_metrics") and self.strategy_metrics:

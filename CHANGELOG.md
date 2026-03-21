@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - **Comprehensive analytics report card**: Ported 11 analysis functions from trading-bot covering MAE/MFE, statistical tests, Monte Carlo, PnL distribution, risk metrics (Omega/Ulcer/VaR/CVaR), rolling metrics, drawdown catalog, trade clustering, cost sensitivity, time breakdowns, and entry/exit efficiency. Adapted for Cerberus dict-based trades with configurable R-multiple PnL keys and equity minute-bar conventions (98,280 bars/year).
 
+- **Analytics integrated into BacktestReportCard**: Every backtest now auto-generates advanced analytics (Omega ratio, Ulcer Index, VaR/CVaR, Monte Carlo ruin probability, bootstrap CI, statistical tests). Results included in `to_dict()` output and markdown reports under "Advanced Analytics" section.
+
+- **Analytics integrated into WFO harness**: Walk-forward optimization saves per-window analytics reports to `artifacts/optimization/runs/{strategy}/{run_tag}/reports/` for post-run diagnostics.
+
 ### Fixed
 
 - **MetaLabeler missing symmetric GEX filter for shorts**: The GEX heuristic only blocked longs in deeply negative GEX but did not block shorts in deeply positive GEX (where dealer hedging pins price up). Added the symmetric check and extracted the threshold into a named constant.

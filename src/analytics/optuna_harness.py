@@ -43,6 +43,7 @@ from dateutil.relativedelta import relativedelta
 
 from src.analytics.param_sensitivity import analyze_param_sensitivity
 from src.analytics.param_spaces import suggest_params
+from src.analytics.report_card import save_report
 
 
 @dataclass(frozen=True)
@@ -965,6 +966,22 @@ class WalkForwardOptimizer:
             oos_score = composite_objective(oos_metrics, min_trades=_oos_min_trades)
             all_oos_metrics.append(oos_metrics)
             all_oos_scores.append(oos_score)
+
+            # Save per-window analytics report if available
+            oos_analytics = oos_metrics.get("analytics", {})
+            if oos_analytics:
+                try:
+                    reports_dir = str(run_context.artifact_dir / "reports")
+                    save_report(
+                        oos_analytics,
+                        strategy_name=strategy_name,
+                        symbol="multi",
+                        output_dir=reports_dir,
+                        run_type="wfo_window",
+                        window_idx=i,
+                    )
+                except Exception:
+                    pass  # analytics save failure must not break optimization
 
             window_elapsed = time.time() - window_t0
             print(f"  OOS score: {oos_score:.4f}")
