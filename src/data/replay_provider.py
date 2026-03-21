@@ -76,7 +76,7 @@ class ReplayProvider:
         Returns:
             List of GEX records (same format as live API)
         """
-        cache_key = f"gex:{symbol}:{as_of.date()}"
+        cache_key = f"gex:{symbol}:{as_of.isoformat()[:16]}"
         if cache_key in self._cache:
             cached = self._cache[cache_key]
             if isinstance(cached, list):

@@ -195,7 +195,7 @@ class FeatureCalculator:
                 market_open_dt = datetime.combine(latest_date_et, market_open_time, tzinfo=_ET_TZ)
                 orb_end_dt = market_open_dt + timedelta(minutes=orb_duration_minutes)
 
-                if market_open_dt <= ts_et <= orb_end_dt:
+                if market_open_dt <= ts_et < orb_end_dt:
                     orb_high = max(orb_high, float(h))
                     orb_low = min(orb_low, float(low_val))
 

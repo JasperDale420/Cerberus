@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **ORB off-by-one in scanner feature pipeline**: `_compute_opening_range` in calculator.py used `<=` for the end boundary, including the bar at `orb_end` time and making the opening range 31 minutes instead of 30. Changed to strict `<` to match strategy-level ORB logic.
+
+- **GEX replay cache serves stale intraday data**: `ReplayProvider.get_gex` cached at date granularity, so the first GEX lookup for a symbol on a given day was returned for all subsequent queries regardless of time. Changed to minute-level cache key (matching `get_flow` convention).
+
 - **MetaLabeler missing symmetric GEX filter for shorts**: The GEX heuristic only blocked longs in deeply negative GEX but did not block shorts in deeply positive GEX (where dealer hedging pins price up). Added the symmetric check and extracted the threshold into a named constant.
 
 - **CVaR sizer division by zero**: `_calc_multiplier()` could crash with `ZeroDivisionError` if `max_acceptable_cvar` was configured as 0. Added zero guard on both the sizing calculation and the threshold-exceeded logging.
