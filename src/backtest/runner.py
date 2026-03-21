@@ -841,11 +841,13 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
                     if pos and pos.entry_time:
                         entry_time = pos.entry_time
                         if isinstance(entry_time, (int, float)):
-                            entry_time = (
-                                datetime.fromtimestamp(entry_time / 1000, tz=timezone.utc)
-                                if entry_time > 1e10
-                                else datetime.fromtimestamp(entry_time, tz=timezone.utc)
-                            )
+                            # Detect epoch unit: >1e15 = microseconds, >1e10 = milliseconds, else seconds
+                            if entry_time > 1e15:
+                                entry_time = datetime.fromtimestamp(entry_time / 1_000_000, tz=timezone.utc)
+                            elif entry_time > 1e10:
+                                entry_time = datetime.fromtimestamp(entry_time / 1000, tz=timezone.utc)
+                            else:
+                                entry_time = datetime.fromtimestamp(entry_time, tz=timezone.utc)
                         hold_days = (ts.date() - entry_time.date()).days
                     if _should_flatten_position(strat, hold_days):
                         symbols_to_flatten.append(sym)

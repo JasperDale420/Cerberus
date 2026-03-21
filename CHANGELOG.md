@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Epoch timestamp unit detection in backtest**: Position `entry_time` and `exit_time` can be epoch seconds, milliseconds, or microseconds depending on data source. Added 3-tier detection (`>1e15` = microseconds, `>1e10` = milliseconds, else seconds) in both `runner.py` and `risk.py` to handle all cases correctly.
+
 - **GARCH fallback NaN on single-element array**: `_fallback_rolling_std` called `np.std(ddof=1)` on a 1-element array when all prices were non-positive, producing NaN that silently poisoned GARCH conditional volatility and downstream z-scores. Added length guard.
 
 - **VPIN infinite loop on zero bucket volume**: When `set_daily_volume(0)` was called (or `daily_volume_estimate=0`), `bucket_volume` was 0, causing the volume bucketing `while` loop to run forever. Added early return guard.
