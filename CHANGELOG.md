@@ -142,6 +142,12 @@ All notable changes to this project will be documented in this file.
 
 - **Momentum crash spread z-score uses population std**: `np.std(spread_array)` used `ddof=0` (population std), systematically inflating z-scores and overestimating crash probability. Fixed to use `ddof=1` (sample std), consistent with the entropy analyzer.
 
+- **EMA slope not normalized — incomparable across price levels**: `ema20_slope` was computed as raw price difference (`ema_val - ema_prev`), making it price-level dependent. A $500 stock produces 100x larger slopes than a $5 stock. Fixed to normalize as percentage change (`(ema_val - ema_prev) / ema_prev`), consistent with `distance_from_ema20`.
+
+- **Atlas factor scores use wall-clock date in backtests**: `_append_atlas_factors()` used `date.today()` instead of the `as_of` parameter, causing future factor scores to leak into historical backtest evaluations. Fixed to pass `as_of` from the caller.
+
+- **SnapshotManager passes plain dataclasses to SQLAlchemy**: `persist_external_snapshot` and `persist_feature_snapshot` created `ExternalSnapshotRecord` and `FeatureSnapshotRecord` (plain dataclasses) and passed them to `session.add()`, but SQLAlchemy requires ORM-mapped models (`ExternalSnapshot`, `FeatureSnapshot`). Field names also mismatched (`data` vs `data_json`). Every snapshot write silently crashed. Fixed to construct proper ORM model instances.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

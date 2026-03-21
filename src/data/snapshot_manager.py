@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from src.analysis.schema import ExternalSnapshot, FeatureSnapshot
 from src.core.domain import SymbolFeatures
 
 
@@ -76,12 +77,11 @@ class SnapshotManager:
         snapshot_time: datetime,
         data: Any,
     ) -> None:
-        record = ExternalSnapshotRecord(
+        record = ExternalSnapshot(
             source=source,
             symbol=symbol,
             snapshot_time=_as_utc(snapshot_time),
-            data=data,
-            git_sha=self._git_sha,
+            data_json=data,
         )
         try:
             with self.db.get_session() as session:
@@ -96,11 +96,22 @@ class SnapshotManager:
             raise
 
     def persist_feature_snapshot(self, *, features: SymbolFeatures, as_of_ts: datetime) -> None:
-        record = FeatureSnapshotRecord(
+        feat_dict = asdict(features)
+        record = FeatureSnapshot(
             symbol=features.symbol,
             as_of_ts=_as_utc(as_of_ts),
-            features=asdict(features),
-            git_sha=self._git_sha,
+            code_version=self._git_sha,
+            price=getattr(features, "last_price", None),
+            vwap=getattr(features, "vwap", None),
+            atr=getattr(features, "atr", None),
+            rsi=getattr(features, "rsi", None),
+            tfi=getattr(features, "tfi", None),
+            hurst_exponent=getattr(features, "hurst_exponent", None),
+            frac_diff=getattr(features, "frac_diff", None),
+            net_gex=getattr(features, "net_gex", None),
+            gex_flip_dist=getattr(features, "gex_flip_dist", None),
+            flow_zscore=getattr(features, "flow_zscore", None),
+            features_json=feat_dict,
         )
         try:
             with self.db.get_session() as session:

@@ -426,7 +426,7 @@ class FeaturePipeline:
 
         # Run Stage 3: Atlas factor scores
         if self.atlas_reader is not None:
-            self._append_atlas_factors(features)
+            self._append_atlas_factors(features, as_of=as_of)
 
         # Persist feature snapshots if enabled
         if self.snapshots_enabled and self.snapshot_manager:
@@ -440,7 +440,7 @@ class FeaturePipeline:
 
         return features
 
-    def _append_atlas_factors(self, features_map: Dict[str, SymbolFeatures]) -> None:
+    def _append_atlas_factors(self, features_map: Dict[str, SymbolFeatures], as_of: Optional[datetime] = None) -> None:
         """Stage 3: Append Atlas factor scores to each symbol's features.
 
         Reads pre-computed daily factor scores from Heber Gold and writes
@@ -449,7 +449,7 @@ class FeaturePipeline:
         """
         from datetime import date
 
-        today = date.today()
+        today = as_of.date() if as_of is not None else date.today()
         for symbol, feat in features_map.items():
             try:
                 scores = self.atlas_reader.get_scores(symbol, today)

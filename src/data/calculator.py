@@ -285,7 +285,7 @@ class FeatureCalculator:
             ema20.update(float(c))
         ema20_val = float(ema20.value) if ema20.value is not None else 0.0
         ema20_prev = float(ema20.prev_value) if ema20.prev_value is not None else 0.0
-        ema20_slope = (ema20_val - ema20_prev) if ema20_prev > 0 else 0.0
+        ema20_slope = (ema20_val - ema20_prev) / ema20_prev if ema20_prev > 0 else 0.0
         distance_from_ema20 = (price - ema20_val) / ema20_val if ema20_val > 0 else 0.0
         return ema20_slope, distance_from_ema20
 
