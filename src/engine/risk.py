@@ -841,6 +841,19 @@ class RiskManager:
         if self.risk_cfg.hrp.enabled and pnl_net is not None:
             from datetime import date as date_type
 
-            trade_date = as_of.date() if as_of else date_type.today()
+            if as_of is None:
+                trade_date = date_type.today()
+            elif isinstance(as_of, (int, float)):
+                from datetime import datetime as dt_type
+                from datetime import timezone
+
+                as_of_dt = (
+                    dt_type.fromtimestamp(as_of / 1000, tz=timezone.utc)
+                    if as_of > 1e10
+                    else dt_type.fromtimestamp(as_of, tz=timezone.utc)
+                )
+                trade_date = as_of_dt.date()
+            else:
+                trade_date = as_of.date()
             # Approximate daily return from PnL (HRP accumulates these)
             self.hrp_allocator.record_daily_return(strategy, trade_date, pnl_net)
