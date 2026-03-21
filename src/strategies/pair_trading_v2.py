@@ -189,8 +189,8 @@ class PairTradingV2Strategy(BaseStrategy):
         garch = self._spread_garch[key]
         garch_result = garch.update(spread)
 
-        # Feed spread to OU estimator
-        self._ou_estimators[key].update(spread)
+        # NOTE: OU estimator is fed once in _process_pair() at the half-life gate.
+        # Do NOT update here — double-feeding inflates autocorrelation and biases half-life.
 
         if std <= 0.0:
             return None

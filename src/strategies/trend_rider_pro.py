@@ -161,7 +161,10 @@ class TrendRiderProStrategy(BaseStrategy):
         meta["atr_5m"] = round(atr_5m, 6)
 
         # Observability: log quant state but don't gate on it
-        hurst_result = self._hurst[symbol].update(bar.close)
+        # NOTE: Hurst is already updated in _update_quant_state() — read cached prices
+        # to compute result without double-feeding prices.
+        hurst_obj = self._hurst[symbol]
+        hurst_result = hurst_obj._compute() if len(hurst_obj._prices) >= hurst_obj._min_observations else None
         if hurst_result is not None:
             meta["hurst_H"] = round(hurst_result.H, 4)
         garch_result = self._garch[symbol]._last_result

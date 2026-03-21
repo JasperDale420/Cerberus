@@ -84,6 +84,10 @@ All notable changes to this project will be documented in this file.
 
 - **VRP realized vol not annualized**: VRP compares `(VXX/10)^2` (annualized implied variance, ~1-10) against `realized_vol^2` (per-bar EWMA, ~1e-8). The 8 orders of magnitude difference made the RV component meaningless — VRP tracked only VXX price, not the implied-vs-realized spread. Fixed by annualizing per-bar realized vol (`* sqrt(252*390)`) before squaring.
 
+- **Pair trading OU estimator double-updated per bar**: `_compute_spread_zscore()` and `_process_pair()` both called `ou_estimators[key].update(spread)`, feeding each spread value twice. Consecutive identical values inflate autocorrelation, underestimate theta, and overestimate half-life — causing the half-life gate to reject valid mean-reversion opportunities. Removed the update from `_compute_spread_zscore()`.
+
+- **TrendRiderPro Hurst exponent double-updated**: `_update_quant_state()` called `hurst.update(close)` per bar, then `generate_signal()` called it again for metadata. Double-feeding prices corrupts R/S analysis. Fixed to recompute from cached prices without appending.
+
 - **Hurst exponent computed on raw price diffs instead of log-returns**: R/S analysis used `np.diff(prices)` which is not scale-invariant — a $500 stock produces 10x larger diffs than a $50 stock. Fixed to use `np.diff(np.log(prices))` (log-returns). Also fixed off-by-one using `len(prices)` instead of `len(returns)` in the R/S formula denominator.
 
 - **Prior day stats returns wrong day before market open**: `get_prior_day_stats()` unconditionally took `bars[-2]` assuming `bars[-1]` was today's incomplete bar. Before market open, today's bar doesn't exist yet, so `bars[-1]` is yesterday's complete bar and `bars[-2]` is two days ago. This produced incorrect gap percentages for gap_fill and ORB strategies during premarket. Now checks whether the last bar's date matches today.

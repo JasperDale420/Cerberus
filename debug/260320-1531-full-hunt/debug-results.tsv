@@ -134,3 +134,12 @@ iteration	type	hypothesis	result	severity	location	description
 132	hypothesis	LZC normalization uses ln(n) not log2(n)	confirmed	LOW	entropy.py:175	Compressed ~30% but LZC not used in regime classification
 133	hypothesis	Population vs sample std inconsistency	confirmed	LOW	momentum_crash.py:183 / vrp.py:61	ddof=0 vs entropy.py ddof=1; negligible for large windows
 134	hypothesis	Permutation entropy max calculation	disproven	-	entropy.py:73	ln(order!) is correct max PE for order! possible patterns
+135	hypothesis	Pair trading OU estimator double-updated per bar	confirmed	HIGH	pair_trading_v2.py:193,406	Feed twice per bar inflates autocorrelation, biases half-life up
+136	hypothesis	Pair trading correlation fed misaligned prices	confirmed	MEDIUM	pair_trading_v2.py:368-370	Stale leg price repeated; inflates correlation toward 1.0
+137	hypothesis	Pair trading coint monitor fed non-contemporaneous	confirmed	MEDIUM	pair_trading_v2.py:373-374	Updates on every bar from either leg with stale other leg
+138	hypothesis	TrendRiderPro Hurst double-updated	confirmed	LOW	trend_rider_pro.py:83,164	Observability-only but corrupts R/S analysis
+139	hypothesis	TrendRiderPro _regime_allows never called	confirmed	MEDIUM	trend_rider_pro.py:380-392	Defined but never invoked; trend direction not gated
+140	hypothesis	RSI_Bounce z-score on raw prices	confirmed	MEDIUM	rsi_bounce.py:209-242	Non-stationary; GARCH branch mitigates when available
+141	hypothesis	RSI_Bounce percentile self-reference	confirmed	LOW	rsi_bounce.py:244-259	Includes current value; minimum rank 1/n instead of 0
+142	hypothesis	ORB_V2 stop placement inverted	disproven	-	orb_v2.py:244-254	Standard ORB stop; regime multiplier adjusts tightness correctly
+143	hypothesis	RSI_Bounce trend filter inverted	disproven	-	rsi_bounce.py:387-389	Correct: don't fade strong trends
