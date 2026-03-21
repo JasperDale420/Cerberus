@@ -18,7 +18,6 @@ from src.core.indicators import RollingStd
 from src.core.logger import StructuredLogger
 from src.quant.cointegration import RollingCointegrationMonitor
 from src.quant.filters import KalmanHedgeRatio
-from src.quant.volatility import GARCHForecaster
 from src.strategies.base import BaseStrategy
 from src.strategies.confluence import ConfluenceScorer, score_deviation, score_volume
 
@@ -70,7 +69,6 @@ class PairTradingV2Strategy(BaseStrategy):
         self._symbol_to_pairs: dict[str, list[str]] = {}
         # Quant monitors — keyed by pair key
         self._coint_monitors: dict[str, RollingCointegrationMonitor] = {}
-        self._spread_garch: dict[str, GARCHForecaster] = {}
         self._ou_estimators: dict[str, OUEstimator] = {}
         self._init_pairs(config)
 
@@ -105,11 +103,6 @@ class PairTradingV2Strategy(BaseStrategy):
             self._coint_monitors[key] = RollingCointegrationMonitor(
                 lookback=self.spread_lookback,
                 retest_interval=20,
-            )
-            self._spread_garch[key] = GARCHForecaster(
-                min_observations=50,
-                lookback=500,
-                refit_interval=20,
             )
             self._ou_estimators[key] = OUEstimator(
                 lookback=self.spread_lookback,
@@ -185,21 +178,18 @@ class PairTradingV2Strategy(BaseStrategy):
 
         mean, std = ps["spread_std"].update(spread)
 
-        # Feed spread to GARCH forecaster
-        garch = self._spread_garch[key]
-        garch_result = garch.update(spread)
-
         # NOTE: OU estimator is fed once in _process_pair() at the half-life gate.
         # Do NOT update here — double-feeding inflates autocorrelation and biases half-life.
 
         if std <= 0.0:
             return None
 
-        # Use GARCH-conditional z-score when available, else rolling std
-        if garch_result is not None:
-            z_score = garch.conditional_zscore(spread - mean)
-        else:
-            z_score = (spread - mean) / std
+        # Use rolling std z-score.  GARCH conditional z-score is not appropriate
+        # here because the spread (Kalman innovation) is a zero-mean residual —
+        # GARCHForecaster fits log-returns of prices, which is undefined for
+        # negative values and produces a dimensional mismatch (spread-level
+        # deviation / log-return volatility).
+        z_score = (spread - mean) / std
 
         return hedge_ratio, spread, z_score, std
 
@@ -362,15 +352,21 @@ class PairTradingV2Strategy(BaseStrategy):
         else:
             return None
 
-        ps["bar_count"] += 1
-
-        # Track prices for rolling correlation
+        # Only count bars and update correlation/cointegration when the
+        # incoming bar's leg is the one that was stale (i.e., we now have a
+        # fresh observation from BOTH legs).  This prevents double-counting
+        # with stale prices and ensures bar_count reflects synchronized pairs.
+        is_synchronized = False
         if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
+            # Check if the OTHER leg was updated more recently or at the same time
+            other_time = ps["last_time_b"] if symbol == leg_a else ps["last_time_a"]
+            if other_time is not None:
+                is_synchronized = True
+
+        if is_synchronized:
+            ps["bar_count"] += 1
             ps["prices_a"].append(ps["last_price_a"])
             ps["prices_b"].append(ps["last_price_b"])
-
-        # Update cointegration monitor on each bar (both legs needed)
-        if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
             self._coint_monitors[key].update(ps["last_price_a"], ps["last_price_b"])
 
         # Warm-up phase: feed indicators but skip signal generation
@@ -403,13 +399,15 @@ class PairTradingV2Strategy(BaseStrategy):
             return None
 
         # Gate 2: OU half-life check
+        # OU half_life is in trading days (dt=1/390), convert to minutes
         ou_result = self._ou_estimators[key].update(spread)
-        if ou_result is not None and ou_result.half_life > self.max_hold_minutes:
+        half_life_minutes = ou_result.half_life * 390.0 if ou_result is not None else 0.0
+        if ou_result is not None and half_life_minutes > self.max_hold_minutes:
             self.logger.debug(
                 "pair_trading_v2: OU half-life gate rejected",
                 pair=key,
                 symbol=symbol,
-                half_life=round(ou_result.half_life, 2),
+                half_life_minutes=round(half_life_minutes, 2),
                 max_hold=self.max_hold_minutes,
             )
             return None

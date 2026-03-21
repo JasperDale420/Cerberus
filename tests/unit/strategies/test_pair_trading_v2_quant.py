@@ -17,7 +17,6 @@ from src.core.domain import (
 from src.core.logger import StructuredLogger
 from src.quant.cointegration import RollingCointegrationMonitor
 from src.quant.filters import KalmanHedgeRatio
-from src.quant.volatility import GARCHForecaster
 from src.strategies.pair_trading_v2 import PairTradingV2Strategy, _pair_key
 
 # ---------------------------------------------------------------------------
@@ -100,11 +99,6 @@ class TestQuantAttributes:
         assert key in strategy._coint_monitors
         assert isinstance(strategy._coint_monitors[key], RollingCointegrationMonitor)
 
-    def test_has_garch_forecasters(self, strategy):
-        key = _pair_key("AAPL", "MSFT")
-        assert key in strategy._spread_garch
-        assert isinstance(strategy._spread_garch[key], GARCHForecaster)
-
     def test_has_ou_estimators(self, strategy):
         key = _pair_key("AAPL", "MSFT")
         assert key in strategy._ou_estimators
@@ -185,24 +179,6 @@ class TestBarFeedIntegration:
         # (both AAPL and MSFT bars trigger updates), so count >= 30
         assert len(monitor._x) >= 30
 
-    def test_garch_receives_spread_values(self, strategy):
-        """GARCH forecaster receives spread updates via _compute_spread_zscore."""
-        key = _pair_key("AAPL", "MSFT")
-        t = datetime(2024, 1, 2, 10, 0, tzinfo=timezone.utc)
-        ms = _make_market_state(t)
-
-        for i in range(20):
-            bar_a = _make_bar("AAPL", 150.0 + i * 0.1, t + timedelta(minutes=i))
-            bar_b = _make_bar("MSFT", 300.0 + i * 0.2, t + timedelta(minutes=i))
-            ss_a = _make_symbol_state("AAPL")
-            ss_b = _make_symbol_state("MSFT")
-            strategy.on_bar("AAPL", bar_a, ss_a, ms)
-            strategy.on_bar("MSFT", bar_b, ss_b, ms)
-
-        garch = strategy._spread_garch[key]
-        # GARCH should have received spread values
-        assert len(garch._prices) > 0
-
     def test_rolling_correlation_populates(self, strategy):
         """Price deques for correlation tracking fill as bars flow."""
         key = _pair_key("AAPL", "MSFT")
@@ -251,5 +227,4 @@ class TestBarFeedIntegration:
         assert k1 in s._coint_monitors
         assert k2 in s._coint_monitors
         assert s._coint_monitors[k1] is not s._coint_monitors[k2]
-        assert s._spread_garch[k1] is not s._spread_garch[k2]
         assert s._ou_estimators[k1] is not s._ou_estimators[k2]
