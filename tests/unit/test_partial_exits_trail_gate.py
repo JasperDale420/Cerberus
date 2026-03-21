@@ -137,7 +137,7 @@ class TestPartialExitLevels:
         result = pm._check_partial_exit(pos, bar_4r)
         assert result is not None
         assert result.reason == "PARTIAL_4.0R"
-        assert result.intent.qty == 22  # floor(67 * 0.33)
+        assert result.intent.qty == 33  # floor(initial_qty=100 * 0.33), clamped to remaining 67
 
     def test_all_partials_exhausted(self):
         """No exit when all configured partial levels are taken."""

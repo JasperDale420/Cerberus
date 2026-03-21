@@ -503,8 +503,8 @@ class UnifiedDataClient:
             low=float(payload.get("l") if payload.get("l") is not None else payload.get("low", 0.0)),
             close=float(payload.get("c") if payload.get("c") is not None else payload.get("close", 0.0)),
             volume=float(payload.get("v") if payload.get("v") is not None else payload.get("volume", 0.0)),
-            vwap=payload.get("vw") or payload.get("vwap"),
-            trade_count=payload.get("n") or payload.get("trade_count"),
+            vwap=payload.get("vw") if payload.get("vw") is not None else payload.get("vwap"),
+            trade_count=payload.get("n") if payload.get("n") is not None else payload.get("trade_count"),
         )
 
     def _normalize_stream_quote(self, payload: dict) -> StreamQuote:

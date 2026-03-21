@@ -450,12 +450,14 @@ class PositionManager:
         regime_tags_at_entry = pos.regime_tags_at_entry or {}
         regime_tags_at_exit = market_state.regime_snapshot.regime_tags if market_state.regime_snapshot else {}
 
-        pnl_net = float(pnl) - float(pos.commission or 0.0) - float(pos.slippage_estimate or 0.0)
+        # Use total realized PnL (includes all partial exits), not just the last fill
+        total_pnl = float(pos.realized_pnl)
+        pnl_net = total_pnl - float(pos.commission or 0.0) - float(pos.slippage_estimate or 0.0)
 
         # H2 fix: Safe R-multiple calculation
         pnl_r = None
         if pos.open_risk is not None and not math.isclose(float(pos.open_risk), 0.0, abs_tol=1e-9):
-            pnl_r = float(pnl) / float(pos.open_risk)
+            pnl_r = total_pnl / float(pos.open_risk)
 
         return ClosedTradeInfo(
             symbol=pos.symbol,
@@ -463,12 +465,12 @@ class PositionManager:
             regime_tags_at_entry=regime_tags_at_entry,
             regime_tags_at_exit=regime_tags_at_exit,
             side=pos.side.value,
-            qty=float(close_qty),
+            qty=float(pos.initial_qty) if pos.initial_qty > 0 else float(close_qty),
             entry_time=entry_time_final,
             exit_time=exit_time,
             entry_price=float(pos.avg_price),
             exit_price=float(fill_data["price"]),
-            pnl_gross=float(pnl),
+            pnl_gross=total_pnl,
             pnl_net=float(pnl_net),
             initial_risk=pos.open_risk,
             mae_r=float(pos.mae_r),
@@ -749,7 +751,7 @@ class PositionManager:
             fraction = float(fraction)
 
             if profit_r >= r_threshold:
-                partial_qty = math.floor(pos.qty * fraction)
+                partial_qty = min(math.floor(pos.initial_qty * fraction), int(pos.qty))
                 if partial_qty > 0:
                     reason = f"PARTIAL_{r_threshold:.1f}R"
                     return self._create_partial_exit_intent(pos, partial_qty, reason)

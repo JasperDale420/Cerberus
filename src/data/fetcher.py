@@ -213,7 +213,9 @@ class DataFetcher:
             if isinstance(bar, dict):
                 v = bar.get("v") if bar.get("v") is not None else bar.get("volume")
             else:
-                v = getattr(bar, "v", None) or getattr(bar, "volume", None)
+                v = getattr(bar, "v", None)
+                if v is None:
+                    v = getattr(bar, "volume", None)
             return float(v) if v is not None else None
         except Exception as e:
             self.logger.debug(
@@ -255,7 +257,9 @@ class DataFetcher:
     def _get_bar_field(self, bar: Any, keys: list[str]) -> float:
         bd = bar if isinstance(bar, dict) else getattr(bar, "__dict__", {})
         for k in keys:
-            val = bd.get(k) or getattr(bar, k, None)
+            val = bd.get(k)
+            if val is None:
+                val = getattr(bar, k, None)
             if val is not None:
                 return float(val)
         return 0.0

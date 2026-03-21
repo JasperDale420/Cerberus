@@ -102,6 +102,8 @@ def aggregate_bars(
     df = df.set_index("timestamp")
 
     rule = f"{tf_minutes}min"
+    # Compute price*volume for proper volume-weighted VWAP aggregation
+    df["_pv"] = df["vwap"] * df["volume"]
     agg = (
         df.resample(rule)
         .agg(
@@ -111,11 +113,13 @@ def aggregate_bars(
                 "low": "min",
                 "close": "last",
                 "volume": "sum",
-                "vwap": "mean",
+                "_pv": "sum",
             }
         )
         .dropna(subset=["open"])
     )
+    agg["vwap"] = np.where(agg["volume"] > 0, agg["_pv"] / agg["volume"], agg["close"])
+    agg = agg.drop(columns=["_pv"])
 
     return (
         agg.index.values,
@@ -203,8 +207,8 @@ def precompute_symbol_indicators(
         # This eliminates look-ahead bias: we never read indicators from
         # a bar whose OHLCV includes future 1m data.
         indices = ts_agg.searchsorted(ts_1m, side="right") - 2
-        # Clamp to valid range (-1 means no completed bar yet; use index 0 as warmup)
-        indices = np.clip(indices, 0, len(agg_c) - 1)
+        # -1 means no completed higher-TF bar yet; leave as -1 so MTF returns None
+        indices = np.clip(indices, -1, len(agg_c) - 1)
 
         tf_indicators["_1m_index"] = indices.astype(np.int64)
         result[tf_label] = tf_indicators

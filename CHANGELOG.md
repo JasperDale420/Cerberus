@@ -176,6 +176,24 @@ All notable changes to this project will be documented in this file.
 
 - **GARCH fallback volatility uses population std**: The rolling-std fallback path used `np.std()` with default `ddof=0` (population), slightly underestimating volatility. Fixed to use `ddof=1` (sample) for consistency.
 
+- **ClosedTradeInfo PnL misses partial exit profits**: When a position had multiple partial exits, `pnl_gross` only reported the last fill's PnL, not the accumulated total. A trade with $100 from partials + $50 from final exit would report $50 instead of $150. Also affected `pnl_net`, `pnl_r`, and downstream risk manager daily PnL tracking. Fixed to use total `realized_pnl`.
+
+- **ClosedTradeInfo qty reports last fill size instead of total**: After partial exits, the recorded trade quantity was the remaining fill (e.g., 50 instead of 100), misrepresenting trade size in analytics. Fixed to use `initial_qty`.
+
+- **Partial exit fraction uses current qty instead of initial**: With levels `[(1R, 0.5), (2R, 0.5)]`, each level took 50% of *remaining* qty (geometric: 50, 25) instead of 50% of *initial* qty (linear: 50, 50), leaving 25 stranded shares with no exit level. Fixed to use `initial_qty` as the fraction base.
+
+- **Sweep count inflated by bullish sentiment trades**: `_process_single_flow_trade` counted any BULLISH-sentiment trade as a sweep (`"sweep" in tags or sentiment == "BULLISH"`). Non-sweep bullish trades inflated `sweep_count` and artificially boosted DOF scores via the sweep multiplier. Fixed to count only actual sweep-tagged trades.
+
+- **GEX flip distance picks first zero-crossing by strike order, not nearest to spot**: With multiple gamma exposure zero-crossings, the code selected the first in ascending strike order rather than the one nearest to the current price. For gamma-pinning analysis, the nearest crossing to spot is the relevant one. Fixed to select the crossing closest to spot price.
+
+- **Bar field and volume extraction treat zero as missing**: `_get_bar_field` and `_extract_volume` in fetcher.py used Python `or` for fallback, which treats `0`/`0.0` as falsy. Legitimate zero-volume bars (premarket) would get wrong values from fallback keys. Fixed to use explicit `is not None` checks.
+
+- **Stream bar vwap/trade_count treat zero as missing**: `_normalize_stream_bar` in client.py used `or` for vwap and trade_count fields, dropping valid zero values. Fixed to use `is not None` pattern matching the OHLCV fields.
+
+- **Backtest VWAP aggregation uses simple mean instead of volume-weighted**: When pre-computing 5m/15m indicators, VWAP was aggregated as `mean` of 1m VWAPs, treating all bars equally regardless of volume. A 1M-share bar and a 100-share bar contributed equally. Fixed to use `sum(vwap * volume) / sum(volume)`.
+
+- **Backtest higher-TF indicator look-ahead bias**: Before the first higher-TF bar completed (e.g., first 4 bars for 5m), the index was clipped to 0, reading from a bar whose OHLCV included future 1m data. Fixed to return no indicators until the first higher-TF bar has fully completed.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

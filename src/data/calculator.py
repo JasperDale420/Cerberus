@@ -410,7 +410,7 @@ class FeatureCalculator:
             put_n += 1
 
         tags = t.get("tags", [])
-        if "sweep" in tags or t.get("sentiment") == "BULLISH":
+        if "sweep" in tags:
             sweep_count += 1
 
         if t.get("ask_side") or t.get("sentiment") in ["BULLISH", "BEARISH"]:
@@ -601,14 +601,16 @@ class FeatureCalculator:
         # Simple heuristic: find the strike closest to zero net exposure
         flip_strike = min(by_strike.keys(), key=lambda s: abs(by_strike[s]))
 
-        # Alternatively: Find where it crosses zero
+        # Find all zero-crossings and pick the one nearest to spot price
+        crossings = []
         for i in range(len(sorted_strikes) - 1):
             s1, s2 = sorted_strikes[i], sorted_strikes[i + 1]
             v1, v2 = by_strike[s1], by_strike[s2]
             if (v1 < 0 and v2 > 0) or (v1 > 0 and v2 < 0):
-                # Zero cross found!
-                flip_strike = s1 if abs(v1) < abs(v2) else s2
-                break
+                closer = s1 if abs(v1) < abs(v2) else s2
+                crossings.append(closer)
+        if crossings:
+            flip_strike = min(crossings, key=lambda s: abs(s - spot_price))
 
         dist_to_flip = (flip_strike - spot_price) / spot_price if spot_price > 0 else 0.0
 

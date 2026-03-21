@@ -280,6 +280,8 @@ class MultiTimeframeAnalyzer:
                     n_1m = len(bars_1m)
                     if n_1m > 0 and (n_1m - 1) < len(idx_map):
                         agg_idx = int(idx_map[n_1m - 1])
+                        if agg_idx < 0:
+                            return  # No completed higher-TF bar yet
                         for p in (9, 20, 50, 200):
                             arr = precomp.get(f"ema_{p}")
                             if arr is not None and agg_idx < len(arr):
