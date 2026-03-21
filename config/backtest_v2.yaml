@@ -21,7 +21,7 @@ regime:
 strategy_routing:
   bull: [trend_rider_pro, flow_alpha, orb_v2, rsi_bounce, momentum_fade]
   bear: [trend_rider_pro, flow_alpha, orb_v2, rsi_bounce, momentum_fade]
-  chop: [mean_reversion_pro, flow_alpha, rsi_bounce, momentum_fade]
+  chop: [mean_reversion_pro, flow_alpha, rsi_bounce, momentum_fade, pair_trading_v2]
 
 # V2 Strategies — all new consolidated strategies
 strategies:
@@ -146,9 +146,28 @@ strategies:
       liquidity: [good, thin]
       risk: [neutral, risk_off]
       min_confidence: 0.5
-  # pair_trading_v2 disabled for initial test — needs pair-specific data
   pair_trading_v2:
-    enabled: false
+    enabled: true
+    pairs:
+      - {leg_a: "XOM", leg_b: "CVX"}
+      - {leg_a: "JPM", leg_b: "GS"}
+      - {leg_a: "GOOGL", leg_b: "META"}
+      - {leg_a: "AAPL", leg_b: "MSFT"}
+    entry_z_threshold: 2.0
+    stop_z_threshold: 3.5
+    spread_lookback: 100
+    min_bars: 60
+    freshness_seconds: 120.0
+    max_hold_minutes: 120.0
+    confluence_threshold: 50.0
+    min_correlation: 0.6
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [flat, up, down]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [neutral, risk_off]
+      min_confidence: 0.4
 
   # V1 legacy strategies — explicitly disabled to prevent ConfigLoader deep-merge
   # from strategies.yaml activating them

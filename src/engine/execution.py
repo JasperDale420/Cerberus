@@ -1356,6 +1356,32 @@ class ExecutionEngine:
                 exc_info=True,
             )
 
+        # Reset pair_trading_v2 signal_active flag so the pair can re-enter
+        self._maybe_reset_pair_signal(closed)
+
+    def _maybe_reset_pair_signal(self, closed: Any) -> None:
+        """Reset pair_trading_v2 signal_active when a pair leg position closes."""
+        try:
+            strategy_name = getattr(closed, "strategy", None)
+            if strategy_name != "pair_trading_v2":
+                return
+            strat = self.strategies.get("pair_trading_v2")
+            if strat is None:
+                return
+            symbol = getattr(closed, "symbol", None)
+            if not symbol:
+                return
+            pair_keys = getattr(strat, "_symbol_to_pairs", {}).get(symbol, [])
+            for key in pair_keys:
+                strat.mark_pair_inactive(key)
+                self.logger.debug(
+                    "Pair signal_active reset after position close",
+                    pair=key,
+                    symbol=symbol,
+                )
+        except Exception:
+            self.logger.debug("_maybe_reset_pair_signal failed", exc_info=True)
+
     def _persist_fill(
         self,
         fill: Dict[str, Any],
