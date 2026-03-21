@@ -445,7 +445,7 @@ class FeatureCalculator:
         if put_vol_total > 0:
             call_put_ratio = call_vol_total / put_vol_total
         elif call_vol_total > 0:
-            call_put_ratio = float(call_vol_total)
+            call_put_ratio = 10.0  # cap when no puts: avoid returning raw volume as ratio
         else:
             call_put_ratio = 0.0
 
@@ -707,8 +707,7 @@ class FeatureCalculator:
         # R/S = (Max - Min) / StdDev
         rs = r / s
 
-        # Hurst: rs = (n/2)^H  => H = log(rs) / log(n/2)
-        # Using n/2 as a standard normalization for short-window Hurst estimations
+        # Hurst: R/S ~ n^H  => H = log(R/S) / log(n)
         try:
             h = math.log(rs) / math.log(n)
             return max(0.0, min(1.0, h))

@@ -152,6 +152,10 @@ All notable changes to this project will be documented in this file.
 
 - **EMA slope not normalized — incomparable across price levels**: `ema20_slope` was computed as raw price difference (`ema_val - ema_prev`), making it price-level dependent. A $500 stock produces 100x larger slopes than a $5 stock. Fixed to normalize as percentage change (`(ema_val - ema_prev) / ema_prev`), consistent with `distance_from_ema20`.
 
+- **Call/put ratio returns raw volume when puts=0**: When `put_vol_total` was zero and `call_vol_total > 0`, `call_put_ratio` returned the raw call volume (e.g. 50,000) instead of a meaningful ratio, producing inconsistent feature units that skewed cross-sectional comparisons. Capped at 10.0.
+
+- **Hurst exponent comment/code mismatch**: R/S Hurst comment incorrectly stated the formula used `log(n/2)` when the code correctly used `log(n)` per the standard formula `R/S ~ n^H`. Fixed misleading comment.
+
 - **Atlas factor scores use wall-clock date in backtests**: `_append_atlas_factors()` used `date.today()` instead of the `as_of` parameter, causing future factor scores to leak into historical backtest evaluations. Fixed to pass `as_of` from the caller.
 
 - **SnapshotManager passes plain dataclasses to SQLAlchemy**: `persist_external_snapshot` and `persist_feature_snapshot` created `ExternalSnapshotRecord` and `FeatureSnapshotRecord` (plain dataclasses) and passed them to `session.add()`, but SQLAlchemy requires ORM-mapped models (`ExternalSnapshot`, `FeatureSnapshot`). Field names also mismatched (`data` vs `data_json`). Every snapshot write silently crashed. Fixed to construct proper ORM model instances.
