@@ -444,7 +444,7 @@ class PositionManager:
         try:
             holding_period_seconds = (exit_time - entry_time_final).total_seconds()
         except Exception:
-            pass
+            _logger.debug("holding_period_calc_failed", exc_info=True)
 
         # Multi-axis regime tags
         regime_tags_at_entry = pos.regime_tags_at_entry or {}
@@ -605,7 +605,9 @@ class PositionManager:
             open_risk = pos.open_risk
             if open_risk is None or math.isclose(float(open_risk), 0.0, abs_tol=1e-9) or pos.qty <= 0:
                 return
-            risk_per_share = float(open_risk) / float(pos.qty)
+            # Use initial_qty (not current qty after partial exits) for consistent R-multiples
+            base_qty = float(getattr(pos, "initial_qty", pos.qty) or pos.qty)
+            risk_per_share = float(open_risk) / base_qty
             if risk_per_share <= 0:
                 return
 

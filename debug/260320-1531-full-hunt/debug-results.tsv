@@ -157,3 +157,12 @@ iteration	type	hypothesis	result	severity	location	description
 155	hypothesis	Calmar ratio percent/percent	disproven	-	backtest_report.py:341	Units cancel correctly
 156	hypothesis	Monte Carlo bootstrap autocorrelation	disproven	-	monte_carlo.py:79	i.i.d. bootstrap correct for trade-level P&L
 157	hypothesis	Max drawdown peak-to-trough	disproven	-	backtest_report.py	Correctly uses equity curve running max
+158	hypothesis	Strategies run before exit checks	confirmed	HIGH	execution.py:612-615	Entry orders submitted before exits; conflicting orders on same bar
+159	hypothesis	Position mismatch leaves stale local positions	confirmed	HIGH	execution.py:2119-2138	Halts trading but phantom positions still generate exits
+160	hypothesis	Fill dedup set cleared entirely at 10k	confirmed	MEDIUM	execution.py:1267-1268	Burst reprocessing window on WebSocket reconnect
+161	hypothesis	MAE/MFE uses current qty not initial_qty	confirmed	MEDIUM	position_manager.py:608	R-multiples distorted after partial exits
+162	hypothesis	Position gate bypasses max check with existing position	confirmed	MEDIUM	risk.py:175-182	Allows stacking entries from different strategies
+163	hypothesis	min_confidence checks all axes not just constrained	confirmed	MEDIUM	strategy_engine.py:58-61	Irrelevant axis low confidence rejects strategy
+164	hypothesis	Side-flip reconciliation loses exit state	confirmed	MEDIUM	execution.py:2097-2117	Fresh Position has no stops/trailing; caught by EOD flatten
+165	hypothesis	Partial exits use remaining qty fraction	confirmed	MEDIUM	position_manager.py:750	Under-exits leaving residual tail
+166	hypothesis	GatewayOrderExecutor drops SL/TP	confirmed	LOW	orders.py:512-520	Safe by design (broker_managed_exits=False) but fragile

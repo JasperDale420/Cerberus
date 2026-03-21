@@ -608,11 +608,11 @@ class ExecutionEngine:
             # Helper: Update State
             state = self._update_symbol_state(symbol, bar, bar_time)
 
-            # Helper: Run Strategies
-            self._run_strategies(symbol, bar, state, log)
-
-            # Helper: Manage Positions
+            # Helper: Manage Positions (exits first to avoid conflicting entry + exit on same bar)
             self._manage_positions(symbol, state, log)
+
+            # Helper: Run Strategies (after exits, so new entries don't conflict with pending exits)
+            self._run_strategies(symbol, bar, state, log)
 
             # Emit periodic health metrics based on bar time (deterministic for replay).
             # Skip in backtest mode to avoid per-bar datetime arithmetic.
@@ -1190,7 +1190,7 @@ class ExecutionEngine:
             buf_len = int(self.db.write_buffer_len())
             buf_max = int(self.db.write_buffer_max())
         except Exception:
-            pass
+            log.warning("db_buffer_metrics_unavailable", exc_info=True)
 
         threshold = int(self.config.get("db_trading_halt_buffer_len", max(1, buf_max // 2 or 1)))
 
@@ -1265,7 +1265,9 @@ class ExecutionEngine:
             return
         self._processed_fill_ids.add(fill_key)
         if len(self._processed_fill_ids) > 10_000:
-            self._processed_fill_ids.clear()
+            # Evict oldest half instead of clearing all — prevents reprocessing window
+            evict_list = list(self._processed_fill_ids)[:5_000]
+            self._processed_fill_ids -= set(evict_list)
 
         # Persist fill
         if self.db:
@@ -1555,6 +1557,14 @@ class ExecutionEngine:
                 qty = float(info.get("fill_qty", 0.0) or 0.0)
                 price = float(info.get("fill_price", 0.0) or 0.0)
             except Exception:
+                self.logger.warning(
+                    "fill_data_parse_failed",
+                    event=event,
+                    symbol=symbol,
+                    fill_qty=info.get("fill_qty"),
+                    fill_price=info.get("fill_price"),
+                    exc_info=True,
+                )
                 qty = 0.0
                 price = 0.0
             if qty <= 0 or price <= 0 or not symbol or not side:
@@ -1741,6 +1751,8 @@ class ExecutionEngine:
     def _process_scan_removals(self, final_removes: List[str]) -> None:
         """Remove symbols from active trading set."""
         for sym in final_removes:
+            if sym not in self.symbol_states:
+                continue
             if self.symbol_states[sym].position:
                 self.logger.info("Retaining symbol with position outside scan", symbol=sym)
                 continue
@@ -2084,18 +2096,27 @@ class ExecutionEngine:
 
         # Preserve existing position data where available
         existing = state.position
-        state.position = Position(
-            symbol=sym,
-            side=side,
-            qty=qty,
-            avg_price=avg_price,
-            unrealized_pnl=0.0,
-            realized_pnl=getattr(existing, "realized_pnl", 0.0) if existing else 0.0,
-            strategy=existing.strategy if existing else "unknown",
-            entry_time=getattr(existing, "entry_time", None),
-            correlation_id=getattr(existing, "correlation_id", "") if existing else "",
-            regime_tags_at_entry=getattr(existing, "regime_tags_at_entry", {}),
-        )
+        if existing is not None and existing.side == side:
+            # Same side — update qty/price from broker, preserve all exit management state
+            existing.qty = qty
+            existing.avg_price = avg_price
+            existing.unrealized_pnl = 0.0
+            existing.last_updated = datetime.now(timezone.utc)
+            state.position = existing
+        else:
+            # New position or side flip — create fresh (no prior state to preserve)
+            state.position = Position(
+                symbol=sym,
+                side=side,
+                qty=qty,
+                avg_price=avg_price,
+                unrealized_pnl=0.0,
+                realized_pnl=getattr(existing, "realized_pnl", 0.0) if existing else 0.0,
+                strategy=existing.strategy if existing else "unknown",
+                entry_time=getattr(existing, "entry_time", None) if existing else None,
+                correlation_id=getattr(existing, "correlation_id", "") if existing else "",
+                regime_tags_at_entry=getattr(existing, "regime_tags_at_entry", {}) if existing else {},
+            )
 
     def _handle_position_mismatch(self, broker_position_symbols: set[str]) -> None:
         """Handle local positions missing at broker."""
@@ -2114,6 +2135,20 @@ class ExecutionEngine:
             symbols=sorted(missing),
             mode=mode,
         )
+
+        # Clear stale local positions to prevent PositionManager from
+        # submitting exit orders against non-existent broker positions
+        for sym in missing:
+            st = self.symbol_states.get(sym)
+            if st is not None:
+                self.logger.warning(
+                    "Clearing stale local position (missing at broker)",
+                    symbol=sym,
+                    side=getattr(st.position, "side", None),
+                    qty=getattr(st.position, "qty", None),
+                )
+                st.position = None
+
         if mode in ("halt", "stop"):
             self._set_risk_mode("off")
 
@@ -2407,4 +2442,11 @@ class ExecutionEngine:
         interval = int(self.config.get("reconcile_interval_sec", 600))
         while True:
             await asyncio.sleep(max(1, interval))
-            await self.reconcile_broker_state()
+            try:
+                await self.reconcile_broker_state()
+            except Exception as e:
+                self.logger.error(
+                    "reconcile_loop_iteration_failed",
+                    error=str(e),
+                    exc_info=True,
+                )

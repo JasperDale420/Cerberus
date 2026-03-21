@@ -90,6 +90,14 @@ All notable changes to this project will be documented in this file.
 
 - **RSI bounce GARCH z-score passes dollar deviation instead of fractional return**: `_compute_zscore()` passed `price - mean` (dollar units, e.g. $2.50) to `conditional_zscore()` which divides by `conditional_vol` (decimal return units, ~0.015). This produced z-scores ~167x too large, making the GARCH path trivially pass any threshold and effectively disabling it as a discriminator. Fixed to convert deviation to fractional return units (`deviation / mean`).
 
+- **Strategies run before exit checks — conflicting orders on same bar**: `_run_strategies()` executed before `_manage_positions()`, so a strategy could submit a new entry order while the position manager was about to trigger an exit on the same symbol. Swapped the order: exits now process first.
+
+- **Position mismatch leaves stale local positions generating phantom exits**: When a local position was missing at the broker, `_handle_position_mismatch()` set risk mode to "off" but left stale `symbol_state.position` intact. The PositionManager continued evaluating exit logic and submitting exit orders against non-existent broker positions. Fixed to clear stale local positions.
+
+- **Fill dedup set cleared entirely at 10k — reprocessing window**: When `_processed_fill_ids` exceeded 10,000 entries, the entire set was cleared, making all previously-seen fills eligible for re-processing on WebSocket reconnection. Fixed to evict oldest half instead of clearing all.
+
+- **MAE/MFE uses current qty instead of initial qty after partial exits**: `_update_mae_mfe()` computed `risk_per_share = open_risk / pos.qty` which inflates after partial exits (qty decreases but open_risk stays constant), distorting R-multiple metrics. Fixed to use `initial_qty`.
+
 - **Monte Carlo Sharpe annualization uses wrong factor**: Used `min(n_trades, 252)` as the annualization factor, assuming all trades occurred in one year. For multi-year backtests this under-annualizes; for sub-year backtests this over-annualizes. Added optional `calendar_days` parameter to compute proper trades-per-year.
 
 - **Risk sizers force minimum 1 share, bypassing risk reduction**: CPPI, CVaR, and momentum crash sizers used `max(1, int(qty * multiplier))`, preventing them from reducing position size to zero even in extreme conditions. This contradicted the regime gate which correctly rejected when sizing went below 1. Fixed to reject signals (return 0) when risk-adjusted sizing goes below 1 share.
