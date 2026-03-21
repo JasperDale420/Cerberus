@@ -1,7 +1,7 @@
 # Multi-Strategy Portfolio Backtest Config
 # Enables 5 backtestable V2 strategies with HRP cross-strategy allocation.
 # flow_alpha and pair_trading_v2 excluded (no historical data for backtests).
-# Data: 68 symbols, 2020-01-01 → 2026-03-20, 1-min bars.
+# Data: 27 symbols, 2020-01-01 → 2026-03-20, 1-min bars.
 
 database_url: "sqlite:///backtest_portfolio.db"
 timezone: "US/Eastern"
@@ -244,74 +244,33 @@ scanner:
   max_price: 500.0
   min_volume: 500000
 
-# Universe — full 68-symbol universe
+# Universe — 27 symbols (matches backtest_v2.yaml baseline)
 universe:
   symbols:
     - SPY
     - QQQ
-    - AAL
     - AAPL
-    - ABBV
-    - AI
-    - AMC
+    - NVDA
+    - TSLA
     - AMD
     - AMZN
-    - ARM
-    - AVGO
-    - BAC
-    - C
-    - CCL
-    - COIN
-    - COST
-    - CRM
-    - CVX
-    - DAL
-    - DDOG
-    - F
-    - GM
-    - GME
-    - GOOGL
-    - GS
-    - HAL
-    - HD
-    - HOOD
-    - INTC
-    - IONQ
-    - JNJ
-    - JPM
-    - LCID
-    - LYFT
-    - MARA
     - META
-    - MRK
-    - MRVL
-    - MS
     - MSFT
-    - MU
-    - NET
+    - GOOGL
+    - AVGO
     - NFLX
-    - NIO
-    - NKE
-    - NVDA
-    - ORCL
-    - OXY
-    - PFE
-    - PLTR
+    - JPM
+    - BAC
+    - GS
+    - CRM
+    - XOM
+    - CVX
+    - MU
+    - INTC
     - QCOM
-    - RCL
-    - RGTI
-    - RIOT
-    - RIVN
-    - SLB
-    - SMR
-    - SNOW
+    - PLTR
+    - COIN
+    - HOOD
     - SOFI
-    - SOUN
-    - TGT
-    - TSLA
-    - UAL
-    - UNH
     - UBER
     - VXX
-    - WMT
-    - XOM
