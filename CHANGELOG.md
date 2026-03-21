@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Momentum fade trend filter inverted**: Trend-aware directional filter blocked with-trend fades (buying dips in uptrends — high probability) and allowed counter-trend fades (shorting surges in uptrends — dangerous). Swapped to block counter-trend fades, matching rsi_bounce's correct implementation.
+
 - **Partial exit ladder permanently jammed for small positions**: When `initial_qty * fraction` rounds to 0 (e.g., 1-share position with 50% partial exit), `partial_exits_taken` was never incremented, permanently blocking all subsequent partial exit levels. Now skips levels that compute to zero quantity.
 
 - **Epoch timestamp unit detection in backtest**: Position `entry_time` and `exit_time` can be epoch seconds, milliseconds, or microseconds depending on data source. Added 3-tier detection (`>1e15` = microseconds, `>1e10` = milliseconds, else seconds) in both `runner.py` and `risk.py` to handle all cases correctly.

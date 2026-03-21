@@ -349,10 +349,11 @@ class MomentumFadeStrategy(BaseStrategy):
             side = OrderSide.BUY
 
         # --- trend-aware directional filter ---
+        # Block counter-trend fades: don't short in uptrends, don't buy in downtrends
         if snapshot is not None:
-            if snapshot.trend == TrendRegime.UP and side == OrderSide.BUY:
+            if snapshot.trend == TrendRegime.UP and side == OrderSide.SELL:
                 return None
-            if snapshot.trend == TrendRegime.DOWN and side == OrderSide.SELL:
+            if snapshot.trend == TrendRegime.DOWN and side == OrderSide.BUY:
                 return None
 
         # --- RSI directional gate ---
