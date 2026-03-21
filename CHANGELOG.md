@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Partial exit ladder permanently jammed for small positions**: When `initial_qty * fraction` rounds to 0 (e.g., 1-share position with 50% partial exit), `partial_exits_taken` was never incremented, permanently blocking all subsequent partial exit levels. Now skips levels that compute to zero quantity.
+
 - **Epoch timestamp unit detection in backtest**: Position `entry_time` and `exit_time` can be epoch seconds, milliseconds, or microseconds depending on data source. Added 3-tier detection (`>1e15` = microseconds, `>1e10` = milliseconds, else seconds) in both `runner.py` and `risk.py` to handle all cases correctly.
 
 - **open_risk computed from signal stop, not actual position stop**: `open_risk` was computed in `_store_pending_entry` from the signal's pre-fill stop distance, but `PositionManager` could widen the stop via regime multiplier. All R-multiple calculations (MAE, MFE, pnl_r, partial exits) used the wrong risk-per-share. Now recalculated from actual fill price and final stop in `_open_new_position`.

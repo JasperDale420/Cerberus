@@ -762,6 +762,9 @@ class PositionManager:
                 if partial_qty > 0:
                     reason = f"PARTIAL_{r_threshold:.1f}R"
                     return self._create_partial_exit_intent(pos, partial_qty, reason)
+                else:
+                    # Position too small to partially exit — skip this level
+                    pos.partial_exits_taken += 1
 
         except Exception:
             _logger.debug("Partial exit check failed", exc_info=True)
