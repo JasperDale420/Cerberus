@@ -173,25 +173,21 @@ def test_all_positive_returns() -> None:
 
 
 @pytest.mark.unit
-def test_evt_fallback_on_bad_fit() -> None:
-    """When GPD shape xi >= 1.0, should fall back to historical."""
-    # We need returns that produce xi >= 1 from method-of-moments.
-    # MoM: xi = 0.5 * (mean^2/var - 1). For xi >= 1, need mean^2/var >= 3.
-    # This happens when excesses have very low variance relative to mean.
-    sizer = CVaRSizer(_make_config(use_evt=True, min_bars=20, tail_threshold_pct=10.0, lookback_bars=200))
+def test_evt_fallback_on_insufficient_tail() -> None:
+    """When there are too few tail observations, should fall back to historical."""
+    # With correct MoM formula xi = 0.5*(1 - mean^2/var), xi is bounded above
+    # by 0.5 for valid data, so the xi >= 1.0 guard is a numerical safety net.
+    # Test insufficient tail fallback: fewer than 10 tail obs → skip EVT.
+    # tail_threshold_pct=2.0 with 200 returns → only 4 tail obs → falls back
+    sizer = CVaRSizer(_make_config(use_evt=True, min_bars=20, tail_threshold_pct=2.0, lookback_bars=200))
     rng = np.random.default_rng(42)
 
-    # Construct returns: mostly near zero, with a tight cluster of losses near a constant value
-    base = rng.normal(0.0, 0.001, 180)
-    # Tail losses that are nearly constant (low variance in excess) to force xi >= 1
-    tail = np.full(20, -0.10) + rng.normal(0.0, 0.0001, 20)
-    returns = np.concatenate([base, tail])
-    rng.shuffle(returns)
+    returns = rng.normal(0.0, 0.01, 200)
     _feed_returns(sizer, returns.tolist())
 
     result = sizer.compute_cvar()
     assert result is not None
-    assert result.method == "historical"  # fell back from EVT
+    assert result.method == "historical"  # fell back from EVT due to n_tail < 10
 
 
 @pytest.mark.unit

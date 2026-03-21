@@ -198,6 +198,10 @@ All notable changes to this project will be documented in this file.
 
 - **Ulcer Index misses initial drawdown**: `np.cumprod(1 + returns)` started at `1 + returns[0]` instead of 1.0, so the running peak began at the post-first-return level rather than the initial equity. A strategy that drops on the first bar and never recovers would show a smaller Ulcer Index than it should. Fixed by prepending 1.0 to the equity series.
 
+- **GPD tail index (xi) estimator sign inverted — underestimates heavy tail risk**: Method-of-moments formula computed `xi = 0.5 * (mean²/var - 1)` but the correct GPD formula is `xi = 0.5 * (1 - mean²/var)`. The sign inversion classified heavy-tailed distributions (true xi > 0) as light/bounded tails (xi < 0), systematically underestimating tail risk and allowing larger positions during exactly the conditions that warrant maximum caution.
+
+- **CPPI floor decay applied after ratchet creates call-order-dependent exposure**: Floor ratcheted up with equity growth, then decayed. On the first `update_equity()` call of the day, the floor ratcheted up then decayed; on subsequent calls at the same equity, it ratcheted up with no decay. This produced different exposure fractions depending on call order. Fixed to apply decay before ratchet so the result is deterministic.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

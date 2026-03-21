@@ -170,8 +170,9 @@ class CVaRSizer:
             return None
 
         # Method-of-moments estimators for GPD(xi, sigma)
+        # From GPD mean/var: mean^2/var = (1-2*xi), so xi = 0.5*(1 - ratio)
         ratio = mean_excess**2 / var_excess
-        xi_hat = 0.5 * (ratio - 1.0)
+        xi_hat = 0.5 * (1.0 - ratio)
         sigma_hat = 0.5 * mean_excess * (ratio + 1.0)
 
         if xi_hat >= 1.0:

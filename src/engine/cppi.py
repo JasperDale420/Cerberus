@@ -71,15 +71,16 @@ class CPPISizer:
         # Update high water mark
         self._high_water_mark = max(self._high_water_mark, equity)
 
-        # Ratchet floor up with equity growth
-        self._floor = max(self._floor, equity * (1.0 - self._config.max_drawdown))
-
-        # Apply floor decay once per day (config documents it as "Daily floor decay rate")
+        # Apply floor decay once per day BEFORE ratchet, so that
+        # ratchet-then-decay doesn't create call-order-dependent floors
         if self._config.floor_decay_rate > 0:
             today = date.today()
             if self._last_decay_date != today:
                 self._floor = self._floor * (1.0 - self._config.floor_decay_rate)
                 self._last_decay_date = today
+
+        # Ratchet floor up with equity growth
+        self._floor = max(self._floor, equity * (1.0 - self._config.max_drawdown))
 
         # Compute exposure
         self._exposure_fraction = self._compute_exposure(equity, self._floor)
