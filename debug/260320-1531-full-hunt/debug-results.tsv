@@ -1,0 +1,128 @@
+iteration	type	hypothesis	result	severity	location	description
+0	baseline	-	-	-	-	1272 tests pass, 6 lint errors, 10 warnings
+1	hypothesis	CVaR sizer divides by zero max_acceptable_cvar	confirmed	HIGH	cvar_sizer.py:244	Division by _max_acceptable_cvar without zero guard in logging + sizing
+2	hypothesis	Silent swallow of invalid strategy configs	confirmed	HIGH	config_models.py:99	except Exception: pass hides malformed YAML strategy activation configs
+3	hypothesis	is True/is False identity comparisons are bugs	disproven	-	strategy_engine.py:170, flow_alpha.py:473	Intentional: granger_causal is tri-state, hard_stop_fn uses strict identity
+4	hypothesis	reconcile_task crashes silently	confirmed	MEDIUM	main.py:403, execution.py:2401	reconcile_loop() had no try/except — unhandled exception kills reconciliation
+5	hypothesis	Empty equity curve crashes backtest report	confirmed	MEDIUM	backtest_report.py:309	equities[0] without bounds check in drawdown calculation
+6	hypothesis	Extraneous f-prefix lint errors	confirmed	LOW	scripts/run_wfo_robust.py	6 f-strings without placeholders
+7	hypothesis	time_utils fail-open is silent	confirmed	MEDIUM	time_utils.py:79,131	except Exception returns True with no logging — invisible timezone failures
+8	hypothesis	ledger_adapter return-None violates policy	disproven	-	ledger_adapter.py:94	Appropriate for non-critical audit trail; warning already logged
+9	hypothesis	np.log on non-positive prices in GARCH	confirmed	MEDIUM	volatility.py:123	np.log(prices) with zero/negative prices produces nan/inf RuntimeWarning
+10	hypothesis	Stream dispatch silently swallows callback errors	confirmed	HIGH	data/client.py:729	except Exception: pass in _dispatch_event — bar/trade/quote callbacks fail invisibly
+11	hypothesis	Granger test failure is silent	confirmed	LOW	flow_alpha.py:264	except Exception: pass on Granger causality test — no visibility into failures
+12	hypothesis	ORB_V2 stop on wrong side for SHORT	disproven	-	orb_v2.py:254	Agent confused direction — range_low + adj IS above entry for short breakouts
+13	hypothesis	RSI_bounce trend filter is inverted	disproven	-	rsi_bounce.py:387-390	Correctly prevents counter-trend trades: no shorting overbought in uptrends
+14	hypothesis	trend_rider_pro SELL disabled is a bug	disproven	-	trend_rider_pro.py:239	Intentional: 2025 analysis showed negative edge on short signals
+15	discovery	flow_alpha GARCH normalization uses multiply instead of divide	confirmed	MEDIUM	flow_alpha.py:135	flow_zscore * cond_vol (0.015) ≈ 0 vs fallback /3.0 — fixed: divide by (cond_vol * 200)
+16	hypothesis	momentum_fade velocity division by zero	confirmed	LOW	momentum_fade.py:209	Division by closes_list[-1-velocity_lookback] without zero guard
+17	hypothesis	market state meta update silent	confirmed	MEDIUM	market.py:184	except Exception: pass on trend_score/regime_tags meta update
+18	hypothesis	set_risk_mode failure silent	confirmed	HIGH	market.py:222	except Exception: pass on safety-critical risk mode change
+19	hypothesis	strategy_engine on_error callback silent	disproven	-	strategy_engine.py:207	Defensive: error callback failure is non-critical, main error IS logged
+20	hypothesis	DB buffer metrics failure silent	confirmed	MEDIUM	execution.py:1192	except Exception: pass on buffer len/max prevents trading halt detection
+21	hypothesis	WebSocket close silent	disproven	-	data/client.py:563	Standard cleanup pattern — connection may already be dead
+22	hypothesis	scanner _is_finite returns False silently	disproven	-	scanner/validation.py:21	Correct validation predicate behavior for non-numeric inputs
+23	hypothesis	persist_feature_snapshot positional args vs keyword-only	confirmed	HIGH	pipeline.py:434	TypeError at runtime — function requires keyword-only args
+24	hypothesis	gex_data uninitialized on fetch failure	confirmed	HIGH	pipeline.py:346-391	NameError when fetch_flow or fetch_gex raises exception
+25	hypothesis	scan removal loop KeyError on missing symbol	confirmed	MEDIUM	execution.py:1744	Direct dict access without existence check crashes entire removal loop
+26	hypothesis	gap_fill division by (1+gap_pct) too loose guard	disproven	-	gap_fill.py:136	Guard is adequate — extreme values still rejected by downstream checks
+27	hypothesis	momentum_fade trend filter inverted	disproven	-	momentum_fade.py:351-354	Correct: prevents WITH-trend trades, keeps counter-trend fades only
+28	hypothesis	CVaR GPD denom near-zero	disproven	-	cvar_sizer.py:207	isfinite check on line 210 catches extreme values
+29	hypothesis	execution.py symbol_states KeyError on signal	disproven	-	execution.py:953	Signals always generated from within bar loop where symbol exists
+30	hypothesis	fill data parse failure silent	confirmed	MEDIUM	execution.py:1557	Unparseable fill qty/price silently dropped — no logging
+31	hypothesis	momentum_continuation non-exclusive if	disproven	-	momentum_continuation.py:174-182	is_uptrend/is_downtrend are mutually exclusive (EMA crossover)
+32	hypothesis	NaN propagation in gap_pct	disproven	-	pipeline.py:131	Fallback is 0.0 from calculator, not NaN
+33	hypothesis	assert in production position_manager	disproven	-	position_manager.py:396,493	Acceptable defensive assertions — Python rarely run with -O
+34	hypothesis	partial exit counter increments on zero qty	disproven	-	position_manager.py:515,750	Counter incremented on fill, not on intent creation — zero-qty intent never fires
+35	hypothesis	position limit bypass via position increase	disproven	-	risk.py:181	Intentional: adding to existing position doesn't open NEW position; notional limits apply separately
+36	hypothesis	CVaR VaR index off-by-one small samples	disproven	-	cvar_sizer.py:114	Standard conservative approach: worst observation used for small samples
+37	hypothesis	Kelly edge case asymmetry robust vs non-robust	disproven	-	kelly.py:269-273	Both paths clamped to max_equity_pct on line 288 — final output identical
+38	hypothesis	scheduler hardcodes --mode live	confirmed	HIGH	scheduler.py:58	Spawns daily sessions in LIVE mode regardless of environment — safety violation
+39	hypothesis	stage3 code injection	disproven	-	agent/stage3.py:421	Gated by CERBERUS_STAGE3_APPROVED env var; proposals validated via backtest
+40	hypothesis	scheduler raw structlog import	confirmed	LOW	scheduler.py:10	Uses structlog.get_logger() directly instead of core/logger.get_logger()
+41	hypothesis	fill-before-pending-entry race	disproven	-	execution.py:1046	asyncio single-threaded — order submission and fill processing are sequential
+42	hypothesis	band_tolerance double-percentage bug	disproven	-	rsi_bounce.py:417	param_spaces.py confirms band_tolerance is % of band width — /100.0 is correct conversion
+43	hypothesis	strategy_engine list modification during iteration	disproven	-	strategy_engine.py:171	Loop iterates allowed (set), not active (list) — modifying active while iterating allowed is safe
+44	hypothesis	fill["symbol"] missing key	disproven	-	execution.py:1242	Broker fills always have symbol; crashing on corrupt data is correct per error handling philosophy
+45	hypothesis	float precision in fill dedup key	disproven	-	execution.py:1257	Same fill replayed from JSON produces identical floats; different prices = different fills
+46	hypothesis	base.py hard_stop parse failure silent	confirmed	MEDIUM	base.py:76	except (ValueError, AttributeError): pass — malformed hard_stop silently ignored, strategy keeps trading
+47	hypothesis	monte_carlo empty pnls crashes	confirmed	MEDIUM	monte_carlo.py:68	equity_curve[-1] IndexError when trade_pnls is empty (0 trades from backtest)
+48	hypothesis	walk_forward division by zero	disproven	-	walk_forward.py:43	len(expectancies) >= 2 guaranteed by guard on line 37
+49	hypothesis	vwap_reversion VWAP scope mismatch	disproven	-	vwap_reversion.py:128	All-bars VWAP is fallback only; broker VWAP used when available; P1 fix comment confirms intentional
+50	hypothesis	diagnostics.py division by zero	disproven	-	diagnostics.py:83,107,126	n >= 1 guaranteed by defaultdict/append pattern; line 83 has n >= 3 guard
+51	hypothesis	optimizer.py uninitialized return	disproven	-	optimizer.py:45-79	best_params=None and best_metrics={} handled correctly with proper return
+52	hypothesis	iv_surface type conversion crash	disproven	-	iv_surface.py:118	Data contract from pipeline guarantees numeric delta/iv values
+53	hypothesis	risk.py timezone fallback silent	disproven	-	risk.py:102	Intentional resilient fallback to default timezone — better than crashing
+54	hypothesis	agent/core.py config path fallback silent	disproven	-	core.py:49	Best-effort path resolution with raw fallback — non-critical
+55	hypothesis	optuna_harness silent passes	disproven	-	optuna_harness.py:454,984,1041	All in offline analytics (logger reset, DSR display, sensitivity report) — acceptable
+56	hypothesis	position_manager holding_period silent	confirmed	LOW	position_manager.py:446	except Exception: pass on holding period calculation — type mismatch invisible
+57	hypothesis	gap_pct NaN propagation	disproven	-	pipeline.py:131	tech_result provides valid default; local computation is an override only
+58	hypothesis	client.py prior day stats IndexError	disproven	-	client.py:437	bars[-2] correctly returns last complete day bar when len >= 2
+59	hypothesis	replay_provider unbounded cache	disproven	-	replay_provider.py:36	Backtest-only class with finite lifetime; not a production concern
+60	hypothesis	entropy.py division by zero	disproven	-	entropy.py:156	pe_order defaults to 5; log(factorial(5)) = 4.79; guard is dead code but harmless
+61	hypothesis	pipeline.py local_fail uninitialized	disproven	-	pipeline.py:335	local_fail = 0 initialized on line 335 before try block
+62	hypothesis	gex.py numerical instability	disproven	-	gex.py:79	current_price > 0 check on line 64; s_sq multiplication is correct GEX formula
+63	hypothesis	main.py timezone conversion silent	disproven	-	main.py:444	Intentional fallback to wall clock time; timezone conversion is best-effort
+64	hypothesis	atlas_reader stale cache	disproven	-	atlas_reader.py:210	Cache cleared daily on date boundary; multi-day backtests restart cache correctly
+65	hypothesis	NoopOrderExecutor cancel_all returns None	confirmed	LOW	orders.py:732	Returns None instead of int like other executors — LSP violation; fixed to return 0
+66	hypothesis	HRP empty multipliers IndexError	disproven	-	risk.py:575	Guard on line 575 returns 1.0 for empty dict; sorted_ranks[-1] only reached when non-empty
+67	hypothesis	position_manager partial exit race	disproven	-	position_manager.py:724	Single-threaded (asyncio); bounds check on line 724 is reliable
+68	hypothesis	HRP cluster variance div-by-zero	disproven	-	hrp.py:238	np.maximum(diag, 1e-10) guarantees inv_diag.sum() > 0
+69	hypothesis	strategy_engine hard stop list mutation	disproven	-	strategy_engine.py:171	Iterates allowed (set), modifies active (list) — safe; already disproven iteration 43
+70	hypothesis	CVaR GPD formula invalid for xi >= 1	confirmed	HIGH	cvar_sizer.py:207	GPD mean undefined for xi >= 1; denom = 1-xi flips sign producing positive CVaR (nonsensical)
+71	hypothesis	Kelly returns 1.0 with 0 losses	disproven	-	kelly.py:111	Intentional; clamped by max_equity_pct (0.30) and fractional_kelly (0.25) = max 7.5%
+72	hypothesis	Kelly bootstrap p = wins/n off-by-one	disproven	-	kelly.py:196	sample > 0 and sample <= 0 are exhaustive; len(wins) + len(losses) = n always
+73	hypothesis	CPPI floor decay breaks invariant	disproven	-	cppi.py:77	Intentional relaxing CPPI variant; floor_decay_rate defaults to 0 (disabled)
+74	hypothesis	HRP clamp loop diverges	disproven	-	hrp.py:272	clamped_any IS set on lines 272/275; final normalization on 294-297 ensures sum=1.0
+75	hypothesis	Kelly robust epsilon unit confusion	disproven	-	kelly.py:138	Heuristic approximation is intentional; epsilon scaling of payoffs is a common simplification
+76	hypothesis	Adaptive sizer correlation cascading	disproven	-	adaptive_sizer.py:220	Design choice with explicit cap; not a code bug
+77	hypothesis	trend_rider_pro pullback abs() loses direction	disproven	-	trend_rider_pro.py:227	SELL side disabled; abs() correctly measures distance; direction via EMA alignment
+78	hypothesis	mean_reversion_pro hardcoded VWAP thresholds ignore OU	disproven	-	mean_reversion_pro.py:206	0.003/0.015 are scoring range params; OU scaling adjusts _detect_side thresholds
+79	hypothesis	pair_trading_v2 stationarity factor arbitrary	disproven	-	pair_trading_v2.py:232	Crude heuristic is confluence score boost; real gate is _coint_monitors.is_valid
+80	hypothesis	mean_reversion_pro GARCH z-score vs raw % threshold	confirmed	HIGH	mean_reversion_pro.py:460	conditional_zscore changes units to sigma; 0.003 threshold in raw % bypassed entirely
+81	hypothesis	Stop sanity >= instead of > too strict	disproven	-	mean_reversion_pro.py:510	Correct: rejects zero-room trades where stop == entry price
+82	hypothesis	trend_rider_pro stop recomputation discards swings	disproven	-	trend_rider_pro.py:342	Swing structure preserved; GARCH/ATR only affect fallback and minimum distance
+83	hypothesis	Antifragile overrides return 0.0 instead of base	disproven	-	risk.py:283	Intentional replacement for non-linear convexity classes; override IS the multiplier
+84	hypothesis	Realized PnL never includes exit commission	disproven	-	position_manager.py:506	Gross PnL on Position is standard; net computed at ClosedTradeInfo (line 453)
+85	hypothesis	DB halt bypass via same-bar signal	disproven	-	execution.py:1178	asyncio single-threaded; order never reaches broker even if risk approved
+86	hypothesis	Trailing stop bypass on entry bar	disproven	-	position_manager.py:634	Entry bar returns at line 634-635 BEFORE any trailing logic
+87	hypothesis	Reconciliation loses position exit state	confirmed	MEDIUM	execution.py:2097	New Position object lost stop_price, trailing state, partial exits; fixed to mutate existing
+88	hypothesis	Daily loss gate ignores unrealized PnL	disproven	-	risk.py:197	Design choice; separate position/notional limits constrain exposure
+89	hypothesis	BOCPD evidence underflow kills posterior	confirmed	LOW	bocpd.py:80	evidence=0 from underflow → posterior stays all-zeros permanently; fixed with changepoint reset
+90	hypothesis	Vol z-score is ratio not z-score	disproven	-	regime.py:469	Ratio thresholds (0.7/1.5/3.0) intentional and empirically calibrated
+91	hypothesis	GEX formula uses S² not S	disproven	-	gex.py:79	Dollar gamma convention; provider-dependent units; relative comparisons unaffected
+92	hypothesis	VRP IV-RV time scale mismatch	disproven	-	vrp.py:49	Design simplification for intraday regime classification
+93	hypothesis	Hurst trend classification inverted	disproven	-	regime.py:451	Agent wrong: H>0.5=persistent/trending; code correctly classifies
+94	hypothesis	Pipeline lookahead bias	disproven	-	pipeline.py:228	as_of is bar close time; data IS known at signal generation
+95	hypothesis	GEX gamma flip floating point	disproven	-	gex.py:224	Negligible practical impact for regime classification
+96	hypothesis	BOCPD hysteresis too weak	disproven	-	regime.py:313	Intentional stability mechanism to prevent excessive regime flipping
+97	hypothesis	Kelly non-robust overwrites raw_kelly for logging	confirmed	MEDIUM	kelly.py:270	Logging overwrite feeds into fractional scaling; all-winners gets smaller fraction than near-all-winners
+98	hypothesis	CVaR GPD Expected Shortfall sign error	uncertain	-	cvar_sizer.py:212	Complex sign convention; code is conservative direction (may underestimate risk magnitude)
+99	hypothesis	CPPI floor decay cancels ratchet	disproven	-	cppi.py:73	Design choice; decay defaults to 0; intentional relaxing CPPI variant
+100	hypothesis	max(1,...) prevents compound reduction	disproven	-	risk.py:454	Intentional; regime check provides full rejection mechanism
+101	hypothesis	HRP receives dollar PnL + duplicate dates	confirmed	MEDIUM	hrp.py:58	Same-day trades append separate entries instead of accumulating; corrupts matrix alignment
+102	hypothesis	Position gate bypass for existing positions	disproven	-	risk.py:181	Intentional: adding to existing doesn't open NEW position (iteration 35)
+103	hypothesis	classify_trend cum_ret==0 → DOWN	confirmed	LOW	regime.py:455	Zero cumulative return classified as DOWN instead of FLAT when Hurst>=0.55
+104	hypothesis	Hurst exponent len(prices) vs len(returns)	disproven	-	regime.py:423	0.4% bias negligible vs 0.55 threshold
+105	hypothesis	Momentum crash std ddof=0	disproven	-	momentum_crash.py:183	0.8% difference at n=60, negligible
+106	hypothesis	Momentum crash self-referential z-score	disproven	-	momentum_crash.py:126	Include-before-compute needed: without it, constant history has zero std, breaking spike detection
+107	hypothesis	HMM max-vol state labeling	disproven	-	labeling.py:20	Intentional relative labeling; HMM separates by vol characteristics
+108	hypothesis	min_confidence rejects during warmup	disproven	-	strategy_engine.py:58	Correct: don't activate regime-gated strategies without regime confidence
+109	hypothesis	momentum_fade GARCH z-score vs raw confluence scoring	confirmed	MEDIUM	momentum_fade.py:374	Entry gate uses GARCH z-score (threshold 2.0) but confluence scores raw vwap_dist (threshold 0.008); mismatch
+110	hypothesis	ORB_V2 multiple triggers per range	disproven	-	orb_v2.py:323	breakout_fired flag prevents duplicate triggers
+111	hypothesis	RSI_Bounce asymmetric BB thresholds	disproven	-	rsi_bounce.py:415	Symmetric scoring and trend filter logic confirmed correct
+112	hypothesis	Flow_Alpha GARCH/threshold mismatch	disproven	-	flow_alpha.py	norm_flow clamped to [-1,1] regardless of normalization path; consistent
+113	hypothesis	Momentum_Continuation non-exclusive branches	disproven	-	momentum_continuation.py:124	0.1% EMA spread gate ensures mutual exclusivity
+114	hypothesis	Sortino ratio denominator uses negative count only	confirmed	HIGH	backtest_report.py:301	Divides by count of negative returns, not total; inflates downside deviation ~58%
+115	hypothesis	WFO train/test boundary overlap	confirmed	HIGH	optuna_harness.py:753	Train_end == test_start with inclusive dates leaks 1 day
+116	hypothesis	Fill model dead code in executor	confirmed	HIGH	executor.py:36	fill_model stored but never called; always uses _apply_slippage()
+117	hypothesis	GPD tail index shape parameter range	disproven	-	cvar_sizer.py	Already guarded with xi < 1 check (fixed earlier)
+118	hypothesis	Monte Carlo empty trades crash	disproven	-	analytics/monte_carlo.py	Already guarded with early return (fixed earlier)
+119	hypothesis	Walk-forward holdout contamination	disproven	-	optuna_harness.py	Holdout window is separate from train/test cycle
+120	hypothesis	WebSocket feed dispatch uses wrong feed names	confirmed	CRITICAL	client.py:711	Compares gateway names (stock_bars) vs short names (bars); REVERSE_FEED_MAP unused
+121	hypothesis	_parse_bars drops zero-volume bars via falsy or chain	confirmed	HIGH	calculator.py:244-248	or treats 0 as falsy; zero-volume bars silently dropped
+122	hypothesis	get_prior_day_stats off-by-one before market open	confirmed	HIGH	client.py:426-438	Unconditional bars[-2] returns 2-day-ago data when today's bar missing
+123	hypothesis	RollingRSI seeds with single observation	confirmed	MEDIUM	indicators.py:82-119	Seeds avg_gain/avg_loss with 1 value instead of SMA over full period
+124	hypothesis	RollingStd numerical instability	confirmed	MEDIUM	indicators.py:54-78	Naive running variance accumulates cancellation error over trading day
+125	hypothesis	Hurst exponent comment mismatch	confirmed	LOW	calculator.py:699	Comment says n/2 but code uses n; code is correct, comment is wrong
+126	hypothesis	replay_provider temporal ordering	disproven	-	replay_provider.py	Simple DB lookup with ORDER BY DESC LIMIT 1; correct

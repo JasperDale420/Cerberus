@@ -298,14 +298,17 @@ class BacktestReportCard:
                 m.sharpe_ratio = (mean_daily / std_daily) * math.sqrt(252)
 
         # Sortino ratio (annualized, only downside deviation)
-        downside_returns = [r for r in daily_returns if r < 0]
-        if downside_returns:
-            downside_var = sum(r**2 for r in downside_returns) / len(downside_returns)
-            downside_std = math.sqrt(downside_var) if downside_var > 0 else 0.0
+        # Downside deviation uses total observation count, not just negative count
+        downside_sum_sq = sum(r**2 for r in daily_returns if r < 0)
+        if downside_sum_sq > 0:
+            downside_var = downside_sum_sq / len(daily_returns)
+            downside_std = math.sqrt(downside_var)
             if downside_std > 0:
                 m.sortino_ratio = (mean_daily / downside_std) * math.sqrt(252)
 
         # Max drawdown (% of equity peak)
+        if not equities:
+            return
         peak = equities[0]
         max_dd = 0.0
         max_dd_duration = 0
@@ -368,11 +371,11 @@ class BacktestReportCard:
         if std_pnl > 0:
             m.trade_sharpe_ratio = (mean_pnl / std_pnl) * annualization
 
-        # Trade-level Sortino (downside deviation only)
-        downside = [p for p in pnls if p < 0]
-        if downside:
-            ds_var = sum(p**2 for p in downside) / len(downside)
-            ds_std = math.sqrt(ds_var) if ds_var > 0 else 0.0
+        # Trade-level Sortino (downside deviation uses total count)
+        downside_sq_sum = sum(p**2 for p in pnls if p < 0)
+        if downside_sq_sum > 0:
+            ds_var = downside_sq_sum / len(pnls)
+            ds_std = math.sqrt(ds_var)
             if ds_std > 0:
                 m.trade_sortino_ratio = (mean_pnl / ds_std) * annualization
 

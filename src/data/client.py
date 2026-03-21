@@ -428,13 +428,31 @@ class UnifiedDataClient:
         start = current_time - timedelta(days=7)
         result = self.get_historical_bars(symbol, start, current_time, timeframe="1Day")
         bars = result.get("bars", [])
-        if len(bars) < 2:
-            if bars:
-                bar = bars[0]
-                return (float(bar.get("h", 0)), float(bar.get("l", 0)), float(bar.get("c", 0)))
+        if not bars:
             return (0.0, 0.0, 0.0)
-        # Second-to-last bar is the last complete day
-        prior = bars[-2]
+
+        # Determine whether the last bar belongs to today (potentially incomplete)
+        today = current_time.date()
+        last_bar = bars[-1]
+        last_bar_ts = last_bar.get("t") or last_bar.get("timestamp")
+        last_bar_date = None
+        if last_bar_ts:
+            if isinstance(last_bar_ts, str):
+                from datetime import datetime as _dt
+
+                try:
+                    last_bar_date = _dt.fromisoformat(last_bar_ts.replace("Z", "+00:00")).date()
+                except (ValueError, TypeError):
+                    pass
+            elif hasattr(last_bar_ts, "date"):
+                last_bar_date = last_bar_ts.date()
+
+        if last_bar_date == today and len(bars) >= 2:
+            # Last bar is today (incomplete) — prior day is second-to-last
+            prior = bars[-2]
+        else:
+            # Last bar is a prior complete day (called before market open or no today bar)
+            prior = bars[-1]
         return (float(prior.get("h", 0)), float(prior.get("l", 0)), float(prior.get("c", 0)))
 
     def get_avg_daily_volume(self, symbol: str, end: datetime, lookback_days: int = 20) -> float:
@@ -707,6 +725,8 @@ class UnifiedDataClient:
 
     async def _dispatch_event(self, feed, payload, on_bar, on_quote, on_trade) -> None:
         """Dispatch a parsed event to the appropriate callback."""
+        # Reverse-map gateway feed names (e.g. "stock_bars") to short names ("bars")
+        feed = REVERSE_FEED_MAP.get(feed, feed)
         try:
             if feed == "bars" and on_bar:
                 bar = self._normalize_stream_bar(payload)
@@ -727,4 +747,4 @@ class UnifiedDataClient:
                 else:
                     on_trade(trade.symbol, trade)
         except Exception:
-            pass  # Don't crash the stream on callback errors
+            logger.error("dispatch_event_callback_failed", feed=feed, exc_info=True)

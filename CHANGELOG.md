@@ -6,6 +6,84 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **MetaLabeler missing symmetric GEX filter for shorts**: The GEX heuristic only blocked longs in deeply negative GEX but did not block shorts in deeply positive GEX (where dealer hedging pins price up). Added the symmetric check and extracted the threshold into a named constant.
+
+- **CVaR sizer division by zero**: `_calc_multiplier()` could crash with `ZeroDivisionError` if `max_acceptable_cvar` was configured as 0. Added zero guard on both the sizing calculation and the threshold-exceeded logging.
+
+- **Silent swallow of invalid strategy activation configs**: `build_activation_policies_from_config()` caught all exceptions with bare `pass`, hiding malformed YAML. Now logs warnings with `exc_info` for both invalid configs and unrecognized regime enum values.
+
+- **reconcile_loop crashes silently**: If `reconcile_broker_state()` threw an unhandled exception, the entire reconciliation task died with no logging or restart. Added try/except with error logging inside the loop body.
+
+- **Empty equity curve crashes backtest report**: `_compute_equity_metrics()` accessed `equities[0]` without checking if the list was empty. Added early return guard.
+
+- **GARCH volatility log of non-positive prices**: `volatility.py` passed raw prices to `np.log()` without filtering zero/negative values, producing `RuntimeWarning: invalid value encountered in log`. Now filters non-positive prices before computing log returns.
+
+- **Stream dispatch silently swallows callback errors**: `_dispatch_event()` in `data/client.py` caught all callback exceptions with bare `pass`. Bar/trade/quote processing failures were completely invisible. Now logs errors with `exc_info`.
+
+- **Silent fail-open in time window checks**: `in_trading_window()` and `in_time_window_str()` returned `True` on exceptions with no logging. Timezone failures were invisible to operators. Added warning-level logging.
+
+- **Granger causality test failure silent**: `flow_alpha.py` swallowed Granger test exceptions with bare `pass`. Added debug-level logging for visibility.
+
+- **flow_alpha GARCH normalization direction**: `flow_zscore * garch_cond_vol` nearly zeroed out the flow signal (cond_vol ≈ 0.015). Changed to divide-based normalization (`flow_zscore / (cond_vol * 200)`) matching GARCH standardized residuals convention and aligning with the `/3.0` fallback at typical volatility.
+
+- **momentum_fade velocity division by zero**: `_compute_exhaustion()` divided by `closes_list[-1 - velocity_lookback]` without a zero guard. Added early return if base price is zero.
+
+- **Market state meta update silent failure**: `MarketStateManager.update()` swallowed exceptions when writing `trend_score` and `regime_tags` to `state.meta` with bare `pass`. Added warning-level logging.
+
+- **Risk mode set failure silent**: `set_risk_mode()` swallowed exceptions with bare `pass`. Since this is called to halt trading on risk breaches, a silent failure could allow trading to continue when it should be stopped. Added error-level logging.
+
+- **DB buffer metrics failure silent**: `_check_db_trading_halt()` swallowed exceptions when reading `write_buffer_len()`/`write_buffer_max()`, leaving metrics at 0. This prevented the trading halt check from triggering during actual DB degradation. Added warning-level logging.
+
+- **Feature snapshot persist_feature_snapshot() called with positional args**: `pipeline.py` called `persist_feature_snapshot(feat, now)` but the function signature uses keyword-only args (`*, features, as_of_ts`). This would raise `TypeError` at runtime. Fixed to use keyword arguments.
+
+- **gex_data uninitialized on fetch failure**: If `fetch_flow()` or `fetch_gex()` raised an exception, `gex_data` was never assigned but referenced later, causing `NameError`. Added `gex_data = []` to the exception handler.
+
+- **Scan removal loop crashes on missing symbol**: `_process_scan_removals()` accessed `self.symbol_states[sym]` directly without checking if the symbol exists, causing `KeyError` and breaking cleanup of remaining symbols. Added existence check.
+
+- **Fill data parse failure silent**: When broker fill events couldn't be parsed to float (qty/price), the fill was silently dropped with no logging, causing local position tracking to diverge from broker state. Added warning-level logging.
+
+- **Scheduler hardcodes `--mode live`**: `CerberusScheduler._run_daily_session()` spawned the trading subprocess with `--mode live` regardless of config. Changed to read mode from config with `paper` as default, matching the safety invariant that paper mode is always the default.
+
+- **Scheduler uses raw structlog instead of central logger**: `scheduler.py` imported `structlog.get_logger()` directly instead of using `src.core.logger.get_logger()`, bypassing the central logging configuration (JSON formatting, file rotation).
+
+- **Hard stop time parse failure silent**: `BaseStrategy.is_past_hard_stop()` silently returned `False` if the configured hard_stop_time was malformed, allowing strategies to trade past their safety cutoff. Added warning-level logging on parse failure.
+
+- **Monte Carlo simulation crashes on empty trade list**: `run_monte_carlo()` accessed `equity_curve[-1]` without checking for empty input, crashing with `IndexError` when backtest produces 0 trades. Added early return with neutral result.
+
+- **Holding period calculation failure silent**: `PositionManager._build_closed_trade()` silently swallowed errors computing holding period, making it impossible to diagnose timezone/type mismatches. Added debug-level logging.
+
+- **CVaR GPD formula invalid for tail index >= 1.0**: The GPD-based CVaR formula divides by `(1 - xi)`, which flips sign when `xi >= 1`, producing positive CVaR (nonsensical "expected profit in tail"). The GPD mean is undefined for `xi >= 1`. Added guard to reject GPD results in this case and fall back to empirical CVaR.
+
+- **NoopOrderExecutor.cancel_all_for_symbol() returns None instead of int**: All other executor implementations (`OrderExecutor`, `GatewayOrderExecutor`, `BacktestExecutor`) return `int`, but `NoopOrderExecutor` returned `None`. Fixed to return `0` for LSP compliance.
+
+- **Mean reversion GARCH z-score vs raw % threshold mismatch**: `generate_signal()` converted VWAP distance to a GARCH conditional z-score (sigma units) then compared it against `vwap_dist_threshold` (raw %, default 0.003). Any z-score above 0.003 sigma trivially passes, effectively disabling the VWAP distance gate when GARCH is active. Fixed to use raw VWAP distance for direction detection; GARCH influence flows through the adaptive threshold engine instead.
+
+- **Position reconciliation destroys exit management state**: `_reconcile_single_position()` created a new Position object preserving only 8 fields, losing stop_price, trailing stop state, partial exit tracking, and open_risk. After reconciliation, positions briefly had no stop protection and trailing stops reset to current price instead of historical high water mark. Fixed to mutate the existing position in-place when the side matches, preserving all exit management state.
+
+- **BOCPD posterior underflow permanently kills changepoint detection**: If numerical underflow caused `evidence` to reach zero during Bayesian Online Changepoint Detection, the posterior distribution remained all-zeros permanently — BOCPD could never recover. Added reset to changepoint prior when evidence drops below 1e-300.
+
+- **Kelly non-robust mode overwrites raw fraction for logging**: In the non-robust path, `raw_kelly` was overwritten with `max_equity_pct` or `min_equity_pct` for "logging" purposes, but the overwritten value fed into the actual fractional Kelly scaling. This caused all-winners to get a *smaller* position fraction than near-all-winners (non-monotonic). Fixed to use a separate variable for logging.
+
+- **HRP same-day trades create duplicate date entries**: When multiple trades completed on the same day for the same strategy, `record_daily_return()` appended separate entries instead of accumulating into a single daily return. This corrupted the return matrix alignment used for correlation computation. Fixed to sum same-day PnL.
+
+- **Trend regime classifies zero cumulative return as DOWN**: `_classify_trend()` used `UP if cum_ret > 0 else DOWN`, meaning exactly zero cumulative return was classified as DOWN when Hurst indicated trending. Fixed to return FLAT when cum_ret is zero.
+
+- **Momentum fade GARCH z-score / confluence scoring mismatch**: Entry gate correctly used GARCH conditional z-score (threshold 2.0 sigma), but the confluence scorer always scored using raw VWAP distance (threshold 0.008%). When GARCH was active with low vol, statistically significant setups (z=2.5) with small raw deviation (0.5%) scored zero on the heaviest-weighted factor (0.25 weight), suppressing valid signals. Fixed to use GARCH z-score in confluence scoring when GARCH is active.
+
+- **Sortino ratio denominator uses wrong count**: Both daily and trade-level Sortino ratio calculations divided the sum of squared negative returns by the count of negative returns only, instead of the total observation count. This inflated downside deviation by ~58% (at 40% negative rate), making strategies appear less risky than they actually are. Fixed to divide by total count per the standard Sortino formula.
+
+- **Walk-forward optimization train/test boundary overlap**: In both rolling and anchored WFO modes, the train and test windows shared the same boundary date. With inclusive date filtering, this leaked 1 day of test data into the training window, biasing parameter selection. Fixed by offsetting boundaries by 1 day.
+
+- **Fill model dead code in backtest executor**: The `fill_model` parameter (supporting volume-aware slippage) was accepted and stored but never called — the executor always fell back to simple BPS-based `_apply_slippage()`. This meant volume-aware fill simulation had zero effect on backtest results despite being configured. Integrated `fill_model.compute_fill()` into the order processing loop.
+
+- **WebSocket stream dispatch silently drops all events**: `_dispatch_event()` compared the raw gateway feed name (e.g. `"stock_bars"`) against short names (`"bars"`), so the condition never matched and all WebSocket bar/quote/trade callbacks were silently never called. `REVERSE_FEED_MAP` existed to solve this but was never used. Applied the reverse mapping before dispatch.
+
+- **Bar parser drops zero-volume bars**: `_parse_bars()` used Python `or` chaining to pick between dict key names, but `or` treats `0` as falsy. A legitimate zero-volume bar (common in premarket/extended hours) would fall through all alternatives, return `None`, and get silently discarded. This corrupted volume-weighted indicators (VWAP) and bar counts. Replaced with explicit `is not None` checks.
+
+- **Prior day stats returns wrong day before market open**: `get_prior_day_stats()` unconditionally took `bars[-2]` assuming `bars[-1]` was today's incomplete bar. Before market open, today's bar doesn't exist yet, so `bars[-1]` is yesterday's complete bar and `bars[-2]` is two days ago. This produced incorrect gap percentages for gap_fill and ORB strategies during premarket. Now checks whether the last bar's date matches today.
+
+- **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
+
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.
 
 - **Dev dependencies not installed in venv**: The Cerberus virtualenv was missing pytest and other dev extras, causing `uv run pytest` to fall back to the system conda pytest which lacked `filterpy`. Running `uv sync --extra dev` resolves this; all 1271 tests now pass.

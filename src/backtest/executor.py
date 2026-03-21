@@ -287,27 +287,27 @@ class SimulatedOrderExecutor:
             if parent_id and parent_id in filled_parent_ids:
                 continue
 
-            fill_price = 0.0
+            base_price = 0.0
             is_filled = False
 
             if order["type"] == "market":
-                fill_price = self._apply_slippage(open_p, order["side"])
+                base_price = open_p
                 is_filled = True
             elif order["type"] == "limit":
                 limit = float(order["limit_price"])
                 if order["side"] == "buy" and low_p <= limit:
-                    fill_price = self._apply_slippage(min(limit, open_p), order["side"])
+                    base_price = min(limit, open_p)
                     is_filled = True
                 elif order["side"] == "sell" and high_p >= limit:
-                    fill_price = self._apply_slippage(max(limit, open_p), order["side"])
+                    base_price = max(limit, open_p)
                     is_filled = True
             elif order["type"] == "stop":
                 stop = float(order.get("stop_price", 0.0))
                 if order["side"] == "sell" and low_p <= stop:
-                    fill_price = self._apply_slippage(min(stop, open_p), order["side"])
+                    base_price = min(stop, open_p)
                     is_filled = True
                 elif order["side"] == "buy" and high_p >= stop:
-                    fill_price = self._apply_slippage(max(stop, open_p), order["side"])
+                    base_price = max(stop, open_p)
                     is_filled = True
 
             if is_filled:
@@ -318,10 +318,25 @@ class SimulatedOrderExecutor:
                     filled_parent_ids.add(parent_id)
 
                 fill_qty = float(order["qty"])
-                fill_val = fill_qty * fill_price
 
-                # Deduct commission from account
-                self._deduct_commission(fill_qty)
+                # Apply fill model (volume-aware) or fall back to simple BPS slippage
+                if self.fill_model is not None:
+                    result = self.fill_model.compute_fill(
+                        order_side=order["side"],
+                        order_qty=int(fill_qty),
+                        order_price=base_price,
+                        order_type=order["type"],
+                        bar=bar,
+                    )
+                    fill_price = result.fill_price
+                    # Deduct fill-model commission from account
+                    if result.commission > 0.0 and self.account is not None and hasattr(self.account, "cash"):
+                        self.account.cash -= result.commission
+                else:
+                    fill_price = self._apply_slippage(base_price, order["side"])
+                    self._deduct_commission(fill_qty)
+
+                fill_val = fill_qty * fill_price
 
                 if self.account is not None:
                     if hasattr(self.account, "cash") and hasattr(self.account, "positions_qty"):

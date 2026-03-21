@@ -33,7 +33,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -751,12 +751,14 @@ class WalkForwardOptimizer:
 
             while train_start + relativedelta(months=self.min_train_months + self.test_months) <= usable_end:
                 train_end = train_start + relativedelta(months=self.min_train_months)
-                test_end = train_end + relativedelta(months=self.test_months)
+                # Test starts day AFTER train_end to prevent 1-day lookahead leak
+                test_start_dt = train_end + timedelta(days=1)
+                test_end = test_start_dt + relativedelta(months=self.test_months)
                 windows.append(
                     {
                         "train_start": train_start.strftime("%Y-%m-%d"),
                         "train_end": train_end.strftime("%Y-%m-%d"),
-                        "test_start": train_end.strftime("%Y-%m-%d"),
+                        "test_start": test_start_dt.strftime("%Y-%m-%d"),
                         "test_end": test_end.strftime("%Y-%m-%d"),
                     }
                 )
@@ -768,10 +770,12 @@ class WalkForwardOptimizer:
 
             while test_start + relativedelta(months=self.test_months) <= usable_end:
                 test_end = test_start + relativedelta(months=self.test_months)
+                # train_end is day BEFORE test_start to prevent 1-day lookahead leak
+                train_end_dt = test_start - timedelta(days=1)
                 windows.append(
                     {
                         "train_start": train_start.strftime("%Y-%m-%d"),
-                        "train_end": test_start.strftime("%Y-%m-%d"),
+                        "train_end": train_end_dt.strftime("%Y-%m-%d"),
                         "test_start": test_start.strftime("%Y-%m-%d"),
                         "test_end": test_end.strftime("%Y-%m-%d"),
                     }

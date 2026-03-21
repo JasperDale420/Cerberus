@@ -223,6 +223,14 @@ class FeatureCalculator:
             return None
         return float(v)
 
+    @staticmethod
+    def _first_not_none(*values: Any) -> Any:
+        """Return the first value that is not None (0 and 0.0 are valid)."""
+        for v in values:
+            if v is not None:
+                return v
+        return None
+
     def _parse_bars(self, bars_data: List[Any]) -> List[tuple]:
         rows = []
         for b in bars_data:
@@ -241,12 +249,13 @@ class FeatureCalculator:
                 continue
 
             # 2. Parse OHLCV (handle full names or shorthand)
-            o = self._to_float(bd.get("open") or bd.get("o") or getattr(b, "open", None) or getattr(b, "o", None))
-            h = self._to_float(bd.get("high") or bd.get("h") or getattr(b, "high", None) or getattr(b, "h", None))
-            low_val = self._to_float(bd.get("low") or bd.get("l") or getattr(b, "low", None) or getattr(b, "l", None))
-            c = self._to_float(bd.get("close") or bd.get("c") or getattr(b, "close", None) or getattr(b, "c", None))
-            v = self._to_float(bd.get("volume") or bd.get("v") or getattr(b, "volume", None) or getattr(b, "v", None))
-            vwap = self._to_float(bd.get("vwap") or getattr(b, "vwap", None))
+            fnn = self._first_not_none
+            o = self._to_float(fnn(bd.get("open"), bd.get("o"), getattr(b, "open", None), getattr(b, "o", None)))
+            h = self._to_float(fnn(bd.get("high"), bd.get("h"), getattr(b, "high", None), getattr(b, "h", None)))
+            low_val = self._to_float(fnn(bd.get("low"), bd.get("l"), getattr(b, "low", None), getattr(b, "l", None)))
+            c = self._to_float(fnn(bd.get("close"), bd.get("c"), getattr(b, "close", None), getattr(b, "c", None)))
+            v = self._to_float(fnn(bd.get("volume"), bd.get("v"), getattr(b, "volume", None), getattr(b, "v", None)))
+            vwap = self._to_float(fnn(bd.get("vwap"), getattr(b, "vwap", None)))
 
             if o is None or h is None or low_val is None or c is None or v is None:
                 continue
