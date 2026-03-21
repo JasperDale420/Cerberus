@@ -149,10 +149,8 @@ class FusionStrategyV1(BaseStrategy):
         )
 
         # --- Factor 2: Relative Strength (Alpha Filter) ---
-        # Compare performance vs SPY index
+        # Compare performance vs SPY index — applied directionally after side determination
         rs = float(symbol_state.meta.get("relative_strength", 0.0) or 0.0)
-        if rs < self.min_relative_strength:
-            return None
 
         # --- Factor 3: Directional Options Flow (Fusion Signal) ---
         dof_score = float(symbol_state.meta.get("dof_score", 0.0) or 0.0)
@@ -163,11 +161,15 @@ class FusionStrategyV1(BaseStrategy):
             if flow_bias >= self.min_flow_bias and dof_score >= self.min_dof_score:
                 flow_aligned = True
             side = OrderSide.BUY
+            if rs < self.min_relative_strength:
+                return None
 
         elif is_breakout_low:
             if flow_bias <= -self.min_flow_bias and dof_score >= self.min_dof_score:
                 flow_aligned = True
             side = OrderSide.SELL
+            if rs > -self.min_relative_strength:
+                return None
         else:
             return None
 

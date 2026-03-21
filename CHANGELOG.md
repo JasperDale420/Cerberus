@@ -152,6 +152,8 @@ All notable changes to this project will be documented in this file.
 
 - **EMA slope not normalized — incomparable across price levels**: `ema20_slope` was computed as raw price difference (`ema_val - ema_prev`), making it price-level dependent. A $500 stock produces 100x larger slopes than a $5 stock. Fixed to normalize as percentage change (`(ema_val - ema_prev) / ema_prev`), consistent with `distance_from_ema20`.
 
+- **Fusion v1 relative strength filter blocks all short signals**: The RS filter required `rs >= min_relative_strength` (outperforming SPY) before direction was determined. For bearish breakdowns, this rejected stocks with weak relative strength — exactly the stocks that should be shorted. Fixed to apply directionally: longs require strong RS, shorts require weak RS.
+
 - **Z-score self-inclusion across 4 analysis modules**: Entropy PE, momentum crash spread, VRP, and IV surface skew all appended the current observation to the history before computing its z-score, biasing results toward zero. This systematically attenuated anomaly detection and delayed regime change classification. Fixed to compute statistics from prior history only.
 
 - **Information Ratio mixes total-period alpha with annualized tracking error**: IR divided total-period alpha (which scales with backtest length) by annualized tracking error, producing IR values that grew proportionally with backtest duration. Fixed to compute IR from daily excess returns with consistent annualization.
