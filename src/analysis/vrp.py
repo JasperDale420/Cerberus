@@ -64,7 +64,7 @@ class VRPCalculator:
         # Z-score normalization
         vrp_array = np.array(self._vrp_history)
         vrp_mean = float(np.mean(vrp_array))
-        vrp_std = float(np.std(vrp_array))
+        vrp_std = float(np.std(vrp_array, ddof=1))
 
         if vrp_std < 1e-12:
             vrp_zscore = 0.0

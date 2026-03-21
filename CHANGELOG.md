@@ -210,6 +210,8 @@ All notable changes to this project will be documented in this file.
 
 - **Pair trading bar_count incremented per-leg, halving effective warmup**: Each leg's bar incremented the shared `bar_count`, so with 2 legs receiving bars at the same rate, the `min_bars` warmup completed after only half the intended synchronized observations. Fixed to only increment when a synchronized observation is available.
 
+- **VRP z-score uses population std inconsistent with other axes**: `vrp.py` used `np.std(ddof=0)` while all other regime axis z-scores used `ddof=1` (sample std). This misalignment shifted VRP z-score thresholds slightly, affecting RISK_ON/RISK_OFF classification consistency. Fixed to use `ddof=1`.
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.
