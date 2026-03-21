@@ -319,6 +319,13 @@ class PositionManager:
                 new_stop=initial_stop,
             )
 
+        # Recalculate open_risk from actual stop distance (may differ from signal
+        # after regime multiplier is applied above)
+        if initial_stop is not None:
+            open_risk = abs(entry_price - initial_stop) * float(fill_data["qty"])
+        else:
+            open_risk = safe_float(entry_ctx.get("open_risk")) if isinstance(entry_ctx, dict) else None
+
         symbol_state.position = Position(
             symbol=fill_data["symbol"],
             side=side,
@@ -330,7 +337,7 @@ class PositionManager:
             entry_time=entry_time,
             correlation_id=fill_data["correlation_id"],
             regime_tags_at_entry=(market_state.regime_snapshot.regime_tags if market_state.regime_snapshot else {}),
-            open_risk=(safe_float(entry_ctx.get("open_risk")) if isinstance(entry_ctx, dict) else None),
+            open_risk=open_risk,
             stop_price=initial_stop,
             target_price=(safe_float(entry_ctx.get("target_price")) if isinstance(entry_ctx, dict) else None),
             entry_features=(entry_ctx.get("features") if isinstance(entry_ctx, dict) else None),

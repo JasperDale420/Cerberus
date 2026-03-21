@@ -717,7 +717,7 @@ class ExecutionEngine:
                 meta["scanner_bypass"] = True
             self.symbol_states[symbol] = SymbolState(
                 symbol=symbol,
-                bars=deque(maxlen=100),
+                bars=deque(maxlen=500),
                 position=None,
                 indicators={},
                 open_orders={},
@@ -1847,7 +1847,7 @@ class ExecutionEngine:
             # Initialize SymbolState
             self.symbol_states[sym] = SymbolState(
                 symbol=sym,
-                bars=deque(maxlen=100),
+                bars=deque(maxlen=500),
                 position=None,
                 indicators={},
                 open_orders={},

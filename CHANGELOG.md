@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
 
 - **Epoch timestamp unit detection in backtest**: Position `entry_time` and `exit_time` can be epoch seconds, milliseconds, or microseconds depending on data source. Added 3-tier detection (`>1e15` = microseconds, `>1e10` = milliseconds, else seconds) in both `runner.py` and `risk.py` to handle all cases correctly.
 
+- **open_risk computed from signal stop, not actual position stop**: `open_risk` was computed in `_store_pending_entry` from the signal's pre-fill stop distance, but `PositionManager` could widen the stop via regime multiplier. All R-multiple calculations (MAE, MFE, pnl_r, partial exits) used the wrong risk-per-share. Now recalculated from actual fill price and final stop in `_open_new_position`.
+
+- **SymbolState bars deque truncated to 100 bars**: `ExecutionEngine` created `SymbolState` with `bars=deque(maxlen=100)`, too small for a full trading session (390 bars). Strategies with lookbacks >100 bars silently received truncated data. Increased to 500.
+
 - **GARCH fallback NaN on single-element array**: `_fallback_rolling_std` called `np.std(ddof=1)` on a 1-element array when all prices were non-positive, producing NaN that silently poisoned GARCH conditional volatility and downstream z-scores. Added length guard.
 
 - **VPIN infinite loop on zero bucket volume**: When `set_daily_volume(0)` was called (or `daily_volume_estimate=0`), `bucket_volume` was 0, causing the volume bucketing `while` loop to run forever. Added early return guard.

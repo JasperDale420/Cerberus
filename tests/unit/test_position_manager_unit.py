@@ -174,7 +174,8 @@ def test_position_manager_on_fill_opens_position_from_pending_entry_context() ->
     assert decision.event == "opened"
     assert state.position is not None
     assert state.position.strategy == "vwap_reversion"
-    assert state.position.open_risk == pytest.approx(10.0)
+    # open_risk is recalculated from actual fill price and stop: abs(100-99)*2 = 2.0
+    assert state.position.open_risk == pytest.approx(2.0)
     assert state.position.stop_price == pytest.approx(99.0)
     assert state.position.target_price == pytest.approx(102.0)
     assert state.position.correlation_id == "cid"
