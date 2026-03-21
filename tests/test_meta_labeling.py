@@ -109,3 +109,47 @@ def test_meta_labeler_allowance():
 
     # Meta-labeler should allow
     assert engine.meta_labeler.vet_signal(signal) is True
+
+
+def test_meta_labeler_rejects_short_in_positive_gex():
+    """Shorts should be rejected when net GEX is deeply positive (dealer hedging pins price up)."""
+    logger = StructuredLogger("test_meta_labeler_gex_short")
+    engine = ExecutionEngine(config={}, logger=logger)
+
+    positive_gex_features = TechnicalFeatures(
+        price=100.0,
+        volume=1000,
+        timestamp=datetime.now(timezone.utc),
+        atr=1.0,
+        atr_pct=0.01,
+        intraday_range_pct=0.02,
+        gap_pct=0.0,
+        ema20_slope=-0.1,
+        distance_from_vwap=-0.01,
+        adx=30.0,
+        distance_from_ema20=-0.01,
+        prior_day_high=105.0,
+        prior_day_low=95.0,
+        bb_upper=102.0,
+        bb_lower=98.0,
+        price_zscore=-1.0,
+        premarket_volume=500,
+        last_updated=datetime.now(timezone.utc),
+        tfi=-0.5,  # Selling pressure (would normally favor shorts)
+        hurst_exponent=0.6,  # Trending
+        net_gex=2000000,  # Deeply positive GEX — pins price up, dangerous for shorts
+    )
+
+    signal = Signal(
+        symbol="AAPL",
+        side=OrderSide.SELL,
+        size_hint=100,
+        entry_price=100.0,
+        stop_price=102.0,
+        target_price=95.0,
+        strategy="test_strat",
+        generated_at=datetime.now(timezone.utc),
+        feature_snapshot=positive_gex_features,
+    )
+
+    assert engine.meta_labeler.vet_signal(signal) is False

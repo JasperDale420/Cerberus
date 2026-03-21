@@ -74,7 +74,7 @@ class BaseStrategy(ABC):
             if current_time.hour == stop_h and current_time.minute >= stop_m:
                 return True
         except (ValueError, AttributeError):
-            pass
+            self.logger.warning("hard_stop_time_parse_failed", hard_stop=hard_stop)
 
         return False
 

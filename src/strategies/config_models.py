@@ -7,12 +7,15 @@ eliminating duplicate config.get() patterns and providing compile-time validatio
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from src.engine.strategy_engine import StrategyActivationPolicy
+
+_log = logging.getLogger(__name__)
 
 # P3 fix: Constants for repeated field descriptions
 _DESC_RISK_REWARD = "Risk:reward ratio"
@@ -60,7 +63,7 @@ class ActivationConfig(BaseModel):
                 try:
                     resolved.append(enum_cls(v.lower()))
                 except ValueError:
-                    pass  # Skip invalid values
+                    _log.warning("Invalid activation regime value %r for %s, skipping", v, enum_cls.__name__)
             return tuple(resolved)
 
         return StrategyActivationPolicy(
@@ -97,7 +100,7 @@ def build_activation_policies_from_config(
                 config = ActivationConfig(**activation_data)
                 policies[name] = config.to_activation_policy()
             except Exception:
-                pass  # Skip invalid configs
+                _log.warning("Invalid activation config for strategy %r, skipping", name, exc_info=True)
 
     return policies
 

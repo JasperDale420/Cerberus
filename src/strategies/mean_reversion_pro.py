@@ -455,14 +455,13 @@ class MeanReversionProStrategy(BaseStrategy):
             )
             return None
 
-        # --- GARCH conditional z-score for VWAP distance ---
-        if garch_result is not None:
-            garch_vwap_dist = self._garch[symbol].conditional_zscore(vwap_dist)
-        else:
-            garch_vwap_dist = vwap_dist  # fallback to raw distance
-
-        # --- Direction (use GARCH-conditional z-score) ---
-        side = self._detect_side(garch_vwap_dist, bb_pos, dynamic_vwap_threshold, dynamic_bb_threshold)
+        # --- Direction detection (raw % distance against % thresholds) ---
+        # GARCH influence flows through the adaptive threshold engine below,
+        # NOT through z-score transformation here. conditional_zscore() changes
+        # units from raw % to sigma, but _detect_side thresholds are in raw %
+        # (default 0.003 = 0.3%), so comparing z-scores against them would
+        # bypass the gate entirely (any z-score > 0.003 trivially passes).
+        side = self._detect_side(vwap_dist, bb_pos, dynamic_vwap_threshold, dynamic_bb_threshold)
         if side is None:
             return None
 

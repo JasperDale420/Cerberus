@@ -3,11 +3,12 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import structlog
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-logger = structlog.get_logger("CerberusScheduler")
+from src.core.logger import get_logger
+
+logger = get_logger("cerberus.scheduler")
 
 
 class CerberusScheduler:
@@ -55,7 +56,8 @@ class CerberusScheduler:
         """
         logger.info("Starting daily trading session subprocess...")
 
-        cmd = [sys.executable, "-m", "src.main", "--mode", "live"]
+        mode = self.config.get("mode", "paper")
+        cmd = [sys.executable, "-m", "src.main", "--mode", mode]
 
         # Pass through config path if specified in args (not easily available here unless we store args)
         # For now, we assume default config or rely on the fact that src.main defaults to config/config.yaml

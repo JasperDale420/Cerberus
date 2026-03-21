@@ -206,9 +206,10 @@ class MomentumFadeStrategy(BaseStrategy):
         closes_list = list(closes)
 
         # Compute velocity (ROC over velocity_lookback bars)
-        velocity = (closes_list[-1] - closes_list[-1 - self.velocity_lookback]) / closes_list[
-            -1 - self.velocity_lookback
-        ]
+        base_price = closes_list[-1 - self.velocity_lookback]
+        if base_price == 0:
+            return 0.0, 0.0, False
+        velocity = (closes_list[-1] - base_price) / base_price
         self._velocity_history[symbol].append(velocity)
 
         vel_hist = self._velocity_history[symbol]
@@ -370,13 +371,21 @@ class MomentumFadeStrategy(BaseStrategy):
         scorer = ConfluenceScorer(threshold=self.confluence_threshold)
 
         # Factor 1: VWAP deviation magnitude (0-100)
-        vwap_dev_score = score_deviation(vwap_dist, self.vwap_threshold, self.vwap_threshold * 3.0)
+        # Use GARCH z-score for scoring when available (matches the entry gate units)
+        if use_garch:
+            vwap_dev_score = score_deviation(
+                garch_zscore, self.garch_zscore_threshold, self.garch_zscore_threshold * 2.0
+            )
+            vwap_passed = abs(garch_zscore) > self.garch_zscore_threshold
+        else:
+            vwap_dev_score = score_deviation(vwap_dist, self.vwap_threshold, self.vwap_threshold * 3.0)
+            vwap_passed = abs(vwap_dist) > self.vwap_threshold
         scorer.add_factor(
             "vwap_deviation",
             raw_value=vwap_dist,
             score=vwap_dev_score,
             weight=0.25,
-            passed=abs(vwap_dist) > self.vwap_threshold,
+            passed=vwap_passed,
         )
 
         # Factor 2: Volume surge intensity (0-100)

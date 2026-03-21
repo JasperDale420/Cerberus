@@ -120,6 +120,9 @@ class GARCHForecaster:
     def _fit(self) -> GARCHResult:
         """Fit GARCH(1,1) on current return series and return forecast."""
         prices = np.array(self._prices, dtype=np.float64)
+        prices = prices[prices > 0]  # filter non-positive prices to avoid log(0)
+        if len(prices) < 2:
+            return self._fallback_rolling_std(np.array([0.0]))
         returns = np.diff(np.log(prices)) * 100  # percentage log-returns
 
         try:

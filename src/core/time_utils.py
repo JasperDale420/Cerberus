@@ -5,8 +5,11 @@ This module eliminates duplicate timezone handling across strategies by providin
 standardized functions for US equity market time conversions and validations.
 """
 
+import logging
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
+
+_log = logging.getLogger(__name__)
 
 # Cache timezone object for performance
 _EASTERN_TZ = ZoneInfo("America/New_York")
@@ -77,7 +80,8 @@ def in_trading_window(dt: datetime, start: time, end: time, convert_to_eastern: 
             t = dt.time()
         return start <= t <= end
     except Exception:
-        # Fail open - better to allow trading than halt on timezone errors
+        # Fail open — better to allow trading than halt on timezone errors
+        _log.warning("in_trading_window failed, failing open", exc_info=True)
         return True
 
 
@@ -129,6 +133,7 @@ def in_time_window_str(dt: datetime, start_str: str, end_str: str, convert_to_ea
         end = parse_time_string(end_str)
         return in_trading_window(dt, start, end, convert_to_eastern)
     except Exception:
+        _log.warning("in_time_window_str failed for %s-%s, failing open", start_str, end_str, exc_info=True)
         return True
 
 

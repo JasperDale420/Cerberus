@@ -1,140 +1,194 @@
-# Claude Code Configuration - Claude Flow V3
+# CLAUDE.md
 
-## Behavioral Rules (Always Enforced)
+Cerberus is a multi-strategy algorithmic trading system for US equities. It runs multiple strategies concurrently, routes them by market regime, and manages risk through a unified execution engine.
 
-- Do what has been asked; nothing more, nothing less
-- NEVER create files unless they're absolutely necessary for achieving your goal
-- ALWAYS prefer editing an existing file to creating a new one
-- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
-- NEVER save working files, text/mds, or tests to the root folder
-- Never continuously check status after spawning a swarm — wait for results
-- ALWAYS read a file before editing it
-- NEVER commit secrets, credentials, or .env files
-
-## File Organization
-
-- NEVER save to root folder — use the directories below
-- Use `/src` for source code files
-- Use `/tests` for test files
-- Use `/docs` for documentation and markdown files
-- Use `/config` for configuration files
-- Use `/scripts` for utility scripts
-- Use `/examples` for example code
-
-## Project Architecture
-
-- Follow Domain-Driven Design with bounded contexts
-- Keep files under 500 lines
-- Use typed interfaces for all public APIs
-- Prefer TDD London School (mock-first) for new code
-- Use event sourcing for state changes
-- Ensure input validation at system boundaries
-
-### Project Config
-
-- **Topology**: mesh
-- **Max Agents**: 5
-- **Memory**: memory
-- **HNSW**: Disabled
-- **Neural**: Disabled
-
-## Build & Test
+## Commands
 
 ```bash
-# Build
-npm run build
+uv sync                                    # install deps (includes editable empire-core, empire-schemas, empire-gateway-client)
+uv run pytest                              # all tests
+uv run pytest -m unit                      # fast unit tests only
+uv run pytest -m integration               # integration tests (DB, file I/O)
+uv run pytest -m contract                  # boundary tests for external APIs
+uv run pytest -m e2e                       # full system flow
+uv run pytest --cov=src --cov-fail-under=68  # with coverage gate
+ruff check .                               # lint
+ruff format .                              # auto-format
+mypy                                       # type check (excludes src/data/alpaca.py, src/data/pipeline.py)
 
-# Test
-npm test
+# Run trading (paper mode is default)
+uv run python -m src.main --mode paper --order-executor noop
+uv run python -m src.main --mode paper --order-executor gateway   # routes orders via Data-Gateway
+uv run python -m src.main --mode paper --order-executor alpaca    # direct Alpaca broker orders
 
-# Lint
-npm run lint
+# Scheduler (persistent daily session launcher)
+uv run python -m src.main --scheduler
+
+# EOD agent (offline analytics + strategy tuning)
+uv run python -m src.main --eod
+uv run python -m src.main --eod --eod-date 2026-03-19
+
+# Healthcheck
+uv run python -m src.main --healthcheck
+
+# Backtest API (serves results to EmpireUI)
+uv run uvicorn src.api.backtest_api:app --port 8002
+
+# HMM regime model bootstrap
+uv run python scripts/bootstrap_hmm_regime.py --config config/config.yaml --input <bars_csv>
+
+# Walk-forward optimization
+uv run python scripts/run_wfo.py
 ```
 
-- ALWAYS run tests after making code changes
-- ALWAYS verify build succeeds before committing
+## Architecture
 
-## Security Rules
+### Package Layout
 
-- NEVER hardcode API keys, secrets, or credentials in source files
-- NEVER commit .env files or any file containing secrets
-- Always validate user input at system boundaries
-- Always sanitize file paths to prevent directory traversal
-- Run `npx @claude-flow/cli@latest security scan` after security-related changes
-
-## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
-
-- All operations MUST be concurrent/parallel in a single message
-- Use Claude Code's Task tool for spawning agents, not just MCP
-- ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
-- ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
-- ALWAYS batch ALL file reads/writes/edits in ONE message
-- ALWAYS batch ALL Bash commands in ONE message
-
-## Swarm Configuration & Anti-Drift
-
-- ALWAYS use hierarchical topology for coding swarms
-- Keep maxAgents at 6-8 for tight coordination
-- Use specialized strategy for clear role boundaries
-- Use `raft` consensus for hive-mind (leader maintains authoritative state)
-- Run frequent checkpoints via `post-task` hooks
-- Keep shared memory namespace for all agents
-
-```bash
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+```
+src/
+├── main.py                  # CLI entry point (argparse: --mode, --order-executor, --config, --eod, --scheduler)
+├── scheduler.py             # APScheduler-based daily session launcher (Mon-Fri cron)
+├── core/
+│   ├── config.py            # ConfigLoader — merges YAML suite + env var overrides (APP_* prefix)
+│   ├── settings.py          # Pydantic Settings — Alpaca creds, Data-Gateway URL, Heber config
+│   ├── domain.py            # Enums (Regime, Side, OrderType) + dataclasses (Bar, Signal, Position, MarketState)
+│   ├── errors.py            # CerberusError + ErrorCode enum
+│   ├── logger.py            # StructuredLogger wrapper → empire_core.logger (service name: "cerberus")
+│   ├── http_client.py       # Shared httpx client factory
+│   ├── indicators.py        # Rolling EMA/RSI/SMA/Std
+│   └── ledger_adapter.py    # Bridge to empire_core.ledger (trade audit trail)
+├── strategies/
+│   ├── base.py              # BaseStrategy ABC — cooldown, hard stop, HMM gate, overnight handling
+│   ├── config_models.py     # Pydantic models for activation policies from YAML
+│   └── <strategy>.py        # ~30 strategy implementations (see Strategy Registry below)
+├── engine/
+│   ├── execution.py         # ExecutionEngine — orchestrates data flow, strategy eval, order mgmt
+│   ├── strategy_engine.py   # StrategyEngine + StrategyActivationPolicy (multi-axis regime routing)
+│   ├── risk.py              # RiskManager — daily loss limits, position limits, notional caps
+│   ├── orders.py            # OrderExecutor — Alpaca SDK order submission
+│   ├── position_manager.py  # Position tracking, trailing stops, partial exits
+│   ├── market.py            # MarketStateManager
+│   ├── kelly.py             # Kelly Criterion sizer (Wasserstein DRO robust mode)
+│   ├── cppi.py              # CPPI drawdown-controlled sizer
+│   ├── cvar_sizer.py        # CVaR-based position sizer
+│   ├── hrp.py               # Hierarchical Risk Parity cross-strategy allocator
+│   └── adaptive_sizer.py    # Regime-adaptive position sizing
+├── analysis/
+│   ├── regime.py            # MarketContextService — 5-axis regime (trend/vol/liquidity/risk/session)
+│   ├── bocpd.py             # Bayesian Online Changepoint Detection
+│   ├── entropy.py           # Entropy analyzer
+│   ├── vrp.py               # Variance Risk Premium
+│   ├── gex.py               # Gamma exposure analysis
+│   ├── iv_surface.py        # Implied volatility surface
+│   ├── momentum_crash.py    # Momentum crash detector
+│   └── db.py                # SQLite analytics DB (cerberus.db)
+├── regime_models/hmm/       # HMM-based regime detection (pomegranate)
+│   ├── service.py           # HmmRegimeService — fit/predict/shadow-compare
+│   ├── adapters.py          # PomegranateDenseHmmAdapter
+│   ├── features.py          # OHLCV → HMM feature engineering
+│   └── labeling.py          # Hidden state → regime label mapping
+├── data/
+│   ├── client.py            # UnifiedDataClient — REST + WebSocket to Data-Gateway
+│   ├── heber_read_client.py # Direct Heber parquet reads (historical bars)
+│   ├── pipeline.py          # FeaturePipeline — indicator computation
+│   ├── unusual_whales.py    # UnusualWhales flow data client
+│   ├── atlas_reader.py      # Atlas factor bridge (Gold layer → live signals)
+│   ├── replay_provider.py   # Historical bar replay for backtesting
+│   └── snapshot_manager.py  # GEX/flow snapshot capture
+├── scanner/                 # Universe scanning and symbol ranking
+├── agent/                   # Offline EOD agent (3-stage: health → tuning → LLM proposals)
+├── backtest/                # Backtest runner, fill models (fixed/volume-aware), stats
+├── analytics/               # Walk-forward optimization, Optuna harness, Monte Carlo, meta-labeler
+├── portfolio/               # Signal aggregation, risk budgeting, HRP allocation
+├── quant/                   # Cointegration, filters, regime stats, volatility models
+└── api/                     # FastAPI backtest results API (port 8002)
 ```
 
-## Swarm Execution Rules
+### Configuration
 
-- ALWAYS use `run_in_background: true` for all agent Task calls
-- ALWAYS put ALL agent Task calls in ONE message for parallel execution
-- After spawning, STOP — do NOT add more tool calls or check status
-- Never poll TaskOutput or check swarm status — trust agents to return
-- When agent results arrive, review ALL results before proceeding
+Dual config system:
 
-## V3 CLI Commands
+1. **YAML suite** (`config/`): `ConfigLoader` merges `config.yaml`, `strategies.yaml`, `risk.yaml`, `scanner.yaml`, `universe.yaml`, `logging.yaml` in order. `strategies.auto.yaml` applies agent-generated overrides on top. Env vars with `APP_` prefix override any YAML key.
 
-### Core Commands
+2. **Pydantic Settings** (`src/core/settings.py`): Runtime env vars for credentials and service URLs. Key variables:
 
-| Command | Subcommands | Description |
-|---------|-------------|-------------|
-| `init` | 4 | Project initialization |
-| `agent` | 8 | Agent lifecycle management |
-| `swarm` | 6 | Multi-agent swarm coordination |
-| `memory` | 11 | AgentDB memory with HNSW search |
-| `task` | 6 | Task creation and lifecycle |
-| `session` | 7 | Session state management |
-| `hooks` | 17 | Self-learning hooks + 12 workers |
-| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ALPACA_API_KEY` / `APCA_API_KEY_ID` | — | Alpaca broker credentials |
+| `ALPACA_SECRET_KEY` / `APCA_API_SECRET_KEY` | — | Alpaca broker secret |
+| `ALPACA_PAPER` | `True` | Paper mode (always default True) |
+| `CERBERUS_GATEWAY_URL` / `DATA_INGESTION_URL` | `http://localhost:8080` | Data-Gateway URL |
+| `CERBERUS_GATEWAY_KEY` / `GATEWAY_API_KEY` | — | Data-Gateway API key (required) |
+| `CERBERUS_HEBER_DATA_ROOT` / `HEBER_DATA_ROOT` | — | Heber parquet root for direct reads |
+| `CERBERUS_STAGE3_APPROVED` | — | Gate for Stage 3 LLM agent proposals |
 
-### Quick CLI Examples
+### Strategy Registry
 
-```bash
-npx @claude-flow/cli@latest init --wizard
-npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
-npx @claude-flow/cli@latest swarm init --v3-mode
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
-npx @claude-flow/cli@latest doctor --fix
+Active V2 strategies: `mean_reversion_pro`, `trend_rider_pro`, `flow_alpha`, `orb_v2`, `pair_trading_v2`, `rsi_bounce`, `momentum_fade`.
+
+Legacy strategies (still registered): `vwap_reversion`, `orb`, `vwap_trend_rider`, `index_mean_reversion`, `flow_momentum`, `gap_fill`, `vix_spike_fade`, `momentum_continuation`, `fusion_v1`, `pair_trading`, `trend_pullback`, `failed_breakout`, `order_flow_imbalance`, `intraday_momentum`.
+
+All strategies extend `BaseStrategy` (ABC) and implement `generate_signal()`.
+
+### Multi-Axis Regime System
+
+`MarketContextService` classifies market state across 5 orthogonal axes:
+- **Trend**: UP / DOWN / FLAT
+- **Volatility**: LOW / NORMAL / HIGH / SHOCK
+- **Liquidity**: GOOD / THIN / STRESSED
+- **Risk**: RISK_ON / NEUTRAL / RISK_OFF
+- **Session**: PREMARKET / OPENING / MIDDAY / POWER_HOUR / CLOSE
+
+Each strategy declares a `StrategyActivationPolicy` (via `activation:` in YAML) specifying which regime combinations it should trade in. `StrategyEngine` gates signals through these policies.
+
+Optional HMM-based regime detection runs in `shadow` or `primary` mode alongside the rule-based system.
+
+### Position Sizing
+
+Multiple sizers available, selected per-trade: Kelly Criterion (with Wasserstein DRO), CPPI (drawdown-controlled), CVaR-based, and HRP cross-strategy allocation. Regime-adaptive multipliers adjust sizing based on volatility state.
+
+### EOD Agent (3-Stage Pipeline)
+
+1. **Stage 1** — Deterministic health/risk adjustments based on rolling trade stats
+2. **Stage 2** — Offline parameter tuning via grid search + walk-forward validation (writes `strategies.auto.yaml`)
+3. **Stage 3** — LLM-generated code proposals (gated by `CERBERUS_STAGE3_APPROVED` env var)
+
+### Data Flow
+
+All market data flows through Data-Gateway (port 8080) — no direct API calls to Alpaca/providers. `UnifiedDataClient` handles both REST (historical) and WebSocket (real-time bars/quotes/trades). Heber parquet reads available for historical backtesting via `heber_read_client.py`.
+
+## Safety-Critical Code
+
+Extra caution required when modifying:
+
+- **`src/engine/orders.py`** — Order submission to Alpaca broker
+- **`src/engine/risk.py`** — RiskManager enforces daily loss limits, position caps, notional limits
+- **`src/engine/execution.py`** — ExecutionEngine orchestrates the full trading loop
+- **`src/engine/position_manager.py`** — Position tracking and exit logic
+- **`src/main.py`** — CLI defaults (`--mode paper`, `--order-executor gateway`)
+
+Safety invariants:
+- Paper mode (`--mode paper`) is the default — never change this
+- `--order-executor noop` simulates without submitting orders
+- `ALPACA_PAPER=True` is the default in Settings — never change this
+- `risk.yaml` hard dollar ceilings: `max_daily_loss`, `max_open_positions`, `max_notional_per_order`
+- RiskManager rejects signals that would breach any limit
+- `position_mismatch_mode: halt` stops trading on broker/local position divergence
+
+## Test Markers
+
+```
+unit         — fast, isolated, no I/O or network
+integration  — real DB, file I/O, or component interactions
+contract     — boundary tests for external APIs/protocols
+e2e          — full system flow
+slow         — tests >1s, opt-in
 ```
 
-## Quick Setup
+Coverage gate: 68% minimum (`--cov-fail-under=68`).
 
-```bash
-claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
-npx @claude-flow/cli@latest daemon start
-npx @claude-flow/cli@latest doctor --fix
-```
-
-## Claude Code vs CLI Tools
-
-- Claude Code's Task tool handles ALL execution: agents, file ops, code generation, git
-- CLI tools handle coordination via Bash: swarm init, memory, hooks, routing
-- NEVER use CLI tools as a substitute for Task tool agents
-
-## Support
-
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
+Test conftest sets safe defaults: `ALPACA_API_KEY=test`, `ALPACA_SECRET_KEY=test`, `ALPACA_PAPER=True`, `DATA_INGESTION_URL=http://central.test`.
 
 ## Commit & Changelog Discipline
 

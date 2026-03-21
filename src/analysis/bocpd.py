@@ -78,8 +78,12 @@ class BOCPDDetector:
 
         # Normalize
         evidence = new_joint.sum()
-        if evidence > 0:
+        if evidence > 1e-300:
             new_joint /= evidence
+        else:
+            # Numerical underflow — reset to changepoint prior to recover
+            new_joint = np.zeros(self._max_run_length)
+            new_joint[0] = 1.0
         self._joint = new_joint
 
         # --- Update sufficient statistics ---

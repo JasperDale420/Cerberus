@@ -58,6 +58,6 @@ def test_run_daily_session_subprocess(mock_run):
     assert "-m" in cmd
     assert "src.main" in cmd
     assert "--mode" in cmd
-    assert "live" in cmd
+    assert "paper" in cmd
     assert "--config" in cmd
     assert "custom_config.yaml" in cmd

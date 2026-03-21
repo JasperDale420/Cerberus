@@ -266,11 +266,14 @@ class KellySizer:
         else:
             raw_kelly = standard_kelly
 
-            # Handle edge cases for logging (all winners / all losers)
+            # Log edge case info but do NOT overwrite raw_kelly — the overwrite
+            # would feed into the fractional scaling below, causing all-winners
+            # to get a smaller fraction than near-all-winners (non-monotonic).
+            log_kelly = raw_kelly
             if stats.loss_count == 0:
-                raw_kelly = self.config.max_equity_pct
+                log_kelly = self.config.max_equity_pct
             elif stats.win_count == 0:
-                raw_kelly = self.config.min_equity_pct
+                log_kelly = self.config.min_equity_pct
 
             self.logger.info(
                 "Kelly fraction computed",
@@ -278,7 +281,7 @@ class KellySizer:
                 trades=stats.trade_count,
                 win_rate=round(stats.win_count / stats.trade_count, 3),
                 payoff_ratio=round(stats.avg_win / stats.avg_loss, 2) if stats.avg_loss > 0 else float("inf"),
-                raw_kelly=round(raw_kelly, 4),
+                raw_kelly=round(log_kelly, 4),
             )
 
         # Apply fractional Kelly scalar

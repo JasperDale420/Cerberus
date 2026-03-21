@@ -131,8 +131,10 @@ class FlowAlphaStrategy(BaseStrategy):
         ofi = float(symbol_state.meta.get("ofi", 0.0) or 0.0)
 
         # GARCH-conditional normalization of flow_zscore
+        # Divide by conditional vol (standardized residuals: signal / σ_t).
+        # Scale factor 200 aligns with fallback /3.0 at typical vol (~0.015).
         if garch_cond_vol is not None and garch_cond_vol > 0:
-            norm_flow = max(-1.0, min(1.0, flow_zscore * garch_cond_vol))
+            norm_flow = max(-1.0, min(1.0, flow_zscore / (garch_cond_vol * 200.0)))
         else:
             norm_flow = max(-1.0, min(1.0, flow_zscore / 3.0))
 
@@ -263,7 +265,7 @@ class FlowAlphaStrategy(BaseStrategy):
             )
         except Exception:
             # Granger may fail on degenerate data; keep previous result
-            pass
+            self.logger.debug("granger_test_failed", symbol=symbol, exc_info=True)
 
     # ------------------------------------------------------------------
     # Core bar handler

@@ -348,6 +348,7 @@ class FeaturePipeline:
                     local_fail = 1
                     # Log already handled in fetcher but we can log context here too if needed
                     flow_data = []
+                    gex_data = []
 
             (c_p_ratio, f_zscore, sw_count, agg_share, f_bias) = self.calculator.compute_flow_metrics(flow_data)
             d_score = abs(float(f_bias)) * float(agg_share)
@@ -431,7 +432,7 @@ class FeaturePipeline:
         if self.snapshots_enabled and self.snapshot_manager:
             now = as_of or self.clock()
             for feat in features.values():
-                self.snapshot_manager.persist_feature_snapshot(feat, now)
+                self.snapshot_manager.persist_feature_snapshot(features=feat, as_of_ts=now)
 
         # Finalize metrics
         if hasattr(self, "last_run_metrics"):

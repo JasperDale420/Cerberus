@@ -55,7 +55,12 @@ class HRPAllocator:
         history = self._returns[strategy]
 
         # Insert in date order (most appends are at the end)
-        if not history or history[-1][0] <= dt:
+        if not history:
+            history.append((dt, daily_return))
+        elif history[-1][0] == dt:
+            # Same date — accumulate (multiple trades in one day)
+            history[-1] = (dt, history[-1][1] + daily_return)
+        elif history[-1][0] < dt:
             history.append((dt, daily_return))
         else:
             # Out-of-order insert (rare)

@@ -729,8 +729,9 @@ class NoopOrderExecutor:
     def cancel_by_broker_order_id(self, broker_order_id: str) -> None:
         self.logger.info("Noop order cancel requested", broker_order_id=str(broker_order_id))
 
-    def cancel_all_for_symbol(self, symbol: str) -> None:
+    def cancel_all_for_symbol(self, symbol: str) -> int:
         self.logger.info("Noop cancel-all for symbol requested", symbol=str(symbol))
+        return 0
 
     def handle_trade_update(self, update: object) -> dict:
         # No broker trade updates exist in noop mode.

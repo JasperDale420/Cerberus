@@ -49,10 +49,14 @@ class MetaLabeler:
             tfi_ok = False
 
         # Heuristic 3: Net GEX (Market Magnetism)
-        # Extreme negative GEX can lead to high volatility/slippage
+        # Extreme GEX creates dealer hedging flows that oppose the trade direction.
+        # Deeply negative GEX → dealers short gamma → sell into drops → dangerous for longs.
+        # Deeply positive GEX → dealers long gamma → buy dips / sell rips → pins price up, dangerous for shorts.
+        gex_threshold = 1_000_000
         gex_ok = True
-        # Simple threshold: if GEX is deeply negative, be cautious with longs
-        if side == "buy" and features.net_gex < -1000000:  # Placeholder threshold
+        if side == "buy" and features.net_gex < -gex_threshold:
+            gex_ok = False
+        elif side == "sell" and features.net_gex > gex_threshold:
             gex_ok = False
 
         # Vetting Decision
