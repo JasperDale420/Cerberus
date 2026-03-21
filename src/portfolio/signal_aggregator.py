@@ -107,7 +107,7 @@ class SignalAggregator:
         if not recent_signal_history:
             return weights
 
-        strategies = list({s.strategy for s in signals})
+        strategies = sorted({s.strategy for s in signals})
         penalised = dict(weights)
 
         for i in range(len(strategies)):

@@ -148,6 +148,12 @@ All notable changes to this project will be documented in this file.
 
 - **SnapshotManager passes plain dataclasses to SQLAlchemy**: `persist_external_snapshot` and `persist_feature_snapshot` created `ExternalSnapshotRecord` and `FeatureSnapshotRecord` (plain dataclasses) and passed them to `session.add()`, but SQLAlchemy requires ORM-mapped models (`ExternalSnapshot`, `FeatureSnapshot`). Field names also mismatched (`data` vs `data_json`). Every snapshot write silently crashed. Fixed to construct proper ORM model instances.
 
+- **Signal aggregator correlation penalty non-deterministic**: Strategy iteration order depended on set ordering, which is non-deterministic in Python. The same inputs could produce different penalty results across runs. Fixed by sorting strategies before iterating.
+
+- **WFO efficiency ratio hides failed windows**: Windows where the strategy produced no trades or negative expectancy (scores <= -100) were silently dropped from the OOS average, inflating the efficiency ratio. Fixed to include all windows with failed scores replaced by 0.
+
+- **WFO param stability uses population variance**: With typical 3-6 WFO windows, population variance (N) underestimates true variance by up to 18%, making unstable parameters appear stable. Fixed to use sample variance (N-1).
+
 - **Ruff lint errors**: Fixed 6 extraneous f-prefixes in `scripts/run_wfo_robust.py`.
 
 - **TrendRiderPro `_regime_allows` missing method**: Added the `_regime_allows` static method to `TrendRiderProStrategy`. BUY signals are now only allowed when the trend regime is UP, SELL signals only when DOWN, and all signals pass when no regime snapshot is available (backward compatibility). Fixes 3 failing unit tests.

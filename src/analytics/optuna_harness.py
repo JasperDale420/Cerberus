@@ -989,8 +989,10 @@ class WalkForwardOptimizer:
                     pass
 
         # 3. Compute WFO efficiency ratio
-        valid_is = [s for s in all_is_scores if s > -100]
-        valid_oos = [s for s in all_oos_scores if s > -100]
+        # Include all windows — replace reject scores (insufficient trades / negative expectancy)
+        # with 0 so failed windows penalize the average instead of being silently dropped
+        valid_is = [max(s, 0.0) if s <= -100 else s for s in all_is_scores]
+        valid_oos = [max(s, 0.0) if s <= -100 else s for s in all_oos_scores]
         is_avg = sum(valid_is) / len(valid_is) if valid_is else 0.0
         oos_avg = sum(valid_oos) / len(valid_oos) if valid_oos else 0.0
         efficiency = oos_avg / is_avg if is_avg > 0 else 0.0
@@ -1103,7 +1105,7 @@ class WalkForwardOptimizer:
                 continue
 
             mean_val = sum(numeric) / len(numeric)
-            variance = sum((v - mean_val) ** 2 for v in numeric) / len(numeric)
+            variance = sum((v - mean_val) ** 2 for v in numeric) / (len(numeric) - 1)
             std_val = math.sqrt(variance)
             cv = std_val / abs(mean_val) if mean_val != 0 else float("inf")
 
