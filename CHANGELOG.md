@@ -214,6 +214,10 @@ All notable changes to this project will be documented in this file.
 
 - **Hard stop time compared in UTC instead of Eastern**: `is_past_hard_stop()` compared `current_time.hour` directly against the configured hard stop time (e.g., "15:30" ET), but bar timestamps are in UTC. A "15:30" hard stop would trigger at 15:30 UTC (10:30-11:30 AM ET), stopping trading ~5 hours early. Fixed to convert to Eastern Time before comparison.
 
+- **Flow trade aggressive detection has operator precedence bug**: `t.get("ask_side") or t.get("sentiment") in [...]` evaluated as `(truthy_ask_side) or (membership_test)` due to Python operator precedence. Any truthy `ask_side` value (e.g., a premium string) would mark all trades as aggressive regardless of actual side. Fixed by adding parentheses around the `in` expression.
+
+- **Flow trade field names not normalized for different API formats**: `_process_single_flow_trade` only read `put_call` and `size` fields, missing the `type` and `total_size` fields used by some API responses. Also compared against uppercase `"CALL"`/`"PUT"` but some sources return lowercase. Fixed to check both field names and normalize case.
+
 - **Activation policy min_confidence rejects on unconstrained axes**: `StrategyActivationPolicy.is_active()` checked min_confidence against ALL regime axes, including axes the strategy doesn't constrain. A strategy filtering only on `session` with `min_confidence: 0.6` would be blocked by low confidence on `trend` or `vol` (which it doesn't care about). During warmup, all non-session axes have confidence 0.0, blocking every strategy with any min_confidence setting. Fixed to only check constrained axes.
 
 - **VRP z-score uses population std inconsistent with other axes**: `vrp.py` used `np.std(ddof=0)` while all other regime axis z-scores used `ddof=1` (sample std). This misalignment shifted VRP z-score thresholds slightly, affecting RISK_ON/RISK_OFF classification consistency. Fixed to use `ddof=1`.

@@ -392,8 +392,8 @@ class FeatureCalculator:
     def _process_single_flow_trade(self, trade: Any) -> Tuple[float, float, int, int, int, float, float]:
         t = trade if isinstance(trade, dict) else trade.__dict__
 
-        size = float(t.get("size", 0))
-        pc = t.get("put_call", "UNKNOWN")
+        size = float(t.get("size", 0) or t.get("total_size", 0) or 0)
+        pc = str(t.get("put_call", "") or t.get("type", "") or "UNKNOWN").upper()
 
         call_vol = 0.0
         put_vol = 0.0
@@ -413,7 +413,7 @@ class FeatureCalculator:
         if "sweep" in tags:
             sweep_count += 1
 
-        if t.get("ask_side") or t.get("sentiment") in ["BULLISH", "BEARISH"]:
+        if t.get("ask_side") or (t.get("sentiment") in ["BULLISH", "BEARISH"]):
             aggressive_qty += size
 
         return call_vol, put_vol, call_n, put_n, sweep_count, aggressive_qty, size
