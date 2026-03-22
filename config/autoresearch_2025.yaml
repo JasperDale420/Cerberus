@@ -227,9 +227,9 @@ risk:
   max_notional_per_symbol: 90000.0
   time_in_force: "day"
   risk_mode: "normal"
-  slippage_bps: 3.0
-  commission_per_share: 0.003
-  min_commission: 0.50
+  slippage_bps: 1.5              # iter19: lower slippage for liquid mega-caps
+  commission_per_share: 0.001    # iter19: Alpaca is zero commission, model minimal cost
+  min_commission: 0.00           # iter19: no minimum commission
 
   advanced_exits:
     enabled: true
