@@ -19,13 +19,36 @@ regime:
 
 # Route all V2 strategies in all regimes
 strategy_routing:
-  bull: [trend_rider_pro, mean_reversion_pro, orb_v2, rsi_bounce, momentum_fade]
+  bull: [daily_momentum, trend_rider_pro, mean_reversion_pro, orb_v2, rsi_bounce, momentum_fade]
   bear: [trend_rider_pro, mean_reversion_pro, orb_v2, rsi_bounce, momentum_fade]
-  chop: [mean_reversion_pro, rsi_bounce, momentum_fade]
+  chop: [daily_momentum, mean_reversion_pro, rsi_bounce, momentum_fade]
 
 strategies:
+  daily_momentum:
+    enabled: true               # iter4: new daily swing strategy
+    allow_overnight: true
+    max_hold_days: 10
+    signal_timeframe: 5
+    ema_fast_period: 20
+    ema_slow_period: 50
+    pullback_pct: 0.015         # 1.5% pullback zone
+    stop_atr_mult: 2.0
+    target_atr_mult: 4.0
+    min_bars: 55
+    cooldown_bars: 12           # 1 hour between signals
+    confluence_threshold: 50.0
+    long_only: true             # only long in 2025 bull market
+    vol_avg_mult: 0.8           # 80% of avg volume required
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral]
+      min_confidence: 0.3
+
   mean_reversion_pro:
-    enabled: true
+    enabled: false              # iter2: disable (-$151)
     hmm_gate:
       enabled: true
       reject_regimes: ["stress_up"]
@@ -49,7 +72,7 @@ strategies:
       min_confidence: 0.5
 
   trend_rider_pro:
-    enabled: false              # iter1: -$10K loser, disable
+    enabled: false              # iter1: disable (-$10K)
     hmm_gate:
       enabled: true
       reject_regimes: ["trend_down"]
