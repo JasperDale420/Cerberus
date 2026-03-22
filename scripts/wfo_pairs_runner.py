@@ -126,7 +126,7 @@ def main() -> None:
         data_dir=DATA_DIR,
         config_path=CONFIG_PATH,
         workers=4,  # Parallel workers for faster optimization
-        min_trades_per_month=1,  # Daily pair trading: ~1 trade/pair/month
+        min_trades_per_month=0.5,  # Daily pair trading: ~0.5 trade/pair/month (4 pairs × 1-2/year)
     )
 
     elapsed = time.time() - t0

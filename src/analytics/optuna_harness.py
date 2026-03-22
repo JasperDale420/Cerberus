@@ -426,7 +426,7 @@ def _mp_optimize_worker(
     config_path: str,
     n_trials: int,
     worker_id: int,
-    min_trades_per_month: int = 3,
+    min_trades_per_month: float = 3,
 ) -> None:
     """Run Optuna trials in a separate process for true CPU parallelism.
 
@@ -558,11 +558,18 @@ def _compute_window_min_trades(
     start_date: str,
     end_date: str,
     *,
-    trades_per_month: int = 3,
-    floor: int = 5,
+    trades_per_month: float = 3,
+    floor: int | None = None,
     fallback: int = 10,
 ) -> int:
-    """Scale the minimum trade threshold to the length of the optimization window."""
+    """Scale the minimum trade threshold to the length of the optimization window.
+
+    When floor is None, defaults to max(trades_per_month + 2, 5).  Callers
+    passing a low trades_per_month (e.g. 1 for daily pair trading) get a
+    correspondingly lower floor.
+    """
+    if floor is None:
+        floor = max(int(trades_per_month) + 2, 3)
     try:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -796,7 +803,7 @@ def create_objective(
     data_dir: str,
     config_path: str = "config/backtest_v2.yaml",
     skip_indicator_precompute: bool = False,
-    min_trades_per_month: int = 3,
+    min_trades_per_month: float = 3,
 ):
     """Create an Optuna objective function for a single strategy.
 
@@ -998,7 +1005,7 @@ class WalkForwardOptimizer:
         artifact_root: str = "artifacts/optimization",
         resume_existing: bool = False,
         workers: int | None = None,
-        min_trades_per_month: int = 3,
+        min_trades_per_month: float = 3,
     ) -> dict[str, Any]:
         """Run full walk-forward optimization.
 
