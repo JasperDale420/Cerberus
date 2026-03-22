@@ -271,7 +271,7 @@ scanner:
   max_price: 500.0
   min_volume: 500000
 
-# Universe — top 15 liquid names for fast iteration (expand after finding edge)
+# Universe — expanded to all available tickers
 universe:
   symbols:
     - SPY
@@ -284,8 +284,58 @@ universe:
     - META
     - MSFT
     - GOOGL
+    - AVGO
+    - NFLX
     - JPM
+    - BAC
     - GS
+    - CRM
     - XOM
     - CVX
+    - MU
+    - INTC
+    - QCOM
+    - PLTR
+    - COIN
+    - HOOD
+    - SOFI
+    - UBER
     - VXX
+    - AAL
+    - ABBV
+    - AI
+    - ARM
+    - C
+    - COST
+    - DAL
+    - DDOG
+    - F
+    - GM
+    - HAL
+    - HD
+    - IONQ
+    - JNJ
+    - LCID
+    - LYFT
+    - MARA
+    - MRK
+    - MRVL
+    - MS
+    - NET
+    - NIO
+    - NKE
+    - ORCL
+    - OXY
+    - PFE
+    - RCL
+    - RGTI
+    - RIOT
+    - RIVN
+    - SLB
+    - SMR
+    - SNOW
+    - SOUN
+    - TGT
+    - UAL
+    - UNH
+    - WMT
