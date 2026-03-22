@@ -1,0 +1,96 @@
+# Autoresearch V2 Experiment Config
+# Iter 1: Reduce risk per trade (1% → 0.75%), tighter daily loss cap,
+# tighter stops (1.5 → 1.0 ATR), shorter hold, long-only on quality names
+
+database_url: "sqlite:///cerberus.db"
+timezone: "US/Eastern"
+index_symbol: "SPY"
+initial_cash: 100000.0
+log_level: "WARNING"
+
+regime:
+  vol_symbol: "VXX"
+
+hmm_regime:
+  enabled: false
+
+backtest:
+  disable_flow_strategies: true
+  bar_resolution_minutes: "daily"
+  partial_fill_mode: "none"
+  slippage_mode: "fixed"
+  spread_mode: "fixed"
+
+# Use ALL symbols in the dataset for broader diversification
+universe:
+  symbols:
+    - "SPY"
+    - "QQQ"
+    - "AAPL"
+    - "MSFT"
+    - "GOOGL"
+    - "AMZN"
+    - "META"
+    - "NVDA"
+    - "TSLA"
+    - "AMD"
+    - "AVGO"
+    - "JPM"
+    - "BAC"
+    - "GS"
+    - "XOM"
+    - "CVX"
+
+risk:
+  risk_pct: 0.0075
+  daily_loss_pct: 0.02
+  open_risk_pct: 0.04
+  max_daily_loss: 3000.0
+  max_risk_per_trade: 1500.0
+  max_open_risk: 6000.0
+  max_trades_per_day: 50
+  max_open_positions: 10
+  max_positions_per_strategy: 5
+  max_notional_per_order: 50000.0
+  max_notional_per_symbol: 30000.0
+  commission_per_share: 0.0
+  min_commission: 0.0
+  slippage_bps: 2.0
+
+strategies:
+  daily_momentum:
+    enabled: true
+    ema_fast_period: 20
+    ema_slow_period: 50
+    pullback_pct: 0.015
+    stop_atr_mult: 1.0
+    target_atr_mult: 4.0
+    min_bars: 55
+    max_hold_days: 7
+    long_only: true
+    vol_avg_mult: 0.8
+    confluence_threshold: 50.0
+
+  mean_reversion_pro:
+    enabled: true
+    confluence_threshold: 60.0
+    time_window_start: "09:35"
+    time_window_end: "15:30"
+
+  trend_rider_pro:
+    enabled: true
+
+  orb_v2:
+    enabled: true
+
+  rsi_bounce:
+    enabled: true
+
+  momentum_fade:
+    enabled: true
+
+  pair_trading_v2:
+    enabled: false
+
+  flow_alpha:
+    enabled: false
