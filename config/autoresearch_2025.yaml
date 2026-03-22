@@ -25,7 +25,7 @@ strategy_routing:
 
 strategies:
   daily_momentum:
-    enabled: false              # iter7: disable — focus on pair trading
+    enabled: true               # iter4: new daily swing strategy
     allow_overnight: true
     max_hold_days: 10
     signal_timeframe: 5
@@ -177,22 +177,18 @@ strategies:
   pair_trading_v2:
     enabled: true
     allow_overnight: true
-    max_hold_days: 7              # iter7: slightly longer holds (was 5)
+    max_hold_days: 5
     pairs:
       - {leg_a: "XOM", leg_b: "CVX"}
       - {leg_a: "JPM", leg_b: "GS"}
       - {leg_a: "GOOGL", leg_b: "META"}
       - {leg_a: "AAPL", leg_b: "MSFT"}
-      - {leg_a: "AMD", leg_b: "NVDA"}        # iter7: new tech pair
-      - {leg_a: "AMZN", leg_b: "GOOGL"}      # iter7: new tech pair
-      - {leg_a: "AAPL", leg_b: "AMZN"}       # iter7: new mega-cap pair
-      - {leg_a: "JPM", leg_b: "BAC"}         # iter7: new bank pair
-    entry_z_threshold: 1.2        # iter7: more aggressive entry (was 1.5)
-    stop_z_threshold: 4.0         # iter7: tighter stop (was 5.0) — cut losses earlier
-    spread_lookback: 60           # iter7: shorter lookback (was 70) — faster adaptation
-    min_bars: 25                  # iter7: less warmup needed (was 30)
-    confluence_threshold: 40.0    # iter7: slightly lower bar (was 45) — more signals
-    min_correlation: 0.50         # iter7: slightly looser correlation (was 0.55)
+    entry_z_threshold: 1.5
+    stop_z_threshold: 5.0
+    spread_lookback: 70
+    min_bars: 30
+    confluence_threshold: 45.0
+    min_correlation: 0.55
     activation:
       trend: [flat, up, down]
       vol: [low, normal, high]
@@ -236,8 +232,8 @@ risk:
   max_risk_per_trade: 3000.0
   max_open_risk: 10000.0
   max_trades_per_day: 80
-  max_open_positions: 16          # iter7: more room for pairs
-  max_positions_per_strategy: 8   # iter7: pair trading needs 2 legs per pair
+  max_open_positions: 12
+  max_positions_per_strategy: 4
   max_notional_per_order: 90000.0
   max_notional_per_symbol: 90000.0
   time_in_force: "day"
@@ -301,7 +297,6 @@ universe:
     - GOOGL
     - JPM
     - GS
-    - BAC
     - XOM
     - CVX
     - VXX
