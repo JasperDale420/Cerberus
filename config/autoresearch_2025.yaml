@@ -25,20 +25,20 @@ strategy_routing:
 
 strategies:
   daily_momentum:
-    enabled: true
+    enabled: true               # iter4: new daily swing strategy
     allow_overnight: true
     max_hold_days: 10
     signal_timeframe: 5
-    ema_fast_period: 10
-    ema_slow_period: 30
-    pullback_pct: 0.03           # iter6: tighter pullback (4%→3%) for better entries
-    stop_atr_mult: 1.5           # iter6: tighter stop (2.0→1.5) — cut losses faster
-    target_atr_mult: 6.0         # iter6: wider target (5.0→6.0) — let winners run more
-    min_bars: 35
-    cooldown_bars: 24            # iter6: 2hr cooldown (was 1hr) — reduce overtrading
-    confluence_threshold: 45.0   # iter6: higher bar (30→45) — more selective
+    ema_fast_period: 10          # iter5: faster EMA for quicker trend detection
+    ema_slow_period: 30          # iter5: shorter slow EMA, less warmup needed
+    pullback_pct: 0.04           # iter5: 4% pullback zone (was 1.5%) — catch more entries
+    stop_atr_mult: 2.0
+    target_atr_mult: 5.0        # iter5: wider target to let winners run
+    min_bars: 35                 # iter5: reduced warmup (was 55)
+    cooldown_bars: 12
+    confluence_threshold: 30.0   # iter5: lower threshold (was 50) — need more signals
     long_only: true
-    vol_avg_mult: 0.7            # iter6: slightly stricter volume (0.5→0.7)
+    vol_avg_mult: 0.5            # iter5: lower volume requirement (was 0.8)
     activation:
       session: [opening, midday, power_hour]
       trend: [up, flat]
