@@ -32,8 +32,8 @@ strategies:
     ema_fast_period: 10          # iter5: faster EMA for quicker trend detection
     ema_slow_period: 30          # iter5: shorter slow EMA, less warmup needed
     pullback_pct: 0.04           # iter5: 4% pullback zone (was 1.5%) — catch more entries
-    stop_atr_mult: 1.5           # iter11: tighter stop (2.0→1.5) — cut losses
-    target_atr_mult: 6.0        # iter11: wider target (5.0→6.0) — bigger winners
+    stop_atr_mult: 1.2           # iter12: even tighter stop (1.5→1.2)
+    target_atr_mult: 7.0        # iter12: even wider target (6.0→7.0)
     min_bars: 25                 # iter9: further reduced for daily bars
     cooldown_bars: 3             # iter9: 3-day cooldown on daily bars
     confluence_threshold: 30.0
