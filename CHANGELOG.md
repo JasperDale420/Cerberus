@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Lint: suppress intentional E402 in wfo_pairs_runner.py**: `import optuna` and `from src.analytics.optuna_harness import WalkForwardOptimizer` must appear after logging configuration to suppress optuna's verbose output before any downstream logger initialisation. Added `# noqa: E402` to document this intentional ordering.
+
 ### Added
 
 - **Comprehensive analytics report card**: Ported 11 analysis functions from trading-bot covering MAE/MFE, statistical tests, Monte Carlo, PnL distribution, risk metrics (Omega/Ulcer/VaR/CVaR), rolling metrics, drawdown catalog, trade clustering, cost sensitivity, time breakdowns, and entry/exit efficiency. Adapted for Cerberus dict-based trades with configurable R-multiple PnL keys and equity minute-bar conventions (98,280 bars/year).

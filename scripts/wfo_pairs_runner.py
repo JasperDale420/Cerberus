@@ -29,11 +29,11 @@ for handler in logging.getLogger().handlers:
     handler.setLevel(logging.WARNING)
 
 # Disable optuna's default INFO logging
-import optuna
+import optuna  # noqa: E402
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from src.analytics.optuna_harness import WalkForwardOptimizer
+from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Configuration
