@@ -426,6 +426,7 @@ def _mp_optimize_worker(
     config_path: str,
     n_trials: int,
     worker_id: int,
+    min_trades_per_month: int = 3,
 ) -> None:
     """Run Optuna trials in a separate process for true CPU parallelism.
 
@@ -456,6 +457,7 @@ def _mp_optimize_worker(
         data_dir=data_dir,
         config_path=config_path,
         skip_indicator_precompute=True,
+        min_trades_per_month=min_trades_per_month,
     )
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
@@ -794,6 +796,7 @@ def create_objective(
     data_dir: str,
     config_path: str = "config/backtest_v2.yaml",
     skip_indicator_precompute: bool = False,
+    min_trades_per_month: int = 3,
 ):
     """Create an Optuna objective function for a single strategy.
 
@@ -843,7 +846,7 @@ def create_objective(
 
         # 4. Pruning: reject insufficient trade count
         # Compute proportional min based on window length (5 trades/month baseline)
-        _min_trades = _compute_window_min_trades(start_date, end_date)
+        _min_trades = _compute_window_min_trades(start_date, end_date, trades_per_month=min_trades_per_month)
         n_trades = metrics.get("n_trades", 0)
         if n_trades < _min_trades:
             print(
@@ -995,6 +998,7 @@ class WalkForwardOptimizer:
         artifact_root: str = "artifacts/optimization",
         resume_existing: bool = False,
         workers: int | None = None,
+        min_trades_per_month: int = 3,
     ) -> dict[str, Any]:
         """Run full walk-forward optimization.
 
@@ -1105,6 +1109,7 @@ class WalkForwardOptimizer:
                         config_path,
                         t,
                         w,
+                        min_trades_per_month,
                     ),
                 )
                 processes.append(p)
@@ -1153,7 +1158,7 @@ class WalkForwardOptimizer:
             # Proportional min trades for OOS: ~3 trades/month/symbol is reasonable,
             # but for short test windows use a lower floor to avoid rejecting everything.
             _oos_months = max(self.test_months, 1)
-            _oos_min_trades = max(int(_oos_months * 10), 10)  # 10 trades/month, floor of 10
+            _oos_min_trades = max(int(_oos_months * min_trades_per_month), 3)
             oos_score = composite_objective(oos_metrics, min_trades=_oos_min_trades)
             all_oos_metrics.append(oos_metrics)
             all_oos_scores.append(oos_score)
