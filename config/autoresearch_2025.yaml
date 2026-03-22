@@ -88,7 +88,7 @@ strategies:
       min_confidence: 0.4
 
   orb_v2:
-    enabled: true
+    enabled: false              # iter2: -$1177 on 16 trades, disable
     hmm_gate:
       enabled: true
       reject_regimes: ["stress_up"]
