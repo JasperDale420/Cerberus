@@ -120,7 +120,7 @@ class DailyMomentumStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Signal | None:
-        """Accumulate intraday bars into daily aggregates, evaluate at EOD."""
+        """Process bars — handles both intraday aggregation and direct daily bars."""
         self._ensure_symbol(symbol)
 
         current_date = bar.time.date() if isinstance(bar.time, datetime) else bar.time
@@ -133,21 +133,27 @@ class DailyMomentumStrategy(BaseStrategy):
             self._daily_lows[symbol].append(self._intraday_low[symbol])
             self._daily_volumes[symbol].append(self._intraday_volume[symbol])
 
-            # Reset intraday accumulators
+            # Reset intraday accumulators for new day
             self._intraday_high[symbol] = bar.high
             self._intraday_low[symbol] = bar.low
             self._intraday_volume[symbol] = bar.volume
             self._intraday_close[symbol] = bar.close
 
-            # Evaluate signal on daily close
+            # Evaluate signal on the new bar (using accumulated daily data)
             signal = self._evaluate_daily_signal(symbol, bar, symbol_state, market_state)
             self._last_bar_date[symbol] = current_date
             return signal
         else:
-            # Update intraday accumulators
-            self._intraday_high[symbol] = max(self._intraday_high[symbol], bar.high)
-            self._intraday_low[symbol] = min(self._intraday_low[symbol], bar.low)
-            self._intraday_volume[symbol] += bar.volume
+            # Same day — update intraday accumulators
+            if self._last_bar_date[symbol] is None:
+                # First bar ever for this symbol
+                self._intraday_high[symbol] = bar.high
+                self._intraday_low[symbol] = bar.low
+                self._intraday_volume[symbol] = bar.volume
+            else:
+                self._intraday_high[symbol] = max(self._intraday_high[symbol], bar.high)
+                self._intraday_low[symbol] = min(self._intraday_low[symbol], bar.low)
+                self._intraday_volume[symbol] += bar.volume
             self._intraday_close[symbol] = bar.close
             self._last_bar_date[symbol] = current_date
             return None

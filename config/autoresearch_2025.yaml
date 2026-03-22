@@ -34,9 +34,9 @@ strategies:
     pullback_pct: 0.04           # iter5: 4% pullback zone (was 1.5%) — catch more entries
     stop_atr_mult: 2.0
     target_atr_mult: 5.0        # iter5: wider target to let winners run
-    min_bars: 35                 # iter5: reduced warmup (was 55)
-    cooldown_bars: 12
-    confluence_threshold: 30.0   # iter5: lower threshold (was 50) — need more signals
+    min_bars: 25                 # iter9: further reduced for daily bars
+    cooldown_bars: 3             # iter9: 3-day cooldown on daily bars
+    confluence_threshold: 30.0
     long_only: true
     vol_avg_mult: 0.5            # iter5: lower volume requirement (was 0.8)
     activation:
