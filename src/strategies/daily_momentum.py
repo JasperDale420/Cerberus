@@ -213,33 +213,45 @@ class DailyMomentumStrategy(BaseStrategy):
             # Confluence scoring
             score = 0.0
 
-            # Factor 1: Trend strength (EMA spread)
+            # Factor 1: Trend strength (EMA spread) — 35 max
             ema_spread = (ema_fast - ema_slow) / ema_slow
-            if ema_spread > 0.005:
-                score += 25.0
-            if ema_spread > 0.01:
+            if ema_spread > 0.003:
+                score += 15.0
+            if ema_spread > 0.008:
+                score += 10.0
+            if ema_spread > 0.015:
                 score += 10.0
 
-            # Factor 2: Pullback proximity (price near fast EMA)
+            # Factor 2: EMA slope (trend acceleration) — 20 max
+            closes_list = list(closes)
+            if len(closes_list) >= 5:
+                prev_ema = self._ema(deque(closes_list[:-3]), self.ema_fast_period)
+                if prev_ema is not None and prev_ema > 0:
+                    ema_slope = (ema_fast - prev_ema) / prev_ema
+                    if ema_slope > 0.002:
+                        score += 10.0  # EMA rising
+                    if ema_slope > 0.005:
+                        score += 10.0  # EMA rising strongly
+
+            # Factor 3: Price relative to EMAs — 20 max
             if -self.pullback_pct <= distance_to_ema <= self.pullback_pct:
-                score += 25.0  # Near EMA — ideal pullback entry
+                score += 20.0  # Near EMA — ideal pullback entry
             elif distance_to_ema < -self.pullback_pct:
-                score += 15.0  # Below EMA — potential oversold bounce
+                score += 10.0  # Below EMA — could be reversal
             else:
-                score += 5.0  # Above EMA — chase entry (penalized)
+                score += 5.0  # Above EMA — chase entry
 
-            # Factor 3: Volume confirmation
+            # Factor 4: Volume confirmation — 15 max
             if avg_vol > 0 and current_vol > avg_vol * self.vol_avg_mult:
-                score += 20.0
-
-            # Factor 4: Price above prior day's close (momentum confirmation)
-            if len(closes) >= 2 and price > closes[-2]:
                 score += 15.0
 
-            # Factor 5: Not extended (price not too far from slow EMA)
-            distance_to_slow = (price - ema_slow) / ema_slow
-            if distance_to_slow < 0.05:  # Not more than 5% above slow EMA
-                score += 5.0
+            # Factor 5: Multi-day momentum — 10 max
+            if len(closes_list) >= 3:
+                three_day_return = (price - closes_list[-3]) / closes_list[-3]
+                if three_day_return > 0:
+                    score += 5.0
+                if three_day_return > 0.01:
+                    score += 5.0
 
             if score >= self.confluence_threshold:
                 stop_price = price - atr * self.stop_atr_mult
