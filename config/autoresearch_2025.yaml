@@ -217,14 +217,14 @@ strategies:
 
 # Risk — $100k account
 risk:
-  max_daily_loss: 3000.0
-  max_risk_per_trade: 3000.0
-  max_open_risk: 10000.0
+  max_daily_loss: 5000.0          # iter15: higher daily loss tolerance (3K→5K)
+  max_risk_per_trade: 5000.0      # iter15: bigger trades (3K→5K)
+  max_open_risk: 20000.0          # iter15: more open risk (10K→20K)
   max_trades_per_day: 80
-  max_open_positions: 12
-  max_positions_per_strategy: 4
-  max_notional_per_order: 90000.0
-  max_notional_per_symbol: 90000.0
+  max_open_positions: 15          # iter15: more concurrent positions (12→15)
+  max_positions_per_strategy: 10  # iter15: let daily_momentum hold more (4→10)
+  max_notional_per_order: 95000.0
+  max_notional_per_symbol: 95000.0
   time_in_force: "day"
   risk_mode: "normal"
   slippage_bps: 3.0
