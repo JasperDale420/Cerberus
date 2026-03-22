@@ -25,7 +25,7 @@ strategy_routing:
 
 strategies:
   daily_momentum:
-    enabled: true               # iter4: new daily swing strategy
+    enabled: false              # iter7b: disable, focus on pair trading
     allow_overnight: true
     max_hold_days: 10
     signal_timeframe: 5
@@ -263,8 +263,8 @@ risk:
 backtest:
   bar_resolution_minutes: 5             # 5x speedup: aggregate 1m→5m (most strategies use 5m signal_timeframe)
   disable_flow_strategies: true
-  partial_fill_mode: "random"
-  partial_fill_pct: 0.7
+  partial_fill_mode: "full"       # iter8: deterministic fills for reliable metric
+  partial_fill_pct: 1.0
   slippage_mode: "fixed"
   slippage_impact_mult: 5.0
   spread_mode: "fixed"
