@@ -32,6 +32,7 @@ def check_data_quality(
     exclude_below_pct: float = 50.0,
     max_gap_bars: int = 5,
     outlier_threshold: float = 0.15,
+    bars_per_day: int = 390,
 ) -> DataQualityReport:
     report = DataQualityReport()
 
@@ -42,7 +43,7 @@ def check_data_quality(
 
         total_bars = len(df)
         trading_days = df["timestamp"].dt.date.nunique()
-        expected_bars = max(trading_days * 390, 1)
+        expected_bars = max(trading_days * bars_per_day, 1)
         coverage_pct = (total_bars / expected_bars) * 100.0
 
         # Gap detection

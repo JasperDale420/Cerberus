@@ -623,10 +623,19 @@ async def run_backtest(
 
     bars_by_symbol = {sym: grp for sym, grp in bars_df.groupby("symbol")}
     dq_cfg = config.get("analytics", {}).get("data_quality", {})
+    # Adjust expected bars per day based on bar resolution
+    # Daily bars = 1 bar/day, 5-min = 78 bars/day, 1-min = 390 bars/day
+    if bar_resolution_minutes >= 1440:
+        bars_per_day = 1
+    elif bar_resolution_minutes > 1:
+        bars_per_day = 390 // bar_resolution_minutes
+    else:
+        bars_per_day = 390
     dq_report = check_data_quality(
         bars_by_symbol,
         min_coverage_pct=dq_cfg.get("min_coverage_pct", 80.0),
         exclude_below_pct=dq_cfg.get("exclude_below_pct", 50.0),
+        bars_per_day=bars_per_day,
     )
     for sym in dq_report.excluded_symbols:
         logger.warning("data_quality_excluded", symbol=sym)
