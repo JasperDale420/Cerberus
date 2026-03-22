@@ -721,7 +721,7 @@ def _apply_params_to_config(
         "stop_z_threshold",
         "spread_lookback",
         "min_correlation",
-        "freshness_seconds",
+        "max_hold_days",
     }
 
     for key, value in params.items():

@@ -25,12 +25,11 @@ from src.strategies.pair_trading_v2 import PairTradingV2Strategy, _pair_key
 
 PAIR_CONFIG = {
     "pairs": [{"leg_a": "AAPL", "leg_b": "MSFT"}],
-    "entry_z_threshold": 2.5,
+    "entry_z_threshold": 2.0,
     "stop_z_threshold": 3.5,
-    "spread_lookback": 100,
+    "spread_lookback": 90,
     "min_bars": 10,
-    "freshness_seconds": 120.0,
-    "max_hold_minutes": 120.0,
+    "max_hold_days": 15,
 }
 
 
@@ -111,8 +110,8 @@ class TestQuantAttributes:
         assert "prices_b" in ps
         assert isinstance(ps["prices_a"], deque)
 
-    def test_max_hold_minutes_config(self, strategy):
-        assert strategy.max_hold_minutes == 120.0
+    def test_max_hold_days_config(self, strategy):
+        assert strategy.max_hold_days == 15
 
     def test_min_correlation_config(self):
         logger = StructuredLogger("test")

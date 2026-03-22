@@ -280,10 +280,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef(
             "spread_lookback",
             "int",
-            low=80,
-            high=180,
-            step=20,
-            description="Lookback period for spread normalization (floor raised: <80 too noisy)",
+            low=60,
+            high=120,
+            step=10,
+            description="Lookback period in trading days for spread normalization",
         ),
         ParamDef(
             "min_correlation",
@@ -294,12 +294,12 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             description="Minimum rolling correlation gate (capped: >0.65 eliminates all pairs)",
         ),
         ParamDef(
-            "max_hold_minutes",
+            "max_hold_days",
             "int",
-            low=60,
-            high=240,
-            step=30,
-            description="Maximum hold time in minutes",
+            low=5,
+            high=20,
+            step=5,
+            description="Maximum hold time in trading days",
         ),
     ],
     # ------------------------------------------------------------------

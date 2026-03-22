@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
 from typing import Any
 
 from src.analysis.ou_estimator import OUEstimator
@@ -40,12 +39,10 @@ def _make_pair_state(
         "spread_std": RollingStd.create(spread_lookback),
         "last_price_a": 0.0,
         "last_price_b": 0.0,
-        "last_time_a": None,
-        "last_time_b": None,
         "bar_count": 0,
         "bar_idx_sync": -1,  # synchronized bar index for factor cache lookup
         "signal_active": False,
-        "z_score_history": deque(maxlen=10),
+        "z_score_history": deque(maxlen=30),
         # Rolling correlation tracking
         "prices_a": deque(maxlen=spread_lookback),
         "prices_b": deque(maxlen=spread_lookback),
@@ -53,16 +50,17 @@ def _make_pair_state(
 
 
 class PairTradingV2Strategy(BaseStrategy):
-    """Enhanced pair trading with Kalman-filtered hedge ratio, Engle-Granger
-    cointegration gate, GARCH-conditional z-scores, OU half-life gate,
-    and rolling correlation monitoring.
+    """Daily swing pair trading with Kalman-filtered hedge ratio,
+    Engle-Granger cointegration gate, OU half-life gate, and rolling
+    correlation monitoring.
 
-    ``on_bar`` is called per-symbol; the strategy tracks which pairs each
-    symbol belongs to and only computes signals when both legs have a fresh
-    bar within a configurable freshness window (default 60 s).
+    Designed for daily bars with multi-day holds.  ``on_bar`` is called
+    per-symbol; the strategy tracks which pairs each symbol belongs to
+    and evaluates signals when both legs have received a daily bar.
     """
 
     name: str = "pair_trading_v2"
+    allow_overnight: bool = True
 
     def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
         super().__init__(config, logger)
@@ -78,13 +76,11 @@ class PairTradingV2Strategy(BaseStrategy):
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
         self.confluence_threshold = float(config.get("confluence_threshold", 60.0))
-        self.entry_z_threshold = float(config.get("entry_z_threshold", 2.5))
+        self.entry_z_threshold = float(config.get("entry_z_threshold", 2.0))
         self.stop_z_threshold = float(config.get("stop_z_threshold", 3.5))
-        self.hedge_ema_period = int(config.get("hedge_ema_period", 50))
-        self.spread_lookback = int(config.get("spread_lookback", 100))
-        self.min_bars = int(config.get("min_bars", 60))
-        self.freshness_seconds = float(config.get("freshness_seconds", 60.0))
-        self.max_hold_minutes = float(config.get("max_hold_minutes", 120.0))
+        self.spread_lookback = int(config.get("spread_lookback", 90))
+        self.min_bars = int(config.get("min_bars", 30))
+        self.max_hold_days = int(config.get("max_hold_days", 15))
         self.min_correlation = float(config.get("min_correlation", 0.6))
         self.tf_alignment_mode = "mean_reversion"
 
@@ -132,14 +128,12 @@ class PairTradingV2Strategy(BaseStrategy):
             return 50.0
         return 0.0
 
-    # -- freshness --------------------------------------------------------
+    # -- synchronization ---------------------------------------------------
 
-    def _both_legs_fresh(self, ps: dict[str, Any], current_time: datetime) -> bool:
-        time_a: datetime | None = ps["last_time_a"]
-        time_b: datetime | None = ps["last_time_b"]
-        if time_a is None or time_b is None:
-            return False
-        return abs((time_a - time_b).total_seconds()) <= self.freshness_seconds
+    @staticmethod
+    def _both_legs_have_prices(ps: dict[str, Any]) -> bool:
+        """Both legs have received at least one bar (daily resolution)."""
+        return ps["last_price_a"] > 0.0 and ps["last_price_b"] > 0.0
 
     # -- rolling correlation -----------------------------------------------
 
@@ -361,25 +355,14 @@ class PairTradingV2Strategy(BaseStrategy):
         # Update the leg that just received a bar
         if symbol == leg_a:
             ps["last_price_a"] = bar.close
-            ps["last_time_a"] = bar.time
         elif symbol == leg_b:
             ps["last_price_b"] = bar.close
-            ps["last_time_b"] = bar.time
         else:
             return None
 
-        # Only count bars and update correlation/cointegration when the
-        # incoming bar's leg is the one that was stale (i.e., we now have a
-        # fresh observation from BOTH legs).  This prevents double-counting
-        # with stale prices and ensures bar_count reflects synchronized pairs.
-        is_synchronized = False
-        if ps["last_price_a"] > 0 and ps["last_price_b"] > 0:
-            # Check if the OTHER leg was updated more recently or at the same time
-            other_time = ps["last_time_b"] if symbol == leg_a else ps["last_time_a"]
-            if other_time is not None:
-                is_synchronized = True
-
-        if is_synchronized:
+        # Only count bars when both legs have prices.
+        # With daily bars both legs get one bar per day.
+        if self._both_legs_have_prices(ps):
             ps["bar_count"] += 1
             ps["bar_idx_sync"] += 1
             ps["prices_a"].append(ps["last_price_a"])
@@ -392,7 +375,7 @@ class PairTradingV2Strategy(BaseStrategy):
                 self._compute_spread_zscore(ps, key)
             return None
 
-        if not self._both_legs_fresh(ps, bar.time):
+        if not self._both_legs_have_prices(ps):
             return None
         if ps["signal_active"]:
             return None
@@ -415,17 +398,16 @@ class PairTradingV2Strategy(BaseStrategy):
             )
             return None
 
-        # Gate 2: OU half-life check
-        # OU half_life is in trading days (dt=1/390), convert to minutes
+        # Gate 2: OU half-life check (units = trading days)
         ou_result = self._ou_estimators[key].update(spread)
-        half_life_minutes = ou_result.half_life * 390.0 if ou_result is not None else 0.0
-        if ou_result is not None and half_life_minutes > self.max_hold_minutes:
+        half_life_days = ou_result.half_life if ou_result is not None else 0.0
+        if ou_result is not None and half_life_days > self.max_hold_days:
             self.logger.debug(
                 "pair_trading_v2: OU half-life gate rejected",
                 pair=key,
                 symbol=symbol,
-                half_life_minutes=round(half_life_minutes, 2),
-                max_hold=self.max_hold_minutes,
+                half_life_days=round(half_life_days, 2),
+                max_hold_days=self.max_hold_days,
             )
             return None
 
@@ -467,7 +449,7 @@ class PairTradingV2Strategy(BaseStrategy):
         meta["exit_config"] = {
             "trailing_enabled": False,
             "partial_exits": [(1.5, 0.5)],
-            "max_hold_minutes": None,
+            "max_hold_minutes": self.max_hold_days * 390,
             "vol_adaptive": False,
         }
         meta["pair"] = key

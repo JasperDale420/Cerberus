@@ -56,11 +56,17 @@ def _build_backtest_logger(config: dict) -> StructuredLogger:
 
 
 def _get_bar_resolution_minutes(config: dict) -> int:
-    """Return the requested bar resolution for backtests."""
+    """Return the requested bar resolution for backtests.
+
+    ``bar_resolution_minutes`` may be an integer (e.g. 1, 5) or the string
+    ``"daily"`` which is normalised to 1440 (minutes per trading day).
+    """
     backtest_cfg = config.get("backtest", {})
     if not isinstance(backtest_cfg, dict):
         return 1
     raw_value = backtest_cfg.get("bar_resolution_minutes", 1)
+    if isinstance(raw_value, str) and raw_value.lower() == "daily":
+        return 1440
     try:
         return max(int(raw_value), 1)
     except (TypeError, ValueError):
@@ -72,7 +78,6 @@ def _apply_bar_resolution(bars_df: pd.DataFrame, bar_resolution_minutes: int) ->
     if bars_df.empty or bar_resolution_minutes <= 1:
         return bars_df
 
-    freq = f"{bar_resolution_minutes}min"
     frames: list[pd.DataFrame] = []
 
     for symbol, group in bars_df.groupby("symbol", sort=True):
@@ -80,25 +85,46 @@ def _apply_bar_resolution(bars_df: pd.DataFrame, bar_resolution_minutes: int) ->
         ts_index = pd.DatetimeIndex(pd.to_datetime(working["timestamp"], utc=True))
         working = working.set_index(ts_index)
 
-        aggregated = working.resample(freq, label="left", closed="left").agg(
-            {
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum",
-            }
-        )
+        if bar_resolution_minutes >= 1440:
+            # Daily aggregation: group by trading date
+            aggregated = working.groupby(working.index.date).agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
+            price_volume = (
+                (working["vwap"].fillna(working["close"]) * working["volume"]).groupby(working.index.date).sum()
+            )
+            total_volume = working["volume"].groupby(working.index.date).sum()
+        else:
+            freq = f"{bar_resolution_minutes}min"
+            aggregated = working.resample(freq, label="left", closed="left").agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
+            price_volume = (
+                (working["vwap"].fillna(working["close"]) * working["volume"])
+                .resample(freq, label="left", closed="left")
+                .sum()
+            )
+            total_volume = working["volume"].resample(freq, label="left", closed="left").sum()
 
-        price_volume = (
-            (working["vwap"].fillna(working["close"]) * working["volume"])
-            .resample(freq, label="left", closed="left")
-            .sum()
-        )
-        total_volume = working["volume"].resample(freq, label="left", closed="left").sum()
         aggregated["vwap"] = price_volume.div(total_volume.where(total_volume != 0)).fillna(aggregated["close"])
         aggregated = aggregated.dropna(subset=["open", "high", "low", "close"]).reset_index()
-        aggregated.rename(columns={"index": "timestamp"}, inplace=True)
+        # Normalise the index column name (daily groupby produces 'index', resample produces different names)
+        if aggregated.columns[0] != "timestamp":
+            aggregated.rename(columns={aggregated.columns[0]: "timestamp"}, inplace=True)
+        # Ensure timestamp is a proper datetime (daily groupby produces date objects)
+        aggregated["timestamp"] = pd.to_datetime(aggregated["timestamp"], utc=True)
         aggregated["symbol"] = symbol
         frames.append(aggregated)
 

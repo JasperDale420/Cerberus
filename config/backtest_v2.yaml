@@ -148,6 +148,8 @@ strategies:
       min_confidence: 0.5
   pair_trading_v2:
     enabled: true
+    allow_overnight: true
+    max_hold_days: 15               # max hold period in trading days
     pairs:
       - {leg_a: "XOM", leg_b: "CVX"}
       - {leg_a: "JPM", leg_b: "GS"}
@@ -155,14 +157,11 @@ strategies:
       - {leg_a: "AAPL", leg_b: "MSFT"}
     entry_z_threshold: 2.0
     stop_z_threshold: 3.5
-    spread_lookback: 100
-    min_bars: 60
-    freshness_seconds: 120.0
-    max_hold_minutes: 120.0
+    spread_lookback: 90              # trading days (~4.5 months)
+    min_bars: 30                     # ~6 weeks warmup
     confluence_threshold: 50.0
     min_correlation: 0.6
     activation:
-      session: [opening, midday, power_hour]
       trend: [flat, up, down]
       vol: [low, normal, high]
       liquidity: [good, thin]
