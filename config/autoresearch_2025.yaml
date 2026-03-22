@@ -25,10 +25,10 @@ strategy_routing:
 
 strategies:
   daily_momentum:
-    enabled: false              # iter7b: disable, focus on pair trading
+    enabled: true               # iter9: re-enable on daily bars
     allow_overnight: true
-    max_hold_days: 10
-    signal_timeframe: 5
+    max_hold_days: 15            # iter9: hold longer on daily timeframe
+    signal_timeframe: 1          # iter9: every bar is a daily bar now
     ema_fast_period: 10          # iter5: faster EMA for quicker trend detection
     ema_slow_period: 30          # iter5: shorter slow EMA, less warmup needed
     pullback_pct: 0.04           # iter5: 4% pullback zone (was 1.5%) — catch more entries
@@ -261,7 +261,7 @@ risk:
 
 # Backtest Realism
 backtest:
-  bar_resolution_minutes: 5             # 5x speedup: aggregate 1m→5m (most strategies use 5m signal_timeframe)
+  bar_resolution_minutes: daily          # iter9: daily bars for swing strategies
   disable_flow_strategies: true
   partial_fill_mode: "full"       # iter8: deterministic fills for reliable metric
   partial_fill_pct: 1.0
