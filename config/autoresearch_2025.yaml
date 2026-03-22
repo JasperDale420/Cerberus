@@ -29,8 +29,8 @@ strategies:
     allow_overnight: true
     max_hold_days: 15            # iter9: hold longer on daily timeframe
     signal_timeframe: 1          # iter9: every bar is a daily bar now
-    ema_fast_period: 8            # iter13: even faster (10→8) — catch trends earlier
-    ema_slow_period: 21           # iter13: 1-month slow EMA (30→21) — faster confirmation
+    ema_fast_period: 10          # iter5: faster EMA for quicker trend detection
+    ema_slow_period: 30          # iter5: shorter slow EMA, less warmup needed
     pullback_pct: 0.04           # iter5: 4% pullback zone (was 1.5%) — catch more entries
     stop_atr_mult: 1.5           # iter11: tighter stop (2.0→1.5) — cut losses
     target_atr_mult: 6.0        # iter11: wider target (5.0→6.0) — bigger winners
