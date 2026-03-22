@@ -1,6 +1,6 @@
 # Autoresearch V2 Experiment Config
-# Iter 6: Balanced 1.25% risk, baseline 1.5/6.0 ATR, full 16-sym universe,
-# moderate daily loss cap, max 6 positions.
+# Iter 10: Iter 8 base + more selective entries (deeper pullback, stronger volume).
+# Fewer but higher-quality trades should improve win rate and reduce drawdown.
 
 database_url: "sqlite:///cerberus.db"
 timezone: "US/Eastern"
@@ -62,14 +62,14 @@ strategies:
     enabled: true
     ema_fast_period: 20
     ema_slow_period: 50
-    pullback_pct: 0.015
+    pullback_pct: 0.02
     stop_atr_mult: 1.5
-    target_atr_mult: 6.0
+    target_atr_mult: 5.0
     min_bars: 55
-    max_hold_days: 10
+    max_hold_days: 8
     long_only: true
-    vol_avg_mult: 0.8
-    confluence_threshold: 50.0
+    vol_avg_mult: 1.0
+    confluence_threshold: 55.0
 
   mean_reversion_pro:
     enabled: true
