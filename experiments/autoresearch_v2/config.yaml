@@ -1,6 +1,5 @@
 # Autoresearch V2 Experiment Config
-# Iter 10: Iter 8 base + more selective entries (deeper pullback, stronger volume).
-# Fewer but higher-quality trades should improve win rate and reduce drawdown.
+# BEST CONFIG (Iter 10): 1.25% risk, 1.5/5.0 ATR, selective entries, 20/50 EMA.
 
 database_url: "sqlite:///cerberus.db"
 timezone: "US/Eastern"
