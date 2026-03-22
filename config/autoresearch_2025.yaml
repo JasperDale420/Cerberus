@@ -38,14 +38,8 @@ strategies:
     cooldown_bars: 3             # iter9: 3-day cooldown on daily bars
     confluence_threshold: 30.0
     long_only: true
-    vol_avg_mult: 0.5            # iter5: lower volume requirement (was 0.8)
-    activation:
-      session: [opening, midday, power_hour]
-      trend: [up, flat]
-      vol: [low, normal, high]
-      liquidity: [good, thin]
-      risk: [risk_on, neutral]
-      min_confidence: 0.3
+    vol_avg_mult: 0.5
+    # iter10: no activation policy — daily bars don't have intraday session/regime data
 
   mean_reversion_pro:
     enabled: false              # iter2: disable (-$151)
@@ -189,12 +183,7 @@ strategies:
     min_bars: 30
     confluence_threshold: 45.0
     min_correlation: 0.55
-    activation:
-      trend: [flat, up, down]
-      vol: [low, normal, high]
-      liquidity: [good, thin]
-      risk: [neutral, risk_off]
-      min_confidence: 0.4
+    # iter10: no activation policy for daily bars
 
   # V1 legacy — disabled
   vwap_reversion:
