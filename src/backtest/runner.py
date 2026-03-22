@@ -854,7 +854,36 @@ async def run_backtest(
         if prev_day and current_day != prev_day:
             # Flush pending async fill callbacks so symbol_states are current
             await asyncio.sleep(0)
-            _backtest_flatten_all(reason="EOD Backtest Simulation")
+            # Per-strategy EOD flatten: only flatten positions whose strategy
+            # does NOT allow overnight holds (or has exceeded max_hold_days).
+            symbols_to_flatten: list[str] = []
+            for sym, qty in list(engine.account.positions_qty.items()):
+                if abs(qty) < 1e-6:
+                    continue
+                sym_state = engine.symbol_states.get(sym)
+                pos = sym_state.position if sym_state else None
+                strat_name = (pos.strategy_name or pos.strategy) if pos else ""
+                strat = engine.strategies.get(strat_name)
+                if strat is None:
+                    # Unknown strategy — flatten for safety
+                    symbols_to_flatten.append(sym)
+                    continue
+                # Calculate hold days from entry
+                hold_days = 0
+                if pos and pos.entry_time:
+                    entry_time = pos.entry_time
+                    if isinstance(entry_time, (int, float)):
+                        if entry_time > 1e15:
+                            entry_time = datetime.fromtimestamp(entry_time / 1_000_000, tz=timezone.utc)
+                        elif entry_time > 1e10:
+                            entry_time = datetime.fromtimestamp(entry_time / 1000, tz=timezone.utc)
+                        else:
+                            entry_time = datetime.fromtimestamp(entry_time, tz=timezone.utc)
+                    hold_days = (ts.date() - entry_time.date()).days
+                if _should_flatten_position(strat, hold_days):
+                    symbols_to_flatten.append(sym)
+            if symbols_to_flatten:
+                _backtest_flatten_all(reason="EOD Backtest Simulation", symbols=symbols_to_flatten)
             # Snapshot equity at day boundary for Sharpe/DD calculations
             equity_curve.append((ts, engine.account.equity))
         prev_day = current_day
