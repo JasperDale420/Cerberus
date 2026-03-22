@@ -43,6 +43,7 @@ def _make_pair_state(
         "last_time_a": None,
         "last_time_b": None,
         "bar_count": 0,
+        "bar_idx_sync": -1,  # synchronized bar index for factor cache lookup
         "signal_active": False,
         "z_score_history": deque(maxlen=10),
         # Rolling correlation tracking
@@ -70,6 +71,8 @@ class PairTradingV2Strategy(BaseStrategy):
         # Quant monitors — keyed by pair key
         self._coint_monitors: dict[str, RollingCointegrationMonitor] = {}
         self._ou_estimators: dict[str, OUEstimator] = {}
+        # Optional precomputed factor cache (injected during WFO optimization)
+        self._factor_cache = config.get("_factor_cache", None)
         self._init_pairs(config)
 
     def _set_params(self, config: dict[str, Any]) -> None:
@@ -166,29 +169,42 @@ class PairTradingV2Strategy(BaseStrategy):
         ps: dict[str, Any],
         key: str,
     ) -> tuple[float, float, float, float] | None:
-        """Return (hedge_ratio, spread, z_score, std) or None."""
+        """Return (hedge_ratio, spread, z_score, std) or None.
+
+        When a ``PairFactorCache`` is available (WFO optimization), reads
+        precomputed Kalman factors at the synchronized bar index instead of
+        running the online Kalman filter.  The rolling std z-score is still
+        computed online because it depends on ``spread_lookback`` (a tunable
+        parameter).
+        """
         price_a, price_b = ps["last_price_a"], ps["last_price_b"]
         if price_b <= 0.0 or price_a <= 0.0:
             return None
 
-        # Kalman-filtered hedge ratio (models price_a = intercept + slope * price_b)
+        # Try precomputed cache first (WFO mode)
+        if self._factor_cache is not None:
+            bar_idx = ps["bar_idx_sync"]
+            factors = self._factor_cache.get(key, bar_idx)
+            if factors is not None:
+                spread = factors.spread
+                hedge_ratio = factors.hedge_ratio
+                # Still update spread_std for z-score (parameter-dependent)
+                mean, std = ps["spread_std"].update(spread)
+                if std <= 0.0:
+                    return None
+                z_score = (spread - mean) / std
+                return hedge_ratio, spread, z_score, std
+
+        # Fallback: online Kalman computation (live trading / no cache)
         kalman: KalmanHedgeRatio = ps["kalman"]
         spread = kalman.update(price_b, price_a)  # x=price_b, y=price_a
         hedge_ratio = kalman.hedge_ratio
 
         mean, std = ps["spread_std"].update(spread)
 
-        # NOTE: OU estimator is fed once in _process_pair() at the half-life gate.
-        # Do NOT update here — double-feeding inflates autocorrelation and biases half-life.
-
         if std <= 0.0:
             return None
 
-        # Use rolling std z-score.  GARCH conditional z-score is not appropriate
-        # here because the spread (Kalman innovation) is a zero-mean residual —
-        # GARCHForecaster fits log-returns of prices, which is undefined for
-        # negative values and produces a dimensional mismatch (spread-level
-        # deviation / log-return volatility).
         z_score = (spread - mean) / std
 
         return hedge_ratio, spread, z_score, std
@@ -365,6 +381,7 @@ class PairTradingV2Strategy(BaseStrategy):
 
         if is_synchronized:
             ps["bar_count"] += 1
+            ps["bar_idx_sync"] += 1
             ps["prices_a"].append(ps["last_price_a"])
             ps["prices_b"].append(ps["last_price_b"])
             self._coint_monitors[key].update(ps["last_price_a"], ps["last_price_b"])

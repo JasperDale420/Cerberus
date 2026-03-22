@@ -239,6 +239,11 @@ def get_precomputed(symbol: str, tf_label: str) -> dict[str, np.ndarray] | None:
     return _precomputed_cache.get((symbol, tf_label))
 
 
+def is_installed(symbol: str) -> bool:
+    """Check if any pre-computed indicators exist for *symbol*."""
+    return any(k[0] == symbol for k in _precomputed_cache)
+
+
 def clear_precomputed() -> None:
     """Clear all pre-computed indicator caches (call between backtest runs)."""
     _precomputed_cache.clear()

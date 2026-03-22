@@ -274,6 +274,147 @@ def _retrain_hmm_for_window(
 # ---------------------------------------------------------------------------
 
 
+def _precompute_indicators_for_window(
+    start_date: str,
+    end_date: str,
+    data_dir: str,
+    base_config: dict[str, Any],
+) -> None:
+    """Pre-compute MTF indicators once per WFO window.
+
+    Called in each multiprocessing worker BEFORE ``study.optimize()`` so that
+    all trials in the window reuse the cached indicators via
+    ``skip_indicator_precompute=True``.
+    """
+    from src.backtest.indicator_precompute import (
+        clear_precomputed,
+        install_precomputed,
+        precompute_symbol_indicators,
+    )
+    from src.backtest.runner import _load_cached_parquet_bars
+    from src.core.logger import StructuredLogger
+
+    logger = StructuredLogger("PRECOMPUTE", level="WARNING")
+
+    start_dt = datetime.fromisoformat(start_date)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    end_dt = datetime.fromisoformat(end_date)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+    # Collect universe symbols
+    symbols: set[str] = set()
+    index_symbol = base_config.get("index_symbol", "SPY")
+    vol_symbol = base_config.get("regime", {}).get("vol_symbol", "VXX")
+    symbols.add(index_symbol)
+    symbols.add(vol_symbol)
+    universes = base_config.get("universe", {})
+    if isinstance(universes, list):
+        for u in universes:
+            for s in u.get("symbols", []):
+                symbols.add(s)
+    elif isinstance(universes, dict):
+        for s in universes.get("symbols", []):
+            symbols.add(s)
+
+    bars_df = _load_cached_parquet_bars(
+        Path(data_dir),
+        symbols,
+        start_dt,
+        end_dt,
+        logger,
+        bar_resolution_minutes=1,
+    )
+    if bars_df.empty:
+        return
+
+    clear_precomputed()
+    installed = 0
+    for sym in sorted(symbols):
+        sym_df = bars_df[bars_df["symbol"] == sym].sort_values("timestamp")
+        if sym_df.empty:
+            continue
+        try:
+            precomp = precompute_symbol_indicators(
+                timestamps=sym_df["timestamp"].values,
+                opens=sym_df["open"].values,
+                highs=sym_df["high"].values,
+                lows=sym_df["low"].values,
+                closes=sym_df["close"].values,
+                volumes=sym_df["volume"].values,
+                vwaps=sym_df["vwap"].values,
+            )
+            install_precomputed(sym, precomp)
+            installed += 1
+        except Exception:
+            pass
+
+    print(
+        f"  [Worker] Pre-computed MTF indicators for {installed}/{len(symbols)} symbols",
+        flush=True,
+    )
+
+
+def _precompute_pair_factors_for_window(
+    start_date: str,
+    end_date: str,
+    data_dir: str,
+    base_config: dict[str, Any],
+) -> None:
+    """Pre-compute Kalman hedge ratios and spreads for all configured pairs.
+
+    The PairFactorCache is injected into base_config so that every trial's
+    strategy instance reads from it instead of running the Kalman filter
+    online.  This is safe because the cache is read-only (numpy arrays).
+    """
+    from src.analytics.pair_factor_cache import PairFactorCache
+    from src.backtest.runner import _load_cached_parquet_bars
+    from src.core.logger import StructuredLogger
+
+    pairs_config = base_config.get("strategies", {}).get("pair_trading_v2", {}).get("pairs", [])
+    if not pairs_config:
+        return
+
+    logger = StructuredLogger("PAIR-CACHE", level="WARNING")
+
+    start_dt = datetime.fromisoformat(start_date)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    end_dt = datetime.fromisoformat(end_date)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+    # Collect symbols needed for pars
+    pair_symbols: set[str] = set()
+    for p in pairs_config:
+        pair_symbols.add(p["leg_a"])
+        pair_symbols.add(p["leg_b"])
+
+    bars_df = _load_cached_parquet_bars(
+        Path(data_dir),
+        pair_symbols,
+        start_dt,
+        end_dt,
+        logger,
+        bar_resolution_minutes=1,
+    )
+    if bars_df.empty:
+        return
+
+    cache = PairFactorCache(pairs_config, bars_df)
+    n_computed = cache.precompute()
+
+    # Inject into base_config so create_objective → _apply_params_to_config
+    # propagates it to each trial's strategy config.
+    base_config.setdefault("strategies", {}).setdefault("pair_trading_v2", {})["_factor_cache"] = cache
+
+    print(
+        f"  [Worker] Pre-computed Kalman factors for {n_computed} pairs",
+        flush=True,
+    )
+
+
 def _mp_optimize_worker(
     study_name: str,
     storage: str,
@@ -291,10 +432,20 @@ def _mp_optimize_worker(
     Each worker loads the shared study from SQLite, creates its own objective,
     and runs its share of trials. Optuna coordinates trial suggestions via the
     shared DB so TPE sampling remains effective.
+
+    Pre-computes MTF indicators *once* for the window so individual trials
+    skip the expensive Numba precompute step.
     """
     import optuna
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    # Pre-compute indicators once for this window (all trials reuse them)
+    _precompute_indicators_for_window(start_date, end_date, data_dir, base_config)
+
+    # Pre-compute pair factor cache for pair_trading_v2 (Kalman is expensive)
+    if strategy_name == "pair_trading_v2":
+        _precompute_pair_factors_for_window(start_date, end_date, data_dir, base_config)
 
     study = optuna.load_study(study_name=study_name, storage=storage)
     objective = create_objective(
@@ -304,6 +455,7 @@ def _mp_optimize_worker(
         end_date=end_date,
         data_dir=data_dir,
         config_path=config_path,
+        skip_indicator_precompute=True,
     )
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
@@ -429,12 +581,17 @@ def run_backtest_for_optimization(
     config: dict[str, Any],
     data_dir: str,
     config_path: str = "config/backtest_v2.yaml",
+    skip_indicator_precompute: bool = False,
 ) -> dict[str, Any]:
     """Run a single backtest synchronously and return metrics dict.
 
     This wraps the async ``run_backtest()`` from runner.py but runs it
     with ``asyncio.run()``.  Each trial gets its own DB to prevent
     contention.
+
+    When *skip_indicator_precompute* is True, the runner skips the expensive
+    Numba MTF indicator precompute (assumes indicators are already installed
+    in the module-level cache by the worker).
     """
     # Lazy import to avoid circular deps
     from src.backtest.runner import run_backtest as _run_backtest_async
@@ -464,7 +621,13 @@ def run_backtest_for_optimization(
     from src.core.config import ConfigLoader
 
     def _patched_load(self, config_path_or_dir=None):
-        return copy.deepcopy(config)
+        # Preserve PairFactorCache reference through deepcopy
+        fc = config.get("strategies", {}).get("pair_trading_v2", {}).pop("_factor_cache", None)
+        copied = copy.deepcopy(config)
+        if fc is not None:
+            config.get("strategies", {}).get("pair_trading_v2", {})["_factor_cache"] = fc
+            copied.get("strategies", {}).get("pair_trading_v2", {})["_factor_cache"] = fc
+        return copied
 
     try:
         with _mock_patch.object(ConfigLoader, "load_config", _patched_load):
@@ -474,6 +637,7 @@ def run_backtest_for_optimization(
                     end_date=end_date,
                     config_path=config_path,
                     data_dir=data_dir,
+                    skip_indicator_precompute=skip_indicator_precompute,
                 )
             )
         if result is None:
@@ -488,13 +652,15 @@ def run_backtest_for_optimization(
         print(f"[optuna] Backtest trial failed: {e}", file=sys.stderr)
         return {"n_trades": 0}
     finally:
-        # Free pre-computed indicator arrays to prevent memory buildup across trials
-        try:
-            from src.backtest.indicator_precompute import clear_precomputed
+        # When indicators are pre-installed by the worker, do NOT clear them
+        # between trials — that defeats the caching optimization.
+        if not skip_indicator_precompute:
+            try:
+                from src.backtest.indicator_precompute import clear_precomputed
 
-            clear_precomputed()
-        except Exception:
-            pass
+                clear_precomputed()
+            except Exception:
+                pass
         # Clean up trial DB
         for suffix in ("", "-journal", "-wal", "-shm"):
             p = db_path + suffix
@@ -516,7 +682,14 @@ def _apply_params_to_config(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Deep-copy config and inject trial parameters into the strategy block."""
+    # Preserve PairFactorCache reference — it contains large numpy arrays
+    # that should be shared (read-only) across trials, not deep-copied.
+    factor_cache = config.get("strategies", {}).get(strategy_name, {}).pop("_factor_cache", None)
     cfg = copy.deepcopy(config)
+    if factor_cache is not None:
+        # Re-inject into both original and copy
+        config.get("strategies", {}).get(strategy_name, {})["_factor_cache"] = factor_cache
+        cfg.get("strategies", {}).get(strategy_name, {})["_factor_cache"] = factor_cache
     strat_cfg = cfg.get("strategies", {}).get(strategy_name, {})
 
     # Parameters that map directly to strategy config keys
@@ -620,6 +793,7 @@ def create_objective(
     end_date: str,
     data_dir: str,
     config_path: str = "config/backtest_v2.yaml",
+    skip_indicator_precompute: bool = False,
 ):
     """Create an Optuna objective function for a single strategy.
 
@@ -645,6 +819,16 @@ def create_objective(
             if sname != strategy_name:
                 config["strategies"][sname]["enabled"] = False
 
+        # Ensure target strategy is in ALL regime routing lists so it
+        # activates regardless of market regime during optimization.
+        # Without this, strategies only routed in specific regimes (e.g.
+        # pair_trading_v2 only in 'chop') produce zero trades during
+        # bull/bear periods.
+        for regime in config.get("strategy_routing", {}):
+            routing = config["strategy_routing"][regime]
+            if strategy_name not in routing:
+                routing.append(strategy_name)
+
         # 3. Run backtest
         metrics = run_backtest_for_optimization(
             start_date=start_date,
@@ -652,6 +836,7 @@ def create_objective(
             config=config,
             data_dir=data_dir,
             config_path=config_path,
+            skip_indicator_precompute=skip_indicator_precompute,
         )
 
         elapsed = time.time() - t0

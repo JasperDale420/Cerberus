@@ -16,6 +16,7 @@ from src.backtest.executor import SimulatedOrderExecutor
 from src.backtest.indicator_precompute import (
     clear_precomputed,
     install_precomputed,
+    is_installed,
     precompute_symbol_indicators,
 )
 from src.core.config import ConfigLoader
@@ -473,7 +474,13 @@ def _maybe_aggregate_bar(
     accum["boundary"] = boundary
 
 
-async def run_backtest(start_date: str, end_date: str, config_path: str, data_dir: str | None = None):
+async def run_backtest(
+    start_date: str,
+    end_date: str,
+    config_path: str,
+    data_dir: str | None = None,
+    skip_indicator_precompute: bool = False,
+):
     import dotenv
 
     dotenv.load_dotenv()
@@ -612,33 +619,40 @@ async def run_backtest(start_date: str, end_date: str, config_path: str, data_di
     # MultiTimeframeAnalyzer.  Pre-computing them in batch (Numba) and
     # installing into the module-level cache activates the fast-path
     # in _compute_tf() so strategies get valid indicator values.
-    clear_precomputed()
-    for _sym in sorted(symbols):
-        _sym_df = bars_df[bars_df["symbol"] == _sym].sort_values("timestamp")
-        if _sym_df.empty:
-            continue
-        try:
-            _precomp = precompute_symbol_indicators(
-                timestamps=_sym_df["timestamp"].values,
-                opens=_sym_df["open"].values,
-                highs=_sym_df["high"].values,
-                lows=_sym_df["low"].values,
-                closes=_sym_df["close"].values,
-                volumes=_sym_df["volume"].values,
-                vwaps=_sym_df["vwap"].values,
-            )
-            install_precomputed(_sym, _precomp)
-            logger.info(
-                "Pre-computed MTF indicators",
-                symbol=_sym,
-                tf_1m_bars=len(_sym_df),
-            )
-        except Exception as e:
-            logger.warning(
-                "MTF indicator pre-computation failed for symbol — falling back to slow path",
-                symbol=_sym,
-                error=str(e),
-            )
+    #
+    # When skip_indicator_precompute is True, the caller has already
+    # installed indicators (e.g., the Optuna worker pre-installs once
+    # per WFO window to avoid recomputing across trials).
+    if skip_indicator_precompute and any(is_installed(s) for s in symbols):
+        logger.info("Skipping MTF indicator precompute — already installed")
+    else:
+        clear_precomputed()
+        for _sym in sorted(symbols):
+            _sym_df = bars_df[bars_df["symbol"] == _sym].sort_values("timestamp")
+            if _sym_df.empty:
+                continue
+            try:
+                _precomp = precompute_symbol_indicators(
+                    timestamps=_sym_df["timestamp"].values,
+                    opens=_sym_df["open"].values,
+                    highs=_sym_df["high"].values,
+                    lows=_sym_df["low"].values,
+                    closes=_sym_df["close"].values,
+                    volumes=_sym_df["volume"].values,
+                    vwaps=_sym_df["vwap"].values,
+                )
+                install_precomputed(_sym, _precomp)
+                logger.info(
+                    "Pre-computed MTF indicators",
+                    symbol=_sym,
+                    tf_1m_bars=len(_sym_df),
+                )
+            except Exception as e:
+                logger.warning(
+                    "MTF indicator pre-computation failed for symbol — falling back to slow path",
+                    symbol=_sym,
+                    error=str(e),
+                )
 
     engine = ExecutionEngine(
         config=config,

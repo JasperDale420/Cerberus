@@ -247,12 +247,61 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     # "flow_alpha": [ ... ],
     #
     # ------------------------------------------------------------------
-    # Pair Trading V2 — NOT OPTIMIZABLE with standard pipeline
-    #   Requires pair-specific config with cointegrated pairs and
-    #   synchronized multi-leg data. Not a single-instrument strategy.
-    #   Already disabled in config/backtest_v2.yaml.
+    # Pair Trading V2 — 6 params
+    #   Focus: z-score entry/stop thresholds, spread normalization,
+    #   correlation gating, hold time. Mean-reversion on cointegrated
+    #   pairs with Kalman-filtered hedge ratios.
     # ------------------------------------------------------------------
-    # "pair_trading_v2": [ ... ],
+    "pair_trading_v2": [
+        ParamDef(
+            "entry_z_threshold",
+            "float",
+            low=1.25,
+            high=2.5,
+            step=0.25,
+            description="Z-score deviation to trigger entry signal (capped: >2.5 produces 0 trades)",
+        ),
+        ParamDef(
+            "stop_z_threshold",
+            "float",
+            low=3.0,
+            high=5.0,
+            step=0.25,
+            description="Z-score deviation for stop loss",
+        ),
+        ParamDef(
+            "confluence_threshold",
+            "float",
+            low=40.0,
+            high=75.0,
+            step=5.0,
+            description="Minimum confluence score to enter",
+        ),
+        ParamDef(
+            "spread_lookback",
+            "int",
+            low=80,
+            high=180,
+            step=20,
+            description="Lookback period for spread normalization (floor raised: <80 too noisy)",
+        ),
+        ParamDef(
+            "min_correlation",
+            "float",
+            low=0.4,
+            high=0.65,
+            step=0.05,
+            description="Minimum rolling correlation gate (capped: >0.65 eliminates all pairs)",
+        ),
+        ParamDef(
+            "max_hold_minutes",
+            "int",
+            low=60,
+            high=240,
+            step=30,
+            description="Maximum hold time in minutes",
+        ),
+    ],
     # ------------------------------------------------------------------
     # RSI Bounce — 5 params
     #   Focus: RSI thresholds, band tolerance, stop/target, hold time
