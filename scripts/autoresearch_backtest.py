@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-"""Autoresearch verification script: run backtest and output a single composite score.
+"""Autoresearch 2025 verification: run backtest and output total_return_pct vs SPY.
 
 Usage:
     cd /Users/jacobmcmillan/Empire/Cerberus
     uv run python scripts/autoresearch_backtest.py
 
-Outputs a JSON line with all metrics + composite_score to stdout.
+Outputs a JSON line with total_return_pct and SPY comparison.
+The METRIC line is total_return_pct — higher is better, goal is to beat SPY.
 Exit code 0 = success, 1 = failure.
 """
 
@@ -24,20 +25,20 @@ os.environ.setdefault("EMPIRE_LOG_FORMAT", "json")
 os.chdir("/Users/jacobmcmillan/Empire/Cerberus")
 sys.path.insert(0, ".")
 
-from src.analytics.optuna_harness import composite_objective, run_backtest_for_optimization  # noqa: E402
+from src.analytics.optuna_harness import run_backtest_for_optimization  # noqa: E402
 
 
 def main():
     import yaml
 
-    config_path = "config/backtest_v2.yaml"
+    config_path = "config/autoresearch_2025.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    # Full year backtest
-    start_date = "2024-01-01"
-    end_date = "2024-12-31"
-    data_dir = "data/bars_2024"
+    # 2025 full year backtest
+    start_date = "2025-01-02"
+    end_date = "2025-12-31"
+    data_dir = "data/bars_2023_2025"
 
     metrics = run_backtest_for_optimization(
         start_date=start_date,
@@ -47,44 +48,31 @@ def main():
         config_path=config_path,
     )
 
-    # Compute composite score (same as Optuna objective)
-    score = composite_objective(metrics, min_trades=10)
+    total_return = metrics.get("total_return_pct", 0.0)
+    benchmark_return = 0.0
+    if "benchmark" in metrics and metrics["benchmark"]:
+        bm = metrics["benchmark"]
+        if isinstance(bm, dict):
+            benchmark_return = bm.get("benchmark_return_pct", 0.0)
+        elif hasattr(bm, "benchmark_return_pct"):
+            benchmark_return = bm.benchmark_return_pct
 
-    # Also compute a PnL+Sharpe focused score for our goal
-    net_pnl = metrics.get("net_pnl", 0.0)
-    sharpe = metrics.get("sharpe_ratio", 0.0)
-    trade_sharpe = metrics.get("trade_sharpe_ratio", 0.0)
-    pf = metrics.get("profit_factor", 0.0)
-    n_trades = metrics.get("n_trades", 0)
-
-    # Our autoresearch metric: PnL-weighted composite
-    # Higher = better
-    autoresearch_score = (
-        0.35 * (net_pnl / 1000.0)  # PnL in $K (dominant factor)
-        + 0.25 * sharpe  # Daily Sharpe
-        + 0.15 * trade_sharpe  # Trade-level Sharpe
-        + 0.15 * pf  # Profit factor
-        + 0.10 * min(n_trades / 100.0, 2.0)  # Trade count bonus (capped at 2.0)
-    )
+    alpha = total_return - benchmark_return
 
     output = {
-        "autoresearch_score": round(autoresearch_score, 4),
-        "composite_score": round(score, 4),
-        "net_pnl": metrics.get("net_pnl", 0.0),
-        "sharpe_ratio": sharpe,
-        "trade_sharpe_ratio": trade_sharpe,
-        "profit_factor": pf,
-        "n_trades": n_trades,
-        "winrate": metrics.get("winrate", 0.0),
-        "max_drawdown_pct": metrics.get("max_drawdown_pct", 0.0),
-        "avg_hold_minutes": metrics.get("avg_hold_minutes", 0.0),
-        "avg_pnl": metrics.get("avg_pnl", 0.0),
-        "calmar_ratio": metrics.get("calmar_ratio", 0.0),
-        "total_return_pct": metrics.get("total_return_pct", 0.0),
-        "final_equity": metrics.get("final_equity", 0.0),
+        "total_return_pct": round(total_return, 2),
+        "benchmark_return_pct": round(benchmark_return, 2),
+        "alpha": round(alpha, 2),
+        "n_trades": metrics.get("n_trades", 0),
+        "winrate": round(metrics.get("winrate", 0.0), 4),
+        "profit_factor": round(metrics.get("profit_factor", 0.0), 4),
+        "sharpe_ratio": round(metrics.get("sharpe_ratio", 0.0), 4),
+        "max_drawdown_pct": round(metrics.get("max_drawdown_pct", 0.0), 2),
+        "final_equity": round(metrics.get("final_equity", 0.0), 2),
+        "net_pnl": round(metrics.get("net_pnl", 0.0), 2),
     }
 
-    # Print only the JSON result to stdout
+    # Print JSON result
     print(json.dumps(output))
     return 0
 
