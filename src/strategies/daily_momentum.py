@@ -242,12 +242,12 @@ class DailyMomentumStrategy(BaseStrategy):
                 return Signal(
                     symbol=symbol,
                     side=OrderSide.BUY,
-                    price=price,
-                    stop=stop_price,
-                    target=target_price,
+                    size_hint=0.0,
+                    entry_price=price,
+                    stop_price=stop_price,
+                    target_price=target_price,
                     strategy=self.name,
-                    confidence=min(score / 100.0, 1.0),
-                    time=bar.time,
+                    generated_at=bar.time,
                 )
 
         # === SHORT SIGNAL (if enabled) ===
@@ -285,12 +285,12 @@ class DailyMomentumStrategy(BaseStrategy):
                 return Signal(
                     symbol=symbol,
                     side=OrderSide.SELL,
-                    price=price,
-                    stop=stop_price,
-                    target=target_price,
+                    size_hint=0.0,
+                    entry_price=price,
+                    stop_price=stop_price,
+                    target_price=target_price,
                     strategy=self.name,
-                    confidence=min(score / 100.0, 1.0),
-                    time=bar.time,
+                    generated_at=bar.time,
                 )
 
         return None
