@@ -36,7 +36,7 @@ strategies:
     target_atr_mult: 6.0        # iter11: wider target (5.0→6.0) — bigger winners
     min_bars: 25                 # iter9: further reduced for daily bars
     cooldown_bars: 3             # iter9: 3-day cooldown on daily bars
-    confluence_threshold: 30.0
+    confluence_threshold: 45.0    # iter17: higher bar for signal quality (30→45)
     long_only: true
     vol_avg_mult: 0.5
     # iter10: no activation policy — daily bars don't have intraday session/regime data
