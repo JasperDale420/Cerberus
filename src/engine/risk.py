@@ -856,8 +856,10 @@ class RiskManager:
                 from datetime import datetime as dt_type
                 from datetime import timezone
 
-                # Detect epoch unit: >1e15 = microseconds, >1e10 = milliseconds, else seconds
-                if as_of > 1e15:
+                # Detect epoch unit: >1e17 = nanoseconds, >1e13 = microseconds, >1e10 = milliseconds, else seconds
+                if as_of > 1e17:
+                    as_of_dt = dt_type.fromtimestamp(as_of / 1_000_000_000, tz=timezone.utc)
+                elif as_of > 1e13:
                     as_of_dt = dt_type.fromtimestamp(as_of / 1_000_000, tz=timezone.utc)
                 elif as_of > 1e10:
                     as_of_dt = dt_type.fromtimestamp(as_of / 1000, tz=timezone.utc)

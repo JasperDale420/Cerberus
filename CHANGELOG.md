@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Risk manager timestamp overflow on nanosecond exit_time**: `record_completed_trade` crashed with `ValueError: year 55000000+ is out of range` when `exit_time` was passed as a nanosecond integer (from gateway fills). The epoch-unit detection thresholds were wrong — nanosecond timestamps (~1.7e18) were treated as microseconds and divided by 1e6 instead of 1e9, yielding astronomically large second values. Fixed by adding a nanosecond threshold (`> 1e17`) with correct `/1e9` divisor before the microseconds branch.
+
 - **Lint: suppress intentional E402 in wfo_pairs_runner.py**: `import optuna` and `from src.analytics.optuna_harness import WalkForwardOptimizer` must appear after logging configuration to suppress optuna's verbose output before any downstream logger initialisation. Added `# noqa: E402` to document this intentional ordering.
 
 ### Added
