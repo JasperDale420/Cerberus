@@ -70,6 +70,7 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.order_flow_imbalance import OrderFlowImbalanceStrategy
     from src.strategies.pair_trading import PairTradingStrategy
     from src.strategies.pair_trading_v2 import PairTradingV2Strategy
+    from src.strategies.regime_adaptive_momentum import RegimeAdaptiveMomentumStrategy
     from src.strategies.rsi_bounce import RsiBounceStrategy
     from src.strategies.trend_pullback import TrendPullbackStrategy
     from src.strategies.trend_rider_pro import TrendRiderProStrategy
@@ -80,6 +81,7 @@ def _build_strategy_registry() -> dict[str, type]:
     return {
         # V2 consolidated strategies (enabled by default)
         "daily_momentum": DailyMomentumStrategy,
+        "regime_adaptive_momentum": RegimeAdaptiveMomentumStrategy,
         "mean_reversion_pro": MeanReversionProStrategy,
         "trend_rider_pro": TrendRiderProStrategy,
         "flow_alpha": FlowAlphaStrategy,
