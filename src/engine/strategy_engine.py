@@ -158,8 +158,14 @@ class StrategyEngine:
                     # No snapshot available — allow strategy (can't filter without data)
                     active.append(name)
             else:
-                # No activation policy — strategy runs unrestricted
-                active.append(name)
+                # No activation policy — fall back to legacy strategies_by_regime mapping
+                if self.routing.strategies_by_regime:
+                    regime_strategies = self.routing.strategies_by_regime.get(market_state.regime, [])
+                    if name in regime_strategies:
+                        active.append(name)
+                else:
+                    # No regime mapping either — strategy runs unrestricted
+                    active.append(name)
 
             # --- Hard Stop Enforcement ---
             if name in active:

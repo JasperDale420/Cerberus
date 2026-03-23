@@ -28,6 +28,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Strategy regime routing regression** (2026-03-23): Restored legacy `strategies_by_regime` fallback in `StrategyEngine._get_active_strategies`. After the activation-policy refactor, strategies without an explicit `activation:` block ran unconditionally in every regime instead of being filtered by the `strategy_routing` mapping. Strategies now correctly respect their regime assignments when no activation policy is configured.
+
+- **`regimes.{regime}.enabled: False` not preventing strategy execution** (2026-03-23): `ExecutionEngine._refresh_strategy_engine` now parses `strategy_routing` from config and builds a `strategies_by_regime` mapping that omits strategies whose `strategies.{name}.regimes.{regime}.enabled` is `False`. Previously the disabled flag was only enforced downstream in the risk manager (reducing position size to 0), but the strategy's `on_bar` was still called. Now the strategy is excluded before execution.
+
 - **Risk manager timestamp overflow on nanosecond exit_time**: `record_completed_trade` crashed with `ValueError: year 55000000+ is out of range` when `exit_time` was passed as a nanosecond integer (from gateway fills). The epoch-unit detection thresholds were wrong — nanosecond timestamps (~1.7e18) were treated as microseconds and divided by 1e6 instead of 1e9, yielding astronomically large second values. Fixed by adding a nanosecond threshold (`> 1e17`) with correct `/1e9` divisor before the microseconds branch.
 
 - **Lint: suppress intentional E402 in wfo_pairs_runner.py**: `import optuna` and `from src.analytics.optuna_harness import WalkForwardOptimizer` must appear after logging configuration to suppress optuna's verbose output before any downstream logger initialisation. Added `# noqa: E402` to document this intentional ordering.

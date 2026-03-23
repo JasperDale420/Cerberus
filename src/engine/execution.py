@@ -488,6 +488,8 @@ class ExecutionEngine:
 
     def _refresh_strategy_engine(self) -> None:
         """Rebuild strategy engine with current config and routing."""
+        from src.core.domain import Regime
+
         cfg = self.config or {}
         strategies_cfg: Dict[str, Any] = (
             cfg.get("strategies") if isinstance(cfg.get("strategies"), dict) else {}
@@ -495,7 +497,30 @@ class ExecutionEngine:
 
         activation_policies = build_activation_policies_from_config(strategies_cfg)
 
+        # Build legacy strategies_by_regime from strategy_routing config, filtering out
+        # strategies that have regimes.{regime}.enabled: False in their strategy config.
+        routing_cfg = cfg.get("strategy_routing", {})
+        strategies_by_regime: Dict[Regime, List[str]] = {}
+        if isinstance(routing_cfg, dict):
+            for regime_str, strat_list in routing_cfg.items():
+                try:
+                    regime = Regime(regime_str.lower())
+                except ValueError:
+                    continue
+                if not isinstance(strat_list, list):
+                    continue
+                enabled_strats: List[str] = []
+                for strat_name in strat_list:
+                    strat_cfg = strategies_cfg.get(strat_name, {})
+                    regimes_cfg = strat_cfg.get("regimes", {}) if isinstance(strat_cfg, dict) else {}
+                    regime_override = regimes_cfg.get(regime_str.lower(), {}) if isinstance(regimes_cfg, dict) else {}
+                    if isinstance(regime_override, dict) and not regime_override.get("enabled", True):
+                        continue
+                    enabled_strats.append(strat_name)
+                strategies_by_regime[regime] = enabled_strats
+
         routing = StrategyRouting(
+            strategies_by_regime=strategies_by_regime,
             activation_policies=activation_policies,
         )
         self.strategy_engine = StrategyEngine(
