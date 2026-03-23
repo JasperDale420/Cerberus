@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Return diagnostics module**: New `src/analytics/return_diagnostics.py` with autocorrelation analysis (detects serial correlation at configurable lags with significance testing) and turnover analysis (gross volume, annualized turnover, cost drag as percentage of gross PnL).
+
 - **Probabilistic Sharpe Ratio (PSR)**: Statistical test from Bailey & Lopez de Prado (2014) that computes the probability an observed Sharpe ratio exceeds a benchmark, accounting for skewness and kurtosis. Available in `src/analytics/statistical_tests.py`.
 
 - **Minimum Backtest Length (MinBTL)**: Computes the minimum number of observations needed for a Sharpe ratio to be statistically significant at a given confidence level, adjusting for non-normal return distributions.
