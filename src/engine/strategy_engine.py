@@ -141,7 +141,7 @@ class StrategyEngine:
         """
         allowed = set(symbol_state.allowed_strategies)
         meta = symbol_state.meta if isinstance(symbol_state.meta, dict) else {}
-        scanner_bypass = bool(meta.get("scanner_bypass", False))
+        bool(meta.get("scanner_bypass", False))
 
         active: List[str] = []
 
@@ -150,26 +150,16 @@ class StrategyEngine:
             policy = self.routing.activation_policies.get(name)
 
             if policy is not None:
-                # New: Use activation policy with regime snapshot
+                # Use activation policy with regime snapshot
                 if market_state.regime_snapshot is not None:
                     if policy.is_active(market_state.regime_snapshot):
                         active.append(name)
-                elif scanner_bypass:
-                    # scanner_bypass + no snapshot: allow (can't filter without snapshot)
-                    active.append(name)
                 else:
-                    # No snapshot available, fall back to legacy check
-                    if self._legacy_regime_allows(name, market_state.regime):
-                        active.append(name)
+                    # No snapshot available — allow strategy (can't filter without data)
+                    active.append(name)
             else:
-                # No activation policy for this strategy
-                if scanner_bypass:
-                    # Skip legacy routing when scanner_bypass is set
-                    active.append(name)
-                else:
-                    # Legacy: Use strategies_by_regime mapping
-                    if self._legacy_regime_allows(name, market_state.regime):
-                        active.append(name)
+                # No activation policy — strategy runs unrestricted
+                active.append(name)
 
             # --- Hard Stop Enforcement ---
             if name in active:
@@ -182,11 +172,6 @@ class StrategyEngine:
                         active.remove(name)
 
         return sorted(active)
-
-    def _legacy_regime_allows(self, strategy_name: str, regime: Regime) -> bool:
-        """Check if strategy is allowed under legacy regime routing."""
-        regime_allowed = set(self.routing.strategies_by_regime.get(regime, []))
-        return strategy_name in regime_allowed
 
     def _safe_run_strategy(
         self,

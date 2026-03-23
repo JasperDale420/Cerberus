@@ -127,24 +127,6 @@ unusual_whales:
   flow_url_template: ""
 
 
-# Strategy routing by regime (PRD 6.4 / 7.2)
-strategy_routing:
-  bull:
-    - orb
-    - trend_pullback
-    - vwap_trend_rider
-    - flow_momentum
-  bear:
-    - orb
-    - trend_pullback
-    - vwap_trend_rider
-    - flow_momentum
-  chop:
-    - vwap_reversion
-    - failed_breakout
-    - index_mean_reversion
-    - gap_fill
-
 strategies:
   vwap_reversion:
     enabled: true

@@ -489,7 +489,6 @@ class ExecutionEngine:
     def _refresh_strategy_engine(self) -> None:
         """Rebuild strategy engine with current config and routing."""
         cfg = self.config or {}
-        routing_cfg = cfg.get("strategy_routing") or {}
         strategies_cfg: Dict[str, Any] = (
             cfg.get("strategies") if isinstance(cfg.get("strategies"), dict) else {}
         ) or {}
@@ -497,11 +496,6 @@ class ExecutionEngine:
         activation_policies = build_activation_policies_from_config(strategies_cfg)
 
         routing = StrategyRouting(
-            strategies_by_regime={
-                Regime.BULL: self._get_regime_strategies("bull", routing_cfg, strategies_cfg),
-                Regime.BEAR: self._get_regime_strategies("bear", routing_cfg, strategies_cfg),
-                Regime.CHOP: self._get_regime_strategies("chop", routing_cfg, strategies_cfg),
-            },
             activation_policies=activation_policies,
         )
         self.strategy_engine = StrategyEngine(
@@ -510,36 +504,6 @@ class ExecutionEngine:
             self.logger,
             on_error=lambda: self._inc_error("strategy"),
         )
-
-    def _get_regime_strategies(
-        self,
-        regime_key: str,
-        routing_cfg: Dict[str, Any],
-        strategies_cfg: Dict[str, Any],
-    ) -> List[str]:
-        """Get enabled strategies for a specific regime."""
-        raw = routing_cfg.get(regime_key, [])
-        if isinstance(raw, list) and raw:
-            names = [str(x) for x in raw]
-        else:
-            names = sorted(self.strategies.keys())
-
-        return [n for n in names if n in self.strategies and self._is_strategy_enabled(n, regime_key, strategies_cfg)]
-
-    def _is_strategy_enabled(self, name: str, regime_key: str, strategies_cfg: Dict[str, Any]) -> bool:
-        """Check if a strategy is enabled for a given regime."""
-        s_cfg = strategies_cfg.get(name) if isinstance(strategies_cfg, dict) else None
-        if not isinstance(s_cfg, dict):
-            return True
-
-        enabled = bool(s_cfg.get("enabled", True))
-        regimes = s_cfg.get("regimes")
-        if isinstance(regimes, dict):
-            r_cfg = regimes.get(regime_key)
-            if isinstance(r_cfg, dict) and "enabled" in r_cfg:
-                enabled = bool(r_cfg.get("enabled"))
-
-        return enabled
 
     def on_bar(self, symbol_or_bar: Any, bar: Optional[Any] = None) -> None:
         """
