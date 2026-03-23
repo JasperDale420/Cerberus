@@ -151,16 +151,36 @@ strategies:
     allow_overnight: true
     max_hold_days: 15               # max hold period in trading days
     pairs:
-      - {leg_a: "XOM", leg_b: "CVX"}
-      - {leg_a: "JPM", leg_b: "GS"}
-      - {leg_a: "GOOGL", leg_b: "META"}
-      - {leg_a: "AAPL", leg_b: "MSFT"}
-    entry_z_threshold: 2.0
+      # Tech / Semis
+      - {leg_a: "AAPL", leg_b: "MSFT"}         # Mega-cap tech
+      - {leg_a: "NVDA", leg_b: "AMD"}           # GPU rivals
+      - {leg_a: "AVGO", leg_b: "QCOM"}          # Chip designers
+      - {leg_a: "INTC", leg_b: "AMD"}           # CPU rivals
+      - {leg_a: "MU", leg_b: "INTC"}            # Memory / CPU
+      - {leg_a: "GOOGL", leg_b: "META"}         # Digital ads
+      - {leg_a: "AMZN", leg_b: "MSFT"}          # Cloud
+      - {leg_a: "CRM", leg_b: "ORCL"}           # Enterprise SaaS
+      - {leg_a: "NFLX", leg_b: "GOOGL"}         # Streaming / content
+      # Financials
+      - {leg_a: "GS", leg_b: "MS"}              # Investment banks
+      - {leg_a: "JPM", leg_b: "BAC"}            # Big banks
+      - {leg_a: "JPM", leg_b: "GS"}             # Bank cross
+      - {leg_a: "BAC", leg_b: "MS"}             # Bank cross
+      # Energy
+      - {leg_a: "XOM", leg_b: "CVX"}            # Oil majors
+      # Transport
+      - {leg_a: "DAL", leg_b: "AAL"}            # Airlines
+      - {leg_a: "UBER", leg_b: "LYFT"}          # Rideshare
+      # Fintech / Retail Trading
+      - {leg_a: "COIN", leg_b: "HOOD"}          # Retail trading platforms
+      # Auto
+      - {leg_a: "F", leg_b: "GM"}               # Auto legacy
+    entry_z_threshold: 1.5
     stop_z_threshold: 3.5
     spread_lookback: 90              # trading days (~4.5 months)
     min_bars: 30                     # ~6 weeks warmup
-    confluence_threshold: 50.0
-    min_correlation: 0.6
+    confluence_threshold: 40.0
+    min_correlation: 0.4
     activation:
       trend: [flat, up, down]
       vol: [low, normal, high]
@@ -255,7 +275,7 @@ scanner:
   max_price: 500.0
   min_volume: 500000
 
-# Universe — only symbols we have data for in bars_2024
+# Universe — symbols we have data for in bars_5yr
 universe:
   symbols:
     - SPY
@@ -273,7 +293,9 @@ universe:
     - JPM
     - BAC
     - GS
+    - MS
     - CRM
+    - ORCL
     - XOM
     - CVX
     - MU
@@ -284,4 +306,9 @@ universe:
     - HOOD
     - SOFI
     - UBER
+    - LYFT
+    - DAL
+    - AAL
+    - F
+    - GM
     - VXX
