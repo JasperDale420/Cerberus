@@ -30,6 +30,7 @@ from src.core.domain import (
     OrderSide,
     Signal,
     SymbolState,
+    VolRegime,
 )
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
@@ -72,6 +73,9 @@ class DailyVolFadeStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.allow_overnight = True
         self.min_price = float(config.get("min_price", 5.0))
+        # When True, require MarketContextService to classify vol as HIGH or SHOCK.
+        # When False, rely only on internal ATR-based vol expansion check.
+        self.require_high_vol_regime = bool(config.get("require_high_vol_regime", False))
 
     # ------------------------------------------------------------------
     # Per-symbol state management (same pattern as daily_momentum)
@@ -175,6 +179,12 @@ class DailyVolFadeStrategy(BaseStrategy):
             return None
         if not self._check_cooldown(symbol, bar.time):
             return None
+
+        # Optionally require HIGH/SHOCK vol regime from MarketContextService
+        snapshot = market_state.regime_snapshot
+        if self.require_high_vol_regime and snapshot is not None:
+            if snapshot.vol not in (VolRegime.HIGH, VolRegime.SHOCK):
+                return None
 
         price = closes[-1]
         if price < self.min_price:

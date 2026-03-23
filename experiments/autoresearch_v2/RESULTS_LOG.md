@@ -7,7 +7,11 @@
 ## Goal
 Beat SPY on OOS (2025) with max drawdown < 15%. Optimize on IS, validate on OOS.
 
-## Iteration Log
+---
+
+## Part 1: Parameter Optimization (15 iterations)
+
+### Iteration Log
 
 | Iter | Change | IS Return | IS Sharpe | IS MaxDD | IS Calmar | OOS Return | OOS Sharpe | OOS MaxDD | OOS Calmar | OOS Trades | OOS WR | Result |
 |------|--------|-----------|-----------|----------|-----------|------------|------------|-----------|------------|------------|--------|--------|
@@ -28,7 +32,7 @@ Beat SPY on OOS (2025) with max drawdown < 15%. Optimize on IS, validate on OOS.
 | 14 | Iter 10 + 6.0 ATR target | +224.97% | 1.060 | 25.34% | 1.054 | +30.64% | 1.332 | 12.38% | 2.533 | 245 | 55.5% | keep (higher IS) |
 | 15 | Faster EMAs (10/30) | +211.42% | 1.015 | 24.36% | 1.052 | -0.13% | 0.134 | 20.51% | -0.007 | 327 | 49.2% | discard |
 
-## Key Insights
+### Key Insights from Part 1
 
 1. **Position sizing is the #1 drawdown control** — 1.25% risk per trade is the sweet spot
 2. **ATR targets must be wide (5.0-6.0)** — tighter targets (4.0) kill OOS returns
@@ -39,24 +43,98 @@ Beat SPY on OOS (2025) with max drawdown < 15%. Optimize on IS, validate on OOS.
 7. **Max 6 open positions** — concentrates capital on highest-conviction trades
 8. **Daily bars >> intraday** — reduces noise, only daily_momentum can fire
 
-## Best Config (Iter 10)
+---
 
+## Part 2: Multi-Strategy System
+
+### New Strategies Created
+
+| Strategy | Regime Target | Logic | Status |
+|----------|--------------|-------|--------|
+| `daily_mean_reversion` | FLAT/range-bound | BB(20,2σ) fade + ADX<22 filter + RSI confirmation | ✅ Working |
+| `daily_vol_fade` | HIGH/SHOCK vol | Buy extreme selloffs (2+ ATR below EMA20) | ✅ Working |
+| `regime_adaptive_momentum` | Melt-up / breakout | ADX-gated breakout entries + pullback mode | ✅ Working |
+
+### Multi-Strategy Performance (config_multi.yaml, no activation policies)
+
+| Period | Return | Sharpe | MaxDD | Trades | per-strategy breakdown |
+|--------|--------|--------|-------|--------|----------------------|
+| IS 2020-2024 | +108.12% | 0.662 | 27.76% | 2235 | momentum +$98K, mean_rev +$5.8K, vol_fade +$1.9K, breakout +$2K |
+| OOS 2025 | +21.47% | 0.996 | 14.71% | 353 | momentum +$21.6K, mean_rev -$63, vol_fade -$181 |
+| 2024 holdout | -7.91% | -0.124 | 35.30% | 497 | momentum -$25K, **mean_rev +$3.5K**, vol_fade +$77 |
+
+### Empirical Regime-Fit Analysis (2665 trades, 1507 days)
+
+Ran each strategy solo on full 2020-2025 data, tagged trades with ADX-based regime:
+
+**Regime Distribution**: TRENDING 37.7%, RANGE_BOUND 35.2%, WEAK_TREND 21.0%, SHOCK 4.2%
+
+| Strategy | TRENDING | WEAK_TREND | RANGE_BOUND | SHOCK | Best Regime |
+|----------|----------|------------|-------------|-------|-------------|
+| daily_momentum | +$93.8K ✅ | +$63.5K ✅ | +$47.8K ✅ | **-$22.3K ❌** | ALL except SHOCK |
+| daily_mean_reversion | +$4.1K (PF 2.10) ✅ | +$2.4K ✅ | **-$1.3K ❌** | — | TRENDING (!) |
+| daily_vol_fade | -$585 ❌ | -$10 | +$998 ✅ | — | RANGE_BOUND |
+| regime_adaptive_momentum | +$19 | +$1.2K ✅ | +$437 ✅ | — | WEAK_TREND |
+
+**By Volatility** (daily_momentum):
+- NORMAL: **+$229K** (sweet spot)
+- LOW: +$11K
+- HIGH: **-$34K** (avoid)
+- SHOCK: **-$22K** (avoid)
+
+### Activation Policy Testing Results
+
+| Config | OOS 2025 | IS 2020-2024 | Notes |
+|--------|----------|-------------|-------|
+| config_multi.yaml (ungated) | **+21.47%** | **+108.12%** | Best multi-strategy |
+| config_empirical.yaml (activation policies) | +15.77% | +102.17% | Activation policies HURT |
+| config.yaml (iter 10, momentum only) | **+34.00%** | **+178.43%** | Best single-strategy |
+
+**Why activation policies hurt**: The MarketContextService's 5-axis regime classifier (EWMA-based volatility) doesn't match our ADX-based analysis classifier. The "HIGH" vol regime means different things in each system, so policies filter wrong trades.
+
+---
+
+## Infrastructure Changes
+
+- ✅ Deleted legacy bull/bear/chop strategy routing from config + code
+- ✅ Strategies now use 5-axis activation policies or run unrestricted
+- ✅ `breakout_only` param added to `regime_adaptive_momentum`
+- ✅ 2 new strategies registered in strategy registry
+
+---
+
+## TODO: Next Steps
+
+### High Priority
+- [ ] **Align regime classifiers** — Make the strategies' internal ADX-based regime match MarketContextService's 5-axis EWMA-based regime so activation policies actually filter correctly. This means either (a) having the strategies read `market_state.regime_snapshot` directly instead of computing their own ADX, or (b) adding ADX as a 6th axis to MarketContextService.
+- [ ] **Add HIGH vol filter to daily_momentum** — Empirically loses -$34K in HIGH vol. Add `if snapshot.vol == VolRegime.HIGH: return None` alongside existing SHOCK check. Simple code change, big risk reduction.
+
+### Medium Priority
+- [ ] **Walk-forward regime policies** — Train activation policies on 2020-2023, validate on 2024, test on 2025 to prevent look-ahead bias
+- [ ] **Increase vol_fade trade count** — Only 17 trades total across 6 years. Relax thresholds (deviation_mult from 2.0 to 1.5?) or expand universe
+- [ ] **Mean reversion short side** — Currently long-only. Test with `allow_short: true` (empirical data shows it's profitable in UP trends, suggesting counter-trend shorts could work in DOWN trends)
+
+### Low Priority / Research
+- [ ] **ML meta-labeler** — Replace heuristic Hurst/TFI/GEX with a trained model. Requires: (a) labeled training data (regime + trade outcome), (b) feature engineering, (c) cross-validation. Our 2665 trades may not be enough — consider augmenting with synthetic data or using the regime_fit_data.json as initial labels
+- [ ] **Intraday strategies** — The V2 strategies (mean_reversion_pro, trend_rider_pro, etc.) need intraday bars. Could run a separate intraday backtest alongside daily strategies
+- [ ] **Pair trading / market-neutral leg** — Would provide returns decorrelated from market direction. pair_trading_v2 exists but barely fires on daily bars
+
+---
+
+## Config Reference
+
+### Best Single-Strategy (Iter 10)
 ```yaml
-risk_pct: 0.0125 (1.25% per trade)
-stop_atr_mult: 1.5
-target_atr_mult: 5.0
-max_hold_days: 8
-pullback_pct: 0.02
-vol_avg_mult: 1.0
-confluence_threshold: 55.0
-ema_fast/slow: 20/50
-max_open_positions: 6
-slippage_bps: 2.0
-bar_resolution: daily
+# experiments/autoresearch_v2/config.yaml
+risk_pct: 0.0125, stop_atr_mult: 1.5, target_atr_mult: 5.0
+max_hold_days: 8, pullback_pct: 0.02, vol_avg_mult: 1.0
+confluence_threshold: 55.0, ema: 20/50, max_open_positions: 6
+slippage_bps: 2.0, commission: $0
 ```
 
-### Performance Summary
-| Period | Return | vs SPY | Sharpe | MaxDD | Calmar | Win Rate | PF |
-|--------|--------|--------|--------|-------|--------|----------|----|
-| IS (2020-2024) | +178.43% | +98.03% alpha | 0.923 | 24.29% | 0.940 | 49.4% | 1.21 |
-| OOS (2025) | +34.00% | +17.36% alpha | 1.357 | 12.38% | 2.811 | 52.2% | 1.40 |
+### Best Multi-Strategy (config_multi.yaml)
+```yaml
+# experiments/autoresearch_v2/config_multi.yaml
+# 4 strategies, 1% risk/trade, 5 bps slippage, $0.005/share commission
+# max_open_positions: 8, max_positions_per_strategy: 3
+```

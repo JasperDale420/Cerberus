@@ -35,6 +35,7 @@ from src.core.domain import (
     OrderSide,
     Signal,
     SymbolState,
+    TrendRegime,
     VolRegime,
 )
 from src.core.logger import StructuredLogger
@@ -79,6 +80,9 @@ class DailyMeanReversionStrategy(BaseStrategy):
         self.allow_overnight = True
         self.allow_short = bool(config.get("allow_short", False))
         self.vol_avg_mult = float(config.get("vol_avg_mult", 0.5))
+        # When True, use MarketContextService trend=FLAT filter (aligned with activation policies).
+        # When False, fall back to internal ADX filter.
+        self.use_regime_trend_filter = bool(config.get("use_regime_trend_filter", True))
 
     # ------------------------------------------------------------------
     # Per-symbol state management (same pattern as daily_momentum)
@@ -234,15 +238,21 @@ class DailyMeanReversionStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
 
-        # Skip SHOCK volatility
+        # Use MarketContextService regime snapshot for filtering (aligned with activation policies)
         snapshot = market_state.regime_snapshot
-        if snapshot is not None and snapshot.vol == VolRegime.SHOCK:
-            return None
+        if snapshot is not None:
+            # Skip SHOCK and HIGH volatility
+            if snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+                return None
+            # Use regime-based trend filter when available (aligned with activation policies)
+            if self.use_regime_trend_filter and snapshot.trend != TrendRegime.FLAT:
+                return None  # Only trade in FLAT trend (range-bound)
 
-        # ADX filter — only trade in range-bound markets
-        adx = self._adx(highs, lows, closes, self.adx_period)
-        if adx is not None and adx >= self.adx_range_threshold:
-            return None  # Market is trending — not our regime
+        # Fallback: ADX filter when no regime snapshot available
+        if snapshot is None:
+            adx = self._adx(highs, lows, closes, self.adx_period)
+            if adx is not None and adx >= self.adx_range_threshold:
+                return None
 
         # Bollinger Bands
         bb_mean = self._sma(closes, self.bb_period)
