@@ -54,7 +54,9 @@ def _is_regular_market_session_local(now: datetime) -> bool:
 
 def _build_strategy_registry() -> dict[str, type]:
     """Build the canonical strategy registry for runtime initialization."""
+    from src.strategies.daily_mean_reversion import DailyMeanReversionStrategy
     from src.strategies.daily_momentum import DailyMomentumStrategy
+    from src.strategies.daily_vol_fade import DailyVolFadeStrategy
     from src.strategies.failed_breakout import FailedBreakoutStrategy
     from src.strategies.flow_alpha import FlowAlphaStrategy
     from src.strategies.flow_momentum import FlowMomentumStrategy
@@ -82,6 +84,8 @@ def _build_strategy_registry() -> dict[str, type]:
         # V2 consolidated strategies (enabled by default)
         "daily_momentum": DailyMomentumStrategy,
         "regime_adaptive_momentum": RegimeAdaptiveMomentumStrategy,
+        "daily_mean_reversion": DailyMeanReversionStrategy,
+        "daily_vol_fade": DailyVolFadeStrategy,
         "mean_reversion_pro": MeanReversionProStrategy,
         "trend_rider_pro": TrendRiderProStrategy,
         "flow_alpha": FlowAlphaStrategy,
