@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Fama-French 4-factor attribution**: New `src/analytics/factor_attribution.py` module that decomposes backtest returns into alpha + Mkt-RF/SMB/HML/UMD factor exposures via OLS regression. Reports annualized alpha with significance test, factor betas with t-stats, R-squared, and annualized residual volatility. Includes `load_fama_french_factors()` stub for loading cached factor data from parquet.
+
 - **Probability of Backtest Overfitting (PBO) analysis**: New `compute_pbo()` in `src/analytics/pbo.py` implements Combinatorially Symmetric Cross-Validation (CSCV) from Bailey et al. (2017) to measure the likelihood that an in-sample-optimal strategy is overfit. Automatically samples combinations when the partition count produces more than 1000 splits. Returns PBO score, logit distribution, and an overfit warning flag.
 
 - **IS/OOS degradation distribution tracking in WFO results**: Walk-forward optimization now computes per-window degradation ratios (OOS/IS score), with mean, median, std, worst-case, and percentage of windows retaining >50% of IS performance. Flags overfit warning when mean ratio < 0.5 or worst window < 0.2. Available as `degradation_distribution` key in WFO result dict.
