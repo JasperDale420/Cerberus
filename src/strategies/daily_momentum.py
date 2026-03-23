@@ -178,10 +178,12 @@ class DailyMomentumStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
 
-        # Regime gating — skip SHOCK and HIGH volatility
-        # Empirical: -$22K in SHOCK, -$34K in HIGH vol (2020-2025 regime analysis)
+        # Regime gating — skip SHOCK volatility
+        # Note: empirical analysis showed HIGH vol also loses (-$34K) with ADX-based classifier,
+        # but MarketContextService's EWMA-based HIGH vol threshold is different (broader) on daily
+        # bars, so adding HIGH here would filter too many good trades. Only SHOCK is reliable.
         snapshot = market_state.regime_snapshot
-        if snapshot is not None and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+        if snapshot is not None and snapshot.vol == VolRegime.SHOCK:
             return None
 
         # HMM gate

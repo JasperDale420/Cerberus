@@ -35,7 +35,6 @@ from src.core.domain import (
     OrderSide,
     Signal,
     SymbolState,
-    TrendRegime,
     VolRegime,
 )
 from src.core.logger import StructuredLogger
@@ -238,21 +237,17 @@ class DailyMeanReversionStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
 
-        # Use MarketContextService regime snapshot for filtering (aligned with activation policies)
+        # Regime gating — skip SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot is not None:
-            # Skip SHOCK and HIGH volatility
-            if snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
-                return None
-            # Use regime-based trend filter when available (aligned with activation policies)
-            if self.use_regime_trend_filter and snapshot.trend != TrendRegime.FLAT:
-                return None  # Only trade in FLAT trend (range-bound)
+        if snapshot is not None and snapshot.vol == VolRegime.SHOCK:
+            return None
 
-        # Fallback: ADX filter when no regime snapshot available
-        if snapshot is None:
-            adx = self._adx(highs, lows, closes, self.adx_period)
-            if adx is not None and adx >= self.adx_range_threshold:
-                return None
+        # ADX filter — only trade in range-bound markets
+        # Note: MarketContextService's Hurst-based trend is not well-calibrated for daily bars
+        # (needs intraday data), so we use internal ADX as the primary range-bound filter.
+        adx = self._adx(highs, lows, closes, self.adx_period)
+        if adx is not None and adx >= self.adx_range_threshold:
+            return None  # Market is trending — not our regime
 
         # Bollinger Bands
         bb_mean = self._sma(closes, self.bb_period)

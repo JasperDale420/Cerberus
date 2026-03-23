@@ -110,7 +110,9 @@ strategies:
     allow_short: false
     vol_avg_mult: 0.5
     cooldown_bars: 5
-    use_regime_trend_filter: true
+    # MarketContextService Hurst-based trend rarely returns FLAT on daily bars (needs intraday).
+    # Use internal ADX filter instead — better calibrated for daily-bar operation.
+    use_regime_trend_filter: false
 
   # CRISIS ALPHA — internal ATR check + optional regime vol check
   daily_vol_fade:
