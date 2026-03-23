@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **IS/OOS degradation distribution tracking in WFO results**: Walk-forward optimization now computes per-window degradation ratios (OOS/IS score), with mean, median, std, worst-case, and percentage of windows retaining >50% of IS performance. Flags overfit warning when mean ratio < 0.5 or worst window < 0.2. Available as `degradation_distribution` key in WFO result dict.
+
 - **Return diagnostics module**: New `src/analytics/return_diagnostics.py` with autocorrelation analysis (detects serial correlation at configurable lags with significance testing) and turnover analysis (gross volume, annualized turnover, cost drag as percentage of gross PnL).
 
 - **Probabilistic Sharpe Ratio (PSR)**: Statistical test from Bailey & Lopez de Prado (2014) that computes the probability an observed Sharpe ratio exceeds a benchmark, accounting for skewness and kurtosis. Available in `src/analytics/statistical_tests.py`.

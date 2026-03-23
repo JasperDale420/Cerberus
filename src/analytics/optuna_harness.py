@@ -30,6 +30,7 @@ import json
 import math
 import os
 import re
+import statistics
 import sys
 import time
 from dataclasses import dataclass
@@ -44,6 +45,58 @@ from dateutil.relativedelta import relativedelta
 from src.analytics.param_sensitivity import analyze_param_sensitivity
 from src.analytics.param_spaces import suggest_params
 from src.analytics.report_card import save_report
+
+
+def compute_degradation_distribution(window_results: list[dict]) -> dict[str, Any]:
+    """Compute IS/OOS degradation ratios across WFO windows.
+
+    For each window, computes ``oos_score / is_score`` to measure how much
+    out-of-sample performance degrades relative to in-sample.
+
+    Args:
+        window_results: List of dicts each containing ``is_score`` and ``oos_score``.
+
+    Returns:
+        Dict with keys: ratios, mean, median, std, worst, pct_above_50, overfit_warning.
+    """
+    if not window_results:
+        return {
+            "ratios": [],
+            "mean": 0.0,
+            "median": 0.0,
+            "std": 0.0,
+            "worst": 0.0,
+            "pct_above_50": 0.0,
+            "overfit_warning": False,
+        }
+
+    ratios: list[float] = []
+    for w in window_results:
+        is_score = w.get("is_score", 0.0)
+        oos_score = w.get("oos_score", 0.0)
+        if is_score == 0:
+            ratios.append(0.0)
+        else:
+            ratios.append(oos_score / is_score)
+
+    mean_ratio = statistics.mean(ratios)
+    median_ratio = statistics.median(ratios)
+    std_ratio = statistics.pstdev(ratios)  # population std — no ddof bias on small N
+    worst_ratio = min(ratios)
+    above_50_count = sum(1 for r in ratios if r > 0.5)
+    pct_above_50 = (above_50_count / len(ratios)) * 100.0
+
+    overfit_warning = mean_ratio < 0.5 or worst_ratio < 0.2
+
+    return {
+        "ratios": ratios,
+        "mean": round(mean_ratio, 6),
+        "median": round(median_ratio, 6),
+        "std": round(std_ratio, 6),
+        "worst": round(worst_ratio, 6),
+        "pct_above_50": round(pct_above_50, 2),
+        "overfit_warning": overfit_warning,
+    }
 
 
 @dataclass(frozen=True)
@@ -1267,6 +1320,12 @@ class WalkForwardOptimizer:
         except Exception:
             pass
 
+        # 7. IS/OOS degradation distribution
+        degradation_windows = [
+            {"is_score": is_s, "oos_score": oos_s} for is_s, oos_s in zip(all_is_scores, all_oos_scores, strict=False)
+        ]
+        degradation_dist = compute_degradation_distribution(degradation_windows)
+
         result = {
             "strategy": strategy_name,
             "run_tag": run_context.run_tag,
@@ -1279,6 +1338,7 @@ class WalkForwardOptimizer:
             "best_params_per_window": all_params,
             "wfo_efficiency_ratio": round(efficiency, 4),
             "deflated_sharpe_ratio": wfo_dsr,
+            "degradation_distribution": degradation_dist,
             "holdout_window": self.get_holdout_window(),
             "param_stability": param_stability,
             "param_sensitivity": param_sensitivity_results,
