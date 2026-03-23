@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Probabilistic Sharpe Ratio (PSR)**: Statistical test from Bailey & Lopez de Prado (2014) that computes the probability an observed Sharpe ratio exceeds a benchmark, accounting for skewness and kurtosis. Available in `src/analytics/statistical_tests.py`.
+
+- **Minimum Backtest Length (MinBTL)**: Computes the minimum number of observations needed for a Sharpe ratio to be statistically significant at a given confidence level, adjusting for non-normal return distributions.
+
+- **Extended rolling metrics**: `compute_rolling_metrics()` now returns rolling Sortino ratio (annualized, using proper downside deviation) and optional rolling beta vs a benchmark return series. Window size is configurable (default 50).
+
+- **Daily return distribution stats**: New `compute_daily_return_stats()` function computes skew, kurtosis, VaR 95%, CVaR 95%, best/worst day, positive day percentage, and lag-1 autocorrelation from daily portfolio returns. Complements the existing trade-level `analyze_pnl_distribution()`.
+
 ### Fixed
 
 - **Risk manager timestamp overflow on nanosecond exit_time**: `record_completed_trade` crashed with `ValueError: year 55000000+ is out of range` when `exit_time` was passed as a nanosecond integer (from gateway fills). The epoch-unit detection thresholds were wrong — nanosecond timestamps (~1.7e18) were treated as microseconds and divided by 1e6 instead of 1e9, yielding astronomically large second values. Fixed by adding a nanosecond threshold (`> 1e17`) with correct `/1e9` divisor before the microseconds branch.

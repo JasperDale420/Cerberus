@@ -424,17 +424,32 @@ def compute_rolling_metrics(
     returns: list[float],
     window: int = 50,
     bars_per_year: float = 98280.0,
+    benchmark_returns: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Rolling Sharpe ratio and win rate over a sliding window."""
+    """Rolling Sharpe, Sortino, win rate, and optionally beta over a sliding window.
+
+    Args:
+        returns: Portfolio return series.
+        window: Rolling window size (default 50).
+        bars_per_year: Annualization factor.
+        benchmark_returns: Optional benchmark return series for rolling beta.
+            Must be same length as returns. Skipped if None or length mismatch.
+
+    Returns:
+        Dict with rolling_sharpe, rolling_win_rate, rolling_sortino, and
+        optionally rolling_beta (only when valid benchmark provided).
+    """
     n = len(returns)
     length = max(0, n - window + 1)
 
     if length <= 0:
-        return {"rolling_sharpe": [], "rolling_win_rate": []}
+        result: dict[str, Any] = {"rolling_sharpe": [], "rolling_win_rate": [], "rolling_sortino": []}
+        return result
 
     arr = np.array(returns, dtype=np.float64)
     rolling_sharpe: list[float] = []
     rolling_win_rate: list[float] = []
+    rolling_sortino: list[float] = []
 
     for i in range(length):
         chunk = arr[i : i + window]
@@ -446,7 +461,97 @@ def compute_rolling_metrics(
         wr = float(np.sum(chunk > 0) / window)
         rolling_win_rate.append(wr)
 
-    return {"rolling_sharpe": rolling_sharpe, "rolling_win_rate": rolling_win_rate}
+        # Sortino: downside deviation = sqrt(mean(min(r, 0)^2))
+        downside = np.minimum(chunk, 0.0)
+        downside_dev = float(np.sqrt(np.mean(downside**2)))
+        sortino = (mean_r / downside_dev * math.sqrt(bars_per_year)) if downside_dev > 1e-12 else 0.0
+        rolling_sortino.append(float(sortino))
+
+    result = {
+        "rolling_sharpe": rolling_sharpe,
+        "rolling_win_rate": rolling_win_rate,
+        "rolling_sortino": rolling_sortino,
+    }
+
+    # Rolling beta vs benchmark (optional)
+    if benchmark_returns is not None and len(benchmark_returns) == n:
+        bench_arr = np.array(benchmark_returns, dtype=np.float64)
+        rolling_beta: list[float] = []
+        for i in range(length):
+            port_chunk = arr[i : i + window]
+            bench_chunk = bench_arr[i : i + window]
+            bench_var = float(np.var(bench_chunk, ddof=1))
+            if bench_var > 1e-12:
+                cov = float(np.cov(port_chunk, bench_chunk, ddof=1)[0, 1])
+                rolling_beta.append(float(cov / bench_var))
+            else:
+                rolling_beta.append(0.0)
+        result["rolling_beta"] = rolling_beta
+
+    return result
+
+
+def compute_daily_return_stats(daily_returns: np.ndarray) -> dict[str, Any]:
+    """Compute distribution statistics on daily portfolio returns.
+
+    This is distinct from ``analyze_pnl_distribution`` which operates on
+    per-trade PnLs.  Here the input is a time-series of daily portfolio
+    returns (e.g. from an equity curve).
+
+    Args:
+        daily_returns: 1-D numpy array of daily portfolio returns.
+
+    Returns:
+        Dict with skew, kurtosis, var_95, cvar_95, best_day, worst_day,
+        positive_pct, and autocorrelation_lag1.
+    """
+    arr = np.asarray(daily_returns, dtype=np.float64).ravel()
+
+    zeros: dict[str, Any] = {
+        "skew": 0.0,
+        "kurtosis": 0.0,
+        "var_95": 0.0,
+        "cvar_95": 0.0,
+        "best_day": 0.0,
+        "worst_day": 0.0,
+        "positive_pct": 0.0,
+        "autocorrelation_lag1": 0.0,
+    }
+
+    if len(arr) == 0:
+        return zeros
+
+    best_day = float(np.max(arr))
+    worst_day = float(np.min(arr))
+    positive_pct = float(np.sum(arr > 0) / len(arr))
+
+    skew_val = float(stats.skew(arr, bias=False)) if len(arr) > 2 else 0.0
+    kurt_val = float(stats.kurtosis(arr, bias=False, fisher=True)) if len(arr) > 3 else 0.0
+
+    var_95 = float(np.percentile(arr, 5))
+    mask = arr <= var_95
+    cvar_95 = float(np.mean(arr[mask])) if np.any(mask) else var_95
+
+    # Lag-1 autocorrelation
+    if len(arr) > 1:
+        mean_r = np.mean(arr)
+        demeaned = arr - mean_r
+        numerator = float(np.sum(demeaned[:-1] * demeaned[1:]))
+        denominator = float(np.sum(demeaned**2))
+        autocorr = numerator / denominator if abs(denominator) > 1e-12 else 0.0
+    else:
+        autocorr = 0.0
+
+    return {
+        "skew": skew_val if math.isfinite(skew_val) else 0.0,
+        "kurtosis": kurt_val if math.isfinite(kurt_val) else 0.0,
+        "var_95": var_95,
+        "cvar_95": cvar_95,
+        "best_day": best_day,
+        "worst_day": worst_day,
+        "positive_pct": positive_pct,
+        "autocorrelation_lag1": float(autocorr) if math.isfinite(autocorr) else 0.0,
+    }
 
 
 def catalog_drawdowns(equity_curve: list[float], top_n: int = 5) -> list[dict[str, Any]]:
