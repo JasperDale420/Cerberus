@@ -108,6 +108,13 @@ class ReportMetrics:
     benchmark: object | None = None
     monte_carlo: object | None = None
     diagnostics: object | None = None
+    daily_return_stats: object | None = None
+    return_autocorrelation: object | None = None
+    turnover_analysis: object | None = None
+    psr: object | None = None
+    min_backtest_length: object | None = None
+    factor_attribution: object | None = None
+    strategy_correlation: object | None = None
 
 
 class BacktestReportCard:
@@ -607,6 +614,29 @@ class BacktestReportCard:
                 else {}
             ),
             **({"diagnostics_summary": m.diagnostics.summary} if m.diagnostics else {}),
+            **({"daily_return_stats": m.daily_return_stats} if m.daily_return_stats else {}),
+            **({"return_autocorrelation": m.return_autocorrelation} if m.return_autocorrelation else {}),
+            **({"turnover_analysis": m.turnover_analysis} if m.turnover_analysis else {}),
+            **({"psr": m.psr} if m.psr else {}),
+            **({"min_backtest_length": m.min_backtest_length} if m.min_backtest_length else {}),
+            **(
+                {
+                    "factor_attribution": {
+                        k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.factor_attribution).items()
+                    }
+                }
+                if m.factor_attribution and hasattr(m.factor_attribution, "__dict__")
+                else {}
+            ),
+            **(
+                {
+                    "strategy_correlation": {
+                        k: round(v, 4) if isinstance(v, float) else v for k, v in vars(m.strategy_correlation).items()
+                    }
+                }
+                if m.strategy_correlation and hasattr(m.strategy_correlation, "__dict__")
+                else {}
+            ),
             "analytics": self.analytics if hasattr(self, "analytics") else {},
         }
 
@@ -736,6 +766,92 @@ class BacktestReportCard:
             ci = stat.get("bootstrap_ci_95", [0.0, 0.0])
             lines.append(f"| Bootstrap CI 95% | [{ci[0]:.6f}, {ci[1]:.6f}] |\n")
             lines.append(f"| T-test p-value | {stat.get('t_pvalue', 1.0):.4f} |\n\n")
+
+        # Daily Return Stats
+        if m.daily_return_stats:
+            drs = m.daily_return_stats
+            lines.append("## Daily Return Distribution\n\n")
+            lines.append(_TBL_HDR)
+            for key in (
+                "skew",
+                "kurtosis",
+                "var_95",
+                "cvar_95",
+                "best_day",
+                "worst_day",
+                "positive_day_pct",
+                "lag1_autocorrelation",
+            ):
+                val = drs.get(key)
+                if val is not None:
+                    label = key.replace("_", " ").title()
+                    lines.append(f"| {label} | {val:.4f} |\n" if isinstance(val, float) else f"| {label} | {val} |\n")
+            lines.append("\n")
+
+        # Return Autocorrelation
+        if m.return_autocorrelation:
+            ac = m.return_autocorrelation
+            lines.append("## Return Autocorrelation\n\n")
+            lines.append(_TBL_HDR)
+            any_sig = ac.get("any_significant", False)
+            lines.append(f"| Any Significant | {'Yes' if any_sig else 'No'} |\n")
+            for key, val in ac.items():
+                if key.startswith("lag_") and isinstance(val, dict):
+                    corr = val.get("correlation", 0.0)
+                    sig = val.get("significant", False)
+                    lines.append(f"| {key.replace('_', ' ').title()} | {corr:.4f} {'*' if sig else ''} |\n")
+            lines.append("\n")
+
+        # Turnover Analysis
+        if m.turnover_analysis:
+            ta = m.turnover_analysis
+            lines.append("## Turnover Analysis\n\n")
+            lines.append(_TBL_HDR)
+            lines.append(f"| Gross Volume | ${ta.get('gross_volume', 0):,.2f} |\n")
+            lines.append(f"| Annualized Turnover | {ta.get('annualized_turnover', 0):.2f}x |\n")
+            lines.append(f"| Total Cost | ${ta.get('total_cost', 0):,.2f} |\n")
+            lines.append(f"| Cost Drag | {ta.get('cost_drag_pct', 0):.2f}% |\n")
+            lines.append(f"| Avg Cost Per Trade | ${ta.get('avg_cost_per_trade', 0):.2f} |\n\n")
+
+        # Statistical Tests (PSR + MinBTL)
+        if m.psr or m.min_backtest_length:
+            lines.append("## Statistical Tests\n\n")
+            lines.append(_TBL_HDR)
+            if m.psr:
+                lines.append(f"| Probabilistic Sharpe Ratio | {m.psr.get('psr', 0):.4f} |\n")
+                lines.append(f"| PSR Significant | {'Yes' if m.psr.get('significant') else 'No'} |\n")
+            if m.min_backtest_length:
+                mbl = m.min_backtest_length
+                min_obs = mbl.get("min_observations", 0)
+                lines.append(f"| Min Backtest Length | {min_obs} observations |\n")
+                lines.append(f"| Min BT Years | {mbl.get('min_years', 0):.2f} |\n")
+                lines.append(f"| Have Enough Data | {'Yes' if mbl.get('have_enough') else 'No'} |\n")
+            lines.append("\n")
+
+        # Factor Attribution
+        if m.factor_attribution:
+            fa = m.factor_attribution
+            lines.append("## Factor Attribution\n\n")
+            lines.append(_TBL_HDR)
+            lines.append(f"| Alpha (ann.) | {getattr(fa, 'alpha', 0):.4f} |\n")
+            lines.append(f"| Alpha t-stat | {getattr(fa, 'alpha_tstat', 0):.3f} |\n")
+            lines.append(f"| Alpha Significant | {'Yes' if getattr(fa, 'alpha_significant', False) else 'No'} |\n")
+            lines.append(f"| R-squared | {getattr(fa, 'r_squared', 0):.4f} |\n")
+            for name, beta in getattr(fa, "factor_loadings", {}).items():
+                tstat = getattr(fa, "factor_tstats", {}).get(name, 0)
+                lines.append(f"| {name} beta | {beta:.4f} (t={tstat:.2f}) |\n")
+            lines.append("\n")
+
+        # Strategy Correlation
+        if m.strategy_correlation:
+            sc = m.strategy_correlation
+            lines.append("## Strategy Correlation\n\n")
+            lines.append(_TBL_HDR)
+            lines.append(f"| Avg Pairwise Correlation | {getattr(sc, 'avg_pairwise_correlation', 0):.4f} |\n")
+            lines.append(f"| Max Pairwise Correlation | {getattr(sc, 'max_pairwise_correlation', 0):.4f} |\n")
+            pair = getattr(sc, "max_corr_pair", ("", ""))
+            lines.append(f"| Most Correlated Pair | {pair[0]} / {pair[1]} |\n")
+            lines.append(f"| Diversification Ratio | {getattr(sc, 'diversification_ratio', 0):.4f} |\n\n")
 
         # Per-strategy breakdown
         if hasattr(self, "strategy_metrics") and self.strategy_metrics:

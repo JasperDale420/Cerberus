@@ -50,6 +50,41 @@ def get_regime_splits(run_id: str):
     return result.get("diagnostics", {}).get("regime_mismatches", [])
 
 
+@app.get("/api/backtest/runs/{run_id}/autocorrelation")
+def get_autocorrelation(run_id: str):
+    result = load_backtest_result(run_id)
+    if not result:
+        raise HTTPException(404, "Run not found")
+    return result.get("return_autocorrelation", {})
+
+
+@app.get("/api/backtest/runs/{run_id}/factor-attribution")
+def get_factor_attribution(run_id: str):
+    result = load_backtest_result(run_id)
+    if not result:
+        raise HTTPException(404, "Run not found")
+    return result.get("factor_attribution", {})
+
+
+@app.get("/api/backtest/runs/{run_id}/correlation")
+def get_correlation(run_id: str):
+    result = load_backtest_result(run_id)
+    if not result:
+        raise HTTPException(404, "Run not found")
+    return result.get("strategy_correlation", {})
+
+
+@app.get("/api/backtest/runs/{run_id}/statistical-tests")
+def get_statistical_tests(run_id: str):
+    result = load_backtest_result(run_id)
+    if not result:
+        raise HTTPException(404, "Run not found")
+    return {
+        "psr": result.get("psr", {}),
+        "min_backtest_length": result.get("min_backtest_length", {}),
+    }
+
+
 @app.get("/api/wfo/runs/{run_id}/sensitivity")
 def get_sensitivity(run_id: str):
     result = load_backtest_result(run_id)

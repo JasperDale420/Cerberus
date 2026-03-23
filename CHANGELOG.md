@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Analytics wired into backtest pipeline and API**: Daily return stats, return autocorrelation, turnover analysis, PSR, MinBTL, factor attribution, and strategy correlation are now computed during backtest runs (gated by config) and attached to the report. New API endpoints: `/autocorrelation`, `/factor-attribution`, `/correlation`, `/statistical-tests` on backtest runs. All new sections appear in the markdown report output.
+
 - **Strategy correlation matrix and diversification analysis**: New `src/analytics/correlation.py` computes pairwise Pearson correlations across strategy daily returns, identifies the most correlated pair, and calculates a diversification ratio (DR > 1 means strategies provide portfolio benefit). Includes `build_strategy_daily_returns` helper to convert trade lists into daily PnL arrays.
 
 - **Fama-French 4-factor attribution**: New `src/analytics/factor_attribution.py` module that decomposes backtest returns into alpha + Mkt-RF/SMB/HML/UMD factor exposures via OLS regression. Reports annualized alpha with significance test, factor betas with t-stats, R-squared, and annualized residual volatility. Includes `load_fama_french_factors()` stub for loading cached factor data from parquet.

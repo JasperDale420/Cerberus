@@ -1061,6 +1061,126 @@ async def run_backtest(
         report.metrics.diagnostics = diag
         logger.info("diagnostics_summary", summary=diag.summary)
 
+    # ── Daily Return Stats ─────────────────────────────────────────
+    if len(strategy_daily_returns) > 1:
+        from src.analytics.report_card import compute_daily_return_stats
+
+        try:
+            drs = compute_daily_return_stats(strategy_daily_returns)
+            report.metrics.daily_return_stats = drs
+        except Exception as e:
+            logger.warning("daily_return_stats_failed", error=str(e))
+
+    # ── Return Autocorrelation ─────────────────────────────────────
+    if len(strategy_daily_returns) > 10:
+        from src.analytics.return_diagnostics import compute_return_autocorrelation
+
+        try:
+            ac = compute_return_autocorrelation(strategy_daily_returns)
+            report.metrics.return_autocorrelation = ac
+        except Exception as e:
+            logger.warning("return_autocorrelation_failed", error=str(e))
+
+    # ── Turnover Analysis ──────────────────────────────────────────
+    if trades:
+        from src.analytics.return_diagnostics import compute_turnover_analysis
+
+        try:
+            trade_dicts_for_turnover = [
+                {
+                    "qty": t.qty,
+                    "entry_price": t.entry_price,
+                    "exit_price": t.exit_price,
+                    "commission": t.commission,
+                    "slippage": t.slippage,
+                }
+                for t in trades
+            ]
+            ta = compute_turnover_analysis(
+                trade_dicts_for_turnover,
+                initial_capital=initial_cash,
+                n_trading_days=report.metrics.trading_days or 1,
+            )
+            report.metrics.turnover_analysis = ta
+        except Exception as e:
+            logger.warning("turnover_analysis_failed", error=str(e))
+
+    # ── Probabilistic Sharpe Ratio (PSR) ───────────────────────────
+    if len(strategy_daily_returns) > 10 and abs(report.metrics.sharpe_ratio) > 1e-12:
+        from scipy.stats import kurtosis as sp_kurtosis
+        from scipy.stats import skew as sp_skew
+
+        from src.analytics.statistical_tests import minimum_backtest_length as compute_min_btl
+        from src.analytics.statistical_tests import probabilistic_sharpe_ratio
+
+        try:
+            skew_val = float(sp_skew(strategy_daily_returns))
+            kurt_val = float(sp_kurtosis(strategy_daily_returns, fisher=False))  # excess+3
+            psr = probabilistic_sharpe_ratio(
+                observed_sharpe=report.metrics.sharpe_ratio,
+                benchmark_sharpe=0.0,
+                n_returns=len(strategy_daily_returns),
+                skew=skew_val,
+                kurtosis=kurt_val,
+            )
+            report.metrics.psr = psr
+
+            # ── Minimum Backtest Length (MinBTL) ───────────────────
+            mbl = compute_min_btl(
+                observed_sharpe=report.metrics.sharpe_ratio,
+                skew=skew_val,
+                kurtosis=kurt_val,
+                n_observations=len(strategy_daily_returns),
+            )
+            report.metrics.min_backtest_length = mbl
+        except Exception as e:
+            logger.warning("statistical_tests_failed", error=str(e))
+
+    # ── Factor Attribution ─────────────────────────────────────────
+    fa_cfg = config.get("analytics", {}).get("factor_attribution", {})
+    if fa_cfg.get("enabled", False) and len(strategy_daily_returns) > 10:
+        from src.analytics.factor_attribution import compute_factor_attribution, load_fama_french_factors
+
+        try:
+            ff_factors = load_fama_french_factors(start_date, end_date)
+            if ff_factors is not None:
+                # Align lengths
+                rf = ff_factors.pop("RF", np.zeros(len(strategy_daily_returns)))
+                min_len = (
+                    min(len(strategy_daily_returns), min(len(v) for v in ff_factors.values())) if ff_factors else 0
+                )
+                if min_len > 10:
+                    excess_returns = strategy_daily_returns[-min_len:] - rf[-min_len:]
+                    aligned_factors = {k: v[-min_len:] for k, v in ff_factors.items()}
+                    fa_result = compute_factor_attribution(excess_returns, aligned_factors)
+                    report.metrics.factor_attribution = fa_result
+        except Exception as e:
+            logger.warning("factor_attribution_failed", error=str(e))
+
+    # ── Strategy Correlation ───────────────────────────────────────
+    corr_cfg = config.get("analytics", {}).get("strategy_correlation", {})
+    if corr_cfg.get("enabled", False) and len(trades) > 1:
+        from src.analytics.correlation import build_strategy_daily_returns, compute_strategy_correlation
+
+        try:
+            trade_dicts_for_corr = [
+                {
+                    "strategy": t.strategy or "unknown",
+                    "pnl": t.pnl,
+                    "exit_time": t.exit_time,
+                }
+                for t in trades
+            ]
+            strat_returns = build_strategy_daily_returns(
+                trade_dicts_for_corr,
+                n_trading_days=report.metrics.trading_days or 1,
+            )
+            if len(strat_returns) > 1:
+                corr_result = compute_strategy_correlation(strat_returns)
+                report.metrics.strategy_correlation = corr_result
+        except Exception as e:
+            logger.warning("strategy_correlation_failed", error=str(e))
+
     report.print_summary(logger)
 
     # Save markdown report

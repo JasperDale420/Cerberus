@@ -100,6 +100,80 @@ def test_get_sensitivity_not_found(client):
 
 
 @pytest.mark.unit
+def test_get_autocorrelation(client):
+    mock_result = {
+        "return_autocorrelation": {"lag_1": {"correlation": 0.05, "significant": False}, "any_significant": False}
+    }
+    with patch("src.api.backtest_api.load_backtest_result", return_value=mock_result):
+        resp = client.get("/api/backtest/runs/abc123/autocorrelation")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["any_significant"] is False
+
+
+@pytest.mark.unit
+def test_get_autocorrelation_not_found(client):
+    with patch("src.api.backtest_api.load_backtest_result", return_value=None):
+        resp = client.get("/api/backtest/runs/nonexistent/autocorrelation")
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_get_factor_attribution(client):
+    mock_result = {"factor_attribution": {"alpha": 0.02, "r_squared": 0.85, "factor_loadings": {"Mkt-RF": 0.9}}}
+    with patch("src.api.backtest_api.load_backtest_result", return_value=mock_result):
+        resp = client.get("/api/backtest/runs/abc123/factor-attribution")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "alpha" in data
+
+
+@pytest.mark.unit
+def test_get_factor_attribution_not_found(client):
+    with patch("src.api.backtest_api.load_backtest_result", return_value=None):
+        resp = client.get("/api/backtest/runs/nonexistent/factor-attribution")
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_get_correlation(client):
+    mock_result = {"strategy_correlation": {"avg_pairwise_correlation": 0.3, "diversification_ratio": 1.5}}
+    with patch("src.api.backtest_api.load_backtest_result", return_value=mock_result):
+        resp = client.get("/api/backtest/runs/abc123/correlation")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["avg_pairwise_correlation"] == 0.3
+
+
+@pytest.mark.unit
+def test_get_correlation_not_found(client):
+    with patch("src.api.backtest_api.load_backtest_result", return_value=None):
+        resp = client.get("/api/backtest/runs/nonexistent/correlation")
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_get_statistical_tests(client):
+    mock_result = {
+        "psr": {"psr": 0.97, "significant": True},
+        "min_backtest_length": {"min_observations": 150, "have_enough": True},
+    }
+    with patch("src.api.backtest_api.load_backtest_result", return_value=mock_result):
+        resp = client.get("/api/backtest/runs/abc123/statistical-tests")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["psr"]["significant"] is True
+        assert data["min_backtest_length"]["have_enough"] is True
+
+
+@pytest.mark.unit
+def test_get_statistical_tests_not_found(client):
+    with patch("src.api.backtest_api.load_backtest_result", return_value=None):
+        resp = client.get("/api/backtest/runs/nonexistent/statistical-tests")
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
 def test_list_runs_with_data(client, tmp_path):
     # Write a mock result file
     result = {
