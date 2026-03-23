@@ -1,0 +1,60 @@
+# Regime Adaptive Momentum — STANDALONE (replaces daily_momentum)
+database_url: "sqlite:///cerberus.db"
+timezone: "US/Eastern"
+index_symbol: "SPY"
+initial_cash: 100000.0
+log_level: "WARNING"
+regime:
+  vol_symbol: "VXX"
+hmm_regime:
+  enabled: false
+backtest:
+  disable_flow_strategies: true
+  bar_resolution_minutes: "daily"
+  partial_fill_mode: "none"
+  slippage_mode: "fixed"
+  spread_mode: "fixed"
+universe:
+  symbols: ["SPY","QQQ","AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","AMD","AVGO","JPM","BAC","GS","XOM","CVX"]
+risk:
+  risk_pct: 0.0125
+  daily_loss_pct: 0.025
+  open_risk_pct: 0.05
+  max_daily_loss: 4000.0
+  max_risk_per_trade: 2000.0
+  max_open_risk: 7000.0
+  max_trades_per_day: 50
+  max_open_positions: 6
+  max_positions_per_strategy: 4
+  max_notional_per_order: 50000.0
+  max_notional_per_symbol: 50000.0
+  commission_per_share: 0.005
+  min_commission: 1.0
+  slippage_bps: 5.0
+strategies:
+  regime_adaptive_momentum:
+    enabled: true
+    ema_fast_period: 20
+    ema_slow_period: 50
+    adx_period: 14
+    adx_trend_threshold: 25.0
+    adx_range_threshold: 20.0
+    pullback_lookback: 10
+    pullback_min_pct: 0.02
+    high_vol_mult: 2.0
+    trade_high_vol: false
+    # Mode A: pullback (matching daily_momentum iter 10)
+    pullback_entry_pct: 0.02
+    stop_atr_mult_pullback: 1.5
+    target_atr_mult_pullback: 5.0
+    confluence_threshold_pullback: 55.0
+    # Mode B: consolidation breakout
+    breakout_lookback: 10
+    breakout_margin_pct: 0.005
+    stop_atr_mult_breakout: 2.5
+    target_atr_mult_breakout: 5.0
+    min_bars: 55
+    max_hold_days: 8
+    long_only: true
+    vol_avg_mult: 1.0
+    cooldown_bars: 5

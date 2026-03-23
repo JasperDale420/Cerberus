@@ -77,6 +77,7 @@ class RegimeAdaptiveMomentumStrategy(BaseStrategy):
         self.allow_overnight = True
         self.long_only = bool(config.get("long_only", True))
         self.vol_avg_mult = float(config.get("vol_avg_mult", 0.5))
+        self.breakout_only = bool(config.get("breakout_only", False))
 
     # ------------------------------------------------------------------
     # Per-symbol state management
@@ -317,10 +318,14 @@ class RegimeAdaptiveMomentumStrategy(BaseStrategy):
 
         # Dispatch by regime
         if regime == "TRENDING_WITH_PULLBACK":
-            return self._try_pullback_entry(symbol, bar, price, ema_fast, ema_slow, atr, avg_vol, current_vol, regime)
+            if not self.breakout_only:
+                return self._try_pullback_entry(
+                    symbol, bar, price, ema_fast, ema_slow, atr, avg_vol, current_vol, regime
+                )
+            return None  # Let daily_momentum handle pullbacks
         elif regime == "TRENDING_NO_PULLBACK":
             return self._try_breakout_entry(symbol, bar, price, ema_fast, atr, avg_atr, avg_vol, current_vol, regime)
-        elif regime == "HIGH_VOL" and self.trade_high_vol:
+        elif regime == "HIGH_VOL" and self.trade_high_vol and not self.breakout_only:
             return self._try_pullback_entry(symbol, bar, price, ema_fast, ema_slow, atr, avg_vol, current_vol, regime)
         # RANGE_BOUND or HIGH_VOL (not trading) → sit out
         return None
@@ -342,17 +347,19 @@ class RegimeAdaptiveMomentumStrategy(BaseStrategy):
         regime: str,
     ) -> Signal | None:
         distance_to_ema = (price - ema_fast) / ema_fast if ema_fast > 0 else 0.0
+        closes = self._daily_closes[symbol]
 
+        # Confluence scoring — matches daily_momentum's proven 5-factor system
         score = 0.0
 
-        # Trend strength (EMA spread)
+        # Factor 1: Trend strength (EMA spread)
         ema_spread = (ema_fast - ema_slow) / ema_slow if ema_slow > 0 else 0.0
         if ema_spread > 0.005:
-            score += 15.0
+            score += 25.0
         if ema_spread > 0.01:
             score += 10.0
 
-        # Pullback proximity — price near fast EMA
+        # Factor 2: Pullback proximity — price near fast EMA
         if -self.pullback_entry_pct <= distance_to_ema <= self.pullback_entry_pct:
             score += 25.0
         elif distance_to_ema < -self.pullback_entry_pct:
@@ -360,14 +367,18 @@ class RegimeAdaptiveMomentumStrategy(BaseStrategy):
         else:
             score += 5.0
 
-        # Volume
+        # Factor 3: Volume confirmation
         if avg_vol > 0 and current_vol > avg_vol * self.vol_avg_mult:
+            score += 20.0
+
+        # Factor 4: Momentum (close > prior close)
+        if len(closes) >= 2 and price > closes[-2]:
             score += 15.0
 
-        # Momentum (close > prior close)
-        closes = self._daily_closes[symbol]
-        if len(closes) >= 2 and price > closes[-2]:
-            score += 10.0
+        # Factor 5: Not extended (price not too far from slow EMA)
+        distance_to_slow = (price - ema_slow) / ema_slow if ema_slow > 0 else 0.0
+        if distance_to_slow < 0.05:
+            score += 5.0
 
         if score >= self.confluence_threshold_pullback:
             stop_price = price - atr * self.stop_atr_mult_pullback
