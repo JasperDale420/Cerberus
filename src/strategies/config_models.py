@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 if TYPE_CHECKING:
     from src.engine.strategy_engine import StrategyActivationPolicy
@@ -108,13 +108,10 @@ def build_activation_policies_from_config(
 class BaseStrategyConfig(BaseModel):
     """Base configuration for all strategies."""
 
+    model_config = ConfigDict(extra="allow")
+
     cooldown_bars: int = Field(default=5, ge=0, description="Minimum bars between signals")
     hard_stop_time: Optional[str] = Field(default=None, description="Time to stop trading (HH:MM)")
-
-    class Config:
-        """Pydantic config."""
-
-        extra = "allow"  # Allow extra fields for backward compatibility
 
 
 class FailedBreakoutConfig(BaseStrategyConfig):

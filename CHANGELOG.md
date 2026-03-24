@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pydantic V2 deprecation warning in `BaseStrategyConfig`**: Replaced class-based `Config` inner class with `model_config = ConfigDict(extra="allow")` in `src/strategies/config_models.py`. Eliminates `PydanticDeprecatedSince20` warning emitted during test collection and strategy instantiation.
+
 ### Added
 
 - **Analytics wired into backtest pipeline and API**: Daily return stats, return autocorrelation, turnover analysis, PSR, MinBTL, factor attribution, and strategy correlation are now computed during backtest runs (gated by config) and attached to the report. New API endpoints: `/autocorrelation`, `/factor-attribution`, `/correlation`, `/statistical-tests` on backtest runs. All new sections appear in the markdown report output.
