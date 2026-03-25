@@ -161,11 +161,22 @@ def _latest_dataset_file(data_root: Path, feed: str) -> Path | None:
     if not dataset_root.exists():
         return None
 
-    # Collect all date partition directories (e.g. date=2026-03-24/)
-    date_dirs = sorted(
-        (d for d in dataset_root.iterdir() if d.is_dir() and d.name.startswith("date=")),
-        reverse=True,
-    )
+    # Collect all date partition directories (e.g. dt=2026-03-24/).
+    # The Silver schema includes an optional instrument_type= level between
+    # feed= and dt=, so we search both direct children and one level deeper.
+    raw_date_dirs: list[Path] = []
+    for child in dataset_root.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name.startswith("dt="):
+            raw_date_dirs.append(child)
+        else:
+            # Descend one level (e.g. instrument_type=equity)
+            for grandchild in child.iterdir():
+                if grandchild.is_dir() and grandchild.name.startswith("dt="):
+                    raw_date_dirs.append(grandchild)
+
+    date_dirs = sorted(raw_date_dirs, key=lambda p: p.name, reverse=True)
 
     # Check the most recent date partitions for parquet files (up to 3)
     for date_dir in date_dirs[:3]:

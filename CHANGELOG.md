@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Heber freshness check fails to find any parquet files**: The `_latest_dataset_file()` optimization introduced in the Docker timeout fix used the wrong partition prefix (`date=`) instead of the actual Heber Silver schema prefix (`dt=`). It also only scanned direct children of the feed directory, missing the intermediate `instrument_type=` partition level. The function now searches both `dt=` directories at the feed root and one level deeper under `instrument_type=` subdirectories, matching the actual Silver layout (`silver/feed=X/instrument_type=Y/dt=Z/`). This caused `check_heber_freshness()` to always report all feeds as missing/stale and prevented the healthcheck from ever returning `ok`.
+
 ### Added
 
 - **Temporal excursion tracking (MFE/MAE timestamps)**: Position management now records WHEN maximum favorable and adverse excursions occur, not just their magnitude. New fields on closed trades: `ts_mfe`, `ts_mae`, `time_to_mfe_seconds`, `time_to_mae_seconds`, `mfe_mae_ratio`, `capture_efficiency`, `excursion_velocity`. Analytics report card includes average time-to-MFE/MAE and MFE/MAE ratio. Database schema extended with corresponding columns.
