@@ -161,20 +161,40 @@ strategies:
       - {leg_a: "AMZN", leg_b: "MSFT"}          # Cloud
       - {leg_a: "CRM", leg_b: "ORCL"}           # Enterprise SaaS
       - {leg_a: "NFLX", leg_b: "GOOGL"}         # Streaming / content
+      - {leg_a: "MRVL", leg_b: "AVGO"}          # Semis (Marvell/Broadcom)
+      - {leg_a: "DDOG", leg_b: "NET"}           # Cloud infrastructure
+      - {leg_a: "SNOW", leg_b: "DDOG"}          # Cloud data platforms
       # Financials
       - {leg_a: "GS", leg_b: "MS"}              # Investment banks
       - {leg_a: "JPM", leg_b: "BAC"}            # Big banks
       - {leg_a: "JPM", leg_b: "GS"}             # Bank cross
       - {leg_a: "BAC", leg_b: "MS"}             # Bank cross
+      - {leg_a: "C", leg_b: "BAC"}              # Big banks (Citi/BoA)
       # Energy
       - {leg_a: "XOM", leg_b: "CVX"}            # Oil majors
+      - {leg_a: "OXY", leg_b: "XOM"}            # Oil producers
+      - {leg_a: "HAL", leg_b: "SLB"}            # Oilfield services
       # Transport
       - {leg_a: "DAL", leg_b: "AAL"}            # Airlines
+      - {leg_a: "UAL", leg_b: "DAL"}            # Airlines
       - {leg_a: "UBER", leg_b: "LYFT"}          # Rideshare
-      # Fintech / Retail Trading
+      - {leg_a: "RCL", leg_b: "CCL"}            # Cruise lines
+      # Healthcare / Pharma
+      - {leg_a: "JNJ", leg_b: "PFE"}            # Big pharma
+      - {leg_a: "MRK", leg_b: "ABBV"}           # Pharma
+      - {leg_a: "UNH", leg_b: "JNJ"}            # Healthcare
+      # Retail
+      - {leg_a: "HD", leg_b: "WMT"}             # Retail giants
+      - {leg_a: "COST", leg_b: "TGT"}           # Discount retail
+      # Crypto / Fintech
       - {leg_a: "COIN", leg_b: "HOOD"}          # Retail trading platforms
+      - {leg_a: "MARA", leg_b: "RIOT"}          # Crypto miners
+      # EV
+      - {leg_a: "NIO", leg_b: "RIVN"}           # EV startups
       # Auto
       - {leg_a: "F", leg_b: "GM"}               # Auto legacy
+      # Quantum Computing
+      - {leg_a: "IONQ", leg_b: "RGTI"}          # Quantum computing
     entry_z_threshold: 1.5
     stop_z_threshold: 3.5
     spread_lookback: 90              # trading days (~4.5 months)
@@ -275,7 +295,7 @@ scanner:
   max_price: 500.0
   min_volume: 500000
 
-# Universe — symbols we have data for in bars_5yr
+# Universe — symbols available in bars_2023_2025
 universe:
   symbols:
     - SPY
@@ -294,13 +314,18 @@ universe:
     - BAC
     - GS
     - MS
+    - C
     - CRM
     - ORCL
     - XOM
     - CVX
+    - OXY
+    - HAL
+    - SLB
     - MU
     - INTC
     - QCOM
+    - MRVL
     - PLTR
     - COIN
     - HOOD
@@ -309,6 +334,28 @@ universe:
     - LYFT
     - DAL
     - AAL
+    - UAL
+    - RCL
+    - CCL
     - F
     - GM
+    - JNJ
+    - PFE
+    - MRK
+    - ABBV
+    - UNH
+    - HD
+    - WMT
+    - COST
+    - TGT
+    - NKE
+    - MARA
+    - RIOT
+    - NIO
+    - RIVN
+    - DDOG
+    - NET
+    - SNOW
+    - IONQ
+    - RGTI
     - VXX

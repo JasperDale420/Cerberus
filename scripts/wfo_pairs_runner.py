@@ -1,7 +1,7 @@
 """Walk-Forward Optimization runner for Pair Trading V2.
 
 Runs rolling WFO with 12-month train / 3-month test windows across
-2020-01 to 2024-12, with pair-trading-appropriate thresholds.
+2020-01 to 2026-03, with pair-trading-appropriate thresholds.
 
 Key adjustments vs standard WFO:
   - Enables pair_trading_v2 in ALL regimes (not just chop)
@@ -40,14 +40,14 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 # --------------------------------------------------------------------------
 
 CONFIG_PATH = "config/backtest_v2.yaml"
-DATA_DIR = "data/bars_5yr"
+DATA_DIR = "data/bars_2023_2025"
 FULL_START = "2020-01-02"
-FULL_END = "2024-12-31"
+FULL_END = "2026-03-15"
 
 # WFO parameters
 MIN_TRAIN_MONTHS = 12
 TEST_MONTHS = 3
-HOLDOUT_MONTHS = 3  # Last 3 months reserved for holdout validation
+HOLDOUT_MONTHS = 6  # Last 6 months reserved for holdout validation (Sep 2025 → Mar 2026)
 N_TRIALS = 25  # Trials per window (balance thoroughness vs runtime)
 MODE = "rolling"  # Rolling windows for regime adaptation
 STRATEGY = "pair_trading_v2"
@@ -126,7 +126,8 @@ def main() -> None:
         data_dir=DATA_DIR,
         config_path=CONFIG_PATH,
         workers=4,  # Parallel workers for faster optimization
-        min_trades_per_month=0.5,  # Daily pair trading: ~0.5 trade/pair/month (4 pairs × 1-2/year)
+        min_trades_per_month=0.5,  # IS: 34 pairs → ~0.5 trade/pair/month floor
+        oos_min_trades_per_month=0,  # OOS: allow 0-trade windows → neutral score (0.0)
     )
 
     elapsed = time.time() - t0

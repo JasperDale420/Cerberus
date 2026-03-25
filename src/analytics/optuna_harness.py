@@ -542,6 +542,10 @@ def composite_objective(metrics: dict[str, Any], *, min_trades: int = 30) -> flo
     if n_trades < min_trades:
         return -1000.0
 
+    # When min_trades=0 (e.g. OOS for pair strategies), zero trades is neutral
+    if n_trades == 0:
+        return 0.0
+
     avg_pnl = metrics.get("avg_pnl", 0.0)
     if avg_pnl <= 0:
         return -500.0
@@ -1059,6 +1063,7 @@ class WalkForwardOptimizer:
         resume_existing: bool = False,
         workers: int | None = None,
         min_trades_per_month: float = 3,
+        oos_min_trades_per_month: float | None = None,
     ) -> dict[str, Any]:
         """Run full walk-forward optimization.
 
@@ -1215,10 +1220,13 @@ class WalkForwardOptimizer:
                 config_path=config_path,
             )
 
-            # Proportional min trades for OOS: ~3 trades/month/symbol is reasonable,
-            # but for short test windows use a lower floor to avoid rejecting everything.
+            # Proportional min trades for OOS: use oos_min_trades_per_month if provided,
+            # otherwise fall back to IS min_trades_per_month. For pair strategies with
+            # sparse signals, set oos_min_trades_per_month=0 so 0-trade windows score
+            # neutral (0.0) instead of hard-reject (-1000).
+            _oos_tpm = oos_min_trades_per_month if oos_min_trades_per_month is not None else min_trades_per_month
             _oos_months = max(self.test_months, 1)
-            _oos_min_trades = max(int(_oos_months * min_trades_per_month), 3)
+            _oos_min_trades = max(int(_oos_months * _oos_tpm), 0)
             oos_score = composite_objective(oos_metrics, min_trades=_oos_min_trades)
             all_oos_metrics.append(oos_metrics)
             all_oos_scores.append(oos_score)
