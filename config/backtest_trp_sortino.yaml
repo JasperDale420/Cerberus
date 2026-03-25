@@ -32,20 +32,20 @@ strategies:
       reject_regimes: ["trend_down"]
       min_confidence: 0.6
     signal_timeframe: 5
-    confluence_threshold: 75.0
-    cooldown_bars: 8
+    confluence_threshold: 65.0
+    cooldown_bars: 4
     min_trend_alignment: 0.30
     time_window_start: "09:40"
     time_window_end: "14:30"
     pullback_threshold: 0.008
-    stop_atr_mult: 1.75
-    target_atr_mult: 5.0
-    trail_min_profit_r: 0.5
-    max_hold_minutes: 150
+    stop_atr_mult: 2.5
+    target_atr_mult: 4.0
+    trail_min_profit_r: 0.75
+    max_hold_minutes: 120
     activation:
       session: [opening, midday]
       trend: [up, down]
-      vol: [low, normal, high]
+      vol: [low, normal]
       liquidity: [good, thin]
       risk: [risk_on, neutral]
       min_confidence: 0.6
