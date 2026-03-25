@@ -1,0 +1,2 @@
+iteration	commit	metric	status	description
+0	baseline	-500.0	baseline	Default params: 8079 trades, -$83K, 41.8% WR, Sortino=-6.3, avg_pnl=-$10.37
