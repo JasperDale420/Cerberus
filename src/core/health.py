@@ -151,20 +151,46 @@ def check_heber_connectivity() -> Dict[str, Any]:
 
 
 def _latest_dataset_file(data_root: Path, feed: str) -> Path | None:
+    """Find the most recent parquet file in the latest date partition.
+
+    Uses a targeted scan of only the most recent partition directory
+    rather than a full rglob, which can take 55+ seconds over Docker
+    volume mounts on large data lakes.
+    """
     dataset_root = data_root / "silver" / f"feed={feed}"
     if not dataset_root.exists():
         return None
 
-    latest: Path | None = None
-    latest_mtime = -1.0
-    for parquet_file in dataset_root.rglob("*.parquet"):
-        if not parquet_file.is_file():
+    # Collect all date partition directories (e.g. date=2026-03-24/)
+    date_dirs = sorted(
+        (d for d in dataset_root.iterdir() if d.is_dir() and d.name.startswith("date=")),
+        reverse=True,
+    )
+
+    # Check the most recent date partitions for parquet files (up to 3)
+    for date_dir in date_dirs[:3]:
+        latest: Path | None = None
+        latest_mtime = -1.0
+        for parquet_file in date_dir.rglob("*.parquet"):
+            if parquet_file.name.startswith("._"):
+                continue
+            if not parquet_file.is_file():
+                continue
+            mtime = parquet_file.stat().st_mtime
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                latest = parquet_file
+        if latest is not None:
+            return latest
+
+    # Fallback: no date partitions found, try a shallow glob
+    for parquet_file in dataset_root.glob("*.parquet"):
+        if parquet_file.name.startswith("._"):
             continue
-        mtime = parquet_file.stat().st_mtime
-        if mtime > latest_mtime:
-            latest_mtime = mtime
-            latest = parquet_file
-    return latest
+        if parquet_file.is_file():
+            return parquet_file
+
+    return None
 
 
 def check_heber_freshness(

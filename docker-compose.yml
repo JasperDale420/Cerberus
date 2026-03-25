@@ -27,7 +27,7 @@ services:
     healthcheck:
       test: [ "CMD", "python", "-m", "src.main", "--healthcheck" ]
       interval: 5m
-      timeout: 30s
+      timeout: 60s
       retries: 3
       start_period: 60s
     logging:

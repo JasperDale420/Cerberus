@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Docker healthcheck timeout — `cerberus_trader` reports unhealthy**: The `check_heber_freshness()` function used `rglob("*.parquet")` to recursively scan the entire Heber Silver dataset over a Docker volume mount, taking 55+ seconds and exceeding the 30s healthcheck timeout. Optimized `_latest_dataset_file()` to scan only the 3 most recent date partition directories, reducing healthcheck time to ~13s. Also increased Docker healthcheck timeout from 30s to 60s as a safety margin.
+
 - **Pydantic V2 deprecation warning in `BaseStrategyConfig`**: Replaced class-based `Config` inner class with `model_config = ConfigDict(extra="allow")` in `src/strategies/config_models.py`. Eliminates `PydanticDeprecatedSince20` warning emitted during test collection and strategy instantiation.
 
 ### Added
