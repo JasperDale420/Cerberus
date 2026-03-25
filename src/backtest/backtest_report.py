@@ -154,8 +154,14 @@ class BacktestReportCard:
                 trade_dicts.append(
                     {
                         "pnl_r": t.pnl_r,
-                        "mae_r": 0.0,  # MAE/MFE not tracked in BacktestReportCard trades
-                        "mfe_r": 0.0,
+                        "mae_r": t.mae_r if hasattr(t, "mae_r") and t.mae_r else 0.0,
+                        "mfe_r": t.mfe_r if hasattr(t, "mfe_r") and t.mfe_r else 0.0,
+                        "ts_mfe": getattr(t, "ts_mfe", None),
+                        "ts_mae": getattr(t, "ts_mae", None),
+                        "time_to_mfe_seconds": getattr(t, "time_to_mfe_seconds", 0.0) or 0.0,
+                        "time_to_mae_seconds": getattr(t, "time_to_mae_seconds", 0.0) or 0.0,
+                        "mfe_mae_ratio": getattr(t, "mfe_mae_ratio", 0.0) or 0.0,
+                        "capture_efficiency": getattr(t, "capture_efficiency", 0.0) or 0.0,
                         "entry_price": t.entry_price,
                         "exit_price": t.exit_price,
                         "entry_bar": idx,

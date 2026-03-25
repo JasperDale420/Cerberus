@@ -146,6 +146,15 @@ def analyze_mae_mfe(
 
     avg_capture = sum(capture_efficiencies) / len(capture_efficiencies) if capture_efficiencies else 0.0
 
+    # Temporal excursion metrics
+    time_to_mfe_vals = [t.get("time_to_mfe_seconds", 0) for t in trades if t.get("time_to_mfe_seconds")]
+    time_to_mae_vals = [t.get("time_to_mae_seconds", 0) for t in trades if t.get("time_to_mae_seconds")]
+    mfe_mae_ratios = [t.get("mfe_mae_ratio", 0) for t in trades if t.get("mfe_mae_ratio")]
+
+    avg_time_to_mfe = sum(time_to_mfe_vals) / len(time_to_mfe_vals) if time_to_mfe_vals else 0.0
+    avg_time_to_mae = sum(time_to_mae_vals) / len(time_to_mae_vals) if time_to_mae_vals else 0.0
+    avg_mfe_mae_ratio = sum(mfe_mae_ratios) / len(mfe_mae_ratios) if mfe_mae_ratios else 0.0
+
     return {
         "avg_mae": float(avg_mae),
         "avg_mfe": float(avg_mfe),
@@ -153,6 +162,9 @@ def analyze_mae_mfe(
         "best_mfe": float(best_mfe),
         "edge_ratio": float(edge_ratio),
         "avg_capture_efficiency": float(avg_capture),
+        "avg_time_to_mfe_seconds": float(avg_time_to_mfe),
+        "avg_time_to_mae_seconds": float(avg_time_to_mae),
+        "avg_mfe_mae_ratio": float(avg_mfe_mae_ratio),
         "per_trade": per_trade,
     }
 

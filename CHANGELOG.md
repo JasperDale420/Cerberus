@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Temporal excursion tracking (MFE/MAE timestamps)**: Position management now records WHEN maximum favorable and adverse excursions occur, not just their magnitude. New fields on closed trades: `ts_mfe`, `ts_mae`, `time_to_mfe_seconds`, `time_to_mae_seconds`, `mfe_mae_ratio`, `capture_efficiency`, `excursion_velocity`. Analytics report card includes average time-to-MFE/MAE and MFE/MAE ratio. Database schema extended with corresponding columns.
+
+### Fixed
+
+- **Backtest report MAE/MFE stub**: Backtest report card now uses actual `mae_r` and `mfe_r` values from trade records instead of hardcoded 0.0 stubs.
+
 ### Fixed
 
 - **Docker healthcheck timeout — `cerberus_trader` reports unhealthy**: The `check_heber_freshness()` function used `rglob("*.parquet")` to recursively scan the entire Heber Silver dataset over a Docker volume mount, taking 55+ seconds and exceeding the 30s healthcheck timeout. Optimized `_latest_dataset_file()` to scan only the 3 most recent date partition directories, reducing healthcheck time to ~13s. Also increased Docker healthcheck timeout from 30s to 60s as a safety margin.

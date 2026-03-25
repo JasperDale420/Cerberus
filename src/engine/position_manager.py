@@ -45,12 +45,19 @@ class ClosedTradeInfo:
     initial_risk: Optional[float]
     mae_r: float
     mfe_r: float
-    commission: float
-    slippage_estimate: float
-    pnl_r: Optional[float]
-    holding_period_seconds: Optional[float]
-    features_json: Optional[dict]
-    correlation_id: str
+    ts_mfe: Optional[datetime] = None
+    ts_mae: Optional[datetime] = None
+    time_to_mfe_seconds: float = 0.0
+    time_to_mae_seconds: float = 0.0
+    mfe_mae_ratio: float = 0.0
+    capture_efficiency: float = 0.0
+    excursion_velocity: float = 0.0
+    commission: float = 0.0
+    slippage_estimate: float = 0.0
+    pnl_r: Optional[float] = None
+    holding_period_seconds: Optional[float] = None
+    features_json: Optional[dict] = None
+    correlation_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -364,6 +371,10 @@ class PositionManager:
 
         self._apply_costs_to_position(symbol_state.position, fill_data["qty"], fill_data["price"], cfg)
 
+        # Temporal excursion tracking: record when MAE/MFE peaks occur
+        symbol_state.position._ts_mae = entry_time
+        symbol_state.position._ts_mfe = entry_time
+
         try:
             self.update_unrealized_pnl(symbol_state, float(fill_data["price"]))
         except Exception:
@@ -466,6 +477,28 @@ class PositionManager:
         if pos.open_risk is not None and not math.isclose(float(pos.open_risk), 0.0, abs_tol=1e-9):
             pnl_r = total_pnl / float(pos.open_risk)
 
+        # Temporal excursion metrics
+        ts_mfe = getattr(pos, "_ts_mfe", None)
+        ts_mae = getattr(pos, "_ts_mae", None)
+        time_to_mfe_seconds = 0.0
+        time_to_mae_seconds = 0.0
+        if ts_mfe is not None and entry_time_final is not None:
+            try:
+                time_to_mfe_seconds = (ts_mfe - entry_time_final).total_seconds()
+            except Exception:
+                pass
+        if ts_mae is not None and entry_time_final is not None:
+            try:
+                time_to_mae_seconds = (ts_mae - entry_time_final).total_seconds()
+            except Exception:
+                pass
+
+        mae_r_val = float(pos.mae_r)
+        mfe_r_val = float(pos.mfe_r)
+        mfe_mae_ratio = mfe_r_val / mae_r_val if mae_r_val > 1e-12 else 0.0
+        capture_efficiency = (pnl_r / mfe_r_val) if pnl_r is not None and mfe_r_val > 1e-12 else 0.0
+        excursion_velocity = mfe_r_val / time_to_mfe_seconds if time_to_mfe_seconds > 0 else 0.0
+
         return ClosedTradeInfo(
             symbol=pos.symbol,
             strategy=pos.strategy,
@@ -480,8 +513,15 @@ class PositionManager:
             pnl_gross=total_pnl,
             pnl_net=float(pnl_net),
             initial_risk=pos.open_risk,
-            mae_r=float(pos.mae_r),
-            mfe_r=float(pos.mfe_r),
+            mae_r=mae_r_val,
+            mfe_r=mfe_r_val,
+            ts_mfe=ts_mfe,
+            ts_mae=ts_mae,
+            time_to_mfe_seconds=time_to_mfe_seconds,
+            time_to_mae_seconds=time_to_mae_seconds,
+            mfe_mae_ratio=mfe_mae_ratio,
+            capture_efficiency=capture_efficiency,
+            excursion_velocity=excursion_velocity,
             commission=float(pos.commission or 0.0),
             slippage_estimate=float(pos.slippage_estimate or 0.0),
             pnl_r=pnl_r,
@@ -626,8 +666,17 @@ class PositionManager:
             else:
                 adverse_r = abs(min(0.0, (pos.avg_price - last_bar.high) / risk_per_share))
                 favorable_r = max(0.0, (pos.avg_price - last_bar.low) / risk_per_share)
-            pos.mae_r = max(pos.mae_r, adverse_r)
-            pos.mfe_r = max(pos.mfe_r, favorable_r)
+
+            # Temporal excursion tracking: record WHEN peaks occur
+            bar_ts = getattr(last_bar, "ts", getattr(last_bar, "time", None))
+            if adverse_r > pos.mae_r:
+                pos.mae_r = adverse_r
+                if bar_ts is not None:
+                    pos._ts_mae = bar_ts
+            if favorable_r > pos.mfe_r:
+                pos.mfe_r = favorable_r
+                if bar_ts is not None:
+                    pos._ts_mfe = bar_ts
         except Exception:
             _logger.debug("MAE/MFE update failed", exc_info=True)
 
