@@ -217,8 +217,14 @@ class ExecutionEngine:
             self._update_rsi_indicators(state, close, periods["rsi"])
             self._update_vol_sma_indicators(state, volume, periods["vol_sma"])
             self._update_bb_indicators(state, close, periods["bb"])
-        except Exception:
+        except Exception as e:
             self._inc_error("execution")
+            self.logger.error(
+                "Indicator cache update failed — strategies may use stale values",
+                symbol=getattr(state, "symbol", "unknown"),
+                error=str(e),
+                exc_info=True,
+            )
 
     def _collect_indicator_periods(self, state: SymbolState) -> Dict[str, set]:
         """Collect required indicator periods from enabled strategies.
@@ -671,8 +677,13 @@ class ExecutionEngine:
         if vol_symbol and symbol == str(vol_symbol).upper():
             try:
                 self.market_manager.update_vol(bar)
-            except Exception:
-                self.logger.debug("Vol symbol update failed", exc_info=True)
+            except Exception as e:
+                self.logger.error(
+                    "Vol symbol update failed — regime volatility axis may be stale",
+                    symbol=symbol,
+                    error=str(e),
+                    exc_info=True,
+                )
 
         # Initialize or get symbol state
         state = self._get_or_create_symbol_state(symbol)
@@ -684,15 +695,27 @@ class ExecutionEngine:
         # Update indicator cache
         try:
             self._update_indicator_cache(state, bar)
-        except Exception:
+        except Exception as e:
             self._inc_error("execution")
+            self.logger.error(
+                "Indicator cache update failed — strategies may use stale values",
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
+            )
 
         # Update unrealized PnL
         try:
             mark = float(getattr(bar, "close", 0.0) or 0.0)
             self.position_manager.update_unrealized_pnl(state, mark)
-        except Exception:
+        except Exception as e:
             self._inc_error("execution")
+            self.logger.error(
+                "Unrealized PnL update failed — position sizing may use stale P&L",
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
+            )
 
         return state
 
@@ -831,10 +854,21 @@ class ExecutionEngine:
                 state.indicators["session_vwap"] = session_vwap
                 try:
                     bar.vwap = session_vwap
-                except Exception:
-                    self.logger.debug("Session VWAP update failed", exc_info=True)
-        except Exception:
+                except Exception as e:
+                    self.logger.error(
+                        "Session VWAP bar assignment failed",
+                        symbol=getattr(state, "symbol", "unknown"),
+                        error=str(e),
+                        exc_info=True,
+                    )
+        except Exception as e:
             self._inc_error("execution")
+            self.logger.error(
+                "Session VWAP calculation failed — VWAP-dependent strategies may use stale values",
+                symbol=getattr(state, "symbol", "unknown"),
+                error=str(e),
+                exc_info=True,
+            )
 
     def _run_strategies(self, symbol: str, bar: Any, state: SymbolState, log: Any) -> None:
         # Run Strategies via StrategyEngine (PRD 6.4)
@@ -1368,8 +1402,13 @@ class ExecutionEngine:
                     pair=key,
                     symbol=symbol,
                 )
-        except Exception:
-            self.logger.debug("_maybe_reset_pair_signal failed", exc_info=True)
+        except Exception as e:
+            self.logger.error(
+                "Pair signal reset failed — pair may not re-enter after position close",
+                symbol=getattr(closed, "symbol", "unknown"),
+                error=str(e),
+                exc_info=True,
+            )
 
     def _persist_fill(
         self,
@@ -1478,12 +1517,21 @@ class ExecutionEngine:
                     float(decision.realized_pnl_delta),
                     as_of=(fill_ts if isinstance(fill_ts, datetime) else None),
                 )
-            except Exception:
-                self.logger.debug("Risk manager PNL update failed", exc_info=True)
+            except Exception as e:
+                self.logger.error(
+                    "Risk manager PnL update failed — daily loss limit may not trigger",
+                    pnl_delta=float(decision.realized_pnl_delta),
+                    error=str(e),
+                    exc_info=True,
+                )
             try:
                 self.market_state.daily_pnl = float(self.risk_manager.current_daily_pnl)
-            except Exception:
-                self.logger.debug("Market state daily PNL update failed", exc_info=True)
+            except Exception as e:
+                self.logger.error(
+                    "Market state daily PnL update failed — risk dashboard may show stale P&L",
+                    error=str(e),
+                    exc_info=True,
+                )
 
     @staticmethod
     def _normalize_timestamp(ts: Any) -> Any:

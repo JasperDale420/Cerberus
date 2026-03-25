@@ -90,7 +90,7 @@ class CerberusLedgerAdapter:
             )
             return trade_id
         except Exception:
-            _logger.warning("ledger_open_trade_failed", symbol=symbol, exc_info=True)
+            _logger.error("ledger_open_trade_failed — audit trail incomplete", symbol=symbol, exc_info=True)
             return None
 
     # ------------------------------------------------------------------
@@ -173,7 +173,7 @@ class CerberusLedgerAdapter:
                 pnl_net=closed.pnl_net,
             )
         except Exception:
-            _logger.warning("ledger_close_trade_failed", symbol=symbol, exc_info=True)
+            _logger.error("ledger_close_trade_failed — audit trail incomplete", symbol=symbol, exc_info=True)
 
 
 # ------------------------------------------------------------------

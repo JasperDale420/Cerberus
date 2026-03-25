@@ -213,8 +213,19 @@ class Scanner:
                     regime=regime.value,
                     universe_size=universe_size,
                     error=str(e),
+                    exc_info=True,
                 )
                 # Return whatever we have cached
+                if cached_results:
+                    self.logger.warning(
+                        "Trading on stale cached features — FeaturePipeline failed, returning cached data",
+                        cached_symbols=list(cached_results.keys()),
+                        cached_count=len(cached_results),
+                    )
+                else:
+                    self.logger.error(
+                        "FeaturePipeline failed with no cached data — scanner returning empty results",
+                    )
                 return cached_results
 
         return cached_results

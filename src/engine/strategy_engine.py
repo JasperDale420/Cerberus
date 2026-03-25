@@ -189,7 +189,7 @@ class StrategyEngine:
     ) -> Optional[Signal]:
         strat = self.strategies_by_name.get(name)
         if strat is None:
-            self.logger.warning("Strategy missing from registry", strategy=name)
+            self.logger.error("Strategy missing from registry — signals will not be generated", strategy=name)
             return None
 
         try:
@@ -212,11 +212,12 @@ class StrategyEngine:
             from src.core.errors import ErrorCode
 
             self.logger.error(
-                "Strategy error",
+                "Strategy error — strategy skipped for this bar",
                 error_code=ErrorCode.STRATEGY_ON_BAR_FAILED.value,
                 strategy=name,
                 symbol=symbol,
                 regime=getattr(market_state.regime, "value", str(market_state.regime)),
                 error=str(e),
+                exc_info=True,
             )
             return None

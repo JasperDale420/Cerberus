@@ -72,7 +72,9 @@ def test_safe_run_strategy_missing(engine, mock_logger):
     # Strategy name 'missing' not in map
     res = engine._safe_run_strategy("missing", "AAPL", MagicMock(), MagicMock(), MagicMock())
     assert res is None
-    mock_logger.warning.assert_called_with("Strategy missing from registry", strategy="missing")
+    mock_logger.error.assert_called_with(
+        "Strategy missing from registry — signals will not be generated", strategy="missing"
+    )
 
 
 @pytest.mark.unit

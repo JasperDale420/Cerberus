@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Data pipeline broken by httpx `.elapsed` access**: The `_log_response()` event hook in `src/core/http_client.py` accessed `response.elapsed` before the response body was read, causing a `RuntimeError` on every HTTP request. This silently broke all data fetches (universe volume, Alpaca bars, screener endpoints), resulting in zero trading activity. Added try/except guard matching the fix already present in `empire_core.http_client`.
+
+- **Silent failures across execution engine now log at ERROR level**: Upgraded 10+ exception handlers from DEBUG/silent to ERROR with full tracebacks. Previously, failures in indicator cache updates, VWAP calculation, vol symbol updates, risk manager PnL tracking, pair signal resets, and ledger writes were either not logged at all or logged at DEBUG — invisible in normal operation. Each error message now describes the downstream impact (e.g., "strategies may use stale values", "daily loss limit may not trigger").
+
+- **Scanner stale cache fallback now logged explicitly**: When the FeaturePipeline fails, the scanner falls back to cached features. This is now logged as a WARNING ("trading on stale cached features") or ERROR (if no cache exists), with the list of cached symbols.
+
 - **Heber freshness check fails to find any parquet files**: The `_latest_dataset_file()` optimization introduced in the Docker timeout fix used the wrong partition prefix (`date=`) instead of the actual Heber Silver schema prefix (`dt=`). It also only scanned direct children of the feed directory, missing the intermediate `instrument_type=` partition level. The function now searches both `dt=` directories at the feed root and one level deeper under `instrument_type=` subdirectories, matching the actual Silver layout (`silver/feed=X/instrument_type=Y/dt=Z/`). This caused `check_heber_freshness()` to always report all feeds as missing/stale and prevented the healthcheck from ever returning `ok`.
 
 ### Added
