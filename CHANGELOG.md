@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **RSI bounce strategy gates softened to confluence scoring, breaking 5 tests**: A prior experiment converted four hard rejection gates in `rsi_bounce.py` (BOCPD structural break, VPIN toxicity, half-life too long, variance ratio trending) into soft confluence score penalties. This caused the strategy to emit signals when market conditions warrant rejection, and broke 5 unit tests. Restored all four gates as hard rejections: BOCPD rejects when `changepoint_probability > bocpd_reject_threshold` (logs `bocpd_structural_break_rejected`), VPIN rejects when `is_toxic=True`, half-life rejects when it exceeds `max_half_life_bars`, and variance ratio rejects when `is_trending=True`.
+
+- **Ruff lint: bare f-strings without placeholders in `scripts/run_wfo_rsi_bounce.py`**: Two `print(f"...")` calls had no format placeholders. Auto-fixed by removing the extraneous `f` prefix.
+
 - **Data pipeline broken by httpx `.elapsed` access**: The `_log_response()` event hook in `src/core/http_client.py` accessed `response.elapsed` before the response body was read, causing a `RuntimeError` on every HTTP request. This silently broke all data fetches (universe volume, Alpaca bars, screener endpoints), resulting in zero trading activity. Added try/except guard matching the fix already present in `empire_core.http_client`.
 
 - **Silent failures across execution engine now log at ERROR level**: Upgraded 10+ exception handlers from DEBUG/silent to ERROR with full tracebacks. Previously, failures in indicator cache updates, VWAP calculation, vol symbol updates, risk manager PnL tracking, pair signal resets, and ledger writes were either not logged at all or logged at DEBUG — invisible in normal operation. Each error message now describes the downstream impact (e.g., "strategies may use stale values", "daily loss limit may not trigger").

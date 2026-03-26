@@ -366,10 +366,18 @@ class RsiBounceStrategy(BaseStrategy):
         # --- HMM regime gate (soft — captured as penalty in confluence) ---
         hmm_passed = self._check_hmm_gate(market_state)
 
-        # --- BOCPD structural break (soft — captured as penalty in confluence) ---
+        # --- BOCPD structural break gate ---
         bocpd_prob = 0.0
         if snapshot is not None:
             bocpd_prob = snapshot.changepoint_probability
+        if bocpd_prob > self.bocpd_reject_threshold:
+            self.logger.warning(
+                "bocpd_structural_break_rejected",
+                symbol=symbol,
+                changepoint_probability=bocpd_prob,
+                threshold=self.bocpd_reject_threshold,
+            )
+            return None
 
         # --- lazy init per-symbol analysis objects ---
         self._ensure_symbol_state(symbol)
@@ -467,17 +475,20 @@ class RsiBounceStrategy(BaseStrategy):
         # --- Factor 6: Variance Ratio Gate ---
         vr_result: Optional[VarianceRatioResult] = self._vr_calculators[symbol].update(current_price)
 
-        # --- VPIN Toxicity (soft — captured as penalty in confluence) ---
+        # --- VPIN Toxicity gate ---
         vpin_result: Optional[VPINResult] = self._vpin_calculators[symbol].update(bar)
         vpin_is_toxic = vpin_result is not None and vpin_result.is_toxic
+        if vpin_is_toxic:
+            return None
 
-        # === HALF-LIFE SCORING (soft — no hard rejection) ===
-        # Score based on how reasonable the half-life is for mean-reversion.
+        # === HALF-LIFE GATE + SCORING ===
+        # Hard rejection when half-life exceeds tradeable horizon.
         half_life_score = 50.0  # neutral default
         if ou_result is not None:
             hl = ou_result.half_life
-            if hl < self.min_half_life_bars or hl > self.max_half_life_bars:
-                # Penalty score instead of hard rejection
+            if hl > self.max_half_life_bars:
+                return None
+            if hl < self.min_half_life_bars:
                 half_life_score = 10.0
             else:
                 # Score: best when half_life is ~30-60% of max_hold
@@ -485,11 +496,13 @@ class RsiBounceStrategy(BaseStrategy):
                 hl_deviation = abs(hl - ideal_hl) / ideal_hl
                 half_life_score = max(0.0, min(100.0, (1.0 - hl_deviation) * 100.0))
 
-        # === VARIANCE RATIO SCORING (soft — no hard rejection) ===
+        # === VARIANCE RATIO GATE + SCORING ===
         vr_score = 50.0  # neutral default
         vr_is_trending = False
         if vr_result is not None:
             vr_is_trending = vr_result.is_trending
+            if vr_is_trending:
+                return None
             if vr_result.is_mean_reverting:
                 # Strong mean-reversion signal
                 vr_score = min(100.0, 70.0 + 30.0 * min(abs(vr_result.z_score) / 3.0, 1.0))
