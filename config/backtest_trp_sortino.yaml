@@ -111,7 +111,8 @@ risk:
   advanced_exits:
     enabled: true
     trailing_stop:
-      enabled: false
+      enabled: true
+      trail_pct: 0.02
       min_profit_to_activate: 0.005
     partial_exits:
       enabled: false
