@@ -360,19 +360,13 @@ class RsiBounceStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
-        # --- HMM regime gate ---
-        if not self._check_hmm_gate(market_state):
-            return None
+        # --- HMM regime gate (soft — captured as penalty in confluence) ---
+        hmm_passed = self._check_hmm_gate(market_state)
 
+        # --- BOCPD structural break (soft — captured as penalty in confluence) ---
+        bocpd_prob = 0.0
         if snapshot is not None:
-            # --- BOCPD structural break gate ---
-            if snapshot.changepoint_probability > self.bocpd_reject_threshold:
-                self.logger.debug(
-                    "bocpd_structural_break_rejected",
-                    symbol=symbol,
-                    changepoint_probability=round(snapshot.changepoint_probability, 4),
-                )
-                return None
+            bocpd_prob = snapshot.changepoint_probability
 
         # --- lazy init per-symbol analysis objects ---
         self._ensure_symbol_state(symbol)
@@ -439,17 +433,11 @@ class RsiBounceStrategy(BaseStrategy):
         if not self._check_higher_tf_alignment(symbol_state, side):
             return None
 
-        # --- kurtosis gate ---
+        # --- kurtosis (soft — captured as penalty in confluence) ---
+        kurt_value = 0.0
         price_hist = self._price_history[symbol]
         if len(price_hist) >= 30:
-            kurt = float(scipy_kurtosis(list(price_hist), fisher=True))
-            if kurt > self.kurtosis_reject_threshold:
-                self.logger.debug(
-                    "kurtosis_gate_rejected",
-                    symbol=symbol,
-                    kurtosis=round(kurt, 4),
-                )
-                return None
+            kurt_value = float(scipy_kurtosis(list(price_hist), fisher=True))
 
         # =================================================================
         # 6-FACTOR MEAN REVERSION MODEL
@@ -476,43 +464,29 @@ class RsiBounceStrategy(BaseStrategy):
         # --- Factor 6: Variance Ratio Gate ---
         vr_result: Optional[VarianceRatioResult] = self._vr_calculators[symbol].update(current_price)
 
-        # --- VPIN Toxicity Filter ---
+        # --- VPIN Toxicity (soft — captured as penalty in confluence) ---
         vpin_result: Optional[VPINResult] = self._vpin_calculators[symbol].update(bar)
-        if vpin_result is not None and vpin_result.is_toxic:
-            self.logger.debug(
-                "rsi_bounce_vpin_toxic_skip",
-                symbol=symbol,
-                vpin=round(vpin_result.vpin, 4),
-            )
-            return None
+        vpin_is_toxic = vpin_result is not None and vpin_result.is_toxic
 
-        # === HALF-LIFE GATE (primary mean-reversion validator) ===
-        # If OU estimator has produced a result, the half-life must be
-        # reasonable: fast enough to revert within our holding period,
-        # but not so fast it's just noise.
-        half_life_valid = True
+        # === HALF-LIFE SCORING (soft — no hard rejection) ===
+        # Score based on how reasonable the half-life is for mean-reversion.
         half_life_score = 50.0  # neutral default
         if ou_result is not None:
             hl = ou_result.half_life
             if hl < self.min_half_life_bars or hl > self.max_half_life_bars:
-                half_life_valid = False
+                # Penalty score instead of hard rejection
+                half_life_score = 10.0
             else:
                 # Score: best when half_life is ~30-60% of max_hold
                 ideal_hl = self.max_half_life_bars * 0.45
                 hl_deviation = abs(hl - ideal_hl) / ideal_hl
                 half_life_score = max(0.0, min(100.0, (1.0 - hl_deviation) * 100.0))
 
-        if not half_life_valid:
-            return None
-
-        # === VARIANCE RATIO GATE ===
-        # If we have enough data, VR must indicate mean-reversion (VR < 1)
-        # or at least not indicate trending (VR > 1 with significance)
+        # === VARIANCE RATIO SCORING (soft — no hard rejection) ===
         vr_score = 50.0  # neutral default
+        vr_is_trending = False
         if vr_result is not None:
-            if vr_result.is_trending:
-                # Statistically significant trending — skip
-                return None
+            vr_is_trending = vr_result.is_trending
             if vr_result.is_mean_reverting:
                 # Strong mean-reversion signal
                 vr_score = min(100.0, 70.0 + 30.0 * min(abs(vr_result.z_score) / 3.0, 1.0))
@@ -565,25 +539,22 @@ class RsiBounceStrategy(BaseStrategy):
             passed=True,
         )
 
-        # Factor 2: Half-Life Validity (weight: 0.25) — primary gate
+        # Factor 2: Half-Life Validity (weight: 0.20) — soft gate
         scorer.add_factor(
             name="half_life_validity",
             raw_value=ou_result.half_life if ou_result is not None else 0.0,
             score=half_life_score,
-            weight=0.25,
-            passed=half_life_valid,
+            weight=0.20,
+            passed=True,  # soft — score penalizes invalid half-life
         )
 
         # Factor 3: RSI Percentile Rank (weight: 0.15)
         if rsi_pctile is not None:
             if side == OrderSide.BUY:
-                # Lower percentile = more extreme oversold relative to history
                 rsi_pctile_score = max(0.0, (100.0 - rsi_pctile))
             else:
-                # Higher percentile = more extreme overbought relative to history
                 rsi_pctile_score = rsi_pctile
         else:
-            # Fall back to raw RSI extremity scoring
             if side == OrderSide.BUY:
                 rsi_pctile_score = score_threshold(rsi_5m, self.rsi_oversold, 0.0, invert=True)
             else:
@@ -597,7 +568,7 @@ class RsiBounceStrategy(BaseStrategy):
             passed=True,
         )
 
-        # Factor 4: Volume Climax (weight: 0.15)
+        # Factor 4: Volume Climax (weight: 0.10)
         if is_vol_climax:
             vol_climax_score = min(100.0, 60.0 + 40.0 * min((vol_ratio - self.volume_climax_mult) / 1.0, 1.0))
         else:
@@ -607,27 +578,67 @@ class RsiBounceStrategy(BaseStrategy):
             name="volume_climax",
             raw_value=vol_ratio,
             score=vol_climax_score,
-            weight=0.15,
+            weight=0.10,
             passed=True,
         )
 
-        # Factor 5: Momentum Deceleration (weight: 0.10)
+        # Factor 5: Momentum Deceleration (weight: 0.05)
         mom_decel_score = momentum_decel if momentum_decel is not None else 50.0
 
         scorer.add_factor(
             name="momentum_deceleration",
             raw_value=momentum_decel if momentum_decel is not None else 0.0,
             score=mom_decel_score,
+            weight=0.05,
+            passed=True,
+        )
+
+        # Factor 6: Variance Ratio (weight: 0.10) — soft, no hard trending rejection
+        scorer.add_factor(
+            name="variance_ratio",
+            raw_value=vr_result.vr if vr_result is not None else 1.0,
+            score=max(0.0, vr_score - (30.0 if vr_is_trending else 0.0)),
             weight=0.10,
             passed=True,
         )
 
-        # Factor 6: Variance Ratio (weight: 0.15)
+        # Factor 7: VPIN Toxicity Penalty (weight: 0.05)
+        vpin_score = 20.0 if vpin_is_toxic else 70.0
         scorer.add_factor(
-            name="variance_ratio",
-            raw_value=vr_result.vr if vr_result is not None else 1.0,
-            score=vr_score,
-            weight=0.15,
+            name="vpin_toxicity",
+            raw_value=vpin_result.vpin if vpin_result is not None else 0.0,
+            score=vpin_score,
+            weight=0.05,
+            passed=True,
+        )
+
+        # Factor 8: BOCPD Structural Break Penalty (weight: 0.05)
+        bocpd_score = max(0.0, 100.0 - bocpd_prob * 120.0)  # high prob → low score
+        scorer.add_factor(
+            name="bocpd_stability",
+            raw_value=bocpd_prob,
+            score=bocpd_score,
+            weight=0.05,
+            passed=True,
+        )
+
+        # Factor 9: Kurtosis Penalty (weight: 0.05)
+        kurtosis_score = max(0.0, 100.0 - max(0.0, kurt_value - 3.0) * 15.0)
+        scorer.add_factor(
+            name="kurtosis_normality",
+            raw_value=kurt_value,
+            score=kurtosis_score,
+            weight=0.05,
+            passed=True,
+        )
+
+        # Factor 10: HMM Regime Penalty (weight: 0.05)
+        hmm_score = 70.0 if hmm_passed else 20.0
+        scorer.add_factor(
+            name="hmm_regime",
+            raw_value=1.0 if hmm_passed else 0.0,
+            score=hmm_score,
+            weight=0.05,
             passed=True,
         )
 
