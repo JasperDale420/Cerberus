@@ -1,2 +1,17 @@
 iteration	commit	metric	status	description
 0	baseline	-500.0	baseline	Default params: 8079 trades, -$83K, 41.8% WR, Sortino=-6.3, avg_pnl=-$10.37
+1	-	-500.0	discard	confluence 80, alignment 0.50, time 13:00, pullback 0.005 — 3358 trades, -K, avg_pnl=-
+2	-	-500.0	discard	R:R fix (target 5.0, stop 1.75, confluence 75, cooldown 8, high vol, trail 0.5, hold 150) — 5436 trades, -K, avg_pnl=-
+3	-	-500.0	discard	combo: confluence 70, align 0.45, stop 3.0, trail 1.0R, hold 90, time 13:30 — 4739 trades, -K, avg_pnl=-
+4	-	-500.0	discard	radical: conf 85, align 0.55, opening-only, cooldown 12, pb 0.012, stop 2.0, target 3.5, hold 60 — 391 trades, -.9K, 45% WR, DD 5.8%, near-breakeven!
+5	-	-500.0	discard	exploit iter4: conf 80, align 0.55, cooldown 12, pb 0.012, stop 2.0, target 4.5, hold 90, midday added back — 5547 trades, -K — midday killed it
+6	-	-500.0	discard	iter4 refined: conf 85, align 0.55, opening-only, stop 2.5, target 4.5, hold 75 — 393 trades, -K, avg_pnl=-.80 — R:R change had no effect, trades hit max_hold
+7	-	-500.0	discard	reachable R:R: target 2.0, stop 1.5 (floored to 2.0), trail 0.5R, hold 120, opening-only — 372 trades, -K, 49.7% WR, avg_pnl=-.69, BEST WR
+8	-	-500.0	discard	target 2.5, stop 2.5, trail 0.5R, hold 120, opening-only, conf 85, align 0.55, pb 0.012 — 373 trades, -.3K, 47.4% WR, PF=0.79, DD=6.01%, BEST PF
+9	-	-500.0	discard	let partials work: target 6.0, trail 1.5R, hold 180, +high vol — 452 trades, -.4K, avg_pnl=-.45, worse than iter8
+10	98b65f7	-500.0	keep	CODE: min_stop 2.0→1.0 ATR + stop 1.5, target 2.5, trail 0.5R, hold 120, opening-only — 403 trades, -.7K, 50.1% WR, PF=0.85, DD=4.32% *** BEST ***
+11	-	-500.0	discard	stop 1.25, target 3.0 — 416 trades, -.5K, PF=0.82, 49.5% WR — tighter stop worse
+12	-	-500.0	discard	CODE: volume gate 1.2x→1.0x — 512 trades, -.5K, PF=0.81, 50% WR — more trades diluted quality
+13	-	-500.0	discard	lax confluence 60 — 1504 trades, -.6K, PF=0.73 — low confluence floods bad trades
+14	-	-500.0	keep	alignment 0.65 — 403 trades, -.7K, PF=0.85, 50.1% WR — same as iter10, alignment not marginal differentiator
+15	-	-500.0	no-op	disable global trailing stop — no effect, same as iter10 (strategy-level trail controls exits)

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """WFO for RSI Bounce — autoresearch hardening loop.
 
-Uses 2024 data with:
-- Rolling 3-month train windows, 1-month test windows
-- 2-month holdout (Nov-Dec 2024) for final validation
-- 20 Optuna trials per window
-- 8-symbol universe for generalization
+Expanded run using bars_2023_2025 dataset:
+- 6-month train windows, 2-month test windows (more trades per OOS window)
+- Full 2021-2025 range covers bull, bear, and recovery regimes
+- 3-month holdout (Jan-Mar 2026) for final validation
+- 30 Optuna trials per window for better param search
+- 20-symbol universe for generalization across sectors
 - Parameter stability analysis across windows
 
 Exit code 0 = success. Prints JSON metrics to stdout for parsing.
@@ -34,8 +35,37 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 with open("config/backtest_v2.yaml") as f:
     base_config = yaml.safe_load(f)
 
-# Override universe for faster iteration with good generalization
-OPT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META"]
+# 20-symbol universe: mega-cap tech + financials + energy + consumer + ETFs
+# Covers multiple sectors for true generalization
+OPT_SYMBOLS = [
+    # ETFs (market / tech)
+    "SPY",
+    "QQQ",
+    # Mega-cap tech
+    "AAPL",
+    "NVDA",
+    "TSLA",
+    "AMD",
+    "AMZN",
+    "META",
+    "MSFT",
+    "GOOGL",
+    # Financials
+    "JPM",
+    "GS",
+    "BAC",
+    # Energy
+    "XOM",
+    "CVX",
+    # Consumer / other
+    "NFLX",
+    "UBER",
+    "COIN",
+    # High-vol / meme-adjacent (stress test)
+    "PLTR",
+    "SOFI",
+]
+
 base_config["universe"] = {"symbols": OPT_SYMBOLS}
 base_config["database_url"] = "sqlite://"
 base_config["log_level"] = "CRITICAL"
@@ -49,12 +79,12 @@ for s in base_config.get("strategies", {}):
         base_config["strategies"][s]["enabled"] = False
 
 wfo = WalkForwardOptimizer(
-    full_start="2024-01-01",
-    full_end="2024-12-31",
-    min_train_months=3,
-    test_months=1,
-    n_trials=20,
-    holdout_months=2,
+    full_start="2021-01-01",
+    full_end="2025-12-31",
+    min_train_months=6,
+    test_months=2,
+    n_trials=30,
+    holdout_months=3,
     mode="rolling",
 )
 
@@ -62,11 +92,12 @@ windows = wfo.get_windows()
 holdout = wfo.get_holdout_window()
 
 print(f"{'=' * 60}", flush=True)
-print("  WFO — RSI Bounce Hardening", flush=True)
+print("  WFO — RSI Bounce Hardening (EXPANDED)", flush=True)
 print(f"  Windows: {len(windows)}", flush=True)
 print(f"  Holdout: {holdout['start']} → {holdout['end']}", flush=True)
-print(f"  Symbols: {OPT_SYMBOLS}", flush=True)
+print(f"  Symbols: {len(OPT_SYMBOLS)} ({OPT_SYMBOLS})", flush=True)
 print(f"  Trials per window: {wfo.n_trials}", flush=True)
+print("  Data: bars_2023_2025 (2020-01 → 2026-03)", flush=True)
 print(f"{'=' * 60}", flush=True)
 
 for i, w in enumerate(windows):
@@ -77,7 +108,7 @@ print("\nStarting optimization...\n", flush=True)
 results = wfo.run(
     strategy_name="rsi_bounce",
     base_config=base_config,
-    data_dir="data/bars_2024",
+    data_dir="data/bars_2023_2025",
     config_path="config/backtest_v2.yaml",
     workers=2,
 )
