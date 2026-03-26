@@ -360,6 +360,9 @@ class RsiBounceStrategy(BaseStrategy):
             if snapshot.session == SessionRegime.PREMARKET:
                 return None
 
+        # Capture vol regime for adaptive confluence scaling
+        vol_regime = snapshot.vol if snapshot is not None else VolRegime.NORMAL
+
         # --- HMM regime gate (soft — captured as penalty in confluence) ---
         hmm_passed = self._check_hmm_gate(market_state)
 
@@ -516,6 +519,11 @@ class RsiBounceStrategy(BaseStrategy):
             conditional_vol=garch_vol,
             hurst=hurst_proxy,
         )
+
+        # Regime-adaptive confluence: raise the bar in high-vol regimes
+        # to prevent over-trading when the strategy's edge is thinnest
+        if vol_regime == VolRegime.HIGH:
+            adapted_confluence = min(95.0, adapted_confluence * 1.15)
 
         # === CONFLUENCE SCORING ===
         scorer = ConfluenceScorer(threshold=adapted_confluence)
