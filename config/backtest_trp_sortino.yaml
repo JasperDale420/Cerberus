@@ -34,7 +34,7 @@ strategies:
     signal_timeframe: 5
     confluence_threshold: 85.0
     cooldown_bars: 12
-    min_trend_alignment: 0.55
+    min_trend_alignment: 0.65
     time_window_start: "09:40"
     time_window_end: "14:30"
     pullback_threshold: 0.012
