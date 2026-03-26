@@ -32,7 +32,7 @@ strategies:
       reject_regimes: ["trend_down"]
       min_confidence: 0.6
     signal_timeframe: 5
-    confluence_threshold: 85.0
+    confluence_threshold: 60.0
     cooldown_bars: 12
     min_trend_alignment: 0.55
     time_window_start: "09:40"
