@@ -131,7 +131,7 @@ class TrendRiderProStrategy(BaseStrategy):
 
         # --- volume confirmation: require 1.2x avg volume ---
         avg_vol = self._get_avg_volume(symbol_state)
-        if avg_vol > 0 and float(bar.volume) < avg_vol * 1.0:
+        if avg_vol > 0 and float(bar.volume) < avg_vol * 1.2:
             return None
 
         # --- confluence scoring ---
