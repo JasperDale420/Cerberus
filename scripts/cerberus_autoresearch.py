@@ -43,10 +43,12 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META"]
 
 # WFO parameters tuned for speed with regime diversity
-WFO_FULL_START = "2021-01-01"
+# 4 windows x 6-month OOS = ~12-16 min per iteration
+# Covers: 2022 bear, 2023 recovery, 2024 bull, early 2025
+WFO_FULL_START = "2022-01-01"
 WFO_FULL_END = "2025-09-30"
-WFO_TRAIN_MONTHS = 8
-WFO_TEST_MONTHS = 3
+WFO_TRAIN_MONTHS = 12
+WFO_TEST_MONTHS = 6
 WFO_HOLDOUT_MONTHS = 3
 WFO_MODE = "rolling"
 DATA_DIR = "data/bars_2023_2025"
