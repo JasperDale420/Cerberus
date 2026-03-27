@@ -87,7 +87,7 @@ class MarketStateManager:
                 self.logger.warning(
                     "hmm_artifacts_not_found",
                     artifact_dir=str(artifact_path),
-                    msg="HMM enabled but no trained artifacts found. Run train_hmm_from_heber.py first.",
+                    detail="HMM enabled but no trained artifacts found. Run train_hmm_from_heber.py first.",
                 )
                 return
 
