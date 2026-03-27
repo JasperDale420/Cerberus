@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **RsiBounce strategy v2 attributes missing after v3 simplification**: `RsiBounceStrategy` was simplified to v3 (3-factor, BUY-only) but 24 tests still expected the v2 interface (`zscore_entry`, `_garch`, `_ou_estimators`, `_vr_calculators`, `_vpin_calculators`, BOCPD gate, kurtosis gate, adaptive threshold engine, 6-factor confluence scoring). Restored v2 parameter parsing, per-symbol state dicts, v2 quantitative gates, and 6-factor confluence scoring. Signal meta now includes `half_life`, `ou_theta`, `variance_ratio`, `vr_z_score`, `vpin`, `z_score` fields and `strategy_version: rsi_bounce_v2`.
+
+- **Kurtosis gate incorrectly applied to raw price levels**: The kurtosis rejection gate was computed on raw price history (e.g., [100.0, 100.01, ..., 100.59, 95.0]), causing extreme spurious kurtosis (~48) from a single large price move, falsely blocking signals in normal conditions. Gate now computed on accumulated ROC (rate-of-change) history, matching the intent of detecting fat-tail return distributions.
+
+- **GARCH forecaster not lazily initialized in `_ensure_symbol_state`**: `_garch` dict was populated by `_ensure_garch()` (called only during z-score computation), so `strategy._garch` remained empty if `on_bar` exited early before computing z-scores. Tests expecting `_garch` to be initialized after the first `on_bar` call now pass. GARCH initialization moved into `_ensure_symbol_state`.
+
+- **`StructuredLogger.warning()` called with duplicate `msg` keyword argument in `market.py`**: `_init_hmm()` called `self.logger.warning("hmm_artifacts_not_found", ..., msg="HMM enabled but...")`, passing `msg` both as the first positional argument and as a keyword, causing `TypeError: warning() got multiple values for argument 'msg'`. The keyword field renamed to `detail`.
+
+
+
 - **RSI bounce strategy gates softened to confluence scoring, breaking 5 tests**: A prior experiment converted four hard rejection gates in `rsi_bounce.py` (BOCPD structural break, VPIN toxicity, half-life too long, variance ratio trending) into soft confluence score penalties. This caused the strategy to emit signals when market conditions warrant rejection, and broke 5 unit tests. Restored all four gates as hard rejections: BOCPD rejects when `changepoint_probability > bocpd_reject_threshold` (logs `bocpd_structural_break_rejected`), VPIN rejects when `is_toxic=True`, half-life rejects when it exceeds `max_half_life_bars`, and variance ratio rejects when `is_trending=True`.
 
 - **Ruff lint: bare f-strings without placeholders in `scripts/run_wfo_rsi_bounce.py`**: Two `print(f"...")` calls had no format placeholders. Auto-fixed by removing the extraneous `f` prefix.
