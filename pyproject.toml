@@ -55,9 +55,10 @@ dev = [
 
 [tool.ruff]
 extend = "ruff-base.toml"
-# Exclude vendored third-party packages from linting.
+# Exclude vendored third-party packages and research notebooks from linting.
 exclude = [
     "unusualwhales_python_client-5.0.1",
+    "autoresearch",
 ]
 
 line-length = 120

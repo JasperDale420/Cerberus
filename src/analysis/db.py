@@ -16,6 +16,13 @@ class DatabaseDatabase:
         "trades": (
             ("regime_tags_entry_json", "TEXT"),
             ("regime_tags_exit_json", "TEXT"),
+            ("ts_mfe", "DATETIME"),
+            ("ts_mae", "DATETIME"),
+            ("time_to_mfe_seconds", "REAL"),
+            ("time_to_mae_seconds", "REAL"),
+            ("mfe_mae_ratio", "REAL"),
+            ("capture_efficiency", "REAL"),
+            ("excursion_velocity", "REAL"),
         ),
         "signals": (("feature_snapshot_json", "TEXT"),),
         "strategy_stats_daily": (

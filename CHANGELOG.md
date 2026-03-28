@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **SQLite `trades` table missing MFE/MAE excursion columns causing daily analytics failure** (2026-03-28): Seven columns added to the ORM model (`ts_mfe`, `ts_mae`, `time_to_mfe_seconds`, `time_to_mae_seconds`, `mfe_mae_ratio`, `capture_efficiency`, `excursion_velocity`) were never backfilled to the live `cerberus.db` via the schema patch mechanism. This caused `sqlite3.OperationalError: no such column: trades.ts_mfe` on every EOD analytics aggregation run since 2026-03-26. Added all seven columns to `SQLITE_SCHEMA_PATCHES` in `src/analysis/db.py` so existing databases are automatically migrated on next `init_db()`.
+
+- **Ruff lint errors in `autoresearch/` research notebooks and scripts** (2026-03-28): The `autoresearch/` directory (research notebooks and experimental training scripts unrelated to the trading engine) was not excluded from linting, producing 10 lint errors. Added `autoresearch` to the ruff `exclude` list in `pyproject.toml`.
+
 - **RsiBounce strategy v2 attributes missing after v3 simplification**: `RsiBounceStrategy` was simplified to v3 (3-factor, BUY-only) but 24 tests still expected the v2 interface (`zscore_entry`, `_garch`, `_ou_estimators`, `_vr_calculators`, `_vpin_calculators`, BOCPD gate, kurtosis gate, adaptive threshold engine, 6-factor confluence scoring). Restored v2 parameter parsing, per-symbol state dicts, v2 quantitative gates, and 6-factor confluence scoring. Signal meta now includes `half_life`, `ou_theta`, `variance_ratio`, `vr_z_score`, `vpin`, `z_score` fields and `strategy_version: rsi_bounce_v2`.
 
 - **Kurtosis gate incorrectly applied to raw price levels**: The kurtosis rejection gate was computed on raw price history (e.g., [100.0, 100.01, ..., 100.59, 95.0]), causing extreme spurious kurtosis (~48) from a single large price move, falsely blocking signals in normal conditions. Gate now computed on accumulated ROC (rate-of-change) history, matching the intent of detecting fat-tail return distributions.
