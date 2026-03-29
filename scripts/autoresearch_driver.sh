@@ -153,7 +153,7 @@ EOFPROMPT
 )
 
     # Run the agent (short-lived, just edits code)
-    AGENT_RESULT=$(claude --print -m sonnet "$AGENT_PROMPT" 2>&1 || true)
+    AGENT_RESULT=$(claude -p "$AGENT_PROMPT" -m sonnet --allowedTools "Read,Edit,Write,Bash,Glob,Grep" --max-turns 20 2>&1 || true)
 
     # Verify the agent committed something
     NEW_COMMIT=$(git rev-parse --short HEAD)
