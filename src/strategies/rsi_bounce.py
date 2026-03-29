@@ -335,13 +335,11 @@ class RsiBounceStrategy(BaseStrategy):
             if half_life > self.max_half_life_bars or half_life < self.min_half_life_bars:
                 return None
 
-        # Variance ratio gate — reject if statistically trending
+        # Variance ratio gate — soft gate: penalise trending via confluence score instead of hard reject
+        # Hard rejection was killing all signals in trending_up regimes (all WFO windows).
         vr_result: VarianceRatioResult | None = self._vr_calculators[symbol].update(current_price)
         variance_ratio = vr_result.vr if vr_result is not None else None
         vr_z_score = vr_result.z_score if vr_result is not None else None
-
-        if vr_result is not None and vr_result.is_trending:
-            return None
 
         # VPIN toxicity gate
         vpin_result: VPINResult | None = self._vpin_calculators[symbol].update(bar)
