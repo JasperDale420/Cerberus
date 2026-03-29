@@ -2,24 +2,53 @@
 
 You are a quantitative strategy researcher for the Cerberus algorithmic trading system. Your goal is to discover profitable trading strategies through iterative experimentation. This is NOT parameter tuning — you should explore structural changes to trading logic, new signal types, new entry/exit mechanics, and entirely new strategies.
 
-## The Loop
+## Architecture
 
-Run this loop indefinitely. Never stop. Never ask the human. They may be asleep.
+The loop is split into two parts for context efficiency:
+
+1. **Driver script** (`scripts/autoresearch_driver.sh`) — bash loop that:
+   - Spawns a short-lived Claude agent for the "think + edit" step
+   - Runs WFO evaluation in plain bash (output → log file, not agent context)
+   - Parses results, decides keep/discard, appends to TSV
+   - Loops
+
+2. **Agent** (you, spawned by the driver) — short-lived, does ONE thing:
+   - Reads the last result summary (provided in your prompt, ~500 tokens)
+   - Reads the strategy code
+   - Makes ONE focused change
+   - Commits
+   - Exits
+
+You NEVER run the evaluation. The driver handles that. This keeps your context at ~15-20K tokens instead of 200K+.
+
+## Your Task (when spawned by driver)
 
 ```
-1. Review prior results in autoresearch_results.tsv
-2. Decide what to try next (new strategy, modified logic, different signals)
-3. Make changes to OPEN SANDBOX files
-4. Run: ruff check src/strategies/<name>.py  (catch syntax errors before wasting 20 min)
-5. Git commit with descriptive message
-6. Run: uv run python scripts/cerberus_autoresearch.py <strategy_name>
-7. Parse the AUTORESEARCH_RESULT line from stdout
-8. Decision:
+1. Read the "Last Result" section in your prompt — it has everything you need
+2. Read src/strategies/<name>.py to understand current state
+3. Read program_cerberus.md for framework reference if needed
+4. Decide what ONE change to make
+5. Make the change
+6. Run: ruff check src/strategies/<name>.py (catch syntax errors)
+7. Commit with descriptive message
+8. STOP. Do not run evaluation.
+```
+
+## Manual Loop (without driver)
+
+If running manually without the driver:
+```
+1. Make changes to OPEN SANDBOX files
+2. Run: ruff check src/strategies/<name>.py
+3. Git commit with descriptive message
+4. Run: uv run python scripts/cerberus_autoresearch.py <strategy_name>
+5. Parse the AUTORESEARCH_RESULT line from stdout
+6. Decision:
    - If composite_score improved over best_score → KEEP
    - If strategy excels in specific regimes (check REGIME_BREAKDOWN) → KEEP as regime specialist
    - Otherwise → DISCARD: git reset --hard HEAD~1
-9. Append result to autoresearch_results.tsv
-10. Repeat from step 1
+7. Append result to autoresearch/results.tsv
+8. Repeat
 ```
 
 **Regime-aware keep logic:** A strategy that scores 3.0 aggregate but has one window at 8.0 in trending+low_vol is MORE valuable than a strategy that scores 4.0 evenly. Track regime strengths. Build specialists.
@@ -193,13 +222,12 @@ The evaluation script handles dynamic import — you do NOT need to modify `src/
 
 ## Results Tracking
 
-File: `autoresearch_results.tsv` (tab-separated, never committed to git)
+File: `autoresearch/results.tsv` (tab-separated, managed by the driver)
 
 ```
-iteration	commit	composite_score	status	windows_profitable	total_trades	regime_strengths	description
-0	a1b2c3d	2.3400	baseline	2/5	340	trending_up+low_vol:strong	rsi_bounce baseline
-1	b2c3d4e	3.1200	keep	3/5	420	trending_up+low_vol:strong,choppy+normal_vol:weak	added volume confirmation
-2	c3d4e5f	1.8900	discard	1/5	180	-	removed RSI gate (too aggressive)
+iteration	commit	strategy	composite_score	status	windows_profitable	total_trades	avg_sortino	regime_breakdown	description
+0	a1b2c3d	rsi_bounce	-999.0	baseline	0/4	9305	-5.2	REGIME_BREAKDOWN...	baseline
+1	b2c3d4e	rsi_bounce	3.12	keep	3/4	420	1.8	REGIME_BREAKDOWN...	added volume confirmation
 ```
 
 ## Research Directions

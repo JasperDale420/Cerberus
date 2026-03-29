@@ -2,16 +2,18 @@
 """Cerberus Autoresearch Evaluation Runner — FROZEN, do not modify.
 
 Runs a speed-optimized WFO for a given strategy and outputs parseable metrics.
-Used by the autoresearch loop (program_cerberus.md) to evaluate strategy changes.
+Used by the autoresearch driver (scripts/autoresearch_driver.sh) to evaluate
+strategy changes. Verbose Optuna/WFO output goes to a log file; only parseable
+summary lines go to stdout.
 
 Design principles:
-- Full regime diversity (2021-2025) to prevent overfitting to a single market
+- Full regime diversity (2022-2025) to prevent overfitting to a single market
 - Reduced trials/symbols/windows for ~15-25 min iterations
 - Per-window regime tagging for identifying regime-specific strengths
 - Dynamic strategy import so new strategies don't need registry changes
 
 Usage:
-    uv run python scripts/cerberus_autoresearch.py <strategy_name> [--n-trials N] [--n-symbols N]
+    uv run python scripts/cerberus_autoresearch.py <strategy_name> [--n-trials N] [--n-symbols N] [--log-dir DIR]
 """
 
 import importlib.util
@@ -20,6 +22,7 @@ import logging
 import os
 import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 # Suppress all logging before any imports
@@ -118,7 +121,7 @@ def dynamic_import_strategy(strategy_name: str) -> bool:
             spec.loader.exec_module(module)
             return True
     except Exception as e:
-        print(f"AUTORESEARCH_ERROR dynamic_import_failed strategy={strategy_name} error={e}", flush=True)
+        sys.stderr.write(f"AUTORESEARCH_ERROR dynamic_import_failed strategy={strategy_name} error={e}\n")
     return False
 
 
@@ -130,9 +133,28 @@ def main():
     parser.add_argument("--n-trials", type=int, default=8, help="Optuna trials per window")
     parser.add_argument("--n-symbols", type=int, default=8, help="Number of symbols")
     parser.add_argument("--data-dir", default=DATA_DIR, help="Bar data directory")
+    parser.add_argument("--log-dir", default="artifacts/autoresearch/logs", help="Directory for verbose WFO logs")
     args = parser.parse_args()
 
     strategy_name = args.strategy
+
+    # Redirect stdout/stderr to log file for verbose WFO output.
+    # We keep a reference to real stdout for our parseable summary lines.
+    real_stdout = sys.stdout
+    log_dir = Path(args.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = log_dir / f"{strategy_name}_{ts}.log"
+    log_file = open(log_path, "w")  # noqa: SIM115
+    sys.stdout = log_file
+    sys.stderr = log_file
+
+    def emit(msg: str) -> None:
+        """Print to both real stdout (for driver parsing) and log file."""
+        real_stdout.write(msg + "\n")
+        real_stdout.flush()
+        log_file.write(msg + "\n")
+        log_file.flush()
 
     # Attempt dynamic import for new strategies
     dynamic_import_strategy(strategy_name)
@@ -168,10 +190,9 @@ def main():
 
     windows = wfo.get_windows()
 
-    print(
+    emit(
         f"AUTORESEARCH_START strategy={strategy_name} windows={len(windows)} "
-        f"trials={args.n_trials} symbols={len(symbols)}",
-        flush=True,
+        f"trials={args.n_trials} symbols={len(symbols)}"
     )
 
     try:
@@ -183,7 +204,8 @@ def main():
             workers=2,
         )
     except Exception as e:
-        print(f"AUTORESEARCH_ERROR wfo_failed strategy={strategy_name} error={e}", flush=True)
+        emit(f"AUTORESEARCH_ERROR wfo_failed strategy={strategy_name} error={e}")
+        log_file.close()
         sys.exit(1)
 
     # ── Parse results ──────────────────────────────────────────────
@@ -215,23 +237,21 @@ def main():
         regime = classify_window_regime(args.data_dir, window["test_start"], window["test_end"])
         m = oos_metrics[i] if i < len(oos_metrics) else {}
         score = oos_scores[i] if i < len(oos_scores) else -999.0
-        print(
+        emit(
             f"REGIME_BREAKDOWN window={i} regime={regime} "
             f"oos_score={score:.4f} trades={m.get('n_trades', 0)} "
-            f"pf={m.get('profit_factor', 0.0):.2f} sharpe={m.get('sharpe_ratio', 0.0):.3f}",
-            flush=True,
+            f"pf={m.get('profit_factor', 0.0):.2f} sharpe={m.get('sharpe_ratio', 0.0):.3f}"
         )
 
     # ── Summary result line ─────────────────────────────────────────
-    print(
+    emit(
         f"AUTORESEARCH_RESULT strategy={strategy_name} "
         f"composite_score={composite_score:.4f} "
         f"windows_profitable={positive_windows}/{total_windows} "
         f"total_oos_trades={total_oos_trades} "
         f"avg_sortino={avg_sortino:.4f} "
         f"param_cv_max={param_cv_max:.4f} "
-        f"wfo_efficiency={wfo_efficiency:.4f}",
-        flush=True,
+        f"wfo_efficiency={wfo_efficiency:.4f}"
     )
 
     # ── Save full results JSON ─────────────────────────────────────
@@ -240,6 +260,13 @@ def main():
     out_path = f"{out_dir}/{strategy_name}_latest.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
+
+    emit(f"AUTORESEARCH_LOG {log_path}")
+
+    # Restore stdout/stderr and close log
+    sys.stdout = real_stdout
+    sys.stderr = sys.__stderr__
+    log_file.close()
 
     # Exit 0 = success
     sys.exit(0)
