@@ -2047,6 +2047,23 @@ class ExecutionEngine:
         broker_order_ids: set[str] = set()
         broker_position_symbols: set[str] = set()
 
+        # Build set of symbols with Cerberus-owned orders to filter positions
+        own_order_symbols: set[str] = set()
+        for o_list in (orders or [], closed_orders or []):
+            for o in o_list if isinstance(o_list, list) else []:
+                coid = str(getattr(o, "client_order_id", "") or "")
+                if coid.startswith("cerberus_"):
+                    sym = str(getattr(o, "symbol", "") or "")
+                    if sym:
+                        own_order_symbols.add(sym)
+
+        # Also include symbols we're already tracking locally
+        own_order_symbols.update(self.symbol_states.keys())
+
+        # Filter positions to only those belonging to Cerberus
+        if positions:
+            positions = [p for p in positions if str(getattr(p, "symbol", "")) in own_order_symbols]
+
         # Reconcile Positions
         self._reconcile_positions(positions, broker_position_symbols)
 

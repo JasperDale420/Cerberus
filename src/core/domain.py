@@ -231,7 +231,7 @@ class Signal:
                 f"{repr(self.entry_price)}|{repr(self.stop_price)}|{repr(self.target_price)}"
             )
             digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
-            self.correlation_id = f"{self.strategy}-{self.symbol}-{epoch_ms}-{digest}"
+            self.correlation_id = f"cerberus_{self.strategy}-{self.symbol}-{epoch_ms}-{digest}"
 
 
 @dataclass
