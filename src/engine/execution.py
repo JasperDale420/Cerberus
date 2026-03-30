@@ -86,8 +86,10 @@ class ExecutionEngine:
         self.symbol_states: Dict[str, SymbolState] = {}
         # Bounded trade capture for backtests/analysis
         self.closed_trades: deque = deque(maxlen=5000)
-        # Fill dedup: prevent double processing of the same fill on reconnect/restart
+        # Fill dedup: prevent double processing of the same fill on reconnect/restart.
+        # Pre-populated from DB on startup to survive restarts (Finding 4, consensus 4/8).
         self._processed_fill_ids: Set[str] = set()
+        self._restore_fill_dedup_from_db()
 
         # Backtest mode flag — set by runner.py to skip DB writes, health monitoring, etc.
         self.backtest_mode: bool = False
@@ -1274,9 +1276,9 @@ class ExecutionEngine:
         fill = self._normalize_fill_correlation_id(fill, symbol, fill_ts)
         corr_id = fill["correlation_id"]
 
-        # Dedup guard: skip if this exact fill was already processed (e.g. on reconnect).
+        # Dedup guard: skip if this exact fill was already processed (e.g. on reconnect/restart).
         # Use a composite key so entry and exit fills sharing the same correlation_id
-        # are treated as distinct events.
+        # are treated as distinct events. Pre-populated from DB on startup.
         fill_key = f"{corr_id}|{fill.get('side', '')}|{fill.get('price', '')}|{fill.get('qty', '')}"
         if fill_key in self._processed_fill_ids:
             self.logger.debug(
@@ -1408,6 +1410,46 @@ class ExecutionEngine:
                 symbol=getattr(closed, "symbol", "unknown"),
                 error=str(e),
                 exc_info=True,
+            )
+
+    def _restore_fill_dedup_from_db(self) -> None:
+        """Pre-populate fill dedup set from recent DB fills to survive restarts.
+
+        Without this, a restart during market hours could reprocess fills received
+        during recovery, creating phantom positions (Finding 4, consensus 4/8).
+        """
+        if not self.db:
+            return
+        try:
+            from src.analysis.schema import Fill as DbFill
+            from src.analysis.schema import Order as DbOrder
+
+            with self.db.get_session() as session:
+                # Load last 500 fills (covers a full trading day) to rebuild dedup keys
+                recent_fills = (
+                    session.query(DbFill, DbOrder)
+                    .join(DbOrder, DbFill.order_id == DbOrder.id)
+                    .order_by(DbFill.id.desc())
+                    .limit(500)
+                    .all()
+                )
+                for fill_row, order_row in recent_fills:
+                    corr_id = getattr(order_row, "correlation_id", "") or ""
+                    side = getattr(order_row, "side", "") or ""
+                    price = round(getattr(fill_row, "fill_price", 0.0), 4)
+                    qty = round(getattr(fill_row, "fill_qty", 0.0), 4)
+                    fill_key = f"{corr_id}|{side}|{price}|{qty}"
+                    self._processed_fill_ids.add(fill_key)
+
+                if self._processed_fill_ids:
+                    self.logger.info(
+                        "Restored fill dedup set from DB",
+                        count=len(self._processed_fill_ids),
+                    )
+        except Exception as e:
+            self.logger.warning(
+                "Could not restore fill dedup from DB — dedup starts empty",
+                error=str(e),
             )
 
     def _persist_fill(
