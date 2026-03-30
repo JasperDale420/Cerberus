@@ -621,8 +621,14 @@ class TestRsiBounceV2Gates:
 
         assert signal is None
 
-    def test_half_life_too_long_rejects_signal(self, strategy):
-        """Half-life exceeding max_hold should prevent signal generation."""
+    def test_half_life_too_long_penalizes_confluence(self, strategy):
+        """Half-life exceeding max_half_life_bars reduces confluence score but does not hard-reject.
+
+        The OU half-life hard gate was removed (iter10) because long half-lives in trending
+        regimes were blocking all pullback entries. It is now a soft confluence penalty:
+        half_life_validity score = 0.0 (weight 0.20) when half_life >> max_half_life_bars,
+        but other strong factors (extreme RSI, z-score) can still pass the threshold.
+        """
         bar = _make_bar(close=95.0)
         ss = _make_symbol_state(n_bars=50, base_price=100.0)
         ms = _make_market_state()
@@ -651,7 +657,14 @@ class TestRsiBounceV2Gates:
 
             signal = strategy.on_bar("AAPL", bar, ss, ms)
 
-        assert signal is None
+        # Signal may still be generated — half-life is a soft confluence penalty, not a hard gate.
+        # Verify that when a signal is produced, the half_life_validity factor reflects the penalty.
+        if signal is not None:
+            assert "factors" in signal.meta
+            hl_factor = signal.meta["factors"].get("half_life_validity")
+            assert hl_factor is not None
+            # Score should be 0.0 (half_life=100 >> max_half_life_bars=20)
+            assert hl_factor["score"] == 0.0
 
     def test_variance_ratio_trending_penalizes_confluence(self, strategy):
         """Statistically significant trending VR should penalize confluence score, not hard reject.

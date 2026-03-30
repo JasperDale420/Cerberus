@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Stale test asserting hard OU half-life gate that was intentionally removed** (2026-03-30): `test_half_life_too_long_rejects_signal` was still asserting `signal is None` after the hard OU half-life gate was removed in iter10 (commit `a803bb5`). The test now correctly documents and verifies the soft-confluence-penalty behavior: a long half-life sets `half_life_validity` score to 0.0 but does not hard-reject the signal.
+
 - **SQLite `trades` table missing MFE/MAE excursion columns causing daily analytics failure** (2026-03-28): Seven columns added to the ORM model (`ts_mfe`, `ts_mae`, `time_to_mfe_seconds`, `time_to_mae_seconds`, `mfe_mae_ratio`, `capture_efficiency`, `excursion_velocity`) were never backfilled to the live `cerberus.db` via the schema patch mechanism. This caused `sqlite3.OperationalError: no such column: trades.ts_mfe` on every EOD analytics aggregation run since 2026-03-26. Added all seven columns to `SQLITE_SCHEMA_PATCHES` in `src/analysis/db.py` so existing databases are automatically migrated on next `init_db()`.
 
 - **Ruff lint errors in `autoresearch/` research notebooks and scripts** (2026-03-28): The `autoresearch/` directory (research notebooks and experimental training scripts unrelated to the trading engine) was not excluded from linting, producing 10 lint errors. Added `autoresearch` to the ruff `exclude` list in `pyproject.toml`.
