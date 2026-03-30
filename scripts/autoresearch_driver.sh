@@ -212,6 +212,13 @@ EOFPROMPT
     PREV_COMMIT=$(tail -1 "$TSV" | cut -f2)
 
     if [ "$NEW_COMMIT" = "$PREV_COMMIT" ]; then
+        # Check if it was a quota/rate limit issue vs genuine no-op
+        if echo "$AGENT_RESULT" | grep -qi "rate.limit\|quota\|overloaded\|429\|capacity"; then
+            echo "[iter $ITER] Agent hit rate limit/quota. Sleeping 5 minutes before retry..."
+            sleep 300
+            # Don't increment iteration — retry the same one
+            continue
+        fi
         echo "[iter $ITER] Agent did not commit. Skipping evaluation."
         ITER=$((ITER + 1))
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
