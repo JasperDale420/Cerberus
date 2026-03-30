@@ -267,12 +267,9 @@ class RsiBounceStrategy(BaseStrategy):
         # Track RSI history for percentile rank
         self._rsi_history[symbol].append(rsi_5m)
 
-        # In uptrends, relax the oversold threshold to catch pullbacks (RSI < 45).
-        # Deep oversold (< 30) rarely occurs in trending_up regimes, so we use a
-        # pullback-in-uptrend approach instead of a pure mean-reversion entry.
+        # Require genuine oversold conditions in all regimes — relaxed thresholds
+        # in uptrends caused over-trading on minor pullbacks that never fully reversed.
         rsi_oversold_effective = self.rsi_oversold
-        if snapshot is not None and snapshot.trend == TrendRegime.UP:
-            rsi_oversold_effective = max(self.rsi_oversold, 45.0)
 
         # BUY-only: require oversold RSI; SELL: require overbought RSI
         is_oversold = rsi_5m < rsi_oversold_effective
