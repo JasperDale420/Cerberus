@@ -280,6 +280,19 @@ class RsiBounceStrategy(BaseStrategy):
         else:
             side = OrderSide.SELL
 
+        # RSI directional confirmation: only enter when RSI has reversed direction.
+        # Buying while RSI is still falling = catching a falling knife.
+        # Require at least one bar showing RSI turning in the signal direction.
+        rsi_hist_direction = list(self._rsi_history[symbol])
+        if len(rsi_hist_direction) >= 2:
+            prev_rsi = rsi_hist_direction[-1]  # last appended value before current
+            if side == OrderSide.BUY and rsi_5m < prev_rsi:
+                # RSI still falling — skip, not yet confirmed reversal
+                return None
+            if side == OrderSide.SELL and rsi_5m > prev_rsi:
+                # RSI still rising — skip, not yet confirmed reversal
+                return None
+
         # --- trend filter: don't buy into downtrends, don't short into uptrends ---
         if snapshot is not None:
             if side == OrderSide.BUY and snapshot.trend == TrendRegime.DOWN:
