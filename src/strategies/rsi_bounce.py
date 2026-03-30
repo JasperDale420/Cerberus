@@ -267,13 +267,21 @@ class RsiBounceStrategy(BaseStrategy):
         # Track RSI history for percentile rank
         self._rsi_history[symbol].append(rsi_5m)
 
-        # Require genuine oversold conditions in all regimes — relaxed thresholds
-        # in uptrends caused over-trading on minor pullbacks that never fully reversed.
+        # Tighten RSI thresholds in trending + normal/low vol regimes.
+        # In these regimes RSI hitting 30 is typically a routine pullback that
+        # continues trending — only capitulation moves (RSI < 20) reliably bounce.
+        # High-vol regimes stay at the default threshold (volatility spikes produce
+        # sharper, more reliable reversions).
         rsi_oversold_effective = self.rsi_oversold
+        rsi_overbought_effective = self.rsi_overbought
+        if snapshot is not None and snapshot.trend in (TrendRegime.UP, TrendRegime.DOWN):
+            if snapshot.vol in (VolRegime.NORMAL, VolRegime.LOW):
+                rsi_oversold_effective = min(self.rsi_oversold, 20.0)
+                rsi_overbought_effective = max(self.rsi_overbought, 80.0)
 
         # BUY-only: require oversold RSI; SELL: require overbought RSI
         is_oversold = rsi_5m < rsi_oversold_effective
-        is_overbought = rsi_5m > self.rsi_overbought
+        is_overbought = rsi_5m > rsi_overbought_effective
 
         if not is_oversold and not is_overbought:
             return None
