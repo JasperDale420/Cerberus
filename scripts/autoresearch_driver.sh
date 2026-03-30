@@ -129,8 +129,20 @@ $LAST_RESULT
 Make ONE focused change to improve the strategy. Read the current code, understand what's happening, then make a single modification.
 
 $(if [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ]; then
-echo "WARNING: $CONSECUTIVE_DISCARDS consecutive discards. Your recent approach is NOT working."
-echo "Try something FUNDAMENTALLY different — new signal logic, different indicator, or a new strategy entirely."
+echo "PIVOT REQUIRED: $CONSECUTIVE_DISCARDS consecutive discards. STOP iterating on $STRATEGY."
+echo ""
+echo "You MUST create a BRAND NEW strategy file. Do NOT modify $STRATEGY anymore."
+echo "Create src/strategies/<new_name>.py extending BaseStrategy."
+echo "Add a config block in config/strategies.yaml with enabled: true."
+echo "The new strategy name will be evaluated automatically."
+echo ""
+echo "IDEAS for new strategies that match trending_up regimes:"
+echo "- Trend-following: buy pullbacks in uptrends using EMA crossover + ATR trailing stop"
+echo "- Momentum breakout: buy when price breaks N-day high with volume confirmation"
+echo "- VWAP reclaim: buy when price dips below VWAP then reclaims it in an uptrend"
+echo ""
+echo "The WFO data covers 2020-2025 with MIXED regimes (COVID crash, bear, bull, choppy)."
+echo "Build something that works across multiple regime types, not just one."
 echo ""
 fi)
 
@@ -170,11 +182,22 @@ EOFPROMPT
     COMMIT_MSG=$(git log -1 --format='%s')
     echo "[iter $ITER] Agent committed: $NEW_COMMIT — $COMMIT_MSG"
 
+    # Detect if agent created a new strategy (check for new .py files in src/strategies/)
+    NEW_STRAT_FILE=$(git diff --name-only HEAD~1 HEAD -- 'src/strategies/*.py' | grep -v "$STRATEGY" | head -1)
+    if [ -n "$NEW_STRAT_FILE" ]; then
+        # Extract strategy name from filename (e.g., src/strategies/trend_pullback_v2.py -> trend_pullback_v2)
+        NEW_STRAT_NAME=$(basename "$NEW_STRAT_FILE" .py)
+        echo "[iter $ITER] NEW STRATEGY DETECTED: $NEW_STRAT_NAME (evaluating instead of $STRATEGY)"
+        EVAL_STRATEGY="$NEW_STRAT_NAME"
+    else
+        EVAL_STRATEGY="$STRATEGY"
+    fi
+
     # ── Step 2: Run WFO evaluation (outside agent context) ─────────
     echo "[iter $ITER] Running WFO evaluation (~15 min)..."
     EVAL_START=$(date +%s)
 
-    EVAL_OUTPUT=$(timeout 2400 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 2400 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" 2>&1 || true)
 
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
