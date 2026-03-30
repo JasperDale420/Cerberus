@@ -562,7 +562,8 @@ def compute_regime_diversity_multiplier(trades: list[dict[str, Any]]) -> dict[st
         vol = trade.get("entry_regime_vol", "unknown")
         regime_key = f"{trend}_{vol}"
 
-        pnl = trade.get("pnl", 0.0)
+        # Use pnl_r (R-multiples) consistent with composite_objective; fall back to pnl
+        pnl = trade.get("pnl_r", trade.get("pnl", 0.0))
         regime_count[regime_key] = regime_count.get(regime_key, 0) + 1
         regime_pnl[regime_key] = regime_pnl.get(regime_key, 0.0) + pnl
 

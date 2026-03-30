@@ -355,20 +355,25 @@ class SimulatedOrderExecutor:
                     original_bps = getattr(self.fill_model, "slippage_bps", None) or getattr(
                         self.fill_model, "base_slippage_bps", None
                     )
+                    # Extract liquidity regime for fill model participation caps
+                    liq_regime = regime_labels.get("liquidity_regime") if regime_labels else None
+
                     if regime_mult != 1.0 and original_bps is not None:
-                        # Temporarily scale slippage for this fill
+                        # Temporarily scale slippage for this fill (exception-safe)
                         bps_attr = "slippage_bps" if hasattr(self.fill_model, "slippage_bps") else "base_slippage_bps"
                         scaled_bps = original_bps * regime_mult
                         setattr(self.fill_model, bps_attr, scaled_bps)
-                        result = self.fill_model.compute_fill(
-                            order_side=order["side"],
-                            order_qty=int(fill_qty),
-                            order_price=base_price,
-                            order_type=order["type"],
-                            bar=bar,
-                        )
-                        # Restore original value
-                        setattr(self.fill_model, bps_attr, original_bps)
+                        try:
+                            result = self.fill_model.compute_fill(
+                                order_side=order["side"],
+                                order_qty=int(fill_qty),
+                                order_price=base_price,
+                                order_type=order["type"],
+                                bar=bar,
+                                regime_liquidity=liq_regime,
+                            )
+                        finally:
+                            setattr(self.fill_model, bps_attr, original_bps)
                     else:
                         result = self.fill_model.compute_fill(
                             order_side=order["side"],
@@ -376,6 +381,7 @@ class SimulatedOrderExecutor:
                             order_price=base_price,
                             order_type=order["type"],
                             bar=bar,
+                            regime_liquidity=liq_regime,
                         )
                     fill_price = result.fill_price
                     # Deduct fill-model commission from account

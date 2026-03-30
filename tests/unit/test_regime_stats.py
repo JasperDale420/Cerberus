@@ -31,7 +31,7 @@ def _make_trades() -> list[dict]:
             "entry_near_earnings": False,
             "entry_near_fomc": False,
             "entry_opex_week": False,
-            "entry_session_phase": "OPENING",
+            "entry_session_phase": "opening_15m",
         },
         {
             "pnl": -5.0,
@@ -42,7 +42,7 @@ def _make_trades() -> list[dict]:
             "entry_near_earnings": True,
             "entry_near_fomc": False,
             "entry_opex_week": False,
-            "entry_session_phase": "MIDDAY",
+            "entry_session_phase": "midday",
         },
         {
             "pnl": 20.0,
@@ -53,7 +53,7 @@ def _make_trades() -> list[dict]:
             "entry_near_earnings": False,
             "entry_near_fomc": True,
             "entry_opex_week": True,
-            "entry_session_phase": "POWER_HOUR",
+            "entry_session_phase": "power_hour",
         },
         {
             "pnl": -3.0,
@@ -64,7 +64,7 @@ def _make_trades() -> list[dict]:
             "entry_near_earnings": False,
             "entry_near_fomc": False,
             "entry_opex_week": False,
-            "entry_session_phase": "OPENING",
+            "entry_session_phase": "opening_15m",
         },
         {
             "pnl": 8.0,
@@ -75,7 +75,7 @@ def _make_trades() -> list[dict]:
             "entry_near_earnings": False,
             "entry_near_fomc": False,
             "entry_opex_week": True,
-            "entry_session_phase": "MIDDAY",
+            "entry_session_phase": "midday",
         },
     ]
 
@@ -237,8 +237,8 @@ class TestComputeEnrichmentBreakdown:
         result = compute_enrichment_breakdown(trades)
 
         assert "session_phase" in result
-        assert "OPENING" in result["session_phase"]
-        assert result["session_phase"]["OPENING"]["n_trades"] == 2
+        assert "opening_15m" in result["session_phase"]
+        assert result["session_phase"]["opening_15m"]["n_trades"] == 2
 
     def test_liquidity(self):
         trades = _make_trades()
@@ -758,7 +758,7 @@ class TestComputeSessionPhaseStats:
     def test_unrecognised_phase_goes_to_unknown(self):
         """Trades with invalid phase values go to 'unknown'."""
         trades = [
-            {"pnl": 10.0, "entry_session_phase": "OPENING"},
+            {"pnl": 10.0, "entry_session_phase": "BOGUS_PHASE"},
             {"pnl": -5.0, "entry_session_phase": "after_hours"},
         ]
         result = compute_session_phase_stats(trades)

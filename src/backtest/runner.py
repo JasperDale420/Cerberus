@@ -346,6 +346,8 @@ def _load_regime_labels(
             # Normalize the date column to datetime.date for fast lookup
             df["_date_key"] = pd.to_datetime(df["date"]).dt.date
             df = df.set_index("_date_key")
+            # Deduplicate index to prevent .loc returning DataFrame instead of Series
+            df = df[~df.index.duplicated(keep="last")]
             result[symbol] = df
             loaded += 1
         except Exception as e:
@@ -569,9 +571,17 @@ def _build_trade_records(
                         entry_order_meta.get("correlation"),
                         "correlation_regime",
                     )
-                    entry_near_earn = bool(entry_order_meta.get("near_earnings") or parquet_regime.get("near_earnings"))
-                    entry_near_fomc_val = bool(entry_order_meta.get("near_fomc") or parquet_regime.get("near_fomc"))
-                    entry_opex = bool(entry_order_meta.get("opex_week") or parquet_regime.get("opex_week"))
+                    # Use 'is not None' for boolean fields — 'or' short-circuits on False
+                    _om_earn = entry_order_meta.get("near_earnings")
+                    entry_near_earn = bool(
+                        _om_earn if _om_earn is not None else parquet_regime.get("near_earnings", False)
+                    )
+                    _om_fomc = entry_order_meta.get("near_fomc")
+                    entry_near_fomc_val = bool(
+                        _om_fomc if _om_fomc is not None else parquet_regime.get("near_fomc", False)
+                    )
+                    _om_opex = entry_order_meta.get("opex_week")
+                    entry_opex = bool(_om_opex if _om_opex is not None else parquet_regime.get("opex_week", False))
 
                     # Exit regime: from exit order's meta_json regime_labels
                     exit_trend = str(exit_regime.get("trend", "unknown") or "unknown")
