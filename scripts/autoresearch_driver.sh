@@ -15,7 +15,8 @@
 #
 # Defaults: rsi_bounce, 50 iterations
 
-set -euo pipefail
+set -uo pipefail
+# Note: -e disabled intentionally — we handle errors manually per-step
 cd "$(dirname "$0")/.."
 
 STRATEGY="${1:-rsi_bounce}"
@@ -217,7 +218,8 @@ EOFPROMPT
 
     # Check for regime specialist windows (score > 3.0 in any window)
     if [ "$KEEP" = "false" ]; then
-        for regime_line in $(echo "$REGIME_LINES" | tr '|' '\n'); do
+        while IFS= read -r regime_line; do
+            [ -z "$regime_line" ] && continue
             window_score=$(echo "$regime_line" | grep -o 'oos_score=[^ ]*' | cut -d= -f2)
             window_regime=$(echo "$regime_line" | grep -o 'regime=[^ ]*' | cut -d= -f2)
             if echo "$window_score" | awk '{exit ($1 > 3.0) ? 0 : 1}'; then
@@ -226,7 +228,7 @@ EOFPROMPT
                 echo "[iter $ITER] KEEP — regime specialist: $window_regime scored $window_score"
                 break
             fi
-        done
+        done <<< "$REGIME_LINES"
     fi
 
     if [ "$KEEP" = "true" ]; then
