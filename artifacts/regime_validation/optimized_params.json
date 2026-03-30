@@ -1,0 +1,25 @@
+{
+  "trend": {
+    "method": "sma",
+    "fast": 10,
+    "slow": 40,
+    "band": 0.01
+  },
+  "trend_accuracy": 71.54201125058762,
+  "vol": {
+    "method": "realized",
+    "window": 30,
+    "low": 0.08,
+    "high": 0.2,
+    "shock": 0.5
+  },
+  "vol_accuracy": 92.30516894514116,
+  "combined_accuracy": 81.92359009786439,
+  "baseline_trend": 53.8,
+  "baseline_vol": 84.3,
+  "axes": [
+    "trend",
+    "vol"
+  ],
+  "note": "Risk axis dropped \u2014 5-day return proxy too noisy (58% accuracy)"
+}
