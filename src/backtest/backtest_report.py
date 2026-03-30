@@ -21,7 +21,7 @@ Usage::
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -48,6 +48,21 @@ class TradeRecord:
     commission: float = 0.0
     slippage: float = 0.0
     strategy: str = ""  # Strategy that generated this trade
+    meta: dict[str, Any] = field(default_factory=dict)  # Extra context (e.g. regime labels)
+
+    # Entry regime context (multi-axis)
+    entry_regime_trend: str = "unknown"  # UP/FLAT/DOWN
+    entry_regime_vol: str = "unknown"  # LOW/NORMAL/HIGH/SHOCK
+    entry_liquidity: str = "unknown"  # GOOD/THIN/STRESSED
+    entry_correlation: str = "unknown"  # HIGH_CORR/NORMAL_CORR/LOW_CORR
+    entry_near_earnings: bool = False
+    entry_near_fomc: bool = False
+    entry_opex_week: bool = False
+    entry_session_phase: str = "unknown"  # opening/midday/power_hour/close etc.
+
+    # Exit regime context (may differ from entry)
+    exit_regime_trend: str = "unknown"
+    exit_regime_vol: str = "unknown"
 
 
 @dataclass

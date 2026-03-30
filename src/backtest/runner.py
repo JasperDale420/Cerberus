@@ -4,6 +4,7 @@ import os
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -301,12 +302,108 @@ def _validate_survivorship(
             )
 
 
-def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord]:
+_REGIME_LABEL_COLUMNS = [
+    "regime_trend",
+    "regime_vol",
+    "regime",
+    "liquidity_regime",
+    "earnings_window",
+    "near_earnings",
+    "opex_week",
+    "quad_witch_week",
+    "fomc_window",
+    "near_fomc",
+    "correlation_regime",
+    "spy_beta",
+]
+
+
+def _load_regime_labels(
+    data_dir: Path,
+    symbols: set[str],
+    logger: StructuredLogger,
+) -> dict[str, pd.DataFrame]:
+    """Load pre-computed daily regime labels for each symbol.
+
+    Returns a dict mapping symbol -> DataFrame indexed by ``datetime.date``.
+    Missing files are logged as warnings and produce empty DataFrames.
+    """
+    regime_dir = data_dir / "regime_labeled"
+    if not regime_dir.is_dir():
+        logger.info("No regime_labeled directory found — skipping regime label loading", path=str(regime_dir))
+        return {}
+
+    result: dict[str, pd.DataFrame] = {}
+    loaded = 0
+    for symbol in sorted(symbols):
+        parquet_path = regime_dir / f"{symbol}_daily_regime.parquet"
+        if not parquet_path.exists():
+            logger.debug("No daily regime labels for symbol", symbol=symbol, path=str(parquet_path))
+            result[symbol] = pd.DataFrame()
+            continue
+        try:
+            df = pd.read_parquet(parquet_path)
+            # Normalize the date column to datetime.date for fast lookup
+            df["_date_key"] = pd.to_datetime(df["date"]).dt.date
+            df = df.set_index("_date_key")
+            result[symbol] = df
+            loaded += 1
+        except Exception as e:
+            logger.warning("Failed to load regime labels", symbol=symbol, error=str(e))
+            result[symbol] = pd.DataFrame()
+
+    logger.info("Loaded regime labels", symbols_loaded=loaded, symbols_total=len(symbols))
+    return result
+
+
+def _load_session_labels(
+    data_dir: Path,
+    symbols: set[str],
+    logger: StructuredLogger,
+) -> dict[str, pd.DataFrame]:
+    """Load pre-computed 1-minute session phase labels for each symbol.
+
+    Returns a dict mapping symbol -> DataFrame indexed by UTC timestamp (rounded to minute).
+    """
+    regime_dir = data_dir / "regime_labeled"
+    if not regime_dir.is_dir():
+        return {}
+
+    result: dict[str, pd.DataFrame] = {}
+    loaded = 0
+    for symbol in sorted(symbols):
+        parquet_path = regime_dir / f"{symbol}_1m_session.parquet"
+        if not parquet_path.exists():
+            result[symbol] = pd.DataFrame()
+            continue
+        try:
+            df = pd.read_parquet(parquet_path)
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+            df = df.set_index("timestamp")
+            result[symbol] = df
+            loaded += 1
+        except Exception as e:
+            logger.warning("Failed to load session labels", symbol=symbol, error=str(e))
+            result[symbol] = pd.DataFrame()
+
+    if loaded:
+        logger.info("Loaded session labels", symbols_loaded=loaded)
+    return result
+
+
+def _build_trade_records(
+    db: DatabaseDatabase,
+    config: dict,
+    regime_labels: dict[str, pd.DataFrame] | None = None,
+) -> list[TradeRecord]:
     """Pair filled buy/sell orders into TradeRecord objects using FIFO matching.
 
     Uses a position-stack approach (same as BacktestAnalyzer._process_symbol_fills
     in stats.py) so that partial fills, scaling in/out, and multiple entries are
     handled correctly.
+
+    When *regime_labels* is provided, the entry date's regime context is attached
+    to each TradeRecord's ``meta`` dict under the ``"regime_labels"`` key.
     """
     from collections import deque
 
@@ -329,6 +426,7 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                 "limit_price": float(f.limit_price) if f.limit_price else 0.0,
                 "time_placed": f.time_placed,
                 "correlation_id": f.correlation_id or "",
+                "meta_json": f.meta_json if isinstance(f.meta_json, dict) else {},
             }
             for f in fills
         ]
@@ -357,6 +455,8 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
             fill_price = fill["limit_price"]
             fill_time = fill["time_placed"]
 
+            fill_meta = fill.get("meta_json", {})
+
             while remaining > QTY_EPSILON:
                 if not stack:
                     # No existing position -- open a new one
@@ -367,6 +467,7 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                             "price": fill_price,
                             "time": fill_time,
                             "correlation_id": fill.get("correlation_id", ""),
+                            "meta_json": fill_meta,
                         }
                     )
                     remaining = 0.0
@@ -379,6 +480,7 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                             "price": fill_price,
                             "time": fill_time,
                             "correlation_id": fill.get("correlation_id", ""),
+                            "meta_json": fill_meta,
                         }
                     )
                     remaining = 0.0
@@ -425,6 +527,56 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                     # Make PnL net of commission
                     net_pnl = pnl - total_commission
 
+                    # -- Regime context from order meta_json (signal-level) --
+                    entry_order_meta = head.get("meta_json", {}) or {}
+                    exit_order_meta = fill_meta or {}
+                    entry_regime = entry_order_meta.get("regime_labels", {}) or {}
+                    exit_regime = exit_order_meta.get("regime_labels", {}) or {}
+
+                    # -- Regime context from parquet labels (fallback) --
+                    trade_meta: dict[str, Any] = {}
+                    parquet_regime: dict[str, Any] = {}
+                    if regime_labels:
+                        entry_date = head["time"].date() if hasattr(head["time"], "date") else None
+                        if entry_date:
+                            rl_df = regime_labels.get(sym)
+                            if rl_df is not None and not rl_df.empty and entry_date in rl_df.index:
+                                rl_row = rl_df.loc[entry_date]
+                                parquet_regime = {
+                                    col: rl_row[col] for col in _REGIME_LABEL_COLUMNS if col in rl_row.index
+                                }
+                                trade_meta["regime_labels"] = parquet_regime
+
+                    # Resolve: prefer signal meta, then parquet, then "unknown"
+                    def _resolve(
+                        signal_val: Any,
+                        parquet_key: str,
+                        default: str = "unknown",
+                        _pq: dict[str, Any] = parquet_regime,
+                    ) -> str:
+                        if signal_val and str(signal_val) != "unknown":
+                            return str(signal_val)
+                        pq = _pq.get(parquet_key)
+                        if pq is not None and str(pq) != "":
+                            return str(pq)
+                        return default
+
+                    entry_trend = _resolve(entry_regime.get("trend"), "regime_trend")
+                    entry_vol = _resolve(entry_regime.get("vol"), "regime_vol")
+                    entry_liq = _resolve(entry_regime.get("liquidity"), "liquidity_regime")
+                    entry_session = _resolve(entry_regime.get("session"), "session_phase")
+                    entry_corr_regime = _resolve(
+                        entry_order_meta.get("correlation"),
+                        "correlation_regime",
+                    )
+                    entry_near_earn = bool(entry_order_meta.get("near_earnings") or parquet_regime.get("near_earnings"))
+                    entry_near_fomc_val = bool(entry_order_meta.get("near_fomc") or parquet_regime.get("near_fomc"))
+                    entry_opex = bool(entry_order_meta.get("opex_week") or parquet_regime.get("opex_week"))
+
+                    # Exit regime: from exit order's meta_json regime_labels
+                    exit_trend = str(exit_regime.get("trend", "unknown") or "unknown")
+                    exit_vol_val = str(exit_regime.get("vol", "unknown") or "unknown")
+
                     trades.append(
                         TradeRecord(
                             symbol=sym,
@@ -437,6 +589,17 @@ def _build_trade_records(db: DatabaseDatabase, config: dict) -> list[TradeRecord
                             pnl=round(net_pnl, 2),
                             commission=round(total_commission, 2),
                             strategy=strategy,
+                            meta=trade_meta,
+                            entry_regime_trend=entry_trend,
+                            entry_regime_vol=entry_vol,
+                            entry_liquidity=entry_liq,
+                            entry_correlation=entry_corr_regime,
+                            entry_near_earnings=entry_near_earn,
+                            entry_near_fomc=entry_near_fomc_val,
+                            entry_opex_week=entry_opex,
+                            entry_session_phase=entry_session,
+                            exit_regime_trend=exit_trend,
+                            exit_regime_vol=exit_vol_val,
                         )
                     )
 
@@ -648,6 +811,13 @@ async def run_backtest(
         if bars_df.empty:
             logger.warning("All symbols excluded by data quality checks.")
             return
+
+    # ── Load pre-computed regime labels (optional) ──────────────────
+    regime_labels: dict[str, pd.DataFrame] = {}
+    session_labels: dict[str, pd.DataFrame] = {}
+    regime_data_dir = Path(data_dir) if data_dir else Path("data")
+    regime_labels = _load_regime_labels(regime_data_dir, symbols, logger)
+    session_labels = _load_session_labels(regime_data_dir, symbols, logger)
 
     # ── Pre-compute multi-timeframe indicators ───────────────────────
     # V2 strategies depend on 5m/15m EMA, ATR, RSI, ADX etc. via
@@ -952,6 +1122,26 @@ async def run_backtest(
         _maybe_aggregate_bar(_sym_state, mock_bar, 5, _sym_state.bars_5m)
         _maybe_aggregate_bar(_sym_state, mock_bar, 15, _sym_state.bars_15m)
 
+        # Attach regime labels to symbol_state.meta for strategy/engine access
+        if regime_labels:
+            _rl_df = regime_labels.get(row.symbol)
+            if _rl_df is not None and not _rl_df.empty:
+                _bar_date = current_day  # already computed above
+                if _bar_date in _rl_df.index:
+                    _rl_row = _rl_df.loc[_bar_date]
+                    _sym_state.meta["regime_labels"] = {
+                        col: _rl_row[col] for col in _REGIME_LABEL_COLUMNS if col in _rl_row.index
+                    }
+                # else: keep previous day's labels (or empty if never set)
+
+        if session_labels:
+            _sl_df = session_labels.get(row.symbol)
+            if _sl_df is not None and not _sl_df.empty:
+                # Round to nearest minute for lookup
+                _bar_ts_rounded = ts.replace(second=0, microsecond=0)
+                if _bar_ts_rounded in _sl_df.index:
+                    _sym_state.meta["session_phase"] = _sl_df.loc[_bar_ts_rounded, "session_phase"]
+
         # Track the latest price for equity calculation
         latest_prices[row.symbol] = row.close
 
@@ -990,7 +1180,7 @@ async def run_backtest(
     logger.info("Backtest replay complete. Generating report...")
 
     # Build trade records from paired buy/sell orders
-    trades = _build_trade_records(db, config)
+    trades = _build_trade_records(db, config, regime_labels=regime_labels or None)
 
     report = BacktestReportCard(
         trades=trades,
@@ -1048,7 +1238,11 @@ async def run_backtest(
             {
                 "strategy": t.strategy or "unknown",
                 "pnl": t.pnl,
-                "regime_trend": "UNKNOWN",
+                "regime_trend": (
+                    t.entry_regime_trend.upper()
+                    if t.entry_regime_trend != "unknown"
+                    else t.meta.get("regime_labels", {}).get("regime_trend", "UNKNOWN")
+                ),
                 "entry_hour": t.entry_time.hour if t.entry_time else 10,
                 "hold_minutes": (
                     (t.exit_time - t.entry_time).total_seconds() / 60.0 if t.exit_time and t.entry_time else 0.0
