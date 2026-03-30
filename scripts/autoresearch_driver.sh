@@ -119,49 +119,84 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
     # Build the agent prompt with last result context
     LAST_RESULT=$(cat "$LAST_RESULT_FILE")
 
+    # Determine which regime phase we're in based on iteration count
+    if [ "$ITER" -le 15 ]; then
+        REGIME_PHASE="UP_NORMAL"
+        REGIME_DESC="UP+NORMAL (trending bull, low vol — 43% of data)"
+        STRAT_FILE="regime_trend_up"
+        STRAT_HINT="Trend-following: buy pullbacks in uptrends. EMA crossover, VWAP reclaim, ATR trailing stop. BUY-only. The market is going up — ride it."
+    elif [ "$ITER" -le 30 ]; then
+        REGIME_PHASE="DOWN_HIGH"
+        REGIME_DESC="DOWN+HIGH (bear market, high vol — 18% of data)"
+        STRAT_FILE="regime_bear"
+        STRAT_HINT="Bear market specialist: short momentum breakdowns, VIX spike fading, or defensive mean-reversion on oversold bounces. SELL-biased or fade extremes."
+    elif [ "$ITER" -le 45 ]; then
+        REGIME_PHASE="FLAT_NORMAL"
+        REGIME_DESC="FLAT+NORMAL (range-bound, normal vol — 5% of data)"
+        STRAT_FILE="regime_flat"
+        STRAT_HINT="Mean reversion: RSI bounce, Bollinger band fading, VWAP reversion. This is where mean-reversion actually works. Trade both directions."
+    else
+        REGIME_PHASE="GENERALIST"
+        REGIME_DESC="Cross-regime generalist"
+        STRAT_FILE="regime_adaptive"
+        STRAT_HINT="Adaptive strategy that checks the current regime and switches behavior. Use regime labels from symbol_state.meta['regime_labels'] to condition entry logic."
+    fi
+
     AGENT_PROMPT=$(cat <<EOFPROMPT
-You are a quant researcher iterating on the Cerberus "$STRATEGY" strategy.
+You are a quant researcher building a REGIME-SPECIALIST ENSEMBLE for the Cerberus trading system.
+
+## Current Phase: $REGIME_DESC (iterations $ITER)
+You are building a specialist strategy for the **$REGIME_PHASE** regime.
+
+## Strategy File: src/strategies/${STRAT_FILE}.py
 
 ## Last Result
 $LAST_RESULT
 
 ## Your Task
-Make ONE focused change to improve the strategy. Read the current code, understand what's happening, then make a single modification.
-
-$(if [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ]; then
-echo "PIVOT REQUIRED: $CONSECUTIVE_DISCARDS consecutive discards. STOP iterating on $STRATEGY."
+$(if [ ! -f "src/strategies/${STRAT_FILE}.py" ]; then
+echo "CREATE a new strategy file: src/strategies/${STRAT_FILE}.py"
+echo "This strategy should ONLY work well in ${REGIME_DESC}."
 echo ""
-echo "You MUST create a BRAND NEW strategy file. Do NOT modify $STRATEGY anymore."
-echo "Create src/strategies/<new_name>.py extending BaseStrategy."
-echo "Add a config block in config/strategies.yaml with enabled: true."
-echo "The new strategy name will be evaluated automatically."
+echo "Strategy hint: ${STRAT_HINT}"
 echo ""
-echo "IDEAS for new strategies that match trending_up regimes:"
-echo "- Trend-following: buy pullbacks in uptrends using EMA crossover + ATR trailing stop"
-echo "- Momentum breakout: buy when price breaks N-day high with volume confirmation"
-echo "- VWAP reclaim: buy when price dips below VWAP then reclaims it in an uptrend"
+echo "1. Read program_cerberus.md for the BaseStrategy interface, Signal dataclass, and available indicators"
+echo "2. Create src/strategies/${STRAT_FILE}.py extending BaseStrategy with name = '${STRAT_FILE}'"
+echo "3. Add a config block in config/strategies.yaml:"
+echo "   ${STRAT_FILE}:"
+echo "     enabled: true"
+echo "     # your params here"
+echo "4. Keep it SIMPLE — 3-5 factors max. Simpler strategies generalize better."
+echo "5. Run: ruff check src/strategies/${STRAT_FILE}.py"
+echo "6. Commit and STOP."
+else
+echo "ITERATE on the existing ${STRAT_FILE} strategy to improve its performance in ${REGIME_DESC}."
 echo ""
-echo "The WFO data covers 2020-2025 with MIXED regimes (COVID crash, bear, bull, choppy)."
-echo "Build something that works across multiple regime types, not just one."
+echo "Read src/strategies/${STRAT_FILE}.py first, then make ONE focused change."
 echo ""
+if [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ]; then
+echo "WARNING: $CONSECUTIVE_DISCARDS consecutive discards. Try something FUNDAMENTALLY different."
+echo "Don't keep tweaking the same approach — change the core signal logic."
+echo ""
+fi
+echo "Focus on the REGIME_BREAKDOWN lines — which regime windows scored well vs poorly?"
+echo "- Windows with 0 trades → gates too strict, loosen"
+echo "- High trade count + PF < 1.0 → over-trading, add selectivity"
+echo "- PF > 1.0 windows → understand WHY they work, amplify that"
 fi)
 
 ## Rules
-1. Read src/strategies/${STRATEGY}.py first
-2. Read program_cerberus.md for framework reference (BaseStrategy, Signal, ConfluenceScorer interfaces)
-3. Make ONE change — don't rewrite the whole strategy
-4. Run: ruff check src/strategies/${STRATEGY}.py (fix any errors)
-5. Commit with a descriptive message explaining your hypothesis
-6. Then STOP. Do not run any evaluation. The driver handles that.
+1. Read program_cerberus.md for framework reference (BaseStrategy, Signal, ConfluenceScorer)
+2. Run: ruff check src/strategies/${STRAT_FILE}.py (fix any errors)
+3. Commit with message: experiment(${STRAT_FILE}): iter$ITER — <description>
+4. Then STOP. Do not run evaluation. The driver handles that.
 
-## What to focus on based regime breakdown
-- Windows with negative scores need the most help
-- Windows with PF < 1.0 are losing money — reduce trade frequency or tighten entry criteria
-- Windows with 0 trades — the gates are too strict, loosen them
-- High trade count + negative score = the strategy is over-trading, add selectivity
-
-Write your commit message in this format:
-  experiment(<strategy>): iter$ITER — <one line description of change>
+## Available Data in symbol_state
+- symbol_state.bars_1m — deque of recent 1-minute bars
+- symbol_state.indicators — dict of precomputed EMA, RSI, ATR, BB
+- symbol_state.meta["regime_labels"] — dict with regime_trend, regime_vol, liquidity_regime, correlation_regime, near_earnings, near_fomc, opex_week
+- symbol_state.meta["session_phase"] — opening_15m, morning, midday, power_hour, close_15m
+- symbol_state.position — current position (None if flat)
 EOFPROMPT
 )
 
@@ -182,16 +217,9 @@ EOFPROMPT
     COMMIT_MSG=$(git log -1 --format='%s')
     echo "[iter $ITER] Agent committed: $NEW_COMMIT — $COMMIT_MSG"
 
-    # Detect if agent created a new strategy (check for new .py files in src/strategies/)
-    NEW_STRAT_FILE=$(git diff --name-only HEAD~1 HEAD -- 'src/strategies/*.py' | grep -v "$STRATEGY" | head -1)
-    if [ -n "$NEW_STRAT_FILE" ]; then
-        # Extract strategy name from filename (e.g., src/strategies/trend_pullback_v2.py -> trend_pullback_v2)
-        NEW_STRAT_NAME=$(basename "$NEW_STRAT_FILE" .py)
-        echo "[iter $ITER] NEW STRATEGY DETECTED: $NEW_STRAT_NAME (evaluating instead of $STRATEGY)"
-        EVAL_STRATEGY="$NEW_STRAT_NAME"
-    else
-        EVAL_STRATEGY="$STRATEGY"
-    fi
+    # Evaluate the regime specialist for the current phase
+    EVAL_STRATEGY="$STRAT_FILE"
+    echo "[iter $ITER] Phase=$REGIME_PHASE evaluating strategy=$EVAL_STRATEGY"
 
     # ── Step 2: Run WFO evaluation (outside agent context) ─────────
     echo "[iter $ITER] Running WFO evaluation (~15 min)..."
