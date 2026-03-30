@@ -60,7 +60,7 @@ if [ "$ITER" -eq 0 ]; then
     echo "[iter 0] Running baseline evaluation..."
     COMMIT=$(git rev-parse --short HEAD)
 
-    EVAL_OUTPUT=$(uv run python scripts/cerberus_autoresearch.py "$STRATEGY" 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     REGIME_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_BREAKDOWN" || echo "")
 
@@ -197,7 +197,7 @@ EOFPROMPT
     echo "[iter $ITER] Running WFO evaluation (~15 min)..."
     EVAL_START=$(date +%s)
 
-    EVAL_OUTPUT=$(timeout 2400 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 2>&1 || true)
 
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
