@@ -88,7 +88,7 @@ class RsiBounceStrategy(BaseStrategy):
         # Bollinger Band parameters
         self.bb_period = int(overrides.get("bb_period", config.get("bb_period", 20)))
         self.band_sigma = float(overrides.get("band_sigma", config.get("band_sigma", 2.0)))
-        self.band_tolerance = float(overrides.get("band_tolerance", config.get("band_tolerance", 10.0)))
+        self.band_tolerance = float(overrides.get("band_tolerance", config.get("band_tolerance", 50.0)))
 
         # Volume confirmation
         self.volume_lookback = int(overrides.get("volume_lookback", config.get("volume_lookback", 20)))
