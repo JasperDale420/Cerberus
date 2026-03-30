@@ -53,4 +53,26 @@ vectors.db
 
 # Large binary files
 ledger.db
+*.db-journal
+*.db-wal
+*_backup_*.db
 .axon/
+
+# Build / index artifacts
+index.scip
+
+# Embedded repos (separate git projects)
+_empire_core/
+autoresearch/
+
+# Research documents (large / binary)
+docs/research/*.pdf
+docs/research/*.txt
+
+# Prediction / analysis outputs
+predict/
+
+# Root-level research files (imported, not source)
+codebase.md
+microsoft-*.txt
+"151 trading strategies.pdf"
