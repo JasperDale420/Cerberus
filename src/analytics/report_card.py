@@ -20,6 +20,11 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from src.analytics.regime_stats import (
+    compute_enrichment_breakdown,
+    compute_regime_breakdown,
+    compute_regime_matrix,
+)
 from src.core.logger import StructuredLogger
 
 logger = StructuredLogger("report_card")
@@ -835,6 +840,39 @@ def compute_entry_exit_efficiency(
 
 
 # ---------------------------------------------------------------------------
+# Regime-aware metrics (requires Phase 1.2 enrichment fields on trades)
+# ---------------------------------------------------------------------------
+
+
+def _compute_regime_metrics(trades: list[dict], pnl_key: str = "pnl_r") -> dict[str, Any]:
+    """Compute per-regime performance breakdowns from enriched trade dicts.
+
+    Returns an empty dict when trades lack regime fields (backward compat).
+    """
+    result: dict[str, Any] = {}
+
+    trend_breakdown = compute_regime_breakdown(trades, regime_field="entry_regime_trend", pnl_key=pnl_key)
+    if trend_breakdown:
+        result["by_trend"] = trend_breakdown
+
+    vol_breakdown = compute_regime_breakdown(trades, regime_field="entry_regime_vol", pnl_key=pnl_key)
+    if vol_breakdown:
+        result["by_volatility"] = vol_breakdown
+
+    matrix = compute_regime_matrix(
+        trades, row_field="entry_regime_trend", col_field="entry_regime_vol", pnl_key=pnl_key
+    )
+    if matrix:
+        result["trend_x_vol_matrix"] = matrix
+
+    enrichment = compute_enrichment_breakdown(trades, pnl_key=pnl_key)
+    if enrichment:
+        result["enrichment"] = enrichment
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Report orchestrator
 # ---------------------------------------------------------------------------
 
@@ -902,6 +940,9 @@ def generate_report(
     # Tier 3
     report["time_breakdowns"] = compute_time_breakdowns(trades, bar_index, pnl_key=pnl_key)
     report["entry_exit_efficiency"] = compute_entry_exit_efficiency(trades, mae_key=mae_key, mfe_key=mfe_key)
+
+    # Regime breakdowns (Phase 1.2 enrichment fields)
+    report["regime"] = _compute_regime_metrics(trades, pnl_key=pnl_key)
 
     # Auto-save to organized folder
     if save and strategy_name:

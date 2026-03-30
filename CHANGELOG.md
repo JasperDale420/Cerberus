@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Per-regime performance statistics in backtest report card**: New `src/analytics/regime_stats.py` module provides `compute_regime_breakdown()` (group trades by any regime field), `compute_regime_matrix()` (2D trend x vol matrix), `compute_enrichment_breakdown()` (boolean flags like near_earnings/near_fomc/opex_week plus session phase, liquidity, and correlation regimes), and `format_regime_report()` for human-readable output. Integrated into `generate_report()` as `report["regime"]`. Degrades gracefully when regime fields are absent (backward compatible).
+
 ### Fixed
 
 - **SQLite `trades` table missing MFE/MAE excursion columns causing daily analytics failure** (2026-03-28): Seven columns added to the ORM model (`ts_mfe`, `ts_mae`, `time_to_mfe_seconds`, `time_to_mae_seconds`, `mfe_mae_ratio`, `capture_efficiency`, `excursion_velocity`) were never backfilled to the live `cerberus.db` via the schema patch mechanism. This caused `sqlite3.OperationalError: no such column: trades.ts_mfe` on every EOD analytics aggregation run since 2026-03-26. Added all seven columns to `SQLITE_SCHEMA_PATCHES` in `src/analysis/db.py` so existing databases are automatically migrated on next `init_db()`.
