@@ -12,6 +12,7 @@ services:
       - ./logs:/app/logs
       - ./config:/app/config:ro
       - ./cerberus.db:/app/cerberus.db
+      - ./ledger.db:/app/ledger.db
       - ./data:/app/data
       - /Volumes/heber/data:/Volumes/heber/data:ro
     environment:
@@ -51,6 +52,7 @@ services:
       - ./logs:/app/logs
       - ./config:/app/config:ro
       - ./cerberus.db:/app/cerberus.db
+      - ./ledger.db:/app/ledger.db
       - ./data:/app/data
       - /Volumes/heber/data:/Volumes/heber/data:ro
     environment:
