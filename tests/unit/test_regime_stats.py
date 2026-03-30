@@ -8,6 +8,7 @@ from src.analytics.regime_stats import (
     compute_enrichment_breakdown,
     compute_regime_breakdown,
     compute_regime_matrix,
+    compute_regime_transitions,
     format_regime_report,
 )
 
@@ -315,3 +316,219 @@ class TestBackwardCompat:
         # Only 2 trades have the field
         assert result["UP"]["n_trades"] == 2
         assert result["UP"]["total_pnl"] == pytest.approx(13.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# compute_regime_transitions
+# ---------------------------------------------------------------------------
+
+
+def _make_transition_trades() -> list[dict]:
+    """Trades with both entry and exit regime fields for transition analysis."""
+    return [
+        # Stable trade: UP/LOW -> UP/LOW
+        {
+            "pnl": 15.0,
+            "side": "buy",
+            "entry_regime_trend": "UP",
+            "entry_regime_vol": "LOW",
+            "exit_regime_trend": "UP",
+            "exit_regime_vol": "LOW",
+        },
+        # Trend reversal: UP -> DOWN (adverse)
+        {
+            "pnl": -20.0,
+            "side": "buy",
+            "entry_regime_trend": "UP",
+            "entry_regime_vol": "NORMAL",
+            "exit_regime_trend": "DOWN",
+            "exit_regime_vol": "NORMAL",
+        },
+        # Vol expansion on a short (adverse: vol_expansion_short)
+        {
+            "pnl": -30.0,
+            "side": "sell",
+            "entry_regime_trend": "FLAT",
+            "entry_regime_vol": "LOW",
+            "exit_regime_trend": "FLAT",
+            "exit_regime_vol": "HIGH",
+        },
+        # Vol expansion on a long (adverse: vol_expansion_long)
+        {
+            "pnl": 5.0,
+            "side": "buy",
+            "entry_regime_trend": "UP",
+            "entry_regime_vol": "NORMAL",
+            "exit_regime_trend": "UP",
+            "exit_regime_vol": "SHOCK",
+        },
+        # Stable trade: DOWN/HIGH -> DOWN/HIGH
+        {
+            "pnl": 10.0,
+            "side": "sell",
+            "entry_regime_trend": "DOWN",
+            "entry_regime_vol": "HIGH",
+            "exit_regime_trend": "DOWN",
+            "exit_regime_vol": "HIGH",
+        },
+        # Trend reversal: DOWN -> UP
+        {
+            "pnl": -8.0,
+            "side": "sell",
+            "entry_regime_trend": "DOWN",
+            "entry_regime_vol": "NORMAL",
+            "exit_regime_trend": "UP",
+            "exit_regime_vol": "NORMAL",
+        },
+    ]
+
+
+class TestComputeRegimeTransitions:
+    def test_transition_counts(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+
+        assert result["total_trades"] == 6
+        # Stable: trade 0 (UP/LOW->UP/LOW) and trade 4 (DOWN/HIGH->DOWN/HIGH) = 2
+        assert result["same_regime"] == 2
+        assert result["regime_changed"] == 4
+
+    def test_transition_matrix(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+        matrix = result["transition_matrix"]
+
+        # UP->UP: trades 0 (+15) and 3 (+5) = 2 trades
+        assert "UP->UP" in matrix
+        assert matrix["UP->UP"]["count"] == 2
+        assert matrix["UP->UP"]["avg_pnl"] == pytest.approx(10.0, abs=0.01)
+        assert matrix["UP->UP"]["win_rate"] == pytest.approx(1.0)
+
+        # UP->DOWN: trade 1 (-20) = 1 trade
+        assert "UP->DOWN" in matrix
+        assert matrix["UP->DOWN"]["count"] == 1
+        assert matrix["UP->DOWN"]["avg_pnl"] == pytest.approx(-20.0, abs=0.01)
+        assert matrix["UP->DOWN"]["win_rate"] == pytest.approx(0.0)
+
+        # FLAT->FLAT: trade 2 (-30)
+        assert "FLAT->FLAT" in matrix
+        assert matrix["FLAT->FLAT"]["count"] == 1
+
+        # DOWN->DOWN: trade 4 (+10)
+        assert "DOWN->DOWN" in matrix
+        assert matrix["DOWN->DOWN"]["count"] == 1
+
+        # DOWN->UP: trade 5 (-8)
+        assert "DOWN->UP" in matrix
+        assert matrix["DOWN->UP"]["count"] == 1
+
+    def test_adverse_trend_reversal(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+        adverse = {a["type"]: a for a in result["adverse_transitions"]}
+
+        assert "trend_reversal" in adverse
+        # Trades 1 (UP->DOWN, -20) and 5 (DOWN->UP, -8) = 2
+        assert adverse["trend_reversal"]["count"] == 2
+        assert adverse["trend_reversal"]["avg_pnl"] == pytest.approx(-14.0, abs=0.01)
+
+    def test_adverse_vol_expansion_short(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+        adverse = {a["type"]: a for a in result["adverse_transitions"]}
+
+        assert "vol_expansion_short" in adverse
+        # Trade 2: sell, LOW->HIGH, pnl=-30
+        assert adverse["vol_expansion_short"]["count"] == 1
+        assert adverse["vol_expansion_short"]["avg_pnl"] == pytest.approx(-30.0, abs=0.01)
+
+    def test_adverse_vol_expansion_long(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+        adverse = {a["type"]: a for a in result["adverse_transitions"]}
+
+        assert "vol_expansion_long" in adverse
+        # Trade 3: buy, NORMAL->SHOCK, pnl=+5
+        assert adverse["vol_expansion_long"]["count"] == 1
+        assert adverse["vol_expansion_long"]["avg_pnl"] == pytest.approx(5.0, abs=0.01)
+
+    def test_adverse_liquidity_drain(self):
+        trades = [
+            {
+                "pnl": -12.0,
+                "side": "buy",
+                "entry_regime_trend": "UP",
+                "entry_regime_vol": "NORMAL",
+                "exit_regime_trend": "UP",
+                "exit_regime_vol": "NORMAL",
+                "entry_liquidity": "GOOD",
+                "exit_liquidity": "THIN",
+            },
+        ]
+        result = compute_regime_transitions(trades)
+        adverse = {a["type"]: a for a in result["adverse_transitions"]}
+
+        assert "liquidity_drain" in adverse
+        assert adverse["liquidity_drain"]["count"] == 1
+        assert adverse["liquidity_drain"]["avg_pnl"] == pytest.approx(-12.0, abs=0.01)
+
+    def test_pnl_by_stability(self):
+        trades = _make_transition_trades()
+        result = compute_regime_transitions(trades)
+        stability = result["pnl_by_stability"]
+
+        # Stable: trades 0 (+15) and 4 (+10) => avg=12.5
+        assert stability["stable"]["n"] == 2
+        assert stability["stable"]["avg_pnl"] == pytest.approx(12.5, abs=0.01)
+
+        # Changed: trades 1 (-20), 2 (-30), 3 (+5), 5 (-8) => avg=-13.25
+        assert stability["changed"]["n"] == 4
+        assert stability["changed"]["avg_pnl"] == pytest.approx(-13.25, abs=0.01)
+
+    def test_empty_trades(self):
+        result = compute_regime_transitions([])
+        assert result == {}
+
+    def test_trades_without_regime_fields(self):
+        """Backward compat: trades missing regime fields return empty."""
+        trades = _make_trades_no_regime()
+        result = compute_regime_transitions(trades)
+        assert result == {}
+
+    def test_partial_regime_fields_skipped(self):
+        """Trades with only entry but no exit regime fields are skipped."""
+        trades = [
+            {
+                "pnl": 10.0,
+                "entry_regime_trend": "UP",
+                "entry_regime_vol": "LOW",
+                # missing exit fields
+            },
+            {
+                "pnl": 5.0,
+                "entry_regime_trend": "UP",
+                "entry_regime_vol": "LOW",
+                "exit_regime_trend": "UP",
+                "exit_regime_vol": "LOW",
+            },
+        ]
+        result = compute_regime_transitions(trades)
+        assert result["total_trades"] == 1
+        assert result["same_regime"] == 1
+
+    def test_mixed_trades_with_and_without_fields(self):
+        """Mix of trades with and without regime fields."""
+        trades = [
+            {"pnl": 10.0},  # no regime fields
+            {
+                "pnl": -5.0,
+                "side": "buy",
+                "entry_regime_trend": "UP",
+                "entry_regime_vol": "LOW",
+                "exit_regime_trend": "DOWN",
+                "exit_regime_vol": "HIGH",
+            },
+        ]
+        result = compute_regime_transitions(trades)
+        assert result["total_trades"] == 1
+        assert result["regime_changed"] == 1

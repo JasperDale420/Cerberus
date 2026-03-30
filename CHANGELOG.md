@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Regime transition analysis**: New `compute_regime_transitions()` function in `src/analytics/regime_stats.py` analyzes what happens when market regime changes during a trade's hold period. Computes a trend transition matrix (e.g., UP->DOWN count/avg_pnl/win_rate), detects adverse transitions (vol expansion on shorts, trend reversals, liquidity drains), and compares PnL of stable vs changed-regime trades. Degrades gracefully when regime fields are absent.
+
 - **Regime-diversity scoring in walk-forward optimization**: WFO OOS scoring now penalizes strategies that concentrate profitable trades in a single regime (>80% concentration = 0.7x penalty, >60% = 0.85x) and rewards strategies profitable across multiple regimes (3+ regimes = 1.1x bonus, 4+ = 1.2x). Uses `entry_regime_trend` and `entry_regime_vol` fields on trade records. Enabled by default; disable with `regime_diversity_scoring=False` on `WalkForwardOptimizer`. Each OOS window logs a `REGIME_DIVERSITY` line for autoresearch agent visibility.
 
 - **Regime-dependent slippage in backtest fill models**: Fill models now apply volatility, liquidity, and event-driven multipliers to base slippage during backtests. HIGH vol = 2x slippage, SHOCK = 4x, THIN liquidity = 2x, DRY = 5x, near-earnings = 1.3x (multipliers compound). Controlled by `backtest.regime_slippage_enabled` config flag (default: true). Falls back to base slippage when regime labels are absent, preserving backward compatibility.
