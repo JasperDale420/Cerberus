@@ -22,8 +22,10 @@ from scipy import stats
 
 from src.analytics.regime_stats import (
     compute_enrichment_breakdown,
+    compute_event_attribution,
     compute_regime_breakdown,
     compute_regime_matrix,
+    compute_session_phase_stats,
 )
 from src.core.logger import StructuredLogger
 
@@ -868,6 +870,17 @@ def _compute_regime_metrics(trades: list[dict], pnl_key: str = "pnl_r") -> dict[
     enrichment = compute_enrichment_breakdown(trades, pnl_key=pnl_key)
     if enrichment:
         result["enrichment"] = enrichment
+
+    session_phase = compute_session_phase_stats(trades, pnl_key=pnl_key)
+    # Include if any phase has trades (ignore the summary keys)
+    has_phase_trades = any(isinstance(v, dict) and v.get("n_trades", 0) > 0 for v in session_phase.values())
+    if has_phase_trades:
+        result["session_phase"] = session_phase
+
+    event_attr = compute_event_attribution(trades, pnl_key=pnl_key)
+    # Include if any per-event breakdown was produced (not just combined_events)
+    if any(k != "combined_events" for k in event_attr):
+        result["event_attribution"] = event_attr
 
     return result
 

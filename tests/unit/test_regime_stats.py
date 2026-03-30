@@ -6,9 +6,11 @@ import pytest
 
 from src.analytics.regime_stats import (
     compute_enrichment_breakdown,
+    compute_event_attribution,
     compute_regime_breakdown,
     compute_regime_matrix,
     compute_regime_transitions,
+    compute_session_phase_stats,
     format_regime_report,
 )
 
@@ -532,3 +534,264 @@ class TestComputeRegimeTransitions:
         result = compute_regime_transitions(trades)
         assert result["total_trades"] == 1
         assert result["regime_changed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# compute_event_attribution
+# ---------------------------------------------------------------------------
+
+
+class TestComputeEventAttribution:
+    def test_basic_attribution(self):
+        trades = _make_trades()
+        result = compute_event_attribution(trades)
+
+        # Earnings: 1 near (pnl=-5), 4 far (pnl=10+20-3+8=35)
+        assert "earnings" in result
+        assert result["earnings"]["trades_near"] == 1
+        assert result["earnings"]["trades_far"] == 4
+        assert result["earnings"]["pnl_near"] == pytest.approx(-5.0, abs=0.01)
+        assert result["earnings"]["pnl_far"] == pytest.approx(35.0, abs=0.01)
+        assert result["earnings"]["winrate_near"] == pytest.approx(0.0)
+        assert result["earnings"]["winrate_far"] == pytest.approx(0.75, abs=0.01)
+        assert result["earnings"]["near_is_better"] is False
+
+        # FOMC: 1 near (pnl=20), 4 far (pnl=10-5-3+8=10)
+        assert "fomc" in result
+        assert result["fomc"]["trades_near"] == 1
+        assert result["fomc"]["trades_far"] == 4
+        assert result["fomc"]["pnl_near"] == pytest.approx(20.0, abs=0.01)
+
+        # OPEX: 2 near (pnl=20+8=28), 3 far (pnl=10-5-3=2)
+        assert "opex" in result
+        assert result["opex"]["trades_near"] == 2
+        assert result["opex"]["trades_far"] == 3
+        assert result["opex"]["pnl_near"] == pytest.approx(28.0, abs=0.01)
+
+    def test_recommendation_avoid(self):
+        """AVOID when near-event winrate < 40% AND avg_pnl < 0."""
+        trades = [
+            {"pnl": -10.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": -8.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": -3.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 5.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 12.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades)
+        # Near: 3 trades, all losing => winrate=0, avg_pnl=-7
+        assert result["earnings"]["recommendation"] == "AVOID"
+
+    def test_recommendation_trade(self):
+        """TRADE when near-event winrate > 55% AND avg_pnl_near > avg_pnl_far."""
+        trades = [
+            {"pnl": 15.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 10.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 8.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": -2.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 1.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": -1.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades)
+        # Near: 4 trades, 3 wins => winrate=75%, avg_pnl=7.75 > avg_pnl_far=0
+        assert result["earnings"]["recommendation"] == "TRADE"
+        assert result["earnings"]["near_is_better"] is True
+
+    def test_recommendation_neutral(self):
+        """NEUTRAL when neither AVOID nor TRADE conditions are met."""
+        trades = [
+            {"pnl": 5.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": -5.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 3.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades)
+        # Near: 2 trades, 1 win => winrate=50%, avg_pnl=0 => NEUTRAL
+        assert result["earnings"]["recommendation"] == "NEUTRAL"
+
+    def test_multi_event_overlap(self):
+        """Detect trades with 2+ event flags set to True."""
+        trades = _make_trades()
+        result = compute_event_attribution(trades)
+
+        # Trade index 2 has fomc=True AND opex=True => 1 multi-event trade
+        assert result["combined_events"]["multi_event_trades"] == 1
+        assert result["combined_events"]["multi_event_pnl"] == pytest.approx(20.0, abs=0.01)
+
+    def test_multi_event_all_three(self):
+        """Trade near earnings, FOMC, and OPEX simultaneously."""
+        trades = [
+            {"pnl": -15.0, "entry_near_earnings": True, "entry_near_fomc": True, "entry_opex_week": True},
+            {"pnl": 5.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades)
+        assert result["combined_events"]["multi_event_trades"] == 1
+        assert result["combined_events"]["multi_event_pnl"] == pytest.approx(-15.0, abs=0.01)
+
+    def test_no_multi_event_overlap(self):
+        """No trades with multiple events."""
+        trades = [
+            {"pnl": 10.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl": 5.0, "entry_near_earnings": False, "entry_near_fomc": True, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades)
+        assert result["combined_events"]["multi_event_trades"] == 0
+        assert result["combined_events"]["multi_event_pnl"] == pytest.approx(0.0)
+
+    def test_empty_trades(self):
+        result = compute_event_attribution([])
+        assert result == {"combined_events": {"multi_event_trades": 0, "multi_event_pnl": 0.0}}
+
+    def test_no_event_fields(self):
+        """Trades without event fields return only combined_events."""
+        trades = _make_trades_no_regime()
+        result = compute_event_attribution(trades)
+        assert "earnings" not in result
+        assert "fomc" not in result
+        assert "opex" not in result
+        assert result["combined_events"]["multi_event_trades"] == 0
+
+    def test_custom_pnl_key(self):
+        trades = [
+            {"pnl_r": 10.0, "entry_near_earnings": True, "entry_near_fomc": False, "entry_opex_week": False},
+            {"pnl_r": -3.0, "entry_near_earnings": False, "entry_near_fomc": False, "entry_opex_week": False},
+        ]
+        result = compute_event_attribution(trades, pnl_key="pnl_r")
+        assert result["earnings"]["trades_near"] == 1
+        assert result["earnings"]["pnl_near"] == pytest.approx(10.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# compute_session_phase_stats
+# ---------------------------------------------------------------------------
+
+
+def _make_session_phase_trades() -> list[dict]:
+    """Trades spread across session phases with hold_minutes."""
+    return [
+        {"pnl": 15.0, "entry_session_phase": "opening_15m", "hold_minutes": 8.0},
+        {"pnl": -3.0, "entry_session_phase": "opening_15m", "hold_minutes": 5.0},
+        {"pnl": 7.0, "entry_session_phase": "morning", "hold_minutes": 45.0},
+        {"pnl": -12.0, "entry_session_phase": "midday", "hold_minutes": 90.0},
+        {"pnl": -2.0, "entry_session_phase": "midday", "hold_minutes": 60.0},
+        {"pnl": 25.0, "entry_session_phase": "power_hour", "hold_minutes": 30.0},
+        {"pnl": 10.0, "entry_session_phase": "power_hour", "hold_minutes": 20.0},
+        {"pnl": -1.0, "entry_session_phase": "close_15m", "hold_minutes": 4.0},
+    ]
+
+
+class TestComputeSessionPhaseStats:
+    def test_phase_breakdown(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        assert result["opening_15m"]["n_trades"] == 2
+        assert result["opening_15m"]["total_pnl"] == pytest.approx(12.0, abs=0.01)
+        assert result["opening_15m"]["win_rate"] == pytest.approx(0.5, abs=0.01)
+
+        assert result["morning"]["n_trades"] == 1
+        assert result["midday"]["n_trades"] == 2
+        assert result["power_hour"]["n_trades"] == 2
+        assert result["close_15m"]["n_trades"] == 1
+
+        # No unknown trades
+        assert result["unknown"]["n_trades"] == 0
+
+    def test_best_worst_trade(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        assert result["opening_15m"]["best_trade"] == pytest.approx(15.0)
+        assert result["opening_15m"]["worst_trade"] == pytest.approx(-3.0)
+        assert result["midday"]["worst_trade"] == pytest.approx(-12.0)
+
+    def test_avg_hold_minutes(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        assert result["opening_15m"]["avg_hold_minutes"] == pytest.approx(6.5, abs=0.01)
+        assert result["power_hour"]["avg_hold_minutes"] == pytest.approx(25.0, abs=0.01)
+
+    def test_best_session_detection(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        # power_hour avg_pnl = (25+10)/2 = 17.5 — highest
+        assert result["best_session"] == "power_hour"
+
+    def test_worst_session_detection(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        # midday avg_pnl = (-12 + -2)/2 = -7.0 — lowest
+        assert result["worst_session"] == "midday"
+
+    def test_recommended_sessions(self):
+        trades = _make_session_phase_trades()
+        result = compute_session_phase_stats(trades)
+
+        # opening_15m: gross_profit=15, gross_loss=3, PF=5.0 -> recommended
+        assert "opening_15m" in result["recommended_sessions"]
+
+    def test_avoid_sessions_with_low_pf(self):
+        """A phase with 0 < PF < 0.8 should appear in avoid_sessions."""
+        trades = [
+            {"pnl": 1.0, "entry_session_phase": "midday"},
+            {"pnl": -5.0, "entry_session_phase": "midday"},
+            {"pnl": -3.0, "entry_session_phase": "midday"},
+        ]
+        result = compute_session_phase_stats(trades)
+        # PF = 1/8 = 0.125 -> 0 < 0.125 < 0.8
+        assert "midday" in result["avoid_sessions"]
+
+    def test_trades_missing_session_labels(self):
+        """Trades without entry_session_phase go to 'unknown'."""
+        trades = [
+            {"pnl": 10.0},
+            {"pnl": -5.0},
+            {"pnl": 3.0, "entry_session_phase": "opening_15m"},
+        ]
+        result = compute_session_phase_stats(trades)
+
+        assert result["unknown"]["n_trades"] == 2
+        assert result["unknown"]["total_pnl"] == pytest.approx(5.0, abs=0.01)
+        assert result["opening_15m"]["n_trades"] == 1
+
+    def test_unrecognised_phase_goes_to_unknown(self):
+        """Trades with invalid phase values go to 'unknown'."""
+        trades = [
+            {"pnl": 10.0, "entry_session_phase": "OPENING"},
+            {"pnl": -5.0, "entry_session_phase": "after_hours"},
+        ]
+        result = compute_session_phase_stats(trades)
+
+        assert result["unknown"]["n_trades"] == 2
+        assert result["opening_15m"]["n_trades"] == 0
+
+    def test_empty_trades(self):
+        result = compute_session_phase_stats([])
+
+        assert result["opening_15m"]["n_trades"] == 0
+        assert result["best_session"] is None
+        assert result["worst_session"] is None
+        assert result["recommended_sessions"] == []
+        assert result["avoid_sessions"] == []
+
+    def test_empty_phase_defaults(self):
+        """Phases with no trades still appear with zeroed stats."""
+        trades = [{"pnl": 5.0, "entry_session_phase": "opening_15m"}]
+        result = compute_session_phase_stats(trades)
+
+        assert result["midday"]["n_trades"] == 0
+        assert result["midday"]["best_trade"] == 0.0
+        assert result["midday"]["worst_trade"] == 0.0
+        assert result["midday"]["avg_hold_minutes"] == 0.0
+
+    def test_hold_minutes_missing_gracefully(self):
+        """Trades without hold_minutes get avg_hold_minutes based on available data only."""
+        trades = [
+            {"pnl": 5.0, "entry_session_phase": "morning"},
+            {"pnl": -2.0, "entry_session_phase": "morning", "hold_minutes": 30.0},
+        ]
+        result = compute_session_phase_stats(trades)
+
+        # Only 1 of 2 trades has hold_minutes
+        assert result["morning"]["avg_hold_minutes"] == pytest.approx(30.0)
