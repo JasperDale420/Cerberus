@@ -1148,6 +1148,11 @@ async def run_backtest(
         # 1. Evaluate fills sequentially (must happen BEFORE equity calc
         #    so that the current bar's fills are reflected in PnL)
         had_open_orders = bool(executor.open_orders)
+        # Pass regime labels to executor for regime-dependent slippage
+        if had_open_orders and _sym_state is not None and hasattr(executor, "set_regime_context"):
+            _rl = _sym_state.meta.get("regime_labels", {})
+            if _rl:
+                executor.set_regime_context(row.symbol, _rl)
         executor.process_bar(mock_bar)
 
         # Flush async fill callbacks only when fills may have occurred

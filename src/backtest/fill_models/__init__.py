@@ -1,8 +1,16 @@
 from src.backtest.fill_models.fixed import FixedSlippageFillModel
 from src.backtest.fill_models.protocol import FillModel, FillResult
+from src.backtest.fill_models.regime_slippage import compute_regime_slippage_multiplier
 from src.backtest.fill_models.volume_aware import VolumeAwareFillModel
 
-__all__ = ["FillModel", "FillResult", "FixedSlippageFillModel", "VolumeAwareFillModel", "create_fill_model"]
+__all__ = [
+    "FillModel",
+    "FillResult",
+    "FixedSlippageFillModel",
+    "VolumeAwareFillModel",
+    "compute_regime_slippage_multiplier",
+    "create_fill_model",
+]
 
 
 def create_fill_model(config: dict) -> FillModel:

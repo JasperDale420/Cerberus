@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional
 
 from src.analysis.db import DatabaseDatabase
 from src.analysis.schema import Order as DbOrder
+from src.backtest.fill_models.regime_slippage import compute_regime_slippage_multiplier
 from src.core.domain import OrderIntent
 from src.core.logger import StructuredLogger
 
@@ -41,6 +42,12 @@ class SimulatedOrderExecutor:
         self._commission_per_share: float = float(rk.get("commission_per_share", 0.0) or 0.0)
         self._min_commission: float = float(rk.get("min_commission", 0.0) or 0.0)
 
+        # Regime-dependent slippage (enabled by default, disable for backward compat)
+        bt = backtest_cfg or {}
+        self._regime_slippage_enabled: bool = bool(bt.get("regime_slippage_enabled", True))
+        # Per-symbol regime context set by the runner before each process_bar call
+        self._regime_context: Dict[str, Dict[str, Any]] = {}
+
         # Internal state
         self.open_orders: Dict[str, Dict[str, Any]] = {}
 
@@ -48,6 +55,10 @@ class SimulatedOrderExecutor:
         adv_exits = risk_cfg.get("advanced_exits", {})
         if isinstance(adv_exits, dict) and adv_exits.get("enabled", False):
             self.broker_managed_exits = False
+
+    def set_regime_context(self, symbol: str, regime_labels: Dict[str, Any]) -> None:
+        """Store regime labels for a symbol so process_bar can apply regime-dependent slippage."""
+        self._regime_context[symbol] = regime_labels
 
     def submit(self, intent: OrderIntent) -> Dict[str, Any]:
         order_id = f"sim-{uuid.uuid4().hex[:8]}"
@@ -244,9 +255,13 @@ class SimulatedOrderExecutor:
 
     def _apply_slippage(self, price: float, side: str) -> float:
         """Worsen fill price by slippage_bps. Buys pay more, sells receive less."""
-        if self._slippage_bps <= 0.0 or price <= 0.0:
+        return self._apply_slippage_bps(price, side, self._slippage_bps)
+
+    def _apply_slippage_bps(self, price: float, side: str, bps: float) -> float:
+        """Worsen fill price by the given BPS value. Buys pay more, sells receive less."""
+        if bps <= 0.0 or price <= 0.0:
             return price
-        slip_frac = self._slippage_bps / 10_000.0
+        slip_frac = bps / 10_000.0
         if side == "buy":
             return price * (1.0 + slip_frac)
         return price * (1.0 - slip_frac)
@@ -319,21 +334,57 @@ class SimulatedOrderExecutor:
 
                 fill_qty = float(order["qty"])
 
+                # Compute regime-dependent slippage multiplier
+                regime_mult = 1.0
+                if self._regime_slippage_enabled:
+                    regime_labels = self._regime_context.get(symbol, {})
+                    if regime_labels:
+                        regime_mult = compute_regime_slippage_multiplier(regime_labels)
+                        self.logger.debug(
+                            "regime_slippage",
+                            symbol=symbol,
+                            regime_mult=round(regime_mult, 3),
+                            vol=regime_labels.get("regime_vol"),
+                            liq=regime_labels.get("liquidity_regime"),
+                            earnings=regime_labels.get("earnings_window"),
+                        )
+
                 # Apply fill model (volume-aware) or fall back to simple BPS slippage
                 if self.fill_model is not None:
-                    result = self.fill_model.compute_fill(
-                        order_side=order["side"],
-                        order_qty=int(fill_qty),
-                        order_price=base_price,
-                        order_type=order["type"],
-                        bar=bar,
+                    # Scale the fill model's base slippage by regime multiplier
+                    original_bps = getattr(self.fill_model, "slippage_bps", None) or getattr(
+                        self.fill_model, "base_slippage_bps", None
                     )
+                    if regime_mult != 1.0 and original_bps is not None:
+                        # Temporarily scale slippage for this fill
+                        bps_attr = "slippage_bps" if hasattr(self.fill_model, "slippage_bps") else "base_slippage_bps"
+                        scaled_bps = original_bps * regime_mult
+                        setattr(self.fill_model, bps_attr, scaled_bps)
+                        result = self.fill_model.compute_fill(
+                            order_side=order["side"],
+                            order_qty=int(fill_qty),
+                            order_price=base_price,
+                            order_type=order["type"],
+                            bar=bar,
+                        )
+                        # Restore original value
+                        setattr(self.fill_model, bps_attr, original_bps)
+                    else:
+                        result = self.fill_model.compute_fill(
+                            order_side=order["side"],
+                            order_qty=int(fill_qty),
+                            order_price=base_price,
+                            order_type=order["type"],
+                            bar=bar,
+                        )
                     fill_price = result.fill_price
                     # Deduct fill-model commission from account
                     if result.commission > 0.0 and self.account is not None and hasattr(self.account, "cash"):
                         self.account.cash -= result.commission
                 else:
-                    fill_price = self._apply_slippage(base_price, order["side"])
+                    # Scale inline slippage by regime multiplier
+                    effective_bps = self._slippage_bps * regime_mult
+                    fill_price = self._apply_slippage_bps(base_price, order["side"], effective_bps)
                     self._deduct_commission(fill_qty)
 
                 fill_val = fill_qty * fill_price
