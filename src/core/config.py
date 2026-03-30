@@ -193,10 +193,29 @@ class ConfigLoader:
 
         return config
 
+    # Safety-critical risk keys that CANNOT be overridden via APP_* env vars.
+    # These protect against accidental or malicious weakening of risk limits.
+    # To change these, edit config/risk.yaml directly.
+    _BLOCKED_ENV_OVERRIDE_PATHS: set[str] = {
+        "risk__max_daily_loss",
+        "risk__max_risk_per_trade",
+        "risk__max_open_risk",
+        "risk__max_open_positions",
+        "risk__max_positions_per_strategy",
+        "risk__max_notional_per_order",
+        "risk__max_notional_per_symbol",
+        "risk__max_trades_per_day",
+        "risk__risk_mode",
+        "position_mismatch_mode",
+    }
+
     def _override_from_env(self, config: Dict[str, Any]) -> None:
         """
         Overrides configuration values with environment variables.
         Looks for keys like 'APP_SETTING_SUBSET_KEY' to override config['setting']['subset']['key'].
+
+        Safety: blocks overrides to risk-critical keys (see _BLOCKED_ENV_OVERRIDE_PATHS).
+        All accepted overrides are logged for audit trail.
         """
         for env_key, env_value in os.environ.items():
             # Convert env_key to config path using double-underscore as nesting separator.
@@ -204,6 +223,26 @@ class ConfigLoader:
             # Example: APP_RISK__MAX_DAILY_LOSS=1000 -> config["risk"]["max_daily_loss"] = 1000
             if env_key.startswith("APP_"):
                 path_parts = env_key[len("APP_") :].lower().split("__")
+                override_path = "__".join(path_parts)
+
+                # Block overrides to safety-critical risk keys
+                if override_path in self._BLOCKED_ENV_OVERRIDE_PATHS:
+                    if self.logger and hasattr(self.logger, "error"):
+                        self.logger.error(
+                            "BLOCKED env var override of safety-critical risk key",
+                            env_key=env_key,
+                            path=override_path,
+                        )
+                    continue
+
+                # Log all accepted overrides for audit trail
+                if self.logger and hasattr(self.logger, "warning"):
+                    self.logger.warning(
+                        "Config override via env var",
+                        env_key=env_key,
+                        path=override_path,
+                        value=env_value if "secret" not in override_path and "key" not in override_path else "***",
+                    )
 
                 current_level = config
                 for i, part in enumerate(path_parts):

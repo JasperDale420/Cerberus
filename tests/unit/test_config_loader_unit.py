@@ -20,19 +20,40 @@ def test_deep_merge_merges_nested_dicts() -> None:
 
 @pytest.mark.unit
 def test_load_config_loads_yaml_suite_and_applies_env_overrides(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump({"risk": {"max_daily_loss": 1}}))
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({"risk": {"max_daily_loss": 1}, "log_level": "INFO"}))
     (tmp_path / "scanner.yaml").write_text(yaml.safe_dump({"scanner": {"top_n": 10}}))
     (tmp_path / "risk.yaml").write_text(yaml.safe_dump({"risk": {"max_risk_per_trade": 5}}))
 
-    # Double-underscore separates nesting levels; single underscores are preserved in key names
-    monkeypatch.setenv("APP_RISK__MAX_DAILY_LOSS", "2")
-    monkeypatch.setenv("APP_SCANNER__TOP_N", "20")
+    # Double-underscore separates nesting levels; single underscores are preserved in key names.
+    # Safety-critical risk keys (max_daily_loss, etc.) are BLOCKED from env override.
+    monkeypatch.setenv("APP_RISK__MAX_DAILY_LOSS", "2")  # blocked — should NOT override
+    monkeypatch.setenv("APP_SCANNER__TOP_N", "20")  # allowed
+    monkeypatch.setenv("APP_LOG_LEVEL", "DEBUG")  # allowed
 
     loader = ConfigLoader(config_dir=str(tmp_path))
     cfg = loader.load_config()
-    assert cfg["risk"]["max_daily_loss"] == 2  # overridden via env
+    assert cfg["risk"]["max_daily_loss"] == 1  # NOT overridden — blocked by safety guard
     assert cfg["risk"]["max_risk_per_trade"] == 5
     assert cfg["scanner"]["top_n"] == 20  # overridden via env
+    assert cfg["log_level"] == "DEBUG"  # overridden via env
+
+
+@pytest.mark.unit
+def test_blocked_risk_keys_cannot_be_overridden(tmp_path: Path, monkeypatch) -> None:
+    """Safety-critical risk keys must be immune to APP_* env var overrides."""
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"risk": {"max_daily_loss": 500, "max_open_positions": 5, "risk_mode": "normal"}})
+    )
+
+    monkeypatch.setenv("APP_RISK__MAX_DAILY_LOSS", "99999")
+    monkeypatch.setenv("APP_RISK__MAX_OPEN_POSITIONS", "100")
+    monkeypatch.setenv("APP_RISK__RISK_MODE", "off")
+
+    loader = ConfigLoader(config_dir=str(tmp_path))
+    cfg = loader.load_config()
+    assert cfg["risk"]["max_daily_loss"] == 500  # unchanged
+    assert cfg["risk"]["max_open_positions"] == 5  # unchanged
+    assert cfg["risk"]["risk_mode"] == "normal"  # unchanged
 
 
 @pytest.mark.unit
