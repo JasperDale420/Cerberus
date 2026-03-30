@@ -520,6 +520,99 @@ def _mp_optimize_worker(
 # ---------------------------------------------------------------------------
 
 
+def compute_regime_diversity_multiplier(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute a regime-diversity multiplier based on per-regime trade distribution.
+
+    Analyzes which regimes produced profitable trades and penalizes strategies
+    that concentrate winning trades in a single regime (fragile) while rewarding
+    strategies that generalize across multiple regimes.
+
+    Regime keys are formed by combining ``entry_regime_trend`` and
+    ``entry_regime_vol`` (e.g. "UP_LOW", "DOWN_HIGH").
+
+    Returns:
+        Dict with keys:
+        - multiplier: float (final combined penalty * bonus multiplier)
+        - concentration_pct: float (% of profitable trades from dominant regime)
+        - n_regimes_profitable: int (regimes with PF > 1.0)
+        - n_regimes_total: int (total regimes observed)
+        - dominant_regime: str (regime with most profitable trades)
+        - penalty: float (concentration penalty, 0.7 / 0.85 / 1.0)
+        - bonus: float (consistency bonus, 1.0 / 1.1 / 1.2)
+    """
+    if not trades:
+        return {
+            "multiplier": 1.0,
+            "concentration_pct": 0.0,
+            "n_regimes_profitable": 0,
+            "n_regimes_total": 0,
+            "dominant_regime": "none",
+            "penalty": 1.0,
+            "bonus": 1.0,
+        }
+
+    # Group trades by combined regime key
+    regime_wins: dict[str, int] = {}
+    regime_pnl: dict[str, float] = {}
+    regime_count: dict[str, int] = {}
+    total_profitable = 0
+
+    for trade in trades:
+        trend = trade.get("entry_regime_trend", "unknown")
+        vol = trade.get("entry_regime_vol", "unknown")
+        regime_key = f"{trend}_{vol}"
+
+        pnl = trade.get("pnl", 0.0)
+        regime_count[regime_key] = regime_count.get(regime_key, 0) + 1
+        regime_pnl[regime_key] = regime_pnl.get(regime_key, 0.0) + pnl
+
+        if pnl > 0:
+            regime_wins[regime_key] = regime_wins.get(regime_key, 0) + 1
+            total_profitable += 1
+
+    # Concentration penalty: what fraction of profitable trades came from one regime?
+    if total_profitable > 0:
+        dominant_regime = max(regime_wins, key=regime_wins.get)
+        concentration_pct = (regime_wins[dominant_regime] / total_profitable) * 100.0
+    else:
+        dominant_regime = "none"
+        concentration_pct = 0.0
+
+    if concentration_pct > 80.0:
+        penalty = 0.7
+    elif concentration_pct > 60.0:
+        penalty = 0.85
+    else:
+        penalty = 1.0
+
+    # Consistency bonus: how many distinct regimes are individually profitable?
+    # A regime is "profitable" if its net PnL > 0 and it has at least 2 trades
+    n_regimes_profitable = 0
+    for regime_key, net_pnl in regime_pnl.items():
+        count = regime_count.get(regime_key, 0)
+        if net_pnl > 0 and count >= 2:
+            n_regimes_profitable += 1
+
+    if n_regimes_profitable >= 4:
+        bonus = 1.2
+    elif n_regimes_profitable >= 3:
+        bonus = 1.1
+    else:
+        bonus = 1.0
+
+    multiplier = penalty * bonus
+
+    return {
+        "multiplier": round(multiplier, 4),
+        "concentration_pct": round(concentration_pct, 2),
+        "n_regimes_profitable": n_regimes_profitable,
+        "n_regimes_total": len(regime_count),
+        "dominant_regime": dominant_regime,
+        "penalty": penalty,
+        "bonus": bonus,
+    }
+
+
 def composite_objective(metrics: dict[str, Any], *, min_trades: int = 30) -> float:
     """Multi-criteria objective for Optuna to MAXIMIZE.
 
@@ -983,6 +1076,7 @@ class WalkForwardOptimizer:
         n_trials: int = 100,
         holdout_months: int = 2,
         mode: str = "rolling",
+        regime_diversity_scoring: bool = True,
     ):
         self.full_start = datetime.fromisoformat(full_start)
         self.full_end = datetime.fromisoformat(full_end)
@@ -991,6 +1085,7 @@ class WalkForwardOptimizer:
         self.n_trials = n_trials
         self.holdout_months = holdout_months
         self.mode = mode
+        self.regime_diversity_scoring = regime_diversity_scoring
 
     def get_windows(self) -> list[dict[str, str]]:
         """Generate WFO windows, reserving holdout at end.
@@ -1228,6 +1323,25 @@ class WalkForwardOptimizer:
             _oos_months = max(self.test_months, 1)
             _oos_min_trades = max(int(_oos_months * _oos_tpm), 0)
             oos_score = composite_objective(oos_metrics, min_trades=_oos_min_trades)
+
+            # Regime-diversity scoring: penalize single-regime concentration,
+            # reward strategies profitable across multiple regimes.
+            if self.regime_diversity_scoring:
+                oos_trades = oos_metrics.get("trades", [])
+                diversity = compute_regime_diversity_multiplier(oos_trades)
+                oos_score_raw = oos_score
+                oos_score = oos_score * diversity["multiplier"]
+                print(
+                    f"  REGIME_DIVERSITY n_regimes_profitable={diversity['n_regimes_profitable']} "
+                    f"concentration={diversity['concentration_pct']}% "
+                    f"penalty={diversity['multiplier']}"
+                )
+                if diversity["multiplier"] != 1.0:
+                    print(
+                        f"    score adjusted: {oos_score_raw:.4f} → {oos_score:.4f} "
+                        f"(dominant={diversity['dominant_regime']})"
+                    )
+
             all_oos_metrics.append(oos_metrics)
             all_oos_scores.append(oos_score)
 

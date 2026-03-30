@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Regime-diversity scoring in walk-forward optimization**: WFO OOS scoring now penalizes strategies that concentrate profitable trades in a single regime (>80% concentration = 0.7x penalty, >60% = 0.85x) and rewards strategies profitable across multiple regimes (3+ regimes = 1.1x bonus, 4+ = 1.2x). Uses `entry_regime_trend` and `entry_regime_vol` fields on trade records. Enabled by default; disable with `regime_diversity_scoring=False` on `WalkForwardOptimizer`. Each OOS window logs a `REGIME_DIVERSITY` line for autoresearch agent visibility.
+
 - **Regime-dependent slippage in backtest fill models**: Fill models now apply volatility, liquidity, and event-driven multipliers to base slippage during backtests. HIGH vol = 2x slippage, SHOCK = 4x, THIN liquidity = 2x, DRY = 5x, near-earnings = 1.3x (multipliers compound). Controlled by `backtest.regime_slippage_enabled` config flag (default: true). Falls back to base slippage when regime labels are absent, preserving backward compatibility.
 
 - **Liquidity adequacy checks in backtest volume-aware fill model**: The `VolumeAwareFillModel` now supports regime-aware participation caps via an optional `regime_liquidity` parameter. When provided, orders are capped to a maximum fraction of bar volume based on the liquidity regime (LIQUID: 25%, NORMAL: 15%, THIN: 5%, DRY: 2%). Orders exceeding the cap receive partial fills. Bars with dollar volume below $1M are rejected entirely (fill_qty=0) to prevent phantom fills in illiquid conditions. A new `get_fill_stats()` method exposes counters for total orders, full fills, partial fills, and rejected fills. All new parameters are optional; existing callers are unaffected.
