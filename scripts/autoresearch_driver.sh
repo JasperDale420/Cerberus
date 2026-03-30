@@ -63,6 +63,7 @@ if [ "$ITER" -eq 0 ]; then
     EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     REGIME_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_BREAKDOWN" || echo "")
+    AGGREGATE_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_AGGREGATE" || echo "")
 
     if [ -z "$RESULT_LINE" ]; then
         echo "[iter 0] ERROR: No AUTORESEARCH_RESULT line in output"
@@ -84,18 +85,21 @@ if [ "$ITER" -eq 0 ]; then
     echo "$SCORE" > "$BEST_SCORE_FILE"
     BEST_SCORE="$SCORE"
 
-    # Save last result for agent context
+    # Save last result with full analytics for agent context
     cat > "$LAST_RESULT_FILE" <<EOFRESULT
 iteration: 0
-status: baseline
+status: baseline (rsi_bounce — this strategy is broken, you will create NEW specialists)
 strategy: $STRATEGY
 composite_score: $SCORE
 windows_profitable: $WIN_PROF
 total_trades: $TRADES
 avg_sortino: $SORTINO
 
-Regime breakdown:
+Per-window regime breakdown:
 $(echo "$REGIME_LINES" | sed 's/^/  /')
+
+Per-regime aggregate:
+$(echo "$AGGREGATE_LINES" | sed 's/^/  /')
 
 Best score: $BEST_SCORE
 Consecutive discards: 0
@@ -233,6 +237,7 @@ EOFPROMPT
 
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     REGIME_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_BREAKDOWN" || echo "")
+    AGGREGATE_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_AGGREGATE" || echo "")
 
     if [ -z "$RESULT_LINE" ]; then
         echo "[iter $ITER] ERROR: Evaluation failed (no result line)"
@@ -296,20 +301,31 @@ EOFPROMPT
     printf "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
         "$ITER" "$NEW_COMMIT" "$STRATEGY" "$SCORE" "$STATUS" "$WIN_PROF" "$TRADES" "$SORTINO" "$REGIMES" "$COMMIT_MSG" >> "$TSV"
 
-    # Update last result for next agent iteration
+    # Update last result for next agent iteration — include full analytics
     cat > "$LAST_RESULT_FILE" <<EOFRESULT
 iteration: $ITER
 status: $STATUS
-strategy: $STRATEGY
+strategy: $EVAL_STRATEGY
 composite_score: $SCORE
 windows_profitable: $WIN_PROF
 total_trades: $TRADES
 avg_sortino: $SORTINO
 
-Regime breakdown:
+Per-window regime breakdown (each window is a separate OOS test period):
 $(echo "$REGIME_LINES" | sed 's/^/  /')
 
-Best score: $BEST_SCORE
+Per-regime aggregate performance (grouped across all windows with same regime):
+$(echo "$AGGREGATE_LINES" | sed 's/^/  /')
+
+Analysis guidance:
+- PF > 1.0 = profitable. PF < 1.0 = losing money. Target PF > 1.3.
+- Sharpe > 0 = positive risk-adjusted return. Target > 1.0.
+- trades=0 means gates are too strict — loosen entry criteria.
+- High trades + low PF = over-trading — add selectivity (higher confluence, tighter time window).
+- Check which REGIME windows are profitable vs losing — your strategy should excel in $REGIME_PHASE.
+- best_regime/worst_regime in AUTORESEARCH_RESULT shows where the strategy shines and struggles.
+
+Best score so far: $BEST_SCORE
 Consecutive discards: $CONSECUTIVE_DISCARDS
 Previous change: $COMMIT_MSG
 EOFRESULT
