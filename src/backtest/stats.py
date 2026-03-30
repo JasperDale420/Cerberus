@@ -207,11 +207,20 @@ class BacktestAnalyzer:
         price = float(fill["fill_price"])
         side = fill["side"]
         fill_strategy = fill.get("strategy", "unknown")
+        fill_regime = fill.get("regime_labels", {})
         remaining_qty = qty
 
         while remaining_qty > QTY_EPSILON:
             if not stack:
-                self._open_new_stack_position(stack, side, remaining_qty, price, fill["filled_at"], fill_strategy)
+                self._open_new_stack_position(
+                    stack,
+                    side,
+                    remaining_qty,
+                    price,
+                    fill["filled_at"],
+                    fill_strategy,
+                    fill_regime,
+                )
                 remaining_qty = 0
             else:
                 remaining_qty = self._process_stack_item(
@@ -224,6 +233,7 @@ class BacktestAnalyzer:
                     filled_at=fill["filled_at"],
                     stack=stack,
                     trades=trades,
+                    fill_regime=fill_regime,
                 )
 
     def _open_new_stack_position(
@@ -234,6 +244,7 @@ class BacktestAnalyzer:
         price: float,
         filled_at: datetime,
         strategy: str,
+        regime_labels: Optional[Dict[str, str]] = None,
     ) -> None:
         stack.append(
             {
@@ -242,6 +253,7 @@ class BacktestAnalyzer:
                 "price": price,
                 "time": filled_at,
                 "strategy": strategy,
+                "regime_labels": regime_labels or {},
             }
         )
 
@@ -256,6 +268,7 @@ class BacktestAnalyzer:
         filled_at: datetime,
         stack: deque[Dict[str, Any]],
         trades: List[Dict[str, Any]],
+        fill_regime: Optional[Dict[str, str]] = None,
     ) -> float:
         if item["side"] == side:
             # Add to position
@@ -266,6 +279,7 @@ class BacktestAnalyzer:
                     "price": price,
                     "time": filled_at,
                     "strategy": fill_strategy,
+                    "regime_labels": fill_regime or {},
                 }
             )
             return 0.0
@@ -276,6 +290,9 @@ class BacktestAnalyzer:
 
             entry_price = float(item["price"])
             pnl = (price - entry_price) * match_qty if item["side"] == "buy" else (entry_price - price) * match_qty
+
+            entry_regime = item.get("regime_labels", {})
+            exit_regime = fill_regime or {}
 
             trades.append(
                 {
@@ -289,6 +306,10 @@ class BacktestAnalyzer:
                     "pnl": round(pnl, 2),
                     "strategy": item.get("strategy", "unknown"),
                     "exit_strategy": fill_strategy,
+                    "entry_regime_trend": entry_regime.get("trend", "unknown"),
+                    "entry_regime_vol": entry_regime.get("vol", "unknown"),
+                    "exit_regime_trend": exit_regime.get("trend", "unknown"),
+                    "exit_regime_vol": exit_regime.get("vol", "unknown"),
                 }
             )
 

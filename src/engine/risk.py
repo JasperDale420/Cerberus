@@ -700,7 +700,14 @@ class RiskManager:
             stop_loss=signal.stop_price,
             take_profit=signal.target_price,
             strategy=signal.strategy,
-            meta={"created_at": signal.generated_at.isoformat()},
+            meta={
+                "created_at": signal.generated_at.isoformat(),
+                "regime_labels": signal.regime_tags if signal.regime_tags else {},
+                "near_earnings": signal.meta.get("near_earnings", False) if signal.meta else False,
+                "near_fomc": signal.meta.get("near_fomc", False) if signal.meta else False,
+                "opex_week": signal.meta.get("opex_week", False) if signal.meta else False,
+                "correlation": signal.meta.get("correlation", "unknown") if signal.meta else "unknown",
+            },
         )
 
     def apply(
