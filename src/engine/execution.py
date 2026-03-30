@@ -976,7 +976,7 @@ class ExecutionEngine:
                 self.symbol_states[signal.symbol],
                 self.market_state,
                 current_positions=active_positions,
-                account_equity=float(getattr(self.account, "equity", 0.0) or 0.0),
+                account_equity=min(float(getattr(self.account, "equity", 0.0) or 0.0), 100_000.0),
             )
         except Exception as e:
             self._log_risk_failure(log, signal, e)
