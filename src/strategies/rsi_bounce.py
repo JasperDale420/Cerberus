@@ -351,9 +351,8 @@ class RsiBounceStrategy(BaseStrategy):
         half_life = ou_result.half_life if ou_result is not None else None
         ou_theta = ou_result.theta if ou_result is not None else None
 
-        if half_life is not None:
-            if half_life > self.max_half_life_bars or half_life < self.min_half_life_bars:
-                return None
+        # OU half-life is used as a confluence factor (Factor 2) — no hard gate here,
+        # since trending regimes produce long half-lives that would block all pullback entries.
 
         # Variance ratio gate — soft gate: penalise trending via confluence score instead of hard reject
         # Hard rejection was killing all signals in trending_up regimes (all WFO windows).
