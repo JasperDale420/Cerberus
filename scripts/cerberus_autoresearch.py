@@ -59,13 +59,38 @@ CONFIG_PATH = "config/backtest_v2.yaml"
 
 
 def classify_window_regime(data_dir: str, start: str, end: str) -> str:
-    """Classify the dominant trend/vol regime for an OOS window using SPY data."""
+    """Classify the dominant trend/vol regime for an OOS window using optimized detector.
+
+    Uses the grid-search-optimized 2-axis detector (81.9% accuracy):
+    - Trend: Dual SMA crossover (fast=10, slow=40, flat_band=1%)
+    - Vol: 30-day realized vol (LOW<8%, HIGH>20%, SHOCK>50%)
+
+    If pre-labeled regime data exists in data/regime_labeled/, uses that directly.
+    Otherwise falls back to computing from raw 1-minute bars.
+    """
+    # Try pre-labeled data first (fast path)
+    regime_dir = Path("data/regime_labeled")
+    spy_regime = regime_dir / "SPY_daily_regime.parquet"
+    if spy_regime.exists():
+        try:
+            df = pd.read_parquet(spy_regime)
+            df["date"] = pd.to_datetime(df["date"])
+            mask = (df["date"] >= start) & (df["date"] <= end)
+            window = df.loc[mask]
+            if len(window) >= 5:
+                # Return the dominant regime combination
+                regime_counts = window["regime"].value_counts()
+                return str(regime_counts.index[0])
+        except Exception:
+            pass  # Fall through to raw computation
+
+    # Fallback: compute from raw bars
     spy_path = Path(data_dir) / "SPY_1Min.parquet"
     if not spy_path.exists():
         return "unknown"
 
     try:
-        df = pd.read_parquet(spy_path, columns=["timestamp", "close", "volume"])
+        df = pd.read_parquet(spy_path, columns=["timestamp", "close"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
         mask = (df["timestamp"] >= pd.Timestamp(start, tz="UTC")) & (df["timestamp"] <= pd.Timestamp(end, tz="UTC"))
         window_df = df.loc[mask]
@@ -73,31 +98,40 @@ def classify_window_regime(data_dir: str, start: str, end: str) -> str:
         if len(window_df) < 100:
             return "insufficient_data"
 
-        # Daily OHLC for regime classification
-        daily = window_df.set_index("timestamp")["close"].resample("1D").agg(["first", "last", "max", "min"])
-        daily = daily.dropna()
-
-        if len(daily) < 5:
+        # Resample to daily
+        daily = window_df.set_index("timestamp")["close"].resample("1D").last().dropna()
+        if len(daily) < 40:
             return "insufficient_data"
 
-        # Trend: compare first vs last close
-        total_return = (daily["last"].iloc[-1] / daily["first"].iloc[0]) - 1
-        if total_return > 0.03:
-            trend = "trending_up"
-        elif total_return < -0.03:
-            trend = "trending_down"
-        else:
-            trend = "choppy"
+        closes = daily.values.astype(float)
 
-        # Volatility: annualized daily return std
-        daily_returns = daily["last"].pct_change().dropna()
-        ann_vol = daily_returns.std() * np.sqrt(252)
-        if ann_vol > 0.25:
-            vol = "high_vol"
-        elif ann_vol < 0.12:
-            vol = "low_vol"
+        # Trend: Dual SMA crossover (optimized: fast=10, slow=40, band=1%)
+        sma_fast = pd.Series(closes).rolling(10).mean().values
+        sma_slow = pd.Series(closes).rolling(40).mean().values
+        last = len(closes) - 1
+        if np.isnan(sma_slow[last]):
+            trend = "FLAT"
         else:
-            vol = "normal_vol"
+            pct_above = (closes[last] - sma_slow[last]) / sma_slow[last]
+            fast_above = (sma_fast[last] - sma_slow[last]) / sma_slow[last]
+            if pct_above > 0.01 and fast_above > 0:
+                trend = "UP"
+            elif pct_above < -0.01 and fast_above < 0:
+                trend = "DOWN"
+            else:
+                trend = "FLAT"
+
+        # Vol: 30-day realized vol (optimized: LOW<8%, HIGH>20%, SHOCK>50%)
+        log_rets = np.diff(np.log(closes))
+        rvol = float(np.std(log_rets[-30:]) * np.sqrt(252)) if len(log_rets) >= 30 else 0.15
+        if rvol >= 0.50:
+            vol = "SHOCK"
+        elif rvol >= 0.20:
+            vol = "HIGH"
+        elif rvol <= 0.08:
+            vol = "LOW"
+        else:
+            vol = "NORMAL"
 
         return f"{trend}+{vol}"
     except Exception:
@@ -233,6 +267,7 @@ def main():
     wfo_efficiency = results.get("wfo_efficiency_ratio", 0.0)
 
     # ── Per-window regime breakdown ─────────────────────────────────
+    regime_stats: dict[str, list[dict]] = {}
     for i, window in enumerate(windows):
         regime = classify_window_regime(args.data_dir, window["test_start"], window["test_end"])
         m = oos_metrics[i] if i < len(oos_metrics) else {}
@@ -242,6 +277,45 @@ def main():
             f"oos_score={score:.4f} trades={m.get('n_trades', 0)} "
             f"pf={m.get('profit_factor', 0.0):.2f} sharpe={m.get('sharpe_ratio', 0.0):.3f}"
         )
+        regime_stats.setdefault(regime, []).append(
+            {
+                "score": score,
+                "trades": m.get("n_trades", 0),
+                "pf": m.get("profit_factor", 0.0),
+                "sharpe": m.get("sharpe_ratio", 0.0),
+                "sortino": m.get("sortino_ratio", 0.0),
+                "pnl": m.get("net_pnl", 0.0),
+            }
+        )
+
+    # ── Per-regime aggregate ───────────────────────────────────────
+    best_regime = ""
+    best_regime_pf = 0.0
+    worst_regime = ""
+    worst_regime_pf = 999.0
+    for regime, stats_list in sorted(regime_stats.items()):
+        wt = [s for s in stats_list if s["trades"] > 0]
+        if not wt:
+            emit(f"REGIME_AGGREGATE regime={regime} windows={len(stats_list)} trades=0 avg_pf=0.00 avg_sharpe=0.000")
+            continue
+        total_trades = sum(s["trades"] for s in wt)
+        avg_pf_r = np.mean([s["pf"] for s in wt])
+        avg_sharpe_r = np.mean([s["sharpe"] for s in wt])
+        avg_sortino_r = np.mean([s["sortino"] for s in wt])
+        total_pnl = sum(s["pnl"] for s in wt)
+        profitable = sum(1 for s in wt if s["pf"] > 1.0)
+        emit(
+            f"REGIME_AGGREGATE regime={regime} windows={len(stats_list)} "
+            f"trades={total_trades} avg_pf={avg_pf_r:.2f} avg_sharpe={avg_sharpe_r:.3f} "
+            f"avg_sortino={avg_sortino_r:.3f} total_pnl={total_pnl:.2f} "
+            f"profitable={profitable}/{len(wt)}"
+        )
+        if avg_pf_r > best_regime_pf:
+            best_regime_pf = avg_pf_r
+            best_regime = regime
+        if avg_pf_r < worst_regime_pf:
+            worst_regime_pf = avg_pf_r
+            worst_regime = regime
 
     # ── Summary result line ─────────────────────────────────────────
     emit(
@@ -251,7 +325,9 @@ def main():
         f"total_oos_trades={total_oos_trades} "
         f"avg_sortino={avg_sortino:.4f} "
         f"param_cv_max={param_cv_max:.4f} "
-        f"wfo_efficiency={wfo_efficiency:.4f}"
+        f"wfo_efficiency={wfo_efficiency:.4f} "
+        f"best_regime={best_regime}:{best_regime_pf:.2f} "
+        f"worst_regime={worst_regime}:{worst_regime_pf:.2f}"
     )
 
     # ── Save full results JSON ─────────────────────────────────────
