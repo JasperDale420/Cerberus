@@ -593,6 +593,36 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             description="HMM regime gate min confidence. 0.0 disables gate.",
         ),
     ],
+    # ------------------------------------------------------------------
+    # Autoresearch Strategy — 4 params
+    #   Simple EMA trend + RSI pullback. Keeps param space small for fast WFO.
+    # ------------------------------------------------------------------
+    "autoresearch_strategy": [
+        ParamDef(
+            "stop_atr_mult",
+            "float",
+            low=1.0,
+            high=3.0,
+            step=0.25,
+            description="ATR multiplier for stop loss",
+        ),
+        ParamDef(
+            "target_atr_mult",
+            "float",
+            low=2.0,
+            high=5.0,
+            step=0.5,
+            description="ATR multiplier for take profit target",
+        ),
+        ParamDef(
+            "cooldown_bars",
+            "int",
+            low=3,
+            high=15,
+            step=3,
+            description="Minimum 1m bars between signals per symbol",
+        ),
+    ],
 }
 
 

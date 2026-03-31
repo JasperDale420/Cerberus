@@ -54,6 +54,7 @@ def _is_regular_market_session_local(now: datetime) -> bool:
 
 def _build_strategy_registry() -> dict[str, type]:
     """Build the canonical strategy registry for runtime initialization."""
+    from src.strategies.autoresearch_strategy import AutoresearchStrategy
     from src.strategies.daily_mean_reversion import DailyMeanReversionStrategy
     from src.strategies.daily_momentum import DailyMomentumStrategy
     from src.strategies.daily_vol_fade import DailyVolFadeStrategy
@@ -97,6 +98,7 @@ def _build_strategy_registry() -> dict[str, type]:
         "rsi_bounce": RsiBounceStrategy,
         "momentum_fade": MomentumFadeStrategy,
         "regime_trend_up": RegimeTrendUpStrategy,
+        "autoresearch_strategy": AutoresearchStrategy,
         # Legacy strategies (disabled in config)
         "vwap_reversion": VWAPReversionStrategy,
         "orb": ORBStrategy,
