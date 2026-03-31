@@ -882,6 +882,11 @@ def _apply_params_to_config(
         "spread_lookback",
         "min_correlation",
         "max_hold_days",
+        # Regime specialist params
+        "rsi_min",
+        "rsi_max",
+        "pullback_pct",
+        "target_rr",
     }
 
     for key, value in params.items():

@@ -371,7 +371,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     # ------------------------------------------------------------------
     "regime_trend_up": [
         ParamDef(
-            "rsi_entry_low",
+            "rsi_min",
             "float",
             low=25.0,
             high=45.0,
@@ -379,12 +379,20 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             description="RSI lower bound for pullback entry zone",
         ),
         ParamDef(
-            "rsi_entry_high",
+            "rsi_max",
             "float",
-            low=50.0,
-            high=70.0,
+            low=55.0,
+            high=75.0,
             step=5.0,
             description="RSI upper bound for pullback entry zone",
+        ),
+        ParamDef(
+            "pullback_pct",
+            "float",
+            low=0.005,
+            high=0.03,
+            step=0.005,
+            description="Max distance from EMA20 to qualify as a pullback",
         ),
         ParamDef(
             "stop_atr_mult",
@@ -395,20 +403,20 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             description="ATR multiplier for stop loss",
         ),
         ParamDef(
-            "target_atr_mult",
+            "target_rr",
             "float",
-            low=2.0,
-            high=5.0,
+            low=1.5,
+            high=4.0,
             step=0.5,
-            description="ATR multiplier for take profit target",
+            description="Risk:reward ratio for take profit target",
         ),
         ParamDef(
-            "max_hold_minutes",
+            "cooldown_bars",
             "int",
-            low=30,
-            high=120,
-            step=15,
-            description="Maximum hold time in minutes",
+            low=3,
+            high=15,
+            step=3,
+            description="Minimum 1m bars between signals",
         ),
     ],
     # ------------------------------------------------------------------
