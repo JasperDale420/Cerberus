@@ -366,6 +366,52 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     # ------------------------------------------------------------------
+    # Regime Trend Up — UP+NORMAL specialist
+    #   BUY-only EMA pullback in uptrend. Key knobs: RSI zone, stop/target, hold.
+    # ------------------------------------------------------------------
+    "regime_trend_up": [
+        ParamDef(
+            "rsi_entry_low",
+            "float",
+            low=25.0,
+            high=45.0,
+            step=5.0,
+            description="RSI lower bound for pullback entry zone",
+        ),
+        ParamDef(
+            "rsi_entry_high",
+            "float",
+            low=50.0,
+            high=70.0,
+            step=5.0,
+            description="RSI upper bound for pullback entry zone",
+        ),
+        ParamDef(
+            "stop_atr_mult",
+            "float",
+            low=1.0,
+            high=2.5,
+            step=0.25,
+            description="ATR multiplier for stop loss",
+        ),
+        ParamDef(
+            "target_atr_mult",
+            "float",
+            low=2.0,
+            high=5.0,
+            step=0.5,
+            description="ATR multiplier for take profit target",
+        ),
+        ParamDef(
+            "max_hold_minutes",
+            "int",
+            low=30,
+            high=120,
+            step=15,
+            description="Maximum hold time in minutes",
+        ),
+    ],
+    # ------------------------------------------------------------------
     # Regime Bear — 5 params
     #   Bear/high-vol specialist: shorts RSI bounces in downtrends.
     #   Key knobs: RSI entry thresholds, stop/target geometry.

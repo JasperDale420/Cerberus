@@ -135,6 +135,25 @@ strategies:
       risk: [risk_on]
       min_confidence: 0.6
 
+  regime_trend_up:
+    enabled: true
+    min_bars: 20
+    rsi_entry_low: 35.0
+    rsi_entry_high: 60.0
+    stop_atr_mult: 1.5
+    target_atr_mult: 3.0
+    max_hold_minutes: 90
+    cooldown_bars: 3
+    hard_stop_time: "15:45"
+    higher_tf_alignment: false
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, flat]
+      vol: [low, normal]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral]
+      min_confidence: 0.0
+
   regime_bear:
     enabled: true
     rsi_short_entry: 55.0
