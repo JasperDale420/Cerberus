@@ -157,6 +157,9 @@ You are building a specialist strategy for the **$REGIME_PHASE** regime.
 ## Last Result
 $LAST_RESULT
 
+## Recent Iteration History (do NOT repeat failed approaches)
+$(tail -6 "$TSV" | head -5 | awk -F'\t' '{printf "  iter %s: score=%s status=%s trades=%s — %s\n", $1, $4, $5, $7, $10}' 2>/dev/null || echo "  (no history yet)")
+
 ## Your Task
 $(if [ ! -f "src/strategies/${STRAT_FILE}.py" ]; then
 echo "CREATE a new strategy file: src/strategies/${STRAT_FILE}.py"
@@ -164,15 +167,27 @@ echo "This strategy should ONLY work well in ${REGIME_DESC}."
 echo ""
 echo "Strategy hint: ${STRAT_HINT}"
 echo ""
-echo "1. Read program_cerberus.md for the BaseStrategy interface, Signal dataclass, and available indicators"
-echo "2. Create src/strategies/${STRAT_FILE}.py extending BaseStrategy with name = '${STRAT_FILE}'"
-echo "3. Add a config block in config/strategies.yaml:"
+echo "1. Read src/strategies/trend_rider_pro.py as a REFERENCE — it's a working strategy that generates trades."
+echo "   Study its structure: how it uses on_bar(), _create_signal(), indicators, stop/target."
+echo "2. Read program_cerberus.md for the BaseStrategy interface, Signal dataclass, and available indicators."
+echo "3. Create src/strategies/${STRAT_FILE}.py extending BaseStrategy with name = '${STRAT_FILE}'"
+echo "4. Add a config block in config/strategies.yaml:"
 echo "   ${STRAT_FILE}:"
 echo "     enabled: true"
 echo "     # your params here"
-echo "4. Keep it SIMPLE — 3-5 factors max. Simpler strategies generalize better."
-echo "5. Run: ruff check src/strategies/${STRAT_FILE}.py"
-echo "6. Commit and STOP."
+echo "     activation:"
+echo "       session: [opening, midday, power_hour]"
+echo "       trend: [up, down, flat]"
+echo "       vol: [low, normal, high]"
+echo "       liquidity: [good, thin]"
+echo "       risk: [risk_on, neutral, risk_off]"
+echo "       min_confidence: 0.0"
+echo ""
+echo "   IMPORTANT: The activation policy MUST be permissive (all sessions, trends, vols)."
+echo "   If activation is too restrictive, the strategy won't fire in any WFO window."
+echo "5. Keep it SIMPLE — 3-5 factors max. Simpler strategies generalize better."
+echo "6. Run: ruff check src/strategies/${STRAT_FILE}.py"
+echo "7. Commit and STOP."
 else
 echo "ITERATE on the existing ${STRAT_FILE} strategy to improve its performance in ${REGIME_DESC}."
 echo ""
