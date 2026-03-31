@@ -169,6 +169,11 @@ def main():
     parser.add_argument("--n-symbols", type=int, default=8, help="Number of symbols")
     parser.add_argument("--data-dir", default=DATA_DIR, help="Bar data directory")
     parser.add_argument("--log-dir", default="artifacts/autoresearch/logs", help="Directory for verbose WFO logs")
+    parser.add_argument(
+        "--target-regime",
+        default=None,
+        help="Score only windows matching this regime (e.g., UP+NORMAL). Others excluded from composite.",
+    )
     args = parser.parse_args()
 
     strategy_name = args.strategy
@@ -317,6 +322,28 @@ def main():
         if avg_pf_r < worst_regime_pf:
             worst_regime_pf = avg_pf_r
             worst_regime = regime
+
+    # ── Regime-filtered scoring for specialists ─────────────────────
+    # When --target-regime is set, recompute composite using only matching windows.
+    # This prevents a UP+NORMAL specialist from being penalized for DOWN+HIGH windows.
+    target_regime = args.target_regime
+    if target_regime and regime_stats.get(target_regime):
+        target_windows = regime_stats[target_regime]
+        target_valid = [s["score"] for s in target_windows if s["score"] > -100]
+        if target_valid:
+            composite_score = sum(target_valid) / len(target_valid)
+        target_trades = sum(s["trades"] for s in target_windows)
+        target_positive = sum(1 for s in target_windows if s["score"] > 0)
+        emit(
+            f"REGIME_FILTERED target={target_regime} "
+            f"composite_score={composite_score:.4f} "
+            f"windows={target_positive}/{len(target_windows)} "
+            f"trades={target_trades}"
+        )
+        # Override totals for the summary line
+        positive_windows = target_positive
+        total_windows = len(target_windows)
+        total_oos_trades = target_trades
 
     # ── Summary result line ─────────────────────────────────────────
     emit(

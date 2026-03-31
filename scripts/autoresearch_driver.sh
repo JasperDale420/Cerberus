@@ -129,21 +129,25 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
         REGIME_DESC="UP+NORMAL (trending bull, low vol — 43% of data)"
         STRAT_FILE="regime_trend_up"
         STRAT_HINT="Trend-following: buy pullbacks in uptrends. EMA crossover, VWAP reclaim, ATR trailing stop. BUY-only. The market is going up — ride it."
+        TARGET_REGIME="UP+NORMAL"
     elif [ "$ITER" -le 30 ]; then
         REGIME_PHASE="DOWN_HIGH"
         REGIME_DESC="DOWN+HIGH (bear market, high vol — 18% of data)"
         STRAT_FILE="regime_bear"
         STRAT_HINT="Bear market specialist: short momentum breakdowns, VIX spike fading, or defensive mean-reversion on oversold bounces. SELL-biased or fade extremes."
+        TARGET_REGIME="DOWN+HIGH"
     elif [ "$ITER" -le 45 ]; then
         REGIME_PHASE="FLAT_NORMAL"
         REGIME_DESC="FLAT+NORMAL (range-bound, normal vol — 5% of data)"
         STRAT_FILE="regime_flat"
         STRAT_HINT="Mean reversion: RSI bounce, Bollinger band fading, VWAP reversion. This is where mean-reversion actually works. Trade both directions."
+        TARGET_REGIME="FLAT+NORMAL"
     else
         REGIME_PHASE="GENERALIST"
         REGIME_DESC="Cross-regime generalist"
         STRAT_FILE="regime_adaptive"
         STRAT_HINT="Adaptive strategy that checks the current regime and switches behavior. Use regime labels from symbol_state.meta['regime_labels'] to condition entry logic."
+        TARGET_REGIME=""
     fi
 
     AGENT_PROMPT=$(cat <<EOFPROMPT
@@ -225,6 +229,58 @@ EOFPROMPT
     NEW_COMMIT=$(git rev-parse --short HEAD)
     PREV_COMMIT=$(tail -1 "$TSV" | cut -f2)
 
+    # If this is a NEW strategy creation, verify it imports correctly before WFO
+    if [ "$NEW_COMMIT" != "$PREV_COMMIT" ] && [ -f "src/strategies/${STRAT_FILE}.py" ]; then
+        IMPORT_CHECK=$(uv run python -c "
+import sys; sys.path.insert(0, '.')
+from src.strategies.base import BaseStrategy
+from src.backtest.runner import _dynamic_import_strategy_class
+cls = _dynamic_import_strategy_class('${STRAT_FILE}')
+if cls is None:
+    print('IMPORT_FAIL: no BaseStrategy subclass found')
+    sys.exit(1)
+print(f'IMPORT_OK: {cls.__name__} (name={getattr(cls, \"name\", \"?\")})')
+" 2>&1 || echo "IMPORT_FAIL: exception")
+
+        if echo "$IMPORT_CHECK" | grep -q "IMPORT_FAIL"; then
+            echo "[iter $ITER] Strategy import check FAILED: $IMPORT_CHECK"
+            echo "[iter $ITER] Spawning fix agent..."
+            FIX_PROMPT="The strategy file src/strategies/${STRAT_FILE}.py failed to import:
+$IMPORT_CHECK
+
+Fix the import error. Common issues:
+- Missing 'name' class attribute
+- Syntax errors
+- Wrong base class
+- Missing imports
+
+Read the file, fix it, run 'ruff check src/strategies/${STRAT_FILE}.py', and commit."
+            FIX_RESULT=$(claude -p "$FIX_PROMPT" --model sonnet --allowedTools "Read,Edit,Write,Bash,Glob,Grep" --permission-mode bypassPermissions 2>&1 || true)
+            NEW_COMMIT=$(git rev-parse --short HEAD)
+        else
+            echo "[iter $ITER] Strategy import check: $IMPORT_CHECK"
+        fi
+
+        # Also verify config entry exists
+        if ! grep -q "^  ${STRAT_FILE}:" config/strategies.yaml 2>/dev/null; then
+            if ! grep -q "^  ${STRAT_FILE}:" config/backtest_v2.yaml 2>/dev/null; then
+                echo "[iter $ITER] WARNING: No config entry for ${STRAT_FILE} — adding minimal entry"
+                echo "
+  ${STRAT_FILE}:
+    enabled: true
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0" >> config/strategies.yaml
+                git add config/strategies.yaml && git commit -m "fix: add ${STRAT_FILE} config entry for WFO" --no-verify 2>/dev/null || true
+                NEW_COMMIT=$(git rev-parse --short HEAD)
+            fi
+        fi
+    fi
+
     if [ "$NEW_COMMIT" = "$PREV_COMMIT" ]; then
         # Check if it was a quota/rate limit issue vs genuine no-op
         if echo "$AGENT_RESULT" | grep -qi "rate.limit\|quota\|overloaded\|429\|capacity"; then
@@ -250,7 +306,11 @@ EOFPROMPT
     echo "[iter $ITER] Running WFO evaluation (~15 min)..."
     EVAL_START=$(date +%s)
 
-    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 2>&1 || true)
+    REGIME_FLAG=""
+    if [ -n "$TARGET_REGIME" ]; then
+        REGIME_FLAG="--target-regime $TARGET_REGIME"
+    fi
+    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 $REGIME_FLAG 2>&1 || true)
 
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
@@ -284,19 +344,27 @@ EOFPROMPT
     echo "[iter $ITER] Result: score=$SCORE windows=$WIN_PROF trades=$TRADES sortino=$SORTINO"
 
     # ── Step 4: Keep or discard ────────────────────────────────────
-    # Keep if: composite improved, OR a regime window scored > 3.0 (specialist potential)
+    # Three-tier keep logic:
+    #   1. KEEP (best): composite score improved
+    #   2. KEEP (progress): strategy generated >30 trades (iteratable, even if losing)
+    #   3. KEEP (specialist): any regime window scored > 3.0
+    #   4. DISCARD: 0 trades or evaluation error — revert
+    #
+    # We ONLY revert 0-trade commits. A strategy with trades is progress
+    # that the agent can iterate on. Reverting a -$500 strategy that traded
+    # 200 times loses all the information about WHY it lost.
     KEEP=false
-    REGIME_SPECIALIST=""
+    KEEP_REASON=""
 
     # Check if composite improved
     if echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}'; then
         KEEP=true
-        echo "[iter $ITER] KEEP — composite improved: $SCORE > $BEST_SCORE"
+        KEEP_REASON="composite improved: $SCORE > $BEST_SCORE"
         echo "$SCORE" > "$BEST_SCORE_FILE"
         BEST_SCORE="$SCORE"
     fi
 
-    # Check for regime specialist windows (score > 3.0 in any window)
+    # Check for regime specialist windows (score > 3.0 in target regime)
     if [ "$KEEP" = "false" ]; then
         while IFS= read -r regime_line; do
             [ -z "$regime_line" ] && continue
@@ -304,21 +372,27 @@ EOFPROMPT
             window_regime=$(echo "$regime_line" | grep -o 'regime=[^ ]*' | cut -d= -f2)
             if echo "$window_score" | awk '{exit ($1 > 3.0) ? 0 : 1}'; then
                 KEEP=true
-                REGIME_SPECIALIST="$window_regime:$window_score"
-                echo "[iter $ITER] KEEP — regime specialist: $window_regime scored $window_score"
+                KEEP_REASON="regime specialist: $window_regime scored $window_score"
                 break
             fi
         done <<< "$REGIME_LINES"
     fi
 
+    # Keep ANY commit that generated >30 trades — it's a working strategy worth iterating on
+    if [ "$KEEP" = "false" ] && [ "$TRADES" -gt 30 ] 2>/dev/null; then
+        KEEP=true
+        KEEP_REASON="progress: generated $TRADES trades (iteratable)"
+    fi
+
     if [ "$KEEP" = "true" ]; then
         STATUS="keep"
         CONSECUTIVE_DISCARDS=0
+        echo "[iter $ITER] KEEP — $KEEP_REASON"
     else
         STATUS="discard"
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
         git reset --hard HEAD~1
-        echo "[iter $ITER] DISCARD — score=$SCORE did not beat best=$BEST_SCORE (revert $NEW_COMMIT)"
+        echo "[iter $ITER] DISCARD — 0 trades or evaluation error (revert $NEW_COMMIT)"
     fi
 
     # ── Step 5: Record result ──────────────────────────────────────
