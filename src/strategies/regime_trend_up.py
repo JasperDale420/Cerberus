@@ -29,7 +29,8 @@ class RegimeTrendUpStrategy(BaseStrategy):
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.pullback_pct = float(config.get("pullback_pct", 0.02))  # 2% window around EMA20
+        self.pullback_pct = float(config.get("pullback_pct", 0.02))  # max distance BELOW EMA20
+        self.pullback_chase_cap = float(config.get("pullback_chase_cap", 0.003))  # max distance ABOVE EMA20 (0.3%)
         self.rsi_max = float(config.get("rsi_max", 70.0))
         self.rsi_min = float(config.get("rsi_min", 30.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -74,9 +75,10 @@ class RegimeTrendUpStrategy(BaseStrategy):
         if ema20 <= ema50:
             return None
 
-        # 2. Price within pullback_pct of EMA20 (buy the dip, not the rip)
+        # 2. Price pulling back toward EMA20 — not chasing above it
+        # Accept price from pullback_pct below EMA20 up to chase_cap above EMA20 (buys dip, not rip)
         dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_pct or dist_pct > self.pullback_pct:
+        if dist_pct < -self.pullback_pct or dist_pct > self.pullback_chase_cap:
             return None
 
         # 3. Price above VWAP (momentum still up)
