@@ -36,7 +36,7 @@ class RegimeTrendUpStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_rr = float(config.get("target_rr", 2.5))
         self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:35")))
-        self.time_window_end = time_utils.parse_time_string(str(config.get("time_window_end", "15:45")))
+        self.time_window_end = time_utils.parse_time_string(str(config.get("time_window_end", "11:30")))
 
     def on_bar(
         self,
