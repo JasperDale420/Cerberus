@@ -73,6 +73,7 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.pair_trading import PairTradingStrategy
     from src.strategies.pair_trading_v2 import PairTradingV2Strategy
     from src.strategies.regime_adaptive_momentum import RegimeAdaptiveMomentumStrategy
+    from src.strategies.regime_trend_up import RegimeTrendUpStrategy
     from src.strategies.rsi_bounce import RsiBounceStrategy
     from src.strategies.trend_pullback import TrendPullbackStrategy
     from src.strategies.trend_rider_pro import TrendRiderProStrategy
@@ -93,6 +94,7 @@ def _build_strategy_registry() -> dict[str, type]:
         "pair_trading_v2": PairTradingV2Strategy,
         "rsi_bounce": RsiBounceStrategy,
         "momentum_fade": MomentumFadeStrategy,
+        "regime_trend_up": RegimeTrendUpStrategy,
         # Legacy strategies (disabled in config)
         "vwap_reversion": VWAPReversionStrategy,
         "orb": ORBStrategy,
