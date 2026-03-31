@@ -272,9 +272,9 @@ def main():
         lines = strategy_path.read_text().splitlines()
         strategy_loc = sum(1 for ln in lines if ln.strip() and not ln.strip().startswith("#"))
     if strategy_loc > 100:
-        loc_penalty = max(-5.0, -0.1 * (strategy_loc - 100))
+        loc_penalty = max(-2.0, -0.05 * (strategy_loc - 100))  # -0.05/line, capped at -2.0
     elif strategy_loc < 50 and strategy_loc > 0:
-        loc_penalty = min(2.0, 0.5 * (50 - strategy_loc))
+        loc_penalty = min(0.5, 0.02 * (50 - strategy_loc))  # +0.02/line, capped at +0.5
     else:
         loc_penalty = 0.0
     if composite_score > -100:  # Only apply to real scores, not sentinel -999

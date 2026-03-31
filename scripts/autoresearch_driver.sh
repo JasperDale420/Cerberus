@@ -23,7 +23,6 @@ REGIME_TARGETS=("UP+NORMAL" "DOWN+HIGH" "FLAT+NORMAL" "")
 REGIME_HINTS=("Trend-following: buy pullbacks in uptrends. BUY-only." "Bear specialist: short breakdowns or fade oversold bounces." "Mean reversion: RSI bounce, BB fade. Both directions." "Adaptive: check regime labels, switch behavior.")
 CURRENT_PHASE=0
 PHASE_ITER=0
-PHASE_BEST=-999.0
 
 # ── Setup ──────────────────────────────────────────────────────────
 mkdir -p autoresearch artifacts/autoresearch/logs
@@ -90,7 +89,8 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
     echo "============================================================"
 
     # ── Phase advancement: switch regime when stuck ────────────────
-    if [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ] && [ "$CURRENT_PHASE" -lt 3 ]; then
+    MAX_PHASE_IDX=$(( ${#REGIME_PHASES[@]} - 1 ))
+    if [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ] && [ "$CURRENT_PHASE" -lt "$MAX_PHASE_IDX" ]; then
         CURRENT_PHASE=$((CURRENT_PHASE + 1))
         STRAT_FILE="${REGIME_PHASES[$CURRENT_PHASE]}"
         REGIME_DESC="${REGIME_DESCS[$CURRENT_PHASE]}"
@@ -99,6 +99,9 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
         CONSECUTIVE_DISCARDS=0
         PHASE_ITER=0
         echo "[iter $ITER] PIVOT → Phase $CURRENT_PHASE: $REGIME_DESC"
+    elif [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ] && [ "$CURRENT_PHASE" -ge "$MAX_PHASE_IDX" ]; then
+        echo "[iter $ITER] Stuck on final phase ($REGIME_DESC) — no more phases to try"
+        # Don't reset counter — let it accumulate so the agent sees the full discard streak
     fi
 
     # ── Step 1: Spawn agent ───────────────────────────────────────
@@ -175,7 +178,8 @@ print(f'IMPORT_OK: {cls.__name__}')
         ITER=$((ITER + 1)); CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); continue
     fi
 
-    COMMIT_MSG=$(git log -1 --format='%s')
+    # Sanitize: strip newlines to prevent heredoc injection from agent-authored commit messages
+    COMMIT_MSG=$(git log -1 --format='%s' | tr -d '\n\r')
     echo "[iter $ITER] Committed: $NEW_COMMIT — $COMMIT_MSG"
 
     # ── Step 2: Evaluate ──────────────────────────────────────────
