@@ -246,6 +246,9 @@ EOFPROMPT
     REGIME_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_BREAKDOWN" || echo "")
     AGGREGATE_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_AGGREGATE" || echo "")
 
+    # Extract detailed trade-level insights from the results JSON
+    INSIGHTS=$(uv run python scripts/extract_wfo_insights.py "$EVAL_STRATEGY" 2>/dev/null || echo "NO_INSIGHTS")
+
     if [ -z "$RESULT_LINE" ]; then
         echo "[iter $ITER] ERROR: Evaluation failed (no result line)"
         printf "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
@@ -331,6 +334,9 @@ Analysis guidance:
 - High trades + low PF = over-trading — add selectivity (higher confluence, tighter time window).
 - Check which REGIME windows are profitable vs losing — your strategy should excel in $REGIME_PHASE.
 - best_regime/worst_regime in AUTORESEARCH_RESULT shows where the strategy shines and struggles.
+
+Detailed trade analysis (from WFO results JSON):
+$INSIGHTS
 
 Best score so far: $BEST_SCORE
 Consecutive discards: $CONSECUTIVE_DISCARDS
