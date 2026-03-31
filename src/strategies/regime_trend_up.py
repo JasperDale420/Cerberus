@@ -2,8 +2,9 @@
 
 Type: trend-following
 Description: BUY-only strategy for UP+NORMAL (trending bull, low vol) regimes.
-Entry: EMA9 > EMA20 on 1m + RSI pullback zone (35-60) + price above VWAP.
-Exit: ATR-based stop/target with trailing stop. Simple 3-factor design.
+Entry: EMA9 > EMA20 on 1m + RSI momentum zone (30-70) + price above VWAP
+       + bullish candle confirmation (close in upper half of bar range).
+Exit: ATR-based stop/target with trailing stop.
 """
 
 from __future__ import annotations
@@ -18,12 +19,13 @@ from src.strategies.base import BaseStrategy
 
 
 class RegimeTrendUpStrategy(BaseStrategy):
-    """UP+NORMAL specialist: buy EMA pullbacks in uptrends.
+    """UP+NORMAL specialist: buy momentum continuations in uptrends.
 
-    Three entry conditions:
+    Four entry conditions:
     1. EMA9 > EMA20 on 1m (confirmed uptrend)
-    2. RSI in pullback zone (not overbought, mild dip)
-    3. Price above VWAP (long-side bias)
+    2. RSI in momentum zone 30-70 (not extreme either way — avoids overbought chasing)
+    3. Price above VWAP (long-side bias, skipped if VWAP unavailable)
+    4. Bullish candle: close in upper half of bar range (buying pressure confirmation)
     """
 
     name: str = "regime_trend_up"
@@ -37,8 +39,8 @@ class RegimeTrendUpStrategy(BaseStrategy):
         self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:35")))
         self.time_window_end = time_utils.parse_time_string(str(config.get("time_window_end", "15:45")))
         overrides = config.get("_optuna_overrides", {})
-        self.rsi_entry_low = float(overrides.get("rsi_entry_low", config.get("rsi_entry_low", 35.0)))
-        self.rsi_entry_high = float(overrides.get("rsi_entry_high", config.get("rsi_entry_high", 60.0)))
+        self.rsi_entry_low = float(overrides.get("rsi_entry_low", config.get("rsi_entry_low", 30.0)))
+        self.rsi_entry_high = float(overrides.get("rsi_entry_high", config.get("rsi_entry_high", 70.0)))
         self.stop_atr_mult = float(overrides.get("stop_atr_mult", config.get("stop_atr_mult", 1.5)))
         self.target_atr_mult = float(overrides.get("target_atr_mult", config.get("target_atr_mult", 3.0)))
         self.max_hold_minutes = int(overrides.get("max_hold_minutes", config.get("max_hold_minutes", 90)))
@@ -82,6 +84,11 @@ class RegimeTrendUpStrategy(BaseStrategy):
 
         # Gate 3: price above VWAP — long-side bias
         if bar.vwap > 0 and bar.close < bar.vwap:
+            return None
+
+        # Gate 4: bullish candle — close in upper half of range (buying pressure)
+        bar_range = bar.high - bar.low
+        if bar_range > 0 and bar.close < (bar.low + bar_range * 0.5):
             return None
 
         # ATR for stop/target sizing
