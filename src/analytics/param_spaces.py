@@ -366,6 +366,53 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     # ------------------------------------------------------------------
+    # Regime Bear — 5 params
+    #   Bear/high-vol specialist: shorts RSI bounces in downtrends.
+    #   Key knobs: RSI entry thresholds, stop/target geometry.
+    # ------------------------------------------------------------------
+    "regime_bear": [
+        ParamDef(
+            "rsi_short_entry",
+            "float",
+            low=45.0,
+            high=65.0,
+            step=5.0,
+            description="RSI level to short into (DOWN trend bounce fade)",
+        ),
+        ParamDef(
+            "rsi_long_entry",
+            "float",
+            low=35.0,
+            high=55.0,
+            step=5.0,
+            description="RSI level to buy into (UP trend dip)",
+        ),
+        ParamDef(
+            "stop_atr_mult",
+            "float",
+            low=1.0,
+            high=2.5,
+            step=0.25,
+            description="ATR multiplier for stop loss",
+        ),
+        ParamDef(
+            "target_atr_mult",
+            "float",
+            low=2.0,
+            high=5.0,
+            step=0.5,
+            description="ATR multiplier for take profit",
+        ),
+        ParamDef(
+            "high_vol_target_mult",
+            "float",
+            low=1.0,
+            high=2.5,
+            step=0.25,
+            description="Target multiplier in HIGH/SHOCK vol (DOWN+HIGH edge)",
+        ),
+    ],
+    # ------------------------------------------------------------------
     # Momentum Fade — 5 params
     #   Focus: VWAP distance, volume surge, confluence, stop/target, hold
     #   Fades overextended moves away from VWAP on volume spikes.
