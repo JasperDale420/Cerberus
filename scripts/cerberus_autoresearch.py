@@ -265,6 +265,21 @@ def main():
     valid_scores = [s for s in oos_scores if s > -100]
     composite_score = sum(valid_scores) / max(len(valid_scores), 1) if valid_scores else -999.0
 
+    # Simplicity bonus/penalty based on strategy LOC (Karpathy: simpler is better)
+    strategy_path = Path(f"src/strategies/{strategy_name}.py")
+    strategy_loc = 0
+    if strategy_path.exists():
+        lines = strategy_path.read_text().splitlines()
+        strategy_loc = sum(1 for ln in lines if ln.strip() and not ln.strip().startswith("#"))
+    if strategy_loc > 100:
+        loc_penalty = max(-5.0, -0.1 * (strategy_loc - 100))
+    elif strategy_loc < 50 and strategy_loc > 0:
+        loc_penalty = min(2.0, 0.5 * (50 - strategy_loc))
+    else:
+        loc_penalty = 0.0
+    if composite_score > -100:  # Only apply to real scores, not sentinel -999
+        composite_score += loc_penalty
+
     # Max param CV
     param_cvs = [stats.get("cv", 0.0) for stats in param_stability.values()]
     param_cv_max = max(param_cvs) if param_cvs else 0.0
@@ -355,7 +370,8 @@ def main():
         f"param_cv_max={param_cv_max:.4f} "
         f"wfo_efficiency={wfo_efficiency:.4f} "
         f"best_regime={best_regime}:{best_regime_pf:.2f} "
-        f"worst_regime={worst_regime}:{worst_regime_pf:.2f}"
+        f"worst_regime={worst_regime}:{worst_regime_pf:.2f} "
+        f"loc={strategy_loc} loc_penalty={loc_penalty:.1f}"
     )
 
     # ── Save full results JSON ─────────────────────────────────────
