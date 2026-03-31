@@ -12,11 +12,11 @@ from src.strategies.base import BaseStrategy
 class RegimeTrendUpStrategy(BaseStrategy):
     """UP+NORMAL regime specialist: buy pullbacks in uptrends.
 
-    Simple 4-factor entry:
-    1. 5m EMA20 > EMA50 (trend is up)
-    2. Price pulled back within pullback_pct of 5m EMA20 (buy the dip)
+    4-factor entry using 1m indicators (available after 50 bars = 50 min):
+    1. 1m EMA20 > EMA50 (trend is up on intraday timeframe)
+    2. Price within pullback_pct of 1m EMA20 (buy the dip)
     3. Price above VWAP (momentum intact)
-    4. RSI not overbought (<70) so we're not chasing
+    4. RSI in range [rsi_min, rsi_max] — not overbought, not in freefall
 
     ATR-based stop below entry, 2.5R target.
     """
@@ -28,10 +28,10 @@ class RegimeTrendUpStrategy(BaseStrategy):
 
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
-        self.pullback_pct = float(config.get("pullback_pct", 0.008))  # 0.8% max pullback from EMA20
+        self.min_bars = int(config.get("min_bars", 55))
+        self.pullback_pct = float(config.get("pullback_pct", 0.02))  # 2% window around EMA20
         self.rsi_max = float(config.get("rsi_max", 70.0))
-        self.rsi_min = float(config.get("rsi_min", 35.0))
+        self.rsi_min = float(config.get("rsi_min", 30.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_rr = float(config.get("target_rr", 2.5))
         self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:35")))
@@ -66,15 +66,15 @@ class RegimeTrendUpStrategy(BaseStrategy):
 
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        # 1. Trend confirmed: 5m EMA20 > EMA50
-        ema20 = mtf.get_ema("5m", 20)
-        ema50 = mtf.get_ema("5m", 50)
+        # 1. Trend confirmed on 1m: EMA20 > EMA50
+        ema20 = mtf.get_ema("1m", 20)
+        ema50 = mtf.get_ema("1m", 50)
         if ema20 is None or ema50 is None:
             return None
         if ema20 <= ema50:
             return None
 
-        # 2. Price pulled back close to EMA20 (within pullback_pct)
+        # 2. Price within pullback_pct of EMA20 (buy the dip, not the rip)
         dist_pct = (bar.close - ema20) / ema20
         if dist_pct < -self.pullback_pct or dist_pct > self.pullback_pct:
             return None
@@ -85,12 +85,12 @@ class RegimeTrendUpStrategy(BaseStrategy):
             return None
 
         # 4. RSI not overbought and not in freefall
-        rsi = mtf.get_rsi("5m", 14)
+        rsi = mtf.get_rsi("1m", 14)
         if rsi is not None and (rsi > self.rsi_max or rsi < self.rsi_min):
             return None
 
         # ATR stop and target
-        atr = mtf.get_atr("5m", 14)
+        atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
             return None
 
@@ -99,11 +99,11 @@ class RegimeTrendUpStrategy(BaseStrategy):
         target_price = bar.close + self.target_rr * stop_distance
 
         meta = {
-            "ema20_5m": round(ema20, 4),
-            "ema50_5m": round(ema50, 4),
+            "ema20_1m": round(ema20, 4),
+            "ema50_1m": round(ema50, 4),
             "dist_pct": round(dist_pct, 5),
-            "rsi_5m": round(rsi, 2) if rsi is not None else None,
-            "atr_5m": round(atr, 4),
+            "rsi_1m": round(rsi, 2) if rsi is not None else None,
+            "atr_1m": round(atr, 4),
             "vwap_dist": round(vwap_dist, 5) if vwap_dist is not None else None,
         }
 
