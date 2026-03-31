@@ -91,6 +91,10 @@ class RegimeTrendUpStrategy(BaseStrategy):
         if rsi is not None and (rsi > self.rsi_max or rsi < self.rsi_min):
             return None
 
+        # 5. Bullish reversal bar — confirms pullback is ending, not continuing
+        if bar.close <= bar.open:
+            return None
+
         # ATR stop and target
         atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
