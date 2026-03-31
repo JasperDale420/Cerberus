@@ -30,6 +30,31 @@ _BAR_DATAFRAME_CACHE: dict[tuple[str, tuple[str, ...], str, str, int], pd.DataFr
 _ET_TZ = ZoneInfo("America/New_York")
 
 
+def _dynamic_import_strategy_class(strategy_file: str):
+    """Import a strategy module by file stem and return the BaseStrategy subclass.
+
+    Used by autoresearch_driver.sh to verify a newly-written strategy file
+    imports correctly before running WFO evaluation.
+
+    Returns the class if found, or None if no BaseStrategy subclass exists.
+    """
+    import importlib
+    import inspect
+
+    from src.strategies.base import BaseStrategy
+
+    module_path = f"src.strategies.{strategy_file}"
+    try:
+        module = importlib.import_module(module_path)
+    except Exception:
+        return None
+
+    for _, obj in inspect.getmembers(module, inspect.isclass):
+        if issubclass(obj, BaseStrategy) and obj is not BaseStrategy and obj.__module__ == module_path:
+            return obj
+    return None
+
+
 def _should_flatten_position(strategy, hold_days: int) -> bool:
     """Determine if a position should be flattened at EOD."""
     if not getattr(strategy, "allow_overnight", False):
