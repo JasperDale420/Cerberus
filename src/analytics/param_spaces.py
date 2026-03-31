@@ -467,6 +467,53 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     # ------------------------------------------------------------------
+    # Regime Adaptive — 5 params
+    #   Cross-regime generalist: switches behavior by trend regime.
+    #   UP→dip-buy, DOWN→fade-bounce, FLAT→RSI extremes.
+    # ------------------------------------------------------------------
+    "regime_adaptive": [
+        ParamDef(
+            "rsi_long_entry",
+            "float",
+            low=35.0,
+            high=50.0,
+            step=5.0,
+            description="RSI threshold for BUY in UP regime (buy the dip below this)",
+        ),
+        ParamDef(
+            "rsi_short_entry",
+            "float",
+            low=55.0,
+            high=70.0,
+            step=5.0,
+            description="RSI threshold for SELL in DOWN regime (short the bounce above this)",
+        ),
+        ParamDef(
+            "stop_atr_mult",
+            "float",
+            low=1.0,
+            high=2.5,
+            step=0.25,
+            description="ATR multiplier for stop loss distance",
+        ),
+        ParamDef(
+            "target_atr_mult",
+            "float",
+            low=2.0,
+            high=5.0,
+            step=0.5,
+            description="ATR multiplier for take profit distance",
+        ),
+        ParamDef(
+            "cooldown_bars",
+            "int",
+            low=3,
+            high=15,
+            step=3,
+            description="Minimum 1m bars between signals per symbol",
+        ),
+    ],
+    # ------------------------------------------------------------------
     # Momentum Fade — 5 params
     #   Focus: VWAP distance, volume surge, confluence, stop/target, hold
     #   Fades overextended moves away from VWAP on volume spikes.

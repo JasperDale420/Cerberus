@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **RegimeAdaptive strategy**: New cross-regime generalist (`src/strategies/regime_adaptive.py`) that switches entry logic by trend regime — dip-buy in UP, fade bounce in DOWN, RSI extremes in FLAT. 3-factor logic (RSI + ATR), permissive activation across all sessions/trends/vols. Registered in main.py with param space in `param_spaces.py`.
+
 - **Per-session-phase performance statistics**: New `compute_session_phase_stats()` function in `src/analytics/regime_stats.py` breaks down strategy performance by intraday session phase (opening_15m, morning, midday, power_hour, close_15m). Reports per-phase trade count, win rate, profit factor, avg/total PnL, best/worst trade, and average hold time. Identifies best/worst sessions by avg PnL, recommends phases with PF > 1.2, and flags phases with 0 < PF < 0.8 to avoid. Trades missing or carrying unrecognized `entry_session_phase` values are grouped under "unknown". Integrated into the report card under `report["regime"]["session_phase"]`. Degrades gracefully when session labels are absent.
 
 - **Event-based performance attribution**: New `compute_event_attribution()` function in `src/analytics/regime_stats.py` breaks down strategy P&L by proximity to earnings, FOMC, and OPEX events. For each event type, reports trade counts, total/avg PnL, and win rates for near vs far trades, plus a recommendation (TRADE/AVOID/NEUTRAL). Detects multi-event overlap (trades near 2+ events simultaneously). Integrated into the report card under `report["regime"]["event_attribution"]`. Degrades gracefully when event fields are absent.
