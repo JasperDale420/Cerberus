@@ -23,6 +23,7 @@ class FixedSlippageFillModel:
         order_price: float | None,
         order_type: str,
         bar: Bar | None,
+        **kwargs: object,
     ) -> FillResult:
         price = order_price or 0.0
         slip_frac = self.slippage_bps / 10_000.0
