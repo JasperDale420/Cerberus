@@ -344,44 +344,37 @@ Read the file, fix it, run 'ruff check src/strategies/${STRAT_FILE}.py', and com
     echo "[iter $ITER] Result: score=$SCORE windows=$WIN_PROF trades=$TRADES sortino=$SORTINO"
 
     # ── Step 4: Keep or discard ────────────────────────────────────
-    # Three-tier keep logic:
-    #   1. KEEP (best): composite score improved
-    #   2. KEEP (progress): strategy generated >30 trades (iteratable, even if losing)
-    #   3. KEEP (specialist): any regime window scored > 3.0
-    #   4. DISCARD: 0 trades or evaluation error — revert
+    # Strict improvement-only logic:
+    #   1. GATE: must have >30 trades to even be considered (otherwise meaningless)
+    #   2. KEEP (improved): composite score improved over best
+    #   3. KEEP (first trades): first iteration that generates >30 trades (bootstrap)
+    #   4. DISCARD: everything else — revert to preserve the best-scoring code
     #
-    # We ONLY revert 0-trade commits. A strategy with trades is progress
-    # that the agent can iterate on. Reverting a -$500 strategy that traded
-    # 200 times loses all the information about WHY it lost.
+    # The agent sees the detailed trade analysis in .last_result either way,
+    # so it learns from discarded iterations without the code being kept.
     KEEP=false
     KEEP_REASON=""
 
-    # Check if composite improved
-    if echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}'; then
+    # Gate: must have trades to be meaningful
+    HAS_TRADES=false
+    if [ "$TRADES" -gt 30 ] 2>/dev/null; then
+        HAS_TRADES=true
+    fi
+
+    # Check if composite improved (must also have trades)
+    if [ "$HAS_TRADES" = "true" ] && echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}'; then
         KEEP=true
         KEEP_REASON="composite improved: $SCORE > $BEST_SCORE"
         echo "$SCORE" > "$BEST_SCORE_FILE"
         BEST_SCORE="$SCORE"
     fi
 
-    # Check for regime specialist windows (score > 3.0 in target regime)
-    if [ "$KEEP" = "false" ]; then
-        while IFS= read -r regime_line; do
-            [ -z "$regime_line" ] && continue
-            window_score=$(echo "$regime_line" | grep -o 'oos_score=[^ ]*' | cut -d= -f2)
-            window_regime=$(echo "$regime_line" | grep -o 'regime=[^ ]*' | cut -d= -f2)
-            if echo "$window_score" | awk '{exit ($1 > 3.0) ? 0 : 1}'; then
-                KEEP=true
-                KEEP_REASON="regime specialist: $window_regime scored $window_score"
-                break
-            fi
-        done <<< "$REGIME_LINES"
-    fi
-
-    # Keep ANY commit that generated >30 trades — it's a working strategy worth iterating on
-    if [ "$KEEP" = "false" ] && [ "$TRADES" -gt 30 ] 2>/dev/null; then
+    # Bootstrap: if best_score is still -999 and we got trades for the first time, keep
+    if [ "$KEEP" = "false" ] && [ "$HAS_TRADES" = "true" ] && echo "$BEST_SCORE" | awk '{exit ($1 <= -999) ? 0 : 1}'; then
         KEEP=true
-        KEEP_REASON="progress: generated $TRADES trades (iteratable)"
+        KEEP_REASON="first working strategy: $TRADES trades (bootstrap from -999)"
+        echo "$SCORE" > "$BEST_SCORE_FILE"
+        BEST_SCORE="$SCORE"
     fi
 
     if [ "$KEEP" = "true" ]; then
