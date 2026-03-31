@@ -189,3 +189,17 @@ strategies:
       liquidity: [good, thin, stressed]
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
+
+  autoresearch_strategy:
+    enabled: true
+    stop_atr_mult: 1.5
+    target_atr_mult: 3.0
+    min_bars: 30
+    cooldown_bars: 5
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
