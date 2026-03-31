@@ -30,10 +30,10 @@ class RegimeTrendUpStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.pullback_pct = float(config.get("pullback_pct", 0.02))  # max distance BELOW EMA20
-        self.pullback_chase_cap = float(config.get("pullback_chase_cap", 0.003))  # max distance ABOVE EMA20 (0.3%)
+        self.pullback_chase_cap = float(config.get("pullback_chase_cap", 0.015))  # max distance ABOVE EMA20 (1.5%)
         self.rsi_max = float(config.get("rsi_max", 70.0))
         self.rsi_min = float(config.get("rsi_min", 30.0))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_rr = float(config.get("target_rr", 2.5))
         self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:35")))
         self.time_window_end = time_utils.parse_time_string(str(config.get("time_window_end", "15:45")))
