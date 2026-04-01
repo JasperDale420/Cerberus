@@ -38,17 +38,26 @@ class AutoresearchStrategy(BaseStrategy):
         if ema20 is None or ema50 is None:
             return None
 
-        # Uptrend: EMA20 > EMA50
-        if ema20 <= ema50:
+        # Uptrend: EMA20 > EMA50 with meaningful spread
+        spread = (ema20 - ema50) / ema50
+        if spread < 0.001:
             return None
 
         # Pullback: price at or below EMA20
         if bar.close > ema20:
             return None
 
+        # RSI must be in oversold zone (genuine pullback, not drift)
         rsi = mtf.get_rsi("1m", 14)
-        if rsi is not None and (rsi > 65 or rsi < 25):
+        if rsi is None or rsi > 40 or rsi < 20:
             return None
+
+        # 5m trend confirmation
+        ema20_5m = mtf.get_ema("5m", 20)
+        ema50_5m = mtf.get_ema("5m", 50)
+        if ema20_5m is not None and ema50_5m is not None:
+            if ema20_5m <= ema50_5m:
+                return None
 
         atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
@@ -65,5 +74,5 @@ class AutoresearchStrategy(BaseStrategy):
             market_state,
             stop,
             target,
-            meta={"reason": "ema_pullback"},
+            meta={"reason": "ema_pullback", "rsi": round(rsi, 1)},
         )
