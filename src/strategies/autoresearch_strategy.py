@@ -33,41 +33,31 @@ class AutoresearchStrategy(BaseStrategy):
 
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
+        # 1m uptrend: EMA20 > EMA50
         ema20 = mtf.get_ema("1m", 20)
         ema50 = mtf.get_ema("1m", 50)
-        if ema20 is None or ema50 is None:
-            return None
-
-        # Uptrend: EMA20 > EMA50
-        if ema20 <= ema50:
+        if ema20 is None or ema50 is None or ema20 <= ema50:
             return None
 
         atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
             return None
 
-        # Pullback zone: price at or slightly below EMA20 (within 1 ATR)
-        dist_from_ema = ema20 - bar.close
-        if dist_from_ema < 0:
-            return None  # price above EMA20, no pullback
-        if dist_from_ema > 1.0 * atr:
-            return None  # too deep — possible breakdown
+        # Tight pullback: price within 0.5 ATR below EMA20
+        dist = ema20 - bar.close
+        if dist < 0 or dist > 0.5 * atr:
+            return None
 
-        # RSI filter: 30-55 (genuine pullback, not overbought)
+        # RSI: 30-55
         rsi = mtf.get_rsi("1m", 14)
         if rsi is None or rsi > 55 or rsi < 30:
             return None
 
-        # Volume confirmation: bar volume above 20-bar average
-        bars = symbol_state.bars_1m
-        if len(bars) >= 20:
-            vol_sum = sum(float(b.volume) for b in list(bars)[-20:])
-            vol_avg = vol_sum / 20.0
-            if vol_avg > 0 and bar.volume < 1.2 * vol_avg:
-                return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Regime-adaptive stops
+        stop_dist = self._apply_regime_volatility_multiplier(self.stop_atr_mult * atr, market_state)
+        target_dist = self._apply_regime_volatility_multiplier(self.target_atr_mult * atr, market_state)
+        stop = bar.close - stop_dist
+        target = bar.close + target_dist
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -77,5 +67,5 @@ class AutoresearchStrategy(BaseStrategy):
             market_state,
             stop,
             target,
-            meta={"reason": "ema_pullback_vol", "rsi": round(rsi, 1)},
+            meta={"reason": "ema_pullback_tight", "rsi": round(rsi, 1)},
         )
