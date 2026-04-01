@@ -1,8 +1,4 @@
-"""Autoresearch Strategy — the file you modify.
-
-This is the ONLY file the autoresearch agent edits. Everything else is frozen.
-Start simple. Iterate. The evaluation is fixed at ~30 min per run.
-"""
+"""Autoresearch Strategy — the file you modify."""
 
 from __future__ import annotations
 
@@ -10,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
+from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.strategies.base import BaseStrategy
 
 
@@ -34,34 +31,29 @@ class AutoresearchStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Read indicators
-        ema20 = symbol_state.indicators.get("ema_close_1m:20")
-        ema50 = symbol_state.indicators.get("ema_close_1m:50")
-        rsi = symbol_state.indicators.get("rsi_1m:14")
-        atr = symbol_state.indicators.get("atr_1m:14")
-        if ema20 is None or ema50 is None or rsi is None or atr is None:
-            return None
+        mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        ema20 = float(ema20)
-        ema50 = float(ema50)
-        rsi = float(rsi)
-        atr = float(atr)
-        if atr < 0.01:
+        ema20 = mtf.get_ema("1m", 20)
+        ema50 = mtf.get_ema("1m", 50)
+        if ema20 is None or ema50 is None:
             return None
 
         # Uptrend: EMA20 > EMA50
         if ema20 <= ema50:
             return None
 
-        # Pullback: price near or below EMA20
+        # Pullback: price at or below EMA20
         if bar.close > ema20:
             return None
 
-        # RSI filter: not overbought, not too oversold (falling knife)
-        if rsi > 60 or rsi < 25:
+        rsi = mtf.get_rsi("1m", 14)
+        if rsi is not None and (rsi > 65 or rsi < 25):
             return None
 
-        # Entry: BUY
+        atr = mtf.get_atr("1m", 14)
+        if atr is None or atr <= 0:
+            return None
+
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
@@ -73,5 +65,5 @@ class AutoresearchStrategy(BaseStrategy):
             market_state,
             stop,
             target,
-            meta={"reason": "ema_pullback", "rsi": rsi, "atr": atr},
+            meta={"reason": "ema_pullback"},
         )
