@@ -1,220 +1,117 @@
 #!/usr/bin/env bash
-# Cerberus Autoresearch Loop v3 — Hybrid Architecture
+# Cerberus Autoresearch v3 — Single persistent agent with session resume
 #
-# Combines Karpathy single-agent (full context for edits) with
-# decoupled WFO (survives agent death).
+# Faithful to Karpathy: one long-lived agent that accumulates context.
+# The bash wrapper ONLY handles session resurrection — if the agent dies
+# (quota, timeout, context limit), we resume the same session.
 #
-# Flow:
-#   1. Bash runs WFO (nohup, survives everything)
-#   2. Bash spawns agent for edit step only (~30 sec, minimal context)
-#   3. Agent reads results, edits strategy, commits, exits
-#   4. Bash runs next WFO
-#   5. Repeat
+# The agent runs the eval in background, waits for completion, reads results,
+# and iterates. All reasoning and memory lives in the conversation history.
+#
+# Usage: ./scripts/autoresearch_loop.sh [session_name]
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-STRATEGY="${1:-autoresearch_strategy}"
-MAX_ITER="${2:-100}"
-TSV="autoresearch/results.tsv"
-BEST_SCORE_FILE="autoresearch/.best_score"
-LAST_RESULT_FILE="autoresearch/.last_result"
-CONSECUTIVE_DISCARDS=0
+SESSION_NAME="${1:-autoresearch-v3}"
+STRATEGY="autoresearch_strategy"
+MAX_DEATHS=20  # Max times we'll resurrect before giving up
+DEATHS=0
 
 mkdir -p autoresearch artifacts/autoresearch/logs
 
-[ ! -f "$TSV" ] && printf "iteration\tcommit\tcomposite_score\ttrades\tstatus\tdescription\n" > "$TSV"
-[ ! -f "$BEST_SCORE_FILE" ] && echo "-999.0" > "$BEST_SCORE_FILE"
-
-BEST_SCORE=$(cat "$BEST_SCORE_FILE")
-ITER=$(tail -n +2 "$TSV" | wc -l | tr -d ' ')
-
 echo "============================================================"
-echo "  Cerberus Autoresearch v3 — Hybrid Loop"
-echo "  Strategy: $STRATEGY | Best: $BEST_SCORE | Iter: $ITER"
+echo "  Cerberus Autoresearch v3 — Persistent Agent"
+echo "  Session: $SESSION_NAME"
+echo "  Strategy: $STRATEGY"
+echo "  Will resurrect up to $MAX_DEATHS times"
 echo "============================================================"
 
-# ── Run WFO and wait for completion ───────────────────────────────
-run_wfo() {
-    local strategy="$1"
-    echo "[wfo] Running for $strategy..."
-    ./scripts/run_eval_with_logging.sh "$strategy" --n-trials 5
-}
+# Initial prompt for first launch
+INITIAL_PROMPT="You are an autonomous quant researcher for the Cerberus trading system.
 
-# ── Baseline ──────────────────────────────────────────────────────
-if [ "$ITER" -eq 0 ]; then
-    echo "[iter 0] Running baseline..."
-    run_wfo "$STRATEGY"
-    RESULT_LINE=$(grep "^AUTORESEARCH_RESULT" run.log 2>/dev/null || echo "")
+Working directory: /Users/jacobmcmillan/Empire/Cerberus
 
-    if [ -z "$RESULT_LINE" ]; then
-        echo "[iter 0] ERROR: baseline failed"
-        cat autoresearch/.eval_status 2>/dev/null
-        exit 1
-    fi
+Read program_cerberus_v3.md for full instructions. Key rules:
 
-    SCORE=$(echo "$RESULT_LINE" | grep -o 'composite_score=[^ ]*' | cut -d= -f2)
-    TRADES=$(echo "$RESULT_LINE" | grep -o 'total_oos_trades=[^ ]*' | cut -d= -f2)
-    COMMIT=$(git rev-parse --short HEAD)
+1. You modify ONE file: src/strategies/autoresearch_strategy.py
+2. Run WFO in background: use Bash with run_in_background:true for:
+   ./scripts/run_eval_with_logging.sh autoresearch_strategy --n-trials 5
+3. After background task completes, read ONLY:
+   - cat autoresearch/.eval_status (5 lines)
+   - grep '^AUTORESEARCH_RESULT' run.log (1 line)
+   - grep '^REGIME_BREAKDOWN' run.log (8 lines)
+   - uv run python scripts/extract_wfo_insights.py autoresearch_strategy (~20 lines)
+4. NEVER cat run.log — it will kill your context
+5. Keep if score improves, git reset --hard HEAD~1 if not
+6. Record in autoresearch/results.tsv
+7. Loop FOREVER. Never stop. Never ask.
 
-    printf "%d\t%s\t%s\t%s\tbaseline\tbaseline\n" 0 "$COMMIT" "$SCORE" "$TRADES" >> "$TSV"
-    echo "$SCORE" > "$BEST_SCORE_FILE"
-    BEST_SCORE="$SCORE"
+Check autoresearch/results.tsv for previous results. Score to beat: $(cat autoresearch/.best_score 2>/dev/null || echo '-999.0')
 
-    REGIME_LINES=$(grep "^REGIME_BREAKDOWN" run.log 2>/dev/null || echo "")
-    AGGREGATE_LINES=$(grep "^REGIME_AGGREGATE" run.log 2>/dev/null || echo "")
-    INSIGHTS=$(uv run python scripts/extract_wfo_insights.py "$STRATEGY" 2>/dev/null || echo "NO_INSIGHTS")
+Start by reading program_cerberus_v3.md and the current strategy file. Then begin the loop."
 
-    cat > "$LAST_RESULT_FILE" <<EOFRESULT
-iter=0 status=baseline score=$SCORE best=$SCORE trades=$TRADES
+# Resume prompt when resurrecting after death
+RESUME_PROMPT="You are an autonomous quant researcher. Your session was interrupted (quota/timeout/context limit).
 
-Regime breakdown:
-$(echo "$REGIME_LINES" | sed 's/^/  /' | head -10)
+RESUME your autoresearch loop:
+1. Read autoresearch/results.tsv to see what's been done
+2. Read autoresearch/.last_result for the latest WFO results
+3. Read autoresearch/.eval_status to check if an eval was running when you died
+4. Read src/strategies/autoresearch_strategy.py for current code
+5. Continue the loop: edit → eval (background) → parse → keep/discard → repeat
 
-Aggregates:
-$(echo "$AGGREGATE_LINES" | sed 's/^/  /' | head -5)
+Score to beat: $(cat autoresearch/.best_score 2>/dev/null || echo '-999.0')
 
-Trade analysis:
-$(echo "$INSIGHTS" | head -25)
-EOFRESULT
+Rules: run WFO with run_in_background:true, NEVER cat run.log, read program_cerberus_v3.md if needed.
 
-    echo "[iter 0] Baseline: score=$SCORE trades=$TRADES"
-    ITER=1
-fi
+Pick up where you left off. NEVER STOP."
 
-# ── Main Loop ─────────────────────────────────────────────────────
-while [ "$ITER" -le "$MAX_ITER" ]; do
-    echo ""
-    echo "============================================================"
-    echo "  Iter $ITER/$MAX_ITER | Best: $BEST_SCORE | Discards: $CONSECUTIVE_DISCARDS"
-    echo "============================================================"
-
-    # ── Step 1: Spawn Sonnet agent for edit only ──────────────────
-    echo "[iter $ITER] Spawning edit agent..."
-    LAST_RESULT=$(cat "$LAST_RESULT_FILE" 2>/dev/null || echo "(no previous result)")
-    HISTORY=$(tail -4 "$TSV" | head -3 | awk -F'\t' '{printf "  iter%s: score=%s status=%s trades=%s — %s\n", $1, $3, $5, $4, substr($6,1,60)}' 2>/dev/null || echo "  (none)")
-
-    AGENT_PROMPT="Score to beat: ${BEST_SCORE} | Strategy: ${STRATEGY}
-
-## Last Result
-${LAST_RESULT}
-
-## History (don't repeat)
-${HISTORY}
-
-## Task
-Read src/strategies/${STRATEGY}.py, then make ONE change to beat ${BEST_SCORE}.
-$(if [ "$CONSECUTIVE_DISCARDS" -ge 5 ]; then echo "WARNING: ${CONSECUTIVE_DISCARDS} consecutive discards. Try something RADICALLY different."; fi)
-
-Rules:
-- Read program_cerberus_v3.md for the BaseStrategy interface if needed
-- Prefer removing code over adding. Simpler = better.
-- ruff check src/strategies/${STRATEGY}.py before committing
-- Commit as: experiment(autoresearch): iter${ITER} — <description>
-- Then STOP. Do NOT run any WFO."
-
-    claude -p "$AGENT_PROMPT" --model sonnet --allowedTools "Read,Edit,Write,Bash,Glob,Grep" --permission-mode bypassPermissions 2>&1 || true
-
-    # ── Verify commit ─────────────────────────────────────────────
-    NEW_COMMIT=$(git rev-parse --short HEAD)
-    PREV_COMMIT=$(tail -1 "$TSV" | cut -f2)
-
-    # Auto-commit if agent edited but forgot to commit
-    if [ "$NEW_COMMIT" = "$PREV_COMMIT" ] && [ -f "src/strategies/${STRATEGY}.py" ]; then
-        if ! git diff --quiet src/strategies/${STRATEGY}.py 2>/dev/null; then
-            git add src/strategies/${STRATEGY}.py config/strategies.yaml 2>/dev/null
-            git commit -m "experiment(autoresearch): iter${ITER} — agent edit (auto-committed)" --no-verify 2>/dev/null || true
-            NEW_COMMIT=$(git rev-parse --short HEAD)
-        fi
-    fi
-
-    if [ "$NEW_COMMIT" = "$PREV_COMMIT" ]; then
-        # Quota check
-        echo "[iter $ITER] No changes — skipping"
-        ITER=$((ITER + 1))
-        CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
-        continue
-    fi
-
-    COMMIT_MSG=$(git log -1 --format='%s' | tr -d '\n\r')
-    echo "[iter $ITER] Committed: $NEW_COMMIT — $COMMIT_MSG"
-
-    # ── Step 2: Run WFO (decoupled from agent) ────────────────────
-    echo "[iter $ITER] Running WFO..."
-    run_wfo "$STRATEGY"
-
-    RESULT_LINE=$(grep "^AUTORESEARCH_RESULT" run.log 2>/dev/null || echo "")
-    if [ -z "$RESULT_LINE" ]; then
-        echo "[iter $ITER] ERROR: WFO failed"
-        cat autoresearch/.eval_status 2>/dev/null
-        printf "%d\t%s\t-999.0\t0\terror\t%s\n" "$ITER" "$NEW_COMMIT" "$COMMIT_MSG" >> "$TSV"
-        git reset --hard HEAD~1
-        CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
-        ITER=$((ITER + 1))
-        continue
-    fi
-
-    # ── Step 3: Parse + keep/discard ──────────────────────────────
-    SCORE=$(echo "$RESULT_LINE" | grep -o 'composite_score=[^ ]*' | cut -d= -f2)
-    TRADES=$(echo "$RESULT_LINE" | grep -o 'total_oos_trades=[^ ]*' | cut -d= -f2)
-    REGIME_LINES=$(grep "^REGIME_BREAKDOWN" run.log 2>/dev/null || echo "")
-    AGGREGATE_LINES=$(grep "^REGIME_AGGREGATE" run.log 2>/dev/null || echo "")
-    INSIGHTS=$(uv run python scripts/extract_wfo_insights.py "$STRATEGY" 2>/dev/null || echo "NO_INSIGHTS")
-
-    echo "[iter $ITER] Result: score=$SCORE trades=$TRADES"
-
-    KEEP=false
-    HAS_TRADES=false
-    [ "$TRADES" -gt 30 ] 2>/dev/null && HAS_TRADES=true
-
-    # Keep if improved
-    if [ "$HAS_TRADES" = "true" ] && echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}'; then
-        KEEP=true
-        echo "$SCORE" > "$BEST_SCORE_FILE"
-        BEST_SCORE="$SCORE"
-    fi
-
-    # Bootstrap from -999
-    if [ "$KEEP" = "false" ] && [ "$HAS_TRADES" = "true" ] && echo "$BEST_SCORE" | awk '{exit ($1 <= -999) ? 0 : 1}'; then
-        KEEP=true
-        echo "$SCORE" > "$BEST_SCORE_FILE"
-        BEST_SCORE="$SCORE"
-    fi
-
-    if [ "$KEEP" = "true" ]; then
-        STATUS="keep"
-        CONSECUTIVE_DISCARDS=0
-        echo "[iter $ITER] KEEP — score=$SCORE"
+# ── Main resurrection loop ────────────────────────────────────────
+while [ "$DEATHS" -lt "$MAX_DEATHS" ]; do
+    if [ "$DEATHS" -eq 0 ]; then
+        echo "[launcher] Starting fresh session: $SESSION_NAME"
+        claude -p "$INITIAL_PROMPT" \
+            --model opus \
+            --name "$SESSION_NAME" \
+            --allowedTools "Read,Edit,Write,Bash,Glob,Grep" \
+            --permission-mode bypassPermissions \
+            2>&1 || true
     else
-        STATUS="discard"
-        CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
-        git reset --hard HEAD~1
-        echo "[iter $ITER] DISCARD — score=$SCORE vs best=$BEST_SCORE"
+        echo "[launcher] Resurrecting session (death #$DEATHS)..."
+        # Try to continue the named session
+        claude -p "$RESUME_PROMPT" \
+            --model opus \
+            --continue \
+            --allowedTools "Read,Edit,Write,Bash,Glob,Grep" \
+            --permission-mode bypassPermissions \
+            2>&1 || true
     fi
 
-    # ── Step 4: Record ────────────────────────────────────────────
-    printf "%d\t%s\t%s\t%s\t%s\t%s\n" "$ITER" "$NEW_COMMIT" "$SCORE" "$TRADES" "$STATUS" "$COMMIT_MSG" >> "$TSV"
+    EXIT_CODE=$?
+    DEATHS=$((DEATHS + 1))
+    echo ""
+    echo "[launcher] Agent exited (code=$EXIT_CODE, death #$DEATHS/$MAX_DEATHS)"
+    echo "[launcher] Sleeping 30s before resurrection..."
+    sleep 30
 
-    cat > "$LAST_RESULT_FILE" <<EOFRESULT
-iter=$ITER status=$STATUS score=$SCORE best=$BEST_SCORE trades=$TRADES
-change: $COMMIT_MSG
+    # Update the resume prompt with latest score
+    RESUME_PROMPT="You are an autonomous quant researcher. Your session was interrupted (death #$DEATHS).
 
-Regime breakdown:
-$(echo "$REGIME_LINES" | sed 's/^/  /' | head -10)
+RESUME your autoresearch loop:
+1. Read autoresearch/results.tsv to see what's been done
+2. Read autoresearch/.last_result for the latest WFO results
+3. Read autoresearch/.eval_status to check if an eval was running
+4. Read src/strategies/autoresearch_strategy.py for current code
+5. Continue: edit → eval (background) → parse → keep/discard → repeat
 
-Aggregates:
-$(echo "$AGGREGATE_LINES" | sed 's/^/  /' | head -5)
+Score to beat: $(cat autoresearch/.best_score 2>/dev/null || echo '-999.0')
 
-Trade analysis:
-$(echo "$INSIGHTS" | head -25)
+Rules: run WFO with run_in_background:true, NEVER cat run.log, read program_cerberus_v3.md if needed.
 
-discards=$CONSECUTIVE_DISCARDS
-EOFRESULT
-
-    ITER=$((ITER + 1))
+NEVER STOP."
 done
 
-echo ""
-echo "============================================================"
-echo "  Complete: $MAX_ITER iterations | Best: $BEST_SCORE"
-echo "============================================================"
+echo "[launcher] Max deaths ($MAX_DEATHS) reached. Stopping."
+echo "  Final results: autoresearch/results.tsv"
+echo "  Best score: $(cat autoresearch/.best_score 2>/dev/null || echo 'N/A')"
