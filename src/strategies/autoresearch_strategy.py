@@ -31,6 +31,13 @@ class AutoresearchStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
+        # Regime filter: skip low-vol uptrends (consistent losers)
+        meta = symbol_state.meta
+        trend = meta.get("regime_trend", "")
+        vol = meta.get("regime_vol", "")
+        if trend == "UP" and vol in ("LOW", "NORMAL"):
+            return None
+
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
         # 1m uptrend: EMA20 > EMA50
