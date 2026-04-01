@@ -77,10 +77,16 @@ LOOP FOREVER:
 2. Hack `src/strategies/autoresearch_strategy.py` with an experimental idea
 3. `ruff check src/strategies/autoresearch_strategy.py` — catch syntax errors
 4. `git commit -m "experiment: iter<N> — <description>"`
-5. Run: `uv run python scripts/cerberus_autoresearch.py autoresearch_strategy --n-trials 5 > run.log 2>&1`
-6. Read results: `grep "^AUTORESEARCH_RESULT" run.log`
-7. Read trade analysis: `uv run python scripts/extract_wfo_insights.py autoresearch_strategy`
-8. If grep is empty, it crashed. Run `tail -n 50 run.log` and fix.
+5. Run: `./scripts/run_eval_with_logging.sh autoresearch_strategy --n-trials 5`
+   This redirects output to run.log AND writes autoresearch/.eval_status with exit code, reason, and timing.
+6. Check status: `cat autoresearch/.eval_status` — shows exit_code, exit_reason, duration, has_result
+7. Read results: `grep "^AUTORESEARCH_RESULT" run.log`
+8. Read trade analysis: `uv run python scripts/extract_wfo_insights.py autoresearch_strategy`
+9. If exit_code != 0, check the reason:
+   - `timeout` → eval took too long, strategy may be too complex
+   - `killed (SIGKILL)` → out of memory, reduce symbols or trials
+   - `python_error` → check `tail -50 run.log` for stack trace and fix
+10. Check `autoresearch/eval_history.log` for patterns across runs.
 9. Record in results.tsv
 10. If composite_score improved → keep the commit, advance the branch
 11. If composite_score is equal or worse → `git reset --hard HEAD~1`
