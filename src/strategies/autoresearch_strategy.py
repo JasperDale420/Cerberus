@@ -50,6 +50,11 @@ class AutoresearchStrategy(BaseStrategy):
         if atr is None or atr <= 0:
             return None
 
+        # ADX trend strength: require confirmed trend
+        adx = mtf.get_adx("1m")
+        if adx is not None and adx < 20:
+            return None
+
         # Tight pullback: price within 0.5 ATR below EMA20
         dist = ema20 - bar.close
         if dist < 0 or dist > 0.5 * atr:
