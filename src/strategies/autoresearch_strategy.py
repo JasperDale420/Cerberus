@@ -38,30 +38,33 @@ class AutoresearchStrategy(BaseStrategy):
         if ema20 is None or ema50 is None:
             return None
 
-        # Uptrend: EMA20 > EMA50 with meaningful spread
-        spread = (ema20 - ema50) / ema50
-        if spread < 0.001:
+        # Uptrend: EMA20 > EMA50
+        if ema20 <= ema50:
             return None
-
-        # Pullback: price at or below EMA20
-        if bar.close > ema20:
-            return None
-
-        # RSI must be in oversold zone (genuine pullback, not drift)
-        rsi = mtf.get_rsi("1m", 14)
-        if rsi is None or rsi > 40 or rsi < 20:
-            return None
-
-        # 5m trend confirmation
-        ema20_5m = mtf.get_ema("5m", 20)
-        ema50_5m = mtf.get_ema("5m", 50)
-        if ema20_5m is not None and ema50_5m is not None:
-            if ema20_5m <= ema50_5m:
-                return None
 
         atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
             return None
+
+        # Pullback zone: price at or slightly below EMA20 (within 1 ATR)
+        dist_from_ema = ema20 - bar.close
+        if dist_from_ema < 0:
+            return None  # price above EMA20, no pullback
+        if dist_from_ema > 1.0 * atr:
+            return None  # too deep — possible breakdown
+
+        # RSI filter: 30-55 (genuine pullback, not overbought)
+        rsi = mtf.get_rsi("1m", 14)
+        if rsi is None or rsi > 55 or rsi < 30:
+            return None
+
+        # Volume confirmation: bar volume above 20-bar average
+        bars = symbol_state.bars_1m
+        if len(bars) >= 20:
+            vol_sum = sum(float(b.volume) for b in list(bars)[-20:])
+            vol_avg = vol_sum / 20.0
+            if vol_avg > 0 and bar.volume < 1.2 * vol_avg:
+                return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
@@ -74,5 +77,5 @@ class AutoresearchStrategy(BaseStrategy):
             market_state,
             stop,
             target,
-            meta={"reason": "ema_pullback", "rsi": round(rsi, 1)},
+            meta={"reason": "ema_pullback_vol", "rsi": round(rsi, 1)},
         )
