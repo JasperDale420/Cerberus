@@ -71,24 +71,28 @@ c3d4e5f	2.1000	380	discard	added volume filter — reduced quality
 
 ## The experiment loop
 
+**CRITICAL: NEVER let eval output enter your context.** The WFO produces thousands of lines that will fill your context window and kill your session. ALWAYS run the eval as a background command, then read ONLY the result lines from the log file.
+
 LOOP FOREVER:
 
 1. Look at the git state: current branch/commit
 2. Hack `src/strategies/autoresearch_strategy.py` with an experimental idea
 3. `ruff check src/strategies/autoresearch_strategy.py` — catch syntax errors
 4. `git commit -m "experiment: iter<N> — <description>"`
-5. Run: `./scripts/run_eval_with_logging.sh autoresearch_strategy --n-trials 5`
-   This redirects output to run.log AND writes autoresearch/.eval_status with exit code, reason, and timing.
-6. Check status: `cat autoresearch/.eval_status` — shows exit_code, exit_reason, duration, has_result
-7. Read results: `grep "^AUTORESEARCH_RESULT" run.log`
-8. Read trade analysis: `uv run python scripts/extract_wfo_insights.py autoresearch_strategy`
-9. If exit_code != 0, check the reason:
-   - `timeout` → eval took too long, strategy may be too complex
-   - `killed (SIGKILL)` → out of memory, reduce symbols or trials
-   - `python_error` → check `tail -50 run.log` for stack trace and fix
-10. Check `autoresearch/eval_history.log` for patterns across runs.
-9. Record in results.tsv
-10. If composite_score improved → keep the commit, advance the branch
+5. Run the eval in background (THIS IS MANDATORY — never run in foreground):
+   ```
+   ./scripts/run_eval_with_logging.sh autoresearch_strategy --n-trials 5
+   ```
+   Use `run_in_background: true` on the Bash tool. Then wait ~30 min.
+6. After the background task completes, read ONLY these small files:
+   - `cat autoresearch/.eval_status` — exit code, reason, duration (5 lines)
+   - `grep "^AUTORESEARCH_RESULT" run.log` — composite score (1 line)
+   - `grep "^REGIME_BREAKDOWN" run.log` — per-window results (~8 lines)
+   - `uv run python scripts/extract_wfo_insights.py autoresearch_strategy` — trade analysis (~20 lines)
+   **DO NOT** run `cat run.log` or `tail run.log` — it's thousands of lines.
+7. Record in results.tsv
+8. If composite_score improved → keep the commit, advance the branch
+9. If not → `git reset --hard HEAD~1`
 11. If composite_score is equal or worse → `git reset --hard HEAD~1`
 
 **Timeout**: Each run should take ~30 min. If a run exceeds 60 min, kill it: `pkill -f cerberus_autoresearch` and treat as crash.
