@@ -31,11 +31,13 @@ class AutoresearchStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Regime filter: skip low-vol uptrends (consistent losers)
+        # Regime filter: only trade in volatile or down environments
         meta = symbol_state.meta
         trend = meta.get("regime_trend", "")
         vol = meta.get("regime_vol", "")
         if trend == "UP" and vol in ("LOW", "NORMAL"):
+            return None
+        if trend == "FLAT" and vol == "LOW":
             return None
 
         mtf = MultiTimeframeAnalyzer(symbol_state)
