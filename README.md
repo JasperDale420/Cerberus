@@ -106,7 +106,7 @@ Config is merged by `src/core/config.py` from (in order):
 
 See:
 - Environment vars: [`docs/environment-variables.md`](docs/environment-variables.md)
-- Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Hidden Markov Regime Sidecar
 
@@ -205,6 +205,6 @@ docker compose --profile scheduler up -d cerberus-scheduler
 
 - Default safety: use paper mode until explicitly ready for live mode.
 - Validate runtime with `--healthcheck` before market hours.
-- Review operational procedures in [`docs/runbook.md`](docs/runbook.md).
+- Review operational procedures in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 - Security policy in [`SECURITY.md`](SECURITY.md).
 - Testing conventions in [`TESTING.md`](TESTING.md).
