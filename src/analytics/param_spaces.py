@@ -47,7 +47,6 @@ class ParamDef:
 
 LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "orb_v2": {
-        # Converged to 3.5 in 5/7 WFO windows (CV 0.18)
         "target_range_mult": 3.5,
     },
     "trend_rider_pro": {},
@@ -59,353 +58,94 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
-    # ------------------------------------------------------------------
-    # Trend Rider Pro v4 — 7 params, ranges informed by 72-iter autoresearch
-    # ------------------------------------------------------------------
     "trend_rider_pro": [
-        ParamDef(
-            "confluence_threshold",
-            "float",
-            low=55.0,
-            high=75.0,
-            step=5.0,
-            description="Minimum confluence score (autoresearch: 65 optimal)",
-        ),
-        ParamDef(
-            "min_trend_alignment",
-            "float",
-            low=0.15,
-            high=0.55,
-            step=0.05,
-            description="MTF trend alignment gate",
-        ),
-        ParamDef(
-            "pullback_threshold",
-            "float",
-            low=0.004,
-            high=0.012,
-            step=0.001,
-            description="Max distance from Kalman/EMA anchor for pullback detection",
-        ),
-        ParamDef(
-            "stop_atr_mult",
-            "float",
-            low=1.75,
-            high=3.25,
-            step=0.25,
-            description="ATR multiplier for stop (autoresearch: 2.5 optimal)",
-        ),
-        ParamDef(
-            "target_atr_mult",
-            "float",
-            low=3.0,
-            high=5.0,
-            step=0.5,
-            description="ATR multiplier for target (autoresearch: 4.0 optimal)",
-        ),
-        ParamDef(
-            "trail_min_profit_r",
-            "float",
-            low=0.5,
-            high=1.0,
-            step=0.05,
-            description="R-multiple before trailing activates (autoresearch: 0.75)",
-        ),
-        ParamDef(
-            "max_hold_minutes",
-            "int",
-            low=90,
-            high=180,
-            step=15,
-            description="Maximum hold time in minutes (autoresearch: 120)",
-        ),
+        ParamDef("confluence_threshold", "float", low=55.0, high=75.0, step=5.0, description="Confluence score"),
+        ParamDef("min_trend_alignment", "float", low=0.15, high=0.55, step=0.05, description="MTF alignment"),
+        ParamDef("pullback_threshold", "float", low=0.004, high=0.012, step=0.001, description="Pullback distance"),
+        ParamDef("stop_atr_mult", "float", low=1.75, high=3.25, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=3.0, high=5.0, step=0.5, description="ATR target"),
+        ParamDef("trail_min_profit_r", "float", low=0.5, high=1.0, step=0.05, description="Trail profit R"),
+        ParamDef("max_hold_minutes", "int", low=90, high=180, step=15, description="Max hold minutes"),
     ],
-    # ------------------------------------------------------------------
-    # Mean Reversion Pro — 5 params
-    # ------------------------------------------------------------------
     "mean_reversion_pro": [
-        ParamDef(
-            "confluence_threshold",
-            "float",
-            low=40.0,
-            high=75.0,
-            step=5.0,
-            description="Minimum confluence score to enter (lowered floor to 40)",
-        ),
-        ParamDef(
-            "vwap_dist_threshold",
-            "float",
-            low=0.002,
-            high=0.008,
-            step=0.001,
-            description="VWAP distance threshold (floor raised from 0.001)",
-        ),
-        ParamDef(
-            "bb_pos_threshold",
-            "float",
-            low=0.15,
-            high=0.6,
-            step=0.05,
-            description="Bollinger Band position threshold for direction",
-        ),
-        ParamDef(
-            "max_hold_minutes",
-            "int",
-            low=20,
-            high=90,
-            step=5,
-            description="Maximum hold time (widened ceiling to 90 for mean-reversion)",
-        ),
-        ParamDef(
-            "stop_atr_mult",
-            "float",
-            low=1.0,
-            high=2.5,
-            step=0.25,
-            description="ATR multiplier for fallback stop",
-        ),
-        ParamDef(
-            "hurst_gate_threshold",
-            "float",
-            low=0.0,
-            high=0.55,
-            step=0.05,
-            description="Hurst exponent gate — reject when H >= threshold. 0.0 disables gate.",
-        ),
-        ParamDef(
-            "hmm_min_confidence",
-            "float",
-            low=0.0,
-            high=0.8,
-            step=0.1,
-            description="HMM regime gate min confidence. 0.0 disables gate.",
-        ),
+        ParamDef("confluence_threshold", "float", low=40.0, high=75.0, step=5.0, description="Confluence score"),
+        ParamDef("vwap_dist_threshold", "float", low=0.002, high=0.008, step=0.001, description="VWAP distance"),
+        ParamDef("bb_pos_threshold", "float", low=0.15, high=0.6, step=0.05, description="BB position"),
+        ParamDef("max_hold_minutes", "int", low=20, high=90, step=5, description="Max hold minutes"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("hurst_gate_threshold", "float", low=0.0, high=0.55, step=0.05, description="Hurst gate"),
+        ParamDef("hmm_min_confidence", "float", low=0.0, high=0.8, step=0.1, description="HMM gate"),
     ],
-    # ------------------------------------------------------------------
-    # ORB V2 — 4 params (locked target_range_mult at 3.5)
-    # ------------------------------------------------------------------
     "orb_v2": [
-        ParamDef(
-            "confluence_threshold",
-            "float",
-            low=40.0,
-            high=75.0,
-            step=5.0,
-            description="Minimum confluence score for breakout entry (lowered floor to 40)",
-        ),
-        ParamDef(
-            "vol_gate_mult",
-            "float",
-            low=1.1,
-            high=1.7,
-            step=0.1,
-            description="Volume gate (tightened from [1.0, 2.0] per WFO convergence)",
-        ),
-        ParamDef(
-            "trail_min_profit_r",
-            "float",
-            low=0.5,
-            high=1.25,
-            step=0.25,
-            description="R-multiple before trailing stop activates",
-        ),
-        ParamDef(
-            "max_hold_minutes",
-            "int",
-            low=60,
-            high=120,
-            step=15,
-            description="Maximum hold time (floor raised to 60 from 30)",
-        ),
-        ParamDef(
-            "hmm_min_confidence",
-            "float",
-            low=0.0,
-            high=0.8,
-            step=0.1,
-            description="HMM regime gate min confidence. 0.0 disables gate.",
-        ),
+        ParamDef("confluence_threshold", "float", low=40.0, high=75.0, step=5.0, description="Confluence score"),
+        ParamDef("vol_gate_mult", "float", low=1.1, high=1.7, step=0.1, description="Volume gate"),
+        ParamDef("trail_min_profit_r", "float", low=0.5, high=1.25, step=0.25, description="Trail profit R"),
+        ParamDef("max_hold_minutes", "int", low=60, high=120, step=15, description="Max hold minutes"),
+        ParamDef("hmm_min_confidence", "float", low=0.0, high=0.8, step=0.1, description="HMM gate"),
     ],
-    # ------------------------------------------------------------------
-    # Pair Trading V2 — 6 params
-    # ------------------------------------------------------------------
     "pair_trading_v2": [
-        ParamDef(
-            "entry_z_threshold",
-            "float",
-            low=1.0,
-            high=2.5,
-            step=0.25,
-            description="Z-score deviation to trigger entry signal",
-        ),
-        ParamDef(
-            "stop_z_threshold",
-            "float",
-            low=3.0,
-            high=5.0,
-            step=0.25,
-            description="Z-score deviation for stop loss",
-        ),
-        ParamDef(
-            "confluence_threshold",
-            "float",
-            low=30.0,
-            high=65.0,
-            step=5.0,
-            description="Minimum confluence score to enter",
-        ),
-        ParamDef(
-            "spread_lookback",
-            "int",
-            low=40,
-            high=120,
-            step=10,
-            description="Lookback period in trading days for spread normalization",
-        ),
-        ParamDef(
-            "min_correlation",
-            "float",
-            low=0.3,
-            high=0.65,
-            step=0.05,
-            description="Minimum rolling correlation gate",
-        ),
-        ParamDef(
-            "max_hold_days",
-            "int",
-            low=5,
-            high=30,
-            step=5,
-            description="Maximum hold time in trading days",
-        ),
+        ParamDef("entry_z_threshold", "float", low=1.0, high=2.5, step=0.25, description="Entry Z-score"),
+        ParamDef("stop_z_threshold", "float", low=3.0, high=5.0, step=0.25, description="Stop Z-score"),
+        ParamDef("confluence_threshold", "float", low=30.0, high=65.0, step=5.0, description="Confluence score"),
+        ParamDef("spread_lookback", "int", low=40, high=120, step=10, description="Spread lookback days"),
+        ParamDef("min_correlation", "float", low=0.3, high=0.65, step=0.05, description="Min correlation"),
+        ParamDef("max_hold_days", "int", low=5, high=30, step=5, description="Max hold days"),
     ],
-    # ------------------------------------------------------------------
-    # RSI Bounce — 5 params
-    # ------------------------------------------------------------------
     "rsi_bounce": [
-        ParamDef(
-            "confluence_threshold",
-            "float",
-            low=30.0,
-            high=70.0,
-            step=5.0,
-            description="Minimum confluence score to enter (wider range for 10-factor model)",
-        ),
-        ParamDef(
-            "rsi_oversold",
-            "float",
-            low=20.0,
-            high=40.0,
-            step=5.0,
-            description="RSI oversold threshold for BUY signals (widened to allow more entries)",
-        ),
-        ParamDef(
-            "rsi_overbought",
-            "float",
-            low=60.0,
-            high=80.0,
-            step=5.0,
-            description="RSI overbought threshold for SELL signals (widened to allow more entries)",
-        ),
-        ParamDef(
-            "band_tolerance",
-            "float",
-            low=2.0,
-            high=15.0,
-            step=0.5,
-            description="Proximity tolerance to BB as % of band width (was 0.5-2.5 = too tight)",
-        ),
-        ParamDef(
-            "stop_atr_mult",
-            "float",
-            low=1.0,
-            high=3.0,
-            step=0.25,
-            description="ATR multiplier for stop loss",
-        ),
-        ParamDef(
-            "target_atr_mult",
-            "float",
-            low=2.0,
-            high=5.0,
-            step=0.5,
-            description="ATR multiplier for take profit target",
-        ),
-        ParamDef(
-            "max_hold_minutes",
-            "int",
-            low=30,
-            high=120,
-            step=10,
-            description="Maximum hold time in minutes (widened ceiling)",
-        ),
+        ParamDef("confluence_threshold", "float", low=30.0, high=70.0, step=5.0, description="Confluence score"),
+        ParamDef("rsi_oversold", "float", low=20.0, high=40.0, step=5.0, description="RSI oversold"),
+        ParamDef("rsi_overbought", "float", low=60.0, high=80.0, step=5.0, description="RSI overbought"),
+        ParamDef("band_tolerance", "float", low=2.0, high=15.0, step=0.5, description="BB tolerance"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target"),
+        ParamDef("max_hold_minutes", "int", low=30, high=120, step=10, description="Max hold minutes"),
     ],
-    # ------------------------------------------------------------------
-    # Regime Trend Up
-    # ------------------------------------------------------------------
     "regime_trend_up": [
         ParamDef("rsi_min", "float", low=25.0, high=45.0, step=5.0, description="RSI lower bound"),
         ParamDef("rsi_max", "float", low=55.0, high=75.0, step=5.0, description="RSI upper bound"),
         ParamDef("pullback_pct", "float", low=0.005, high=0.03, step=0.005, description="Max EMA20 distance"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop multiplier"),
-        ParamDef("target_rr", "float", low=1.5, high=4.0, step=0.5, description="Risk:reward ratio"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("target_rr", "float", low=1.5, high=4.0, step=0.5, description="Risk:reward"),
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
-    # ------------------------------------------------------------------
-    # Regime Bear — 5 params
-    # ------------------------------------------------------------------
     "regime_bear": [
         ParamDef("rsi_short_entry", "float", low=45.0, high=65.0, step=5.0, description="RSI short level"),
         ParamDef("rsi_long_entry", "float", low=35.0, high=55.0, step=5.0, description="RSI long level"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target multiplier"),
-        ParamDef(
-            "high_vol_target_mult", "float", low=1.0, high=2.5, step=0.25, description="HIGH/SHOCK vol target mult"
-        ),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target"),
+        ParamDef("high_vol_target_mult", "float", low=1.0, high=2.5, step=0.25, description="HIGH vol target"),
     ],
-    # ------------------------------------------------------------------
-    # Regime Adaptive — 5 params
-    # ------------------------------------------------------------------
     "regime_adaptive": [
         ParamDef("rsi_long_entry", "float", low=35.0, high=50.0, step=5.0, description="RSI BUY in UP"),
         ParamDef("rsi_short_entry", "float", low=55.0, high=70.0, step=5.0, description="RSI SELL in DOWN"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target"),
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
-    # ------------------------------------------------------------------
-    # Momentum Fade — 5 params
-    # ------------------------------------------------------------------
     "momentum_fade": [
         ParamDef("vwap_threshold", "float", low=0.004, high=0.015, step=0.001, description="VWAP distance"),
         ParamDef("volume_surge_mult", "float", low=1.5, high=3.5, step=0.25, description="Volume surge mult"),
         ParamDef("confluence_threshold", "float", low=40.0, high=75.0, step=5.0, description="Confluence score"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target"),
         ParamDef("max_hold_minutes", "int", low=30, high=120, step=15, description="Max hold minutes"),
         ParamDef("hurst_gate_threshold", "float", low=0.0, high=0.6, step=0.05, description="Hurst gate"),
         ParamDef("entropy_threshold", "float", low=0.6, high=1.0, step=0.05, description="Entropy filter"),
         ParamDef("hmm_min_confidence", "float", low=0.0, high=0.8, step=0.1, description="HMM gate"),
     ],
-    # ------------------------------------------------------------------
-    # Autoresearch Strategy — 3 params
-    # ------------------------------------------------------------------
     "autoresearch_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=5.0, step=0.5, description="ATR target"),
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
-    # ------------------------------------------------------------------
-    # Daily Research Strategy — 4 params
-    # ------------------------------------------------------------------
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR multiplier for stop loss"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR multiplier for stop loss"),
         ParamDef(
             "target_atr_mult",
             "float",
-            low=3.0,
-            high=8.0,
-            step=0.5,
+            low=4.0,
+            high=10.0,
+            step=1.0,
             description="ATR multiplier for take profit (wide — trailing stop captures)",
         ),
         ParamDef("rsi_threshold", "float", low=25.0, high=45.0, step=5.0, description="RSI(14) pullback threshold"),
@@ -423,18 +163,12 @@ def suggest_params(
     trial: optuna.Trial,
     strategy_name: str,
 ) -> dict[str, Any]:
-    """Use an Optuna trial to suggest parameter values from the space.
-
-    Locked parameters (from LOCKED_PARAMS) are injected automatically
-    without consuming Optuna trial dimensions.
-    """
+    """Use an Optuna trial to suggest parameter values from the space."""
     space = PARAM_SPACES.get(strategy_name)
     if space is None:
         raise ValueError(f"No parameter space defined for '{strategy_name}'")
 
     params: dict[str, Any] = {}
-
-    # Inject locked params first
     locked = LOCKED_PARAMS.get(strategy_name, {})
     params.update(locked)
 

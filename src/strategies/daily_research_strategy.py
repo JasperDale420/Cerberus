@@ -1,4 +1,4 @@
-"""Daily Research Strategy — SMA(50) trend gate + trailing stop synergy."""
+"""Daily Research Strategy — buy dips in uptrends, trailing stop captures."""
 
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ class DailyResearchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 6.0))
+        self.tgt_m = float(config.get("target_atr_mult", 8.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=100)
-            self._h[s] = deque(maxlen=100)
-            self._lo[s] = deque(maxlen=100)
+            self._c[s] = deque(maxlen=80)
+            self._h[s] = deque(maxlen=80)
+            self._lo[s] = deque(maxlen=80)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -98,12 +98,6 @@ class DailyResearchStrategy(BaseStrategy):
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if trend == "down" or vol == "shock":
             return None
-
-        # Long-term trend: price above SMA(50)
-        if len(cl) >= 50:
-            sma50 = sum(cl[-50:]) / 50
-            if price <= sma50:
-                return None
 
         # Near-term trend: price above SMA(20)
         sma20 = sum(cl[-20:]) / 20
