@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
+"""Daily Research Strategy — SMA(50) trend gate + trailing stop synergy."""
 
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ class DailyResearchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 8.0))
+        self.tgt_m = float(config.get("target_atr_mult", 6.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
-        self.min_bars = int(config.get("min_bars", 25))
+        self.min_bars = int(config.get("min_bars", 50))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=80)
-            self._h[s] = deque(maxlen=80)
-            self._lo[s] = deque(maxlen=80)
+            self._c[s] = deque(maxlen=100)
+            self._h[s] = deque(maxlen=100)
+            self._lo[s] = deque(maxlen=100)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -54,7 +54,13 @@ class DailyResearchStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Optional[Signal]:
+    def on_bar(
+        self,
+        symbol: str,
+        bar: Bar,
+        symbol_state: SymbolState,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
         d = self._dhlc[symbol]
@@ -86,38 +92,44 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Regime gate: skip DOWN and SHOCK
+        # Regime gate: skip DOWN trend and SHOCK volatility
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if trend == "down" or vol == "shock":
             return None
 
-        # Price must be above SMA(20) — uptrend confirmation
+        # Long-term trend: price above SMA(50)
+        if len(cl) >= 50:
+            sma50 = sum(cl[-50:]) / 50
+            if price <= sma50:
+                return None
+
+        # Near-term trend: price above SMA(20)
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
 
-        # 10-day positive momentum — price higher than 10 days ago
+        # 10-day positive momentum
         if len(cl) >= 11 and price <= cl[-11]:
             return None
 
-        # Regime-adaptive RSI threshold: more aggressive in UP (more entries)
+        # Regime-adaptive RSI threshold: relax in UP trend
         rsi_thr = self.rsi_threshold + 15.0 if trend == "up" else self.rsi_threshold
 
-        # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
+        # Signal 1: RSI(2) extreme oversold
         rsi2 = self._rsi(c, n=2)
         rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
 
-        # Signal 2: RSI(14) moderate pullback in uptrend
+        # Signal 2: RSI(14) moderate pullback
         rsi14 = self._rsi(c, n=14)
         rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
 
-        # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
+        # Signal 3: Price dip below SMA(5) while above SMA(20)
         sma5 = sum(cl[-5:]) / 5
         dip_ok = price < sma5 and price > sma20
 
-        # Signal 4: Breakout — new N-day high close (trend=up only)
+        # Signal 4: Breakout — new N-day high close (UP trend only)
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
         breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
