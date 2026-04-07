@@ -337,7 +337,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             "float",
             low=2.0,
             high=15.0,
-            step=0.5,
+            step=1.0,
             description="Proximity tolerance to BB as % of band width (was 0.5-2.5 = too tight)",
         ),
         ParamDef(
@@ -624,14 +624,14 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR mult for stop"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR multiplier for stop loss"),
         ParamDef(
             "target_atr_mult",
             "float",
-            low=1.5,
-            high=4.0,
-            step=0.5,
-            description="ATR mult for target (wide, trailing stop exits)",
+            low=4.0,
+            high=10.0,
+            step=1.0,
+            description="ATR multiplier for take profit (wide)",
         ),
         ParamDef("rsi_threshold", "float", low=25.0, high=45.0, step=5.0, description="RSI(14) pullback threshold"),
         ParamDef("breakout_period", "int", low=10, high=25, step=5, description="Lookback for breakout high"),

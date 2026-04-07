@@ -1,4 +1,4 @@
-"""Daily Research Strategy — 4-signal entry with SMA(50) + rising SMA(20) trend gates."""
+"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ class DailyResearchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 2.5))
+        self.tgt_m = float(config.get("target_atr_mult", 8.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -93,35 +93,27 @@ class DailyResearchStrategy(BaseStrategy):
         if trend == "down" or vol == "shock":
             return None
 
-        # Long-term trend: price above SMA(50)
-        sma50 = sum(cl[-50:]) / 50
-        if price <= sma50:
-            return None
-
-        # Near-term trend: price above SMA(20)
+        # Price must be above SMA(20) — uptrend confirmation
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
 
-        # Rising SMA(20) — slope must be positive over 5 days
-        if len(cl) >= 25:
-            sma20_5d_ago = sum(cl[-25:-5]) / 20
-            if sma20 <= sma20_5d_ago:
-                return None
-
-        # 10-day positive momentum
+        # 10-day positive momentum — price higher than 10 days ago
         if len(cl) >= 11 and price <= cl[-11]:
             return None
 
-        # Signal 1: RSI(2) extreme oversold
+        # Regime-adaptive RSI threshold: more aggressive in UP (more entries)
+        rsi_thr = self.rsi_threshold + 15.0 if trend == "up" else self.rsi_threshold
+
+        # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
         rsi2 = self._rsi(c, n=2)
-        rsi2_ok = rsi2 is not None and rsi2 < self.rsi_threshold
+        rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
 
-        # Signal 2: RSI(14) moderate pullback
+        # Signal 2: RSI(14) moderate pullback in uptrend
         rsi14 = self._rsi(c, n=14)
-        rsi14_ok = rsi14 is not None and rsi14 < self.rsi_threshold
+        rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
 
-        # Signal 3: Price dip below SMA(5) while above SMA(20)
+        # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
         sma5 = sum(cl[-5:]) / 5
         dip_ok = price < sma5 and price > sma20
 
