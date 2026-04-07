@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips in rising uptrends, skip DOWN/SHOCK."""
+"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 3.0))
-        self.tgt_m = float(config.get("target_atr_mult", 1.5))
+        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.tgt_m = float(config.get("target_atr_mult", 2.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 45.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
@@ -98,17 +98,9 @@ class DailyResearchStrategy(BaseStrategy):
         if price <= sma20:
             return None
 
-        # Rising SMA(20) — trend must be accelerating, not rolling over
-        if len(cl) >= 21:
-            sma20_prev = sum(cl[-21:-1]) / 20
-            if sma20 <= sma20_prev:
-                return None
-
-        # SMA(50) trend filter — must be in established uptrend
-        if len(cl) >= 50:
-            sma50 = sum(cl[-50:]) / 50
-            if price <= sma50:
-                return None
+        # 10-day positive momentum — price higher than 10 days ago
+        if len(cl) >= 11 and price <= cl[-11]:
+            return None
 
         # Signal 1: RSI pullback (oversold in uptrend)
         rsi = self._rsi(c)
