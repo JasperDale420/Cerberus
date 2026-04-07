@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips + ATR calm filter for fewer false signals."""
+"""Daily Research Strategy — buy dips in uptrends, trailing stop captures."""
 
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ class DailyResearchStrategy(BaseStrategy):
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
-        self.atr_pct_max = float(config.get("atr_pct_max", 0.04))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -92,11 +91,6 @@ class DailyResearchStrategy(BaseStrategy):
 
         cl = list(c)
         price = cl[-1]
-
-        # ATR as % of price — skip high-vol environments (bad for mean reversion)
-        atr_pct = atr / price
-        if atr_pct > self.atr_pct_max:
-            return None
 
         # Regime gate: skip DOWN trend and SHOCK volatility
         snap = ms.regime_snapshot
