@@ -624,10 +624,12 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.5, high=4.0, step=0.5, description="ATR multiplier for stop loss"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.5, step=0.5, description="ATR multiplier for target"),
-        ParamDef("rsi_threshold", "float", low=30.0, high=50.0, step=5.0, description="RSI oversold threshold"),
-        ParamDef("breakout_period", "int", low=10, high=30, step=5, description="Lookback for breakout high"),
+        ParamDef("up_stop", "float", low=1.0, high=2.5, step=0.25, description="ATR stop mult in UP regime"),
+        ParamDef("up_target", "float", low=2.0, high=5.0, step=0.5, description="ATR target mult in UP regime"),
+        ParamDef("flat_stop", "float", low=1.5, high=3.5, step=0.25, description="ATR stop mult in FLAT regime"),
+        ParamDef("flat_target", "float", low=1.5, high=4.0, step=0.5, description="ATR target mult in FLAT regime"),
+        ParamDef("rsi_threshold", "float", low=30.0, high=50.0, step=5.0, description="RSI(14) pullback threshold"),
+        ParamDef("breakout_period", "int", low=10, high=25, step=5, description="Lookback for breakout high"),
     ],
 }
 
