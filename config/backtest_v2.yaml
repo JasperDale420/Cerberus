@@ -265,10 +265,8 @@ strategies:
     bar_duration_minutes: 1.0
     cooldown_bars: 390
     min_bars: 25
-    up_stop: 1.5
-    up_target: 3.0
-    flat_stop: 2.5
-    flat_target: 1.5
+    stop_atr_mult: 1.5
+    target_atr_mult: 3.0
     rsi_threshold: 40.0
     activation:
       session: [premarket, opening, midday, power_hour, close]
