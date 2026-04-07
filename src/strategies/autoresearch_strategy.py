@@ -67,9 +67,10 @@ class AutoresearchStrategy(BaseStrategy):
         if rsi is None or rsi > 55 or rsi < 30:
             return None
 
-        # Regime-adaptive stops
+        # Regime-adaptive stops + dynamic R:R
         stop_dist = self._apply_regime_volatility_multiplier(self.stop_atr_mult * atr, market_state)
-        target_dist = self._apply_regime_volatility_multiplier(self.target_atr_mult * atr, market_state)
+        rr = self._get_dynamic_risk_reward(self.target_atr_mult / self.stop_atr_mult, market_state)
+        target_dist = stop_dist * rr
         stop = bar.close - stop_dist
         target = bar.close + target_dist
 
