@@ -1,4 +1,4 @@
-"""Daily Research Strategy — 4-signal entry with SMA(50) trend gate."""
+"""Daily Research Strategy — 4-signal entry with SMA(50) + rising SMA(20) trend gates."""
 
 from __future__ import annotations
 
@@ -102,6 +102,12 @@ class DailyResearchStrategy(BaseStrategy):
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
+
+        # Rising SMA(20) — slope must be positive over 5 days
+        if len(cl) >= 25:
+            sma20_5d_ago = sum(cl[-25:-5]) / 20
+            if sma20 <= sma20_5d_ago:
+                return None
 
         # 10-day positive momentum
         if len(cl) >= 11 and price <= cl[-11]:
