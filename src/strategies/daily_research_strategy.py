@@ -1,4 +1,4 @@
-"""Daily Research Strategy — 6-signal dip/momentum/volume with gap and volume confirmation."""
+"""Daily Research Strategy — buy dips in strong uptrends, no momentum filter."""
 
 from __future__ import annotations
 
@@ -20,10 +20,8 @@ class DailyResearchStrategy(BaseStrategy):
         self._c: dict[str, deque[float]] = {}
         self._h: dict[str, deque[float]] = {}
         self._lo: dict[str, deque[float]] = {}
-        self._o: dict[str, deque[float]] = {}
-        self._v: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
-        self._dhlc: dict[str, list] = {}
+        self._dhlc: dict[str, list[float]] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
@@ -39,10 +37,8 @@ class DailyResearchStrategy(BaseStrategy):
             self._c[s] = deque(maxlen=80)
             self._h[s] = deque(maxlen=80)
             self._lo[s] = deque(maxlen=80)
-            self._o[s] = deque(maxlen=80)
-            self._v[s] = deque(maxlen=80)
             self._pd[s] = None
-            self._dhlc[s] = [0.0, 0.0, 0.0, 0.0, 0.0]  # h, l, c, open, vol
+            self._dhlc[s] = [0.0, 0.0, 0.0]
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -66,22 +62,15 @@ class DailyResearchStrategy(BaseStrategy):
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
-            self._o[symbol].append(d[3])
-            self._v[symbol].append(d[4])
             d[0], d[1], d[2] = bar.high, bar.low, bar.close
-            d[3] = bar.open
-            d[4] = bar.volume
             sig = self._sig(symbol, bar, market_state)
             self._pd[symbol] = dt
             return sig
         if self._pd[symbol] is None:
             d[0], d[1] = bar.high, bar.low
-            d[3] = bar.open
-            d[4] = bar.volume
         else:
             d[0] = max(d[0], bar.high)
             d[1] = min(d[1], bar.low)
-            d[4] += bar.volume
         d[2] = bar.close
         self._pd[symbol] = dt
         return None
@@ -109,10 +98,6 @@ class DailyResearchStrategy(BaseStrategy):
         if price <= sma20:
             return None
 
-        # 10-day positive momentum — price higher than 10 days ago
-        if len(cl) >= 11 and price <= cl[-11]:
-            return None
-
         # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
         rsi2 = self._rsi(c, n=2)
         rsi2_ok = rsi2 is not None and rsi2 < self.rsi_threshold
@@ -130,20 +115,7 @@ class DailyResearchStrategy(BaseStrategy):
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
         breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
 
-        # Signal 5: Gap-up continuation — open > prev close by 0.5%+, price still up
-        ol = list(self._o[sym])
-        gap_ok = False
-        if len(ol) >= 1 and len(cl) >= 2:
-            gap_ok = ol[-1] > cl[-2] * 1.005 and price > ol[-1]
-
-        # Signal 6: Volume surge — daily vol > 1.5x 20-day avg
-        vl = list(self._v[sym])
-        vol_ok = False
-        if len(vl) >= 20:
-            avg_vol = sum(vl[-20:]) / 20
-            vol_ok = avg_vol > 0 and vl[-1] > avg_vol * 1.5
-
-        if not (rsi2_ok or rsi14_ok or dip_ok or breakout_ok or gap_ok or vol_ok):
+        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
             return None
 
         self.last_signal_time[sym] = bar.time
