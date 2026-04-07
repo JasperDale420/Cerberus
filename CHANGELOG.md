@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Strategy routing config**: Added `strategy_routing` section to `config/config.yaml` mapping all three regimes (bull/bear/chop) to eligible strategies. Scanner was producing empty strategy lists because no routing was defined.
+
+- **Launchd scheduler for automated daily sessions**: Created `scripts/run_live.sh` startup script and `scripts/com.empire.cerberus.live.plist` launchd plist for automatic Mon-Fri trading sessions at 9:25 ET (paper mode, gateway executor).
+
+### Added
+
 - **RegimeAdaptive strategy**: New cross-regime generalist (`src/strategies/regime_adaptive.py`) that switches entry logic by trend regime — dip-buy in UP, fade bounce in DOWN, RSI extremes in FLAT. 3-factor logic (RSI + ATR), permissive activation across all sessions/trends/vols. Registered in main.py with param space in `param_spaces.py`.
 
 - **Per-session-phase performance statistics**: New `compute_session_phase_stats()` function in `src/analytics/regime_stats.py` breaks down strategy performance by intraday session phase (opening_15m, morning, midday, power_hour, close_15m). Reports per-phase trade count, win rate, profit factor, avg/total PnL, best/worst trade, and average hold time. Identifies best/worst sessions by avg PnL, recommends phases with PF > 1.2, and flags phases with 0 < PF < 0.8 to avoid. Trades missing or carrying unrecognized `entry_session_phase` values are grouped under "unknown". Integrated into the report card under `report["regime"]["session_phase"]`. Degrades gracefully when session labels are absent.

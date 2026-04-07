@@ -34,6 +34,51 @@ hmm_regime:
     volume_window: 20
 schedule_time: "09:25"   # Daily start time for scheduler (ET)
 log_level: "INFO"
+
+# Strategy routing by market regime — maps regime → eligible strategies
+strategy_routing:
+  bull:
+    - vwap_reversion
+    - orb
+    - flow_momentum
+    - vwap_trend_rider
+    - momentum_continuation
+    - gap_fill
+    - regime_trend_up
+    - regime_bear
+    - regime_adaptive
+    - mean_reversion_pro
+    - trend_rider_pro
+    - flow_alpha
+    - orb_v2
+    - rsi_bounce
+    - momentum_fade
+  bear:
+    - vwap_reversion
+    - orb
+    - flow_momentum
+    - vix_spike_fade
+    - regime_trend_up
+    - regime_bear
+    - regime_adaptive
+    - mean_reversion_pro
+    - trend_rider_pro
+    - flow_alpha
+    - rsi_bounce
+    - momentum_fade
+  chop:
+    - vwap_reversion
+    - index_mean_reversion
+    - gap_fill
+    - regime_trend_up
+    - regime_bear
+    - regime_adaptive
+    - mean_reversion_pro
+    - flow_alpha
+    - rsi_bounce
+    - momentum_fade
+    - pair_trading_v2
+
 start_time_utc: ""
 auto_eod_agent: true
 position_mismatch_mode: "halt"   # halt|warn
