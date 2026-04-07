@@ -1,8 +1,8 @@
-"""Daily Research Strategy — Dual-signal: RSI pullback + momentum in uptrends.
+"""Daily Research Strategy — RSI pullback in regime-confirmed uptrends.
 
-Signal 1: RSI(14) oversold pullback when SMA(20) > SMA(50) (mean reversion)
-Signal 2: New 20-day high close when trend=UP (momentum breakout)
-Long-only, skip DOWN + SHOCK. Wide R:R to let winners compound.
+Only trades when regime=UP. RSI(14) < threshold as entry timing.
+Price must be above SMA(20) to avoid catching falling knives.
+Long-only. Wide R:R (2.5:4 ATR) to maximize compounding.
 """
 
 from __future__ import annotations
@@ -91,28 +91,21 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Dual SMA trend filter: 20 > 50 (golden cross)
-        sma20 = sum(cl[-20:]) / 20
-        sma50 = sum(cl[-50:]) / 50
-        uptrend = sma20 > sma50 and price > sma50
-
-        # Regime gating
+        # Strict regime gate: ONLY trade in UP regime, skip SHOCK
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock" or trend == "down":
+        if trend != "up" or vol == "shock":
             return None
 
-        # Signal 1: RSI pullback in uptrend (SMA crossover confirms trend)
+        # Price must be above 20-day SMA (avoid falling knives)
+        sma20 = sum(cl[-20:]) / 20
+        if price <= sma20:
+            return None
+
+        # RSI(14) pullback entry: oversold in confirmed uptrend
         rsi = self._rsi(c)
-        rsi_ok = rsi is not None and rsi < self.rsi_threshold and uptrend
-
-        # Signal 2: Breakout — new N-day high in UP regime
-        bp = self.breakout_period
-        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
-
-        if not rsi_ok and not breakout_ok:
+        if rsi is None or rsi >= self.rsi_threshold:
             return None
 
         stop = price - atr * self.stop_m
