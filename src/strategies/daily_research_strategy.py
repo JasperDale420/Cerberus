@@ -1,4 +1,4 @@
-"""Daily Research Strategy — RSI pullback in uptrends, long-only."""
+"""Daily Research Strategy — RSI pullback + breakout, long-only, skip DOWN."""
 
 from __future__ import annotations
 
@@ -25,10 +25,11 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 1.5))
+        self.stop_m = float(config.get("stop_atr_mult", 2.0))
         self.tgt_m = float(config.get("target_atr_mult", 3.0))
-        self.rsi_lo = float(config.get("rsi_threshold", 30.0))
-        self.min_bars = int(config.get("min_bars", 20))
+        self.rsi_lo = float(config.get("rsi_threshold", 40.0))
+        self.bp = int(config.get("breakout_period", 20))
+        self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -81,15 +82,18 @@ class DailyResearchStrategy(BaseStrategy):
         price = cl[-1]
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
-        # Skip all DOWN regimes — they hemorrhaged money
+        # Skip DOWN regimes entirely
         if trend == "down":
             return None
-        # Require close above 20-day SMA (uptrend confirmation)
-        sma20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
-        if sma20 is None or price <= sma20:
+        # SMA slope filter: reject if 20-day SMA declining
+        if len(cl) >= 25 and sum(cl[-20:]) / 20 < sum(cl[-25:-5]) / 20:
             return None
-        # RSI pullback in uptrend: oversold but trend intact
-        if rsi >= self.rsi_lo:
+        # Signal 1: RSI pullback (oversold in non-down regime)
+        r_ok = rsi < self.rsi_lo
+        # Signal 2: Breakout above N-period high (only in UP regime)
+        pc = cl[-(self.bp + 1) : -1] if len(cl) > self.bp else []
+        b_ok = trend == "up" and len(pc) >= self.bp and price > max(pc)
+        if not r_ok and not b_ok:
             return None
         self.last_signal_time[sym] = bar.time
         return Signal(
