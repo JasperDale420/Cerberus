@@ -1,4 +1,4 @@
-"""Daily Research Strategy — regime-adaptive R:R with 4-signal entry."""
+"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
 
 from __future__ import annotations
 
@@ -25,10 +25,8 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.up_stop = float(config.get("up_stop", 1.5))
-        self.up_target = float(config.get("up_target", 3.0))
-        self.flat_stop = float(config.get("flat_stop", 2.5))
-        self.flat_target = float(config.get("flat_target", 1.5))
+        self.stop_m = float(config.get("stop_atr_mult", 1.5))
+        self.tgt_m = float(config.get("target_atr_mult", 3.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
@@ -124,20 +122,14 @@ class DailyResearchStrategy(BaseStrategy):
         if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
             return None
 
-        # Dynamic R:R: aggressive in UP (tight stop, wide target), conservative in FLAT
-        if trend == "up":
-            stop_m, tgt_m = self.up_stop, self.up_target
-        else:
-            stop_m, tgt_m = self.flat_stop, self.flat_target
-
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
             side=OrderSide.BUY,
             size_hint=0.0,
             entry_price=price,
-            stop_price=price - atr * stop_m,
-            target_price=price + atr * tgt_m,
+            stop_price=price - atr * self.stop_m,
+            target_price=price + atr * self.tgt_m,
             strategy=self.name,
             generated_at=bar.time,
         )
