@@ -22,17 +22,13 @@ from typing import Any
 
 import optuna
 
-# ---------------------------------------------------------------------------
-# Parameter definition
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class ParamDef:
     """Single parameter definition for optimization."""
 
     name: str
-    param_type: str  # "float", "int", "categorical"
+    param_type: str
     low: float | None = None
     high: float | None = None
     step: float | None = None
@@ -41,21 +37,10 @@ class ParamDef:
     description: str = ""
 
 
-# ---------------------------------------------------------------------------
-# Locked parameters — converged across WFO windows, removed from search
-# ---------------------------------------------------------------------------
-
 LOCKED_PARAMS: dict[str, dict[str, Any]] = {
-    "orb_v2": {
-        "target_range_mult": 3.5,
-    },
+    "orb_v2": {"target_range_mult": 3.5},
     "trend_rider_pro": {},
 }
-
-
-# ---------------------------------------------------------------------------
-# Per-strategy parameter spaces
-# ---------------------------------------------------------------------------
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
     "trend_rider_pro": [
@@ -139,16 +124,13 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR multiplier for stop loss"),
-        ParamDef("rsi_threshold", "float", low=25.0, high=55.0, step=5.0, description="RSI pullback threshold"),
-        ParamDef("breakout_period", "int", low=10, high=30, step=5, description="Lookback for breakout high"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=6.0, high=14.0, step=2.0, description="ATR target (wide)"),
+        ParamDef("rsi_oversold", "float", low=15.0, high=35.0, step=5.0, description="RSI(2) oversold level"),
+        ParamDef("rsi_oversold_uptrend", "float", low=30.0, high=55.0, step=5.0, description="RSI(2) level in uptrend"),
+        ParamDef("momentum_period", "int", low=10, high=30, step=5, description="Momentum lookback days"),
     ],
 }
-
-
-# ---------------------------------------------------------------------------
-# Optuna suggestion helper
-# ---------------------------------------------------------------------------
 
 
 def suggest_params(
