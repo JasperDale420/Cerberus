@@ -1,4 +1,9 @@
-"""Daily Research Strategy — momentum breakout, UP-only strict gate."""
+"""Daily Research Strategy — Dual-signal: RSI pullback + momentum in uptrends.
+
+Signal 1: RSI(14) oversold pullback when SMA(20) > SMA(50) (mean reversion)
+Signal 2: New 20-day high close when trend=UP (momentum breakout)
+Long-only, skip DOWN + SHOCK. Wide R:R to let winners compound.
+"""
 
 from __future__ import annotations
 
@@ -25,16 +30,18 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.rsi_threshold = float(config.get("rsi_threshold", 35.0))
+        self.breakout_period = int(config.get("breakout_period", 20))
+        self.stop_m = float(config.get("stop_atr_mult", 2.5))
         self.tgt_m = float(config.get("target_atr_mult", 4.0))
-        self.sma_len = int(config.get("sma_len", 50))
-        self.breakout_len = int(config.get("breakout_period", 10))
         self.min_bars = int(config.get("min_bars", 55))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s], self._h[s], self._lo[s] = deque(maxlen=80), deque(maxlen=80), deque(maxlen=80)
+            self._c[s] = deque(maxlen=80)
+            self._h[s] = deque(maxlen=80)
+            self._lo[s] = deque(maxlen=80)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -43,6 +50,14 @@ class DailyResearchStrategy(BaseStrategy):
             return None
         hl, ll, cl = list(h), list(lo), list(c)
         return sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(1, p + 1)) / p
+
+    def _rsi(self, v: deque, n: int = 14) -> float | None:
+        if len(v) < n + 1:
+            return None
+        d = list(v)
+        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
+        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
+        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Optional[Signal]:
         self._init(symbol)
@@ -66,35 +81,42 @@ class DailyResearchStrategy(BaseStrategy):
         return None
 
     def _sig(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
-        c, h, lo = self._c[sym], self._h[sym], self._lo[sym]
+        c = self._c[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
-        atr = self._atr(h, lo, c)
+        atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
+
         cl = list(c)
         price = cl[-1]
-        # SMA trend filter: price must be above SMA
-        sma = sum(cl[-self.sma_len :]) / self.sma_len
-        if price <= sma:
-            return None
-        # Strict: only trade in UP regime (avoid FLAT leaking into DOWN windows)
+
+        # Dual SMA trend filter: 20 > 50 (golden cross)
+        sma20 = sum(cl[-20:]) / 20
+        sma50 = sum(cl[-50:]) / 50
+        uptrend = sma20 > sma50 and price > sma50
+
+        # Regime gating
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
-        if trend != "up":
+        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
+        if vol == "shock" or trend == "down":
             return None
-        # Momentum: new N-day high close
-        prev_highs = cl[-(self.breakout_len + 1) : -1]
-        if len(prev_highs) < self.breakout_len or price <= max(prev_highs):
+
+        # Signal 1: RSI pullback in uptrend (SMA crossover confirms trend)
+        rsi = self._rsi(c)
+        rsi_ok = rsi is not None and rsi < self.rsi_threshold and uptrend
+
+        # Signal 2: Breakout — new N-day high in UP regime
+        bp = self.breakout_period
+        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
+        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
+
+        if not rsi_ok and not breakout_ok:
             return None
-        # Stop at recent swing low
-        recent_lows = list(lo)[-self.breakout_len :]
-        swing_low = min(recent_lows) if recent_lows else price - atr * self.stop_m
-        stop = max(swing_low, price - atr * self.stop_m)  # floor at ATR stop
-        risk = price - stop
-        if risk < 0.01:
-            return None
-        target = price + risk * 2.0  # 2:1 R:R minimum
+
+        stop = price - atr * self.stop_m
+        target = price + atr * self.tgt_m
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
