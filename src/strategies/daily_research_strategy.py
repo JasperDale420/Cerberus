@@ -34,9 +34,9 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=60)
-            self._h[s] = deque(maxlen=60)
-            self._lo[s] = deque(maxlen=60)
+            self._c[s] = deque(maxlen=80)
+            self._h[s] = deque(maxlen=80)
+            self._lo[s] = deque(maxlen=80)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -102,6 +102,12 @@ class DailyResearchStrategy(BaseStrategy):
         if len(cl) >= 21:
             sma20_prev = sum(cl[-21:-1]) / 20
             if sma20 <= sma20_prev:
+                return None
+
+        # SMA(50) trend filter — must be in established uptrend
+        if len(cl) >= 50:
+            sma50 = sum(cl[-50:]) / 50
+            if price <= sma50:
                 return None
 
         # Signal 1: RSI pullback (oversold in uptrend)
