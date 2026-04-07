@@ -1,4 +1,8 @@
-"""Daily Research Strategy — momentum breakout, long-only."""
+"""Daily Research Strategy — RSI(2) dip-buy with trend + bounce confirmation.
+
+Long-only. Buy RSI(2) oversold dips in uptrends with bounce confirmation.
+Skip DOWN and SHOCK regimes. Wider targets for compounding gains.
+"""
 
 from __future__ import annotations
 
@@ -25,24 +29,41 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.sma_slow = int(config.get("sma_slow", 50))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_buy = float(config.get("rsi_buy_threshold", 15.0))
+        self.stop_m = float(config.get("stop_atr_mult", 1.5))
         self.tgt_m = float(config.get("target_atr_mult", 4.0))
-        self.sma_len = int(config.get("sma_len", 50))
-        self.breakout_len = int(config.get("breakout_period", 10))
         self.min_bars = int(config.get("min_bars", 55))
+        self.atr_period = int(config.get("atr_period", 14))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s], self._h[s], self._lo[s] = deque(maxlen=80), deque(maxlen=80), deque(maxlen=80)
+            mx = max(self.sma_slow + 10, 80)
+            self._c[s] = deque(maxlen=mx)
+            self._h[s] = deque(maxlen=mx)
+            self._lo[s] = deque(maxlen=mx)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
-    def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
+    def _atr(self, h: deque, lo: deque, c: deque) -> float | None:
+        p = self.atr_period
         if len(h) < p + 1:
             return None
         hl, ll, cl = list(h), list(lo), list(c)
-        return sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(1, p + 1)) / p
+        return (
+            sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
+            / p
+        )
+
+    def _rsi(self, v: deque, n: int) -> float | None:
+        if len(v) < n + 1:
+            return None
+        d = list(v)
+        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
+        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
+        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Optional[Signal]:
         self._init(symbol)
@@ -66,35 +87,43 @@ class DailyResearchStrategy(BaseStrategy):
         return None
 
     def _sig(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
-        c, h, lo = self._c[sym], self._h[sym], self._lo[sym]
+        c = self._c[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
-        atr = self._atr(h, lo, c)
+
+        atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
+
+        rsi2 = self._rsi(c, self.rsi_period)
+        if rsi2 is None:
+            return None
+
         cl = list(c)
         price = cl[-1]
-        # SMA trend filter: price must be above SMA
-        sma = sum(cl[-self.sma_len :]) / self.sma_len
-        if price <= sma:
+
+        # Trend filter: price above slow SMA
+        sma_s = sum(cl[-self.sma_slow :]) / self.sma_slow
+        if price <= sma_s:
             return None
-        # Skip DOWN regimes
+
+        # Regime gating
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
-        if trend == "down":
+        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
+        if vol == "shock" or trend == "down":
             return None
-        # Momentum: new N-day high close
-        prev_highs = cl[-(self.breakout_len + 1) : -1]
-        if len(prev_highs) < self.breakout_len or price <= max(prev_highs):
+
+        # RSI(2) oversold dip-buy with bounce confirmation
+        if rsi2 >= self.rsi_buy:
             return None
-        # Stop at recent swing low
-        recent_lows = list(lo)[-self.breakout_len :]
-        swing_low = min(recent_lows) if recent_lows else price - atr * self.stop_m
-        stop = max(swing_low, price - atr * self.stop_m)  # floor at ATR stop
-        risk = price - stop
-        if risk < 0.01:
+
+        # Bounce confirmation: today's close > yesterday's close
+        if len(cl) >= 2 and price <= cl[-2]:
             return None
-        target = price + risk * 2.0  # 2:1 R:R minimum
+
+        stop = price - atr * self.stop_m
+        target = price + atr * self.tgt_m
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
