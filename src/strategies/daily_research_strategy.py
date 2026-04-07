@@ -1,4 +1,4 @@
-"""Daily Research Strategy — high-conviction dip-buying in calm uptrends."""
+"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
 
 from __future__ import annotations
 
@@ -25,12 +25,11 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.stop_m = float(config.get("stop_atr_mult", 1.5))
         self.tgt_m = float(config.get("target_atr_mult", 2.5))
         self.rsi_threshold = float(config.get("rsi_threshold", 45.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
-        self.min_signals = int(config.get("min_signals", 2))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -87,11 +86,11 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Regime gate: skip DOWN, HIGH vol, and SHOCK
+        # Regime gate: skip DOWN and SHOCK
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if trend == "down" or vol in ("high", "shock"):
+        if trend == "down" or vol == "shock":
             return None
 
         # Price must be above SMA(20) — uptrend confirmation
@@ -103,31 +102,24 @@ class DailyResearchStrategy(BaseStrategy):
         if len(cl) >= 11 and price <= cl[-11]:
             return None
 
-        # Count how many signals fire (need min_signals)
-        hits = 0
-
         # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
         rsi2 = self._rsi(c, n=2)
-        if rsi2 is not None and rsi2 < self.rsi_threshold:
-            hits += 1
+        rsi2_ok = rsi2 is not None and rsi2 < self.rsi_threshold
 
         # Signal 2: RSI(14) moderate pullback in uptrend
         rsi14 = self._rsi(c, n=14)
-        if rsi14 is not None and rsi14 < self.rsi_threshold:
-            hits += 1
+        rsi14_ok = rsi14 is not None and rsi14 < self.rsi_threshold
 
         # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
         sma5 = sum(cl[-5:]) / 5
-        if price < sma5 and price > sma20:
-            hits += 1
+        dip_ok = price < sma5 and price > sma20
 
         # Signal 4: Breakout — new N-day high close (trend=up only)
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        if trend == "up" and len(prev) >= bp and price > max(prev):
-            hits += 1
+        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
 
-        if hits < self.min_signals:
+        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
             return None
 
         self.last_signal_time[sym] = bar.time
