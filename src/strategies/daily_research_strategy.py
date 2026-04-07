@@ -1,8 +1,10 @@
-"""Daily Research Strategy — RSI pullback in regime-confirmed uptrends.
+"""Daily Research Strategy — simple RSI pullback, skip DOWN, price > SMA.
 
-Only trades when regime=UP. RSI(14) < threshold as entry timing.
-Price must be above SMA(20) to avoid catching falling knives.
-Long-only. Wide R:R (2.5:4 ATR) to maximize compounding.
+Minimal filters for maximum signal flow:
+- Skip DOWN and SHOCK (allow UP + FLAT)
+- RSI(14) < threshold (default 40) = oversold pullback
+- Price > 20-day SMA = basic uptrend confirmation
+Only 3 optimizable params: rsi_threshold, stop_atr_mult, target_atr_mult.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.rsi_threshold = float(config.get("rsi_threshold", 35.0))
+        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.stop_m = float(config.get("stop_atr_mult", 2.5))
         self.tgt_m = float(config.get("target_atr_mult", 4.0))
@@ -91,11 +93,11 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Strict regime gate: ONLY trade in UP regime, skip SHOCK
+        # Regime gate: skip DOWN and SHOCK (allow UP + FLAT)
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if trend != "up" or vol == "shock":
+        if trend == "down" or vol == "shock":
             return None
 
         # Price must be above 20-day SMA (avoid falling knives)
