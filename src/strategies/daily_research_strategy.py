@@ -1,10 +1,4 @@
-"""Daily Research Strategy — buy every dip in uptrend, high win rate.
-
-Simple mean reversion: buy when price dips below SMA(5) while above SMA(20).
-No RSI filter — maximizes trade count for statistical edge.
-Wide stops (3 ATR) for high win rate, quick targets (1.5 ATR).
-Skip DOWN and SHOCK regimes. Long-only.
-"""
+"""Daily Research Strategy — buy dips in rising uptrends, skip DOWN/SHOCK."""
 
 from __future__ import annotations
 
@@ -99,10 +93,16 @@ class DailyResearchStrategy(BaseStrategy):
         if trend == "down" or vol == "shock":
             return None
 
-        # Price must be above SMA(20) — uptrend
+        # Price must be above SMA(20) — uptrend confirmation
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
+
+        # Rising SMA(20) — trend must be accelerating, not rolling over
+        if len(cl) >= 21:
+            sma20_prev = sum(cl[-21:-1]) / 20
+            if sma20 <= sma20_prev:
+                return None
 
         # Signal 1: RSI pullback (oversold in uptrend)
         rsi = self._rsi(c)
