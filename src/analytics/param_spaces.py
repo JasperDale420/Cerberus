@@ -637,7 +637,14 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
             description="RSI(14) oversold threshold for pullback entry",
         ),
         ParamDef("breakout_period", "int", low=10, high=25, step=5, description="Lookback for breakout high"),
-        ParamDef("sma_slow", "int", low=30, high=50, step=5, description="Slow SMA period for trend filter"),
+        ParamDef(
+            "rsi_short_threshold",
+            "float",
+            low=55.0,
+            high=70.0,
+            step=5.0,
+            description="RSI overbought threshold for SHORT in DOWN regime",
+        ),
     ],
 }
 
