@@ -1,4 +1,4 @@
-"""Daily Research Strategy — RSI reversion, long + short, regime-gated."""
+"""Daily Research Strategy — RSI pullback in uptrends, long-only."""
 
 from __future__ import annotations
 
@@ -25,10 +25,9 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.stop_m = float(config.get("stop_atr_mult", 1.5))
         self.tgt_m = float(config.get("target_atr_mult", 3.0))
-        self.rsi_lo = float(config.get("rsi_threshold", 35.0))
-        self.rsi_hi = float(config.get("rsi_sell_threshold", 65.0))
+        self.rsi_lo = float(config.get("rsi_threshold", 30.0))
         self.min_bars = int(config.get("min_bars", 20))
         self.allow_overnight = True
 
@@ -82,22 +81,24 @@ class DailyResearchStrategy(BaseStrategy):
         price = cl[-1]
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
-        if rsi < self.rsi_lo and trend != "down":
-            if len(cl) >= 25 and sum(cl[-20:]) / 20 < sum(cl[-25:-5]) / 20:
-                return None
-            side, sm, tm = OrderSide.BUY, -1, 1
-        elif rsi > self.rsi_hi and trend == "down":
-            side, sm, tm = OrderSide.SELL, 1, -1
-        else:
+        # Skip all DOWN regimes — they hemorrhaged money
+        if trend == "down":
+            return None
+        # Require close above 20-day SMA (uptrend confirmation)
+        sma20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
+        if sma20 is None or price <= sma20:
+            return None
+        # RSI pullback in uptrend: oversold but trend intact
+        if rsi >= self.rsi_lo:
             return None
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
-            side=side,
+            side=OrderSide.BUY,
             size_hint=0.0,
             entry_price=price,
-            stop_price=price + atr * self.stop_m * sm,
-            target_price=price + atr * self.tgt_m * tm,
+            stop_price=price - atr * self.stop_m,
+            target_price=price + atr * self.tgt_m,
             strategy=self.name,
             generated_at=bar.time,
         )
