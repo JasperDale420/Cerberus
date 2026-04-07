@@ -150,6 +150,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
         ParamDef("rsi_threshold", "float", low=25.0, high=45.0, step=5.0, description="RSI(14) pullback threshold"),
         ParamDef("breakout_period", "int", low=10, high=25, step=5, description="Lookback for breakout high"),
+        ParamDef("atr_pct_max", "float", low=0.02, high=0.06, step=0.005, description="Max ATR as pct of price"),
     ],
 }
 
