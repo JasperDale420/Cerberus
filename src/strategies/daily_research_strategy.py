@@ -1,4 +1,11 @@
-"""Daily Research Strategy — RSI pullback, wide stops, quick targets."""
+"""Daily Research Strategy — RSI pullback + breakout, skip DOWN, rising SMA.
+
+Dual signal for maximum trade flow:
+1. RSI(14) < threshold AND price > rising SMA(20) (mean reversion in uptrend)
+2. New N-day high close AND price > SMA(20) (momentum breakout)
+Wide stops (3 ATR) for high win rate, tighter targets (2 ATR) for quick profits.
+Skip DOWN and SHOCK regimes. Long-only.
+"""
 
 from __future__ import annotations
 
@@ -25,15 +32,18 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
+        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
+        self.breakout_period = int(config.get("breakout_period", 15))
         self.stop_m = float(config.get("stop_atr_mult", 3.0))
         self.tgt_m = float(config.get("target_atr_mult", 2.0))
-        self.rsi_t = float(config.get("rsi_threshold", 40.0))
         self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s], self._h[s], self._lo[s] = deque(maxlen=60), deque(maxlen=60), deque(maxlen=60)
+            self._c[s] = deque(maxlen=60)
+            self._h[s] = deque(maxlen=60)
+            self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -79,23 +89,37 @@ class DailyResearchStrategy(BaseStrategy):
         atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
+
         cl = list(c)
         price = cl[-1]
-        # Regime: skip DOWN and SHOCK
+
+        # Regime gate: skip DOWN and SHOCK
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if trend == "down" or vol == "shock":
             return None
-        # Price above 20-day SMA (not falling knife)
-        sma20 = sum(cl[-20:]) / 20
-        if price <= sma20:
+
+        # Price above rising SMA(20) — confirms uptrend and rising
+        if len(cl) < 25:
             return None
-        # RSI pullback entry
+        sma20_now = sum(cl[-20:]) / 20
+        sma20_5ago = sum(cl[-25:-5]) / 20
+        if price <= sma20_now or sma20_now <= sma20_5ago:
+            return None
+
+        # Signal 1: RSI pullback (oversold in uptrend)
         rsi = self._rsi(c)
-        if rsi is None or rsi >= self.rsi_t:
+        rsi_ok = rsi is not None and rsi < self.rsi_threshold
+
+        # Signal 2: Breakout — new N-day high close
+        bp = self.breakout_period
+        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
+        breakout_ok = len(prev) >= bp and price > max(prev)
+
+        if not rsi_ok and not breakout_ok:
             return None
-        # Wide stop (survive volatility), quick target (lock profits)
+
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
