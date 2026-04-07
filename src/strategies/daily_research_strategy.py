@@ -1,9 +1,8 @@
-"""Daily Research Strategy — RSI pullback + breakout, skip DOWN, rising SMA.
+"""Daily Research Strategy — buy every dip in uptrend, high win rate.
 
-Dual signal for maximum trade flow:
-1. RSI(14) < threshold AND price > rising SMA(20) (mean reversion in uptrend)
-2. New N-day high close AND price > SMA(20) (momentum breakout)
-Wide stops (3 ATR) for high win rate, tighter targets (2 ATR) for quick profits.
+Simple mean reversion: buy when price dips below SMA(5) while above SMA(20).
+No RSI filter — maximizes trade count for statistical edge.
+Wide stops (3 ATR) for high win rate, quick targets (1.5 ATR).
 Skip DOWN and SHOCK regimes. Long-only.
 """
 
@@ -32,10 +31,10 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
-        self.breakout_period = int(config.get("breakout_period", 15))
         self.stop_m = float(config.get("stop_atr_mult", 3.0))
-        self.tgt_m = float(config.get("target_atr_mult", 2.0))
+        self.tgt_m = float(config.get("target_atr_mult", 1.5))
+        self.rsi_threshold = float(config.get("rsi_threshold", 45.0))
+        self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
@@ -100,24 +99,25 @@ class DailyResearchStrategy(BaseStrategy):
         if trend == "down" or vol == "shock":
             return None
 
-        # Price above rising SMA(20) — confirms uptrend and rising
-        if len(cl) < 25:
-            return None
-        sma20_now = sum(cl[-20:]) / 20
-        sma20_5ago = sum(cl[-25:-5]) / 20
-        if price <= sma20_now or sma20_now <= sma20_5ago:
+        # Price must be above SMA(20) — uptrend
+        sma20 = sum(cl[-20:]) / 20
+        if price <= sma20:
             return None
 
         # Signal 1: RSI pullback (oversold in uptrend)
         rsi = self._rsi(c)
         rsi_ok = rsi is not None and rsi < self.rsi_threshold
 
-        # Signal 2: Breakout — new N-day high close
+        # Signal 2: Price dip below SMA(5) while above SMA(20) — buy the dip
+        sma5 = sum(cl[-5:]) / 5
+        dip_ok = price < sma5 and price > sma20
+
+        # Signal 3: Breakout — new N-day high close (trend=up only)
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        breakout_ok = len(prev) >= bp and price > max(prev)
+        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
 
-        if not rsi_ok and not breakout_ok:
+        if not rsi_ok and not dip_ok and not breakout_ok:
             return None
 
         self.last_signal_time[sym] = bar.time
