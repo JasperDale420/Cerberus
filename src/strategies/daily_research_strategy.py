@@ -26,7 +26,7 @@ class DailyResearchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 3.0))
+        self.tgt_m = float(config.get("target_atr_mult", 8.0))
         self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
@@ -102,13 +102,16 @@ class DailyResearchStrategy(BaseStrategy):
         if len(cl) >= 11 and price <= cl[-11]:
             return None
 
+        # Regime-adaptive RSI threshold: more aggressive in UP (more entries)
+        rsi_thr = self.rsi_threshold + 15.0 if trend == "up" else self.rsi_threshold
+
         # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
         rsi2 = self._rsi(c, n=2)
-        rsi2_ok = rsi2 is not None and rsi2 < self.rsi_threshold
+        rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
 
         # Signal 2: RSI(14) moderate pullback in uptrend
         rsi14 = self._rsi(c, n=14)
-        rsi14_ok = rsi14 is not None and rsi14 < self.rsi_threshold
+        rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
 
         # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
         sma5 = sum(cl[-5:]) / 5
