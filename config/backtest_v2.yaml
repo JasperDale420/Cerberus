@@ -241,6 +241,41 @@ strategies:
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
 
+
+  up_normal_strategy:
+    enabled: true
+    stop_atr_mult: 1.66
+    target_atr_mult: 4.5
+    signal_timeframe: 5
+    min_bars: 30
+    cooldown_bars: 14
+    min_vwap_dist: 0.001
+    activation:
+      session: [opening, midday, power_hour]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
+  daily_research_strategy:
+    enabled: true
+    allow_overnight: true
+    max_hold_days: 5
+    bar_duration_minutes: 1.0
+    cooldown_bars: 390
+    min_bars: 25
+    stop_atr_mult: 3.0
+    target_atr_mult: 2.0
+    rsi_threshold: 40.0
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin, stressed]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
   # V1 legacy strategies — explicitly disabled to prevent ConfigLoader deep-merge
   # from strategies.yaml activating them
   vwap_reversion:
@@ -316,7 +351,7 @@ backtest:
   spread_mode: "fixed"
   daily_equity_reset: false
   rth_only: true
-  force_flat_at_1600: true
+  force_flat_at_1600: false
 
 # Scanner
 scanner:

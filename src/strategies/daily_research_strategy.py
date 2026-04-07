@@ -110,12 +110,16 @@ class DailyResearchStrategy(BaseStrategy):
         rsi14 = self._rsi(c, n=14)
         rsi14_ok = rsi14 is not None and rsi14 < self.rsi_threshold
 
-        # Signal 3: Breakout — new N-day high close (trend=up only)
+        # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
+        sma5 = sum(cl[-5:]) / 5
+        dip_ok = price < sma5 and price > sma20
+
+        # Signal 4: Breakout — new N-day high close (trend=up only)
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
         breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
 
-        if not rsi2_ok and not rsi14_ok and not breakout_ok:
+        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
             return None
 
         self.last_signal_time[sym] = bar.time
