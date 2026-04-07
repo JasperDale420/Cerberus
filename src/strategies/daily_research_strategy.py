@@ -1,11 +1,4 @@
-"""Daily Research Strategy — simple RSI pullback, skip DOWN, price > SMA.
-
-Minimal filters for maximum signal flow:
-- Skip DOWN and SHOCK (allow UP + FLAT)
-- RSI(14) < threshold (default 40) = oversold pullback
-- Price > 20-day SMA = basic uptrend confirmation
-Only 3 optimizable params: rsi_threshold, stop_atr_mult, target_atr_mult.
-"""
+"""Daily Research Strategy — RSI pullback, wide stops, quick targets."""
 
 from __future__ import annotations
 
@@ -32,18 +25,15 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
-        self.breakout_period = int(config.get("breakout_period", 20))
-        self.stop_m = float(config.get("stop_atr_mult", 2.5))
-        self.tgt_m = float(config.get("target_atr_mult", 4.0))
-        self.min_bars = int(config.get("min_bars", 55))
+        self.stop_m = float(config.get("stop_atr_mult", 3.0))
+        self.tgt_m = float(config.get("target_atr_mult", 2.0))
+        self.rsi_t = float(config.get("rsi_threshold", 40.0))
+        self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=80)
-            self._h[s] = deque(maxlen=80)
-            self._lo[s] = deque(maxlen=80)
+            self._c[s], self._h[s], self._lo[s] = deque(maxlen=60), deque(maxlen=60), deque(maxlen=60)
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
@@ -89,37 +79,31 @@ class DailyResearchStrategy(BaseStrategy):
         atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
-
         cl = list(c)
         price = cl[-1]
-
-        # Regime gate: skip DOWN and SHOCK (allow UP + FLAT)
+        # Regime: skip DOWN and SHOCK
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if trend == "down" or vol == "shock":
             return None
-
-        # Price must be above 20-day SMA (avoid falling knives)
+        # Price above 20-day SMA (not falling knife)
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
-
-        # RSI(14) pullback entry: oversold in confirmed uptrend
+        # RSI pullback entry
         rsi = self._rsi(c)
-        if rsi is None or rsi >= self.rsi_threshold:
+        if rsi is None or rsi >= self.rsi_t:
             return None
-
-        stop = price - atr * self.stop_m
-        target = price + atr * self.tgt_m
+        # Wide stop (survive volatility), quick target (lock profits)
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
             side=OrderSide.BUY,
             size_hint=0.0,
             entry_price=price,
-            stop_price=stop,
-            target_price=target,
+            stop_price=price - atr * self.stop_m,
+            target_price=price + atr * self.tgt_m,
             strategy=self.name,
             generated_at=bar.time,
         )
