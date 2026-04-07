@@ -1,7 +1,9 @@
-"""Daily Research Strategy — RSI(2) dip-buy with trend + bounce confirmation.
+"""Daily Research Strategy — RSI pullback + momentum breakout hybrid.
 
-Long-only. Buy RSI(2) oversold dips in uptrends with bounce confirmation.
-Skip DOWN and SHOCK regimes. Wider targets for compounding gains.
+Two complementary signals:
+1. RSI(14) oversold pullback in uptrend (mean reversion, high win rate)
+2. New N-day high breakout in UP regime (momentum, catches trends)
+Long-only. Skip DOWN and SHOCK regimes.
 """
 
 from __future__ import annotations
@@ -29,13 +31,12 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.sma_slow = int(config.get("sma_slow", 50))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_buy = float(config.get("rsi_buy_threshold", 15.0))
-        self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 4.0))
-        self.min_bars = int(config.get("min_bars", 55))
-        self.atr_period = int(config.get("atr_period", 14))
+        self.sma_slow = int(config.get("sma_slow", 40))
+        self.rsi_threshold = float(config.get("rsi_threshold", 35.0))
+        self.breakout_period = int(config.get("breakout_period", 15))
+        self.stop_m = float(config.get("stop_atr_mult", 2.0))
+        self.tgt_m = float(config.get("target_atr_mult", 3.0))
+        self.min_bars = int(config.get("min_bars", 45))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -47,17 +48,13 @@ class DailyResearchStrategy(BaseStrategy):
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
-    def _atr(self, h: deque, lo: deque, c: deque) -> float | None:
-        p = self.atr_period
+    def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
             return None
         hl, ll, cl = list(h), list(lo), list(c)
-        return (
-            sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
-            / p
-        )
+        return sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(1, p + 1)) / p
 
-    def _rsi(self, v: deque, n: int) -> float | None:
+    def _rsi(self, v: deque, n: int = 14) -> float | None:
         if len(v) < n + 1:
             return None
         d = list(v)
@@ -95,8 +92,8 @@ class DailyResearchStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        rsi2 = self._rsi(c, self.rsi_period)
-        if rsi2 is None:
+        rsi = self._rsi(c)
+        if rsi is None:
             return None
 
         cl = list(c)
@@ -114,12 +111,15 @@ class DailyResearchStrategy(BaseStrategy):
         if vol == "shock" or trend == "down":
             return None
 
-        # RSI(2) oversold dip-buy with bounce confirmation
-        if rsi2 >= self.rsi_buy:
-            return None
+        # Signal 1: RSI(14) pullback — oversold in uptrend
+        rsi_ok = rsi < self.rsi_threshold
 
-        # Bounce confirmation: today's close > yesterday's close
-        if len(cl) >= 2 and price <= cl[-2]:
+        # Signal 2: Breakout — new N-day high close in UP regime
+        bp = self.breakout_period
+        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
+        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
+
+        if not rsi_ok and not breakout_ok:
             return None
 
         stop = price - atr * self.stop_m
