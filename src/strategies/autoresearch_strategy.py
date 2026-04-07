@@ -67,6 +67,11 @@ class AutoresearchStrategy(BaseStrategy):
         if rsi is None or rsi > 55 or rsi < 30:
             return None
 
+        # Bounce confirmation: current close > previous close
+        bars = symbol_state.bars
+        if len(bars) >= 2 and bar.close <= bars[-2].close:
+            return None
+
         # Regime-adaptive stops + dynamic R:R
         stop_dist = self._apply_regime_volatility_multiplier(self.stop_atr_mult * atr, market_state)
         rr = self._get_dynamic_risk_reward(self.target_atr_mult / self.stop_atr_mult, market_state)
