@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips in strong uptrends with momentum confirmation."""
+"""Daily Research Strategy — 5-signal dip/momentum buying with half-day cooldown."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 2.5))
-        self.rsi_threshold = float(config.get("rsi_threshold", 45.0))
+        self.stop_m = float(config.get("stop_atr_mult", 3.0))
+        self.tgt_m = float(config.get("target_atr_mult", 2.0))
+        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
@@ -119,7 +119,10 @@ class DailyResearchStrategy(BaseStrategy):
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
         breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
 
-        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
+        # Signal 5: SMA(20) support bounce — price within 2% of SMA(20)
+        support_ok = price > sma20 and (price - sma20) / sma20 < 0.02
+
+        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok and not support_ok:
             return None
 
         self.last_signal_time[sym] = bar.time
