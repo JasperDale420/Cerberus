@@ -33,7 +33,6 @@ class DailyResearchStrategy(BaseStrategy):
         self.rsi_t = float(config.get("rsi_threshold", 40.0))
         self.bp = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _is(self, s: str) -> None:
@@ -87,9 +86,7 @@ class DailyResearchStrategy(BaseStrategy):
         if snap and snap.trend and str(snap.trend.value).lower() == "down":
             return None
         cl = list(c)
-        s20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
-        s20p = sum(cl[-25:-5]) / 20 if len(cl) >= 25 else None
-        if s20 is not None and s20p is not None and s20 < s20p:
+        if len(cl) >= 25 and sum(cl[-20:]) / 20 < sum(cl[-25:-5]) / 20:
             return None
         atr = self._atr(h, lo, c)
         if atr is None or atr < 0.01:
