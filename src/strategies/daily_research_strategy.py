@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips in strong uptrends, no momentum filter."""
+"""Daily Research Strategy — pure Connors RSI(2) extreme oversold in uptrends."""
 
 from __future__ import annotations
 
@@ -27,8 +27,7 @@ class DailyResearchStrategy(BaseStrategy):
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
         self.tgt_m = float(config.get("target_atr_mult", 2.5))
-        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
-        self.breakout_period = int(config.get("breakout_period", 20))
+        self.rsi2_entry = float(config.get("rsi2_entry", 10.0))
         self.min_bars = int(config.get("min_bars", 25))
         self.allow_overnight = True
 
@@ -93,29 +92,25 @@ class DailyResearchStrategy(BaseStrategy):
         if trend == "down" or vol == "shock":
             return None
 
-        # Price must be above SMA(20) — uptrend confirmation
+        # Price must be above SMA(50) — strong uptrend only
+        if len(cl) < 50:
+            return None
+        sma50 = sum(cl[-50:]) / 50
+        if price <= sma50:
+            return None
+
+        # Also above SMA(20) for near-term uptrend
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
 
-        # Signal 1: RSI(2) extreme oversold — Connors-style snap-back
+        # 10-day positive momentum
+        if len(cl) >= 11 and price <= cl[-11]:
+            return None
+
+        # Pure RSI(2) extreme oversold entry — Connors-style
         rsi2 = self._rsi(c, n=2)
-        rsi2_ok = rsi2 is not None and rsi2 < self.rsi_threshold
-
-        # Signal 2: RSI(14) moderate pullback in uptrend
-        rsi14 = self._rsi(c, n=14)
-        rsi14_ok = rsi14 is not None and rsi14 < self.rsi_threshold
-
-        # Signal 3: Price dip below SMA(5) while above SMA(20) — buy the dip
-        sma5 = sum(cl[-5:]) / 5
-        dip_ok = price < sma5 and price > sma20
-
-        # Signal 4: Breakout — new N-day high close (trend=up only)
-        bp = self.breakout_period
-        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
-
-        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
+        if rsi2 is None or rsi2 >= self.rsi2_entry:
             return None
 
         self.last_signal_time[sym] = bar.time

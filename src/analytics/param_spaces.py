@@ -624,7 +624,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR multiplier for stop loss"),
+        ParamDef(
+            "stop_atr_mult", "float", low=1.0, high=3.5, step=0.25, description="ATR multiplier for stop (wide range)"
+        ),
         ParamDef(
             "target_atr_mult",
             "float",
