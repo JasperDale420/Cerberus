@@ -1,4 +1,4 @@
-"""Daily Research Strategy — momentum + mean-reversion hybrid with regime sizing."""
+"""Daily Research Strategy — momentum+RSI(2) with regime sizing, iter2."""
 
 from __future__ import annotations
 
@@ -20,22 +20,16 @@ class DailyResearchStrategy(BaseStrategy):
         self._c: dict[str, deque[float]] = {}
         self._h: dict[str, deque[float]] = {}
         self._lo: dict[str, deque[float]] = {}
-        self._v: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
-        self._dhlcv: dict[str, list[float]] = {}
+        self._dhlc: dict[str, list[float]] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 1.25))
-        self.tgt_m = float(config.get("target_atr_mult", 10.0))
-        self.rsi_ob = float(config.get("rsi_oversold", 25.0))
-        self.rsi_ob_up = float(config.get("rsi_oversold_uptrend", 40.0))
-        self.mom_period = int(config.get("momentum_period", 20))
-        self.sma_fast = int(config.get("sma_fast", 10))
-        self.sma_slow = int(config.get("sma_slow", 50))
-        self.min_bars = int(config.get("min_bars", 55))
-        self.vol_mult = float(config.get("volume_surge_mult", 1.0))
+        self.stop_m = float(config.get("stop_atr_mult", 1.5))
+        self.tgt_m = float(config.get("target_atr_mult", 6.0))
+        self.rsi_threshold = float(config.get("rsi_threshold", 32.0))
         self.breakout_period = int(config.get("breakout_period", 20))
+        self.min_bars = int(config.get("min_bars", 55))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -43,9 +37,8 @@ class DailyResearchStrategy(BaseStrategy):
             self._c[s] = deque(maxlen=100)
             self._h[s] = deque(maxlen=100)
             self._lo[s] = deque(maxlen=100)
-            self._v[s] = deque(maxlen=100)
             self._pd[s] = None
-            self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
+            self._dhlc[s] = [0.0, 0.0, 0.0]
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -61,21 +54,15 @@ class DailyResearchStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def _sma(self, cl: list[float], n: int) -> float | None:
-        if len(cl) < n:
-            return None
-        return sum(cl[-n:]) / n
-
     def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Optional[Signal]:
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
-        d = self._dhlcv[symbol]
+        d = self._dhlc[symbol]
         if self._pd[symbol] is not None and dt != self._pd[symbol]:
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
-            self._v[symbol].append(d[3])
-            d[0], d[1], d[2], d[3] = bar.high, bar.low, bar.close, bar.volume
+            d[0], d[1], d[2] = bar.high, bar.low, bar.close
             sig = self._sig(symbol, bar, market_state)
             self._pd[symbol] = dt
             return sig
@@ -85,7 +72,6 @@ class DailyResearchStrategy(BaseStrategy):
             d[0] = max(d[0], bar.high)
             d[1] = min(d[1], bar.low)
         d[2] = bar.close
-        d[3] = d[3] + bar.volume
         self._pd[symbol] = dt
         return None
 
@@ -100,65 +86,69 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Regime filter: skip DOWN trend and SHOCK vol
+        # Regime filter
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+
+        # Skip DOWN trend, HIGH vol, SHOCK vol
+        if trend == "down" or vol in ("high", "shock"):
             return None
 
-        # Trend structure: price above slow SMA
-        sma_s = self._sma(cl, self.sma_slow)
-        if sma_s is None:
-            return None
-        if price <= sma_s:
+        # Trend structure: price above SMA(20) and SMA(50)
+        sma20 = sum(cl[-20:]) / 20
+        if price <= sma20:
             return None
 
-        # Fast SMA for trend direction
-        sma_f = self._sma(cl, self.sma_fast)
-        if sma_f is None:
+        if len(cl) >= 50:
+            sma50 = sum(cl[-50:]) / 50
+            if price <= sma50:
+                return None
+            # Confirm SMA(20) is rising (above its value 5 bars ago)
+            if len(cl) >= 25:
+                sma20_prev = sum(cl[-25:-5]) / 20
+                if sma20 < sma20_prev:
+                    return None
+
+        # Positive 10-day momentum
+        if len(cl) >= 11 and price <= cl[-11]:
             return None
 
-        # Momentum: positive N-day return
-        if len(cl) > self.mom_period:
-            mom = (price - cl[-self.mom_period - 1]) / cl[-self.mom_period - 1]
-        else:
-            mom = 0.0
-
-        # RSI(2) — primary mean-reversion signal
+        # RSI(2) — primary signal
         rsi2 = self._rsi(c, n=2)
-        if rsi2 is None:
-            return None
 
-        # Signal logic depends on regime
-        signal_ok = False
-        size = 0.0
-
+        # Regime-adaptive thresholds and sizing
         if trend == "up":
-            # In uptrend: buy RSI(2) dips or breakouts — aggressive
-            if rsi2 < self.rsi_ob_up and mom > 0.0:
-                signal_ok = True
-                size = 1.0  # max conviction
-            elif self._is_breakout(cl, price):
-                signal_ok = True
-                size = 0.9
+            rsi_thr = self.rsi_threshold + 15.0
+            size = 1.0
         elif trend == "flat":
-            # In flat: only deep RSI(2) oversold with positive momentum
-            if rsi2 < self.rsi_ob and mom > 0.02 and sma_f > sma_s:
-                signal_ok = True
-                size = 0.7
-        elif trend == "down":
-            # In downtrend: only extreme oversold bounces
-            if rsi2 < 10.0 and mom > 0.05 and price > sma_f:
-                signal_ok = True
-                size = 0.4
+            rsi_thr = self.rsi_threshold + 10.0
+            size = 0.7
+        else:
+            rsi_thr = self.rsi_threshold
+            size = 0.5
 
-        if not signal_ok:
+        # Scale down in normal vol (vs low vol)
+        if vol == "normal":
+            size *= 0.85
+
+        rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
+
+        # RSI(14) secondary signal
+        rsi14 = self._rsi(c, n=14)
+        rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
+
+        # Breakout signal in uptrends
+        bp = self.breakout_period
+        prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
+        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
+
+        if not rsi2_ok and not rsi14_ok and not breakout_ok:
             return None
 
-        # Scale down in high vol
-        if vol == "high":
-            size *= 0.6
+        # Breakout gets slightly higher sizing
+        if breakout_ok and not rsi2_ok:
+            size *= 0.9
 
         self.last_signal_time[sym] = bar.time
         return Signal(
@@ -171,10 +161,3 @@ class DailyResearchStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
         )
-
-    def _is_breakout(self, cl: list[float], price: float) -> bool:
-        bp = self.breakout_period
-        if len(cl) <= bp:
-            return False
-        prev = cl[-(bp + 1) : -1]
-        return price > max(prev)
