@@ -1,7 +1,8 @@
-"""Daily Research Strategy — multi-signal regime-adaptive momentum+reversion."""
+"""Daily Research Strategy — vol-targeted sizing + multi-signal trend capture."""
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from datetime import date, datetime
 from typing import Any, Dict, Optional
@@ -34,6 +35,7 @@ class DailyResearchStrategy(BaseStrategy):
         self.pullback_rsi_lo = float(config.get("pullback_rsi_lo", 30.0))
         self.pullback_rsi_hi = float(config.get("pullback_rsi_hi", 55.0))
         self.vol_mult = float(config.get("vol_mult", 1.0))
+        self.vol_target = float(config.get("vol_target", 0.15))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -70,6 +72,15 @@ class DailyResearchStrategy(BaseStrategy):
         for v in vals[1:]:
             ema = v * k + ema * (1 - k)
         return ema
+
+    def _realized_vol(self, closes: list[float], lookback: int = 20) -> float | None:
+        """Annualized realized vol from daily returns."""
+        if len(closes) < lookback + 1:
+            return None
+        rets = [(closes[i] / closes[i - 1]) - 1 for i in range(-lookback, 0)]
+        mean_r = sum(rets) / len(rets)
+        var = sum((r - mean_r) ** 2 for r in rets) / (len(rets) - 1)
+        return math.sqrt(var * 252) if var > 0 else None
 
     def on_bar(
         self,
@@ -128,21 +139,24 @@ class DailyResearchStrategy(BaseStrategy):
         if sma20 is None or ema10 is None or ema20 is None:
             return None
 
-        # Regime-adaptive position sizing
-        if trend == "up" and vol in ("low", "normal"):
-            size = 1.0
-        elif trend == "up" and vol == "high":
-            size = 0.6
-        elif trend == "flat" and vol in ("low", "normal"):
-            size = 0.5
+        # Volatility-targeted position sizing
+        rv = self._realized_vol(cl)
+        if rv and rv > 0.01:
+            size = min(self.vol_target / rv, 1.0)
+        elif trend == "up":
+            size = 0.8
         else:
-            size = 0.3
+            size = 0.5
+
+        # Boost sizing in UP regime
+        if trend == "up":
+            size = min(size * 1.2, 1.0)
 
         # --- Signal 1: RSI(2) Mean Reversion ---
         rsi2 = self._rsi(c, n=2)
         if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
             stop = price - atr * self.stop_m
-            target = price + atr * 4.0  # Tighter target for MR
+            target = price + atr * 4.0
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
@@ -169,13 +183,13 @@ class DailyResearchStrategy(BaseStrategy):
             and ema10 > ema20
             and (avg_vol == 0 or cur_vol > avg_vol * self.vol_mult)
         ):
-            stop = price - atr * 2.0  # Wider stop for momentum
-            target = price + atr * self.tgt_m  # Wide target, let it run
+            stop = price - atr * 2.0
+            target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
                 side=OrderSide.BUY,
-                size_hint=size * 0.8,
+                size_hint=size,
                 entry_price=price,
                 stop_price=stop,
                 target_price=target,
@@ -190,15 +204,15 @@ class DailyResearchStrategy(BaseStrategy):
             and self.pullback_rsi_lo <= rsi14 <= self.pullback_rsi_hi
             and ema10 > ema20
             and price > sma20
-            and price <= ema10  # Pulled back to fast EMA
+            and price <= ema10
         ):
             stop = price - atr * self.stop_m
-            target = price + atr * 5.0  # Medium target
+            target = price + atr * 5.0
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
                 side=OrderSide.BUY,
-                size_hint=size * 0.7,
+                size_hint=size * 0.8,
                 entry_price=price,
                 stop_price=stop,
                 target_price=target,
