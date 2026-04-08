@@ -127,11 +127,10 @@ class DailyResearchStrategy(BaseStrategy):
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
 
-        # Block SHOCK always, block DOWN+HIGH (loses money)
+        # Block SHOCK always
         if vol == "shock":
             return None
-        if trend == "down" and vol == "high":
-            return None
+        down_high = trend == "down" and vol == "high"
 
         # Moving averages
         sma20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
@@ -167,8 +166,8 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
-        # Gate: remaining signals only in UP or FLAT
-        if trend == "down":
+        # Gate: remaining signals only in UP or FLAT (also block DOWN+HIGH)
+        if trend == "down" or down_high:
             return None
 
         # --- Signal 2: Momentum Breakout (UP or FLAT, no volume filter) ---
