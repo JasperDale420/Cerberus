@@ -135,6 +135,7 @@ class DailyResearchStrategy(BaseStrategy):
 
         # Moving averages
         sma20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
+        sma50 = sum(cl[-50:]) / 50 if len(cl) >= 50 else None
         ema10 = self._ema(cl, 10)
         ema20 = self._ema(cl, 20)
 
@@ -174,7 +175,7 @@ class DailyResearchStrategy(BaseStrategy):
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
 
-        if len(prev) >= bp and price > max(prev) and ema10 > ema20:
+        if len(prev) >= bp and price > max(prev) and ema10 > ema20 and (sma50 is None or price > sma50):
             stop = price - stop_dist
             target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
@@ -195,6 +196,7 @@ class DailyResearchStrategy(BaseStrategy):
             and self.pullback_rsi_lo <= rsi14 <= self.pullback_rsi_hi
             and ema10 > ema20
             and price > sma20
+            and (sma50 is None or price > sma50)
         ):
             stop = price - stop_dist
             target = price + atr * 5.0
@@ -211,7 +213,13 @@ class DailyResearchStrategy(BaseStrategy):
             )
 
         # --- Signal 4: Momentum Continuation (2+ up days + above SMA20) ---
-        if len(cl) >= 3 and cl[-1] > cl[-2] > cl[-3] and price > sma20 and ema10 > ema20:
+        if (
+            len(cl) >= 3
+            and cl[-1] > cl[-2] > cl[-3]
+            and price > sma20
+            and ema10 > ema20
+            and (sma50 is None or price > sma50)
+        ):
             stop = price - stop_dist
             target = price + atr * 3.5
             self.last_signal_time[sym] = bar.time
