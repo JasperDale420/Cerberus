@@ -150,8 +150,8 @@ class DailyResearchStrategy(BaseStrategy):
         rsi2 = self._rsi(c, n=2)
         rsi14 = self._rsi(c, n=14)
 
-        # --- Signal 1: RSI(2) Mean Reversion (works in ALL trends) ---
-        if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
+        # --- Signal 1: RSI(2) Mean Reversion (works in ALL trends, SMA50 gate) ---
+        if rsi2 is not None and rsi2 < self.rsi2_threshold and (sma50 is None or price > sma50):
             stop = price - stop_dist
             target = price + atr * 4.0
             self.last_signal_time[sym] = bar.time
