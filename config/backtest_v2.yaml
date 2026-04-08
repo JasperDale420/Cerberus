@@ -310,8 +310,8 @@ strategies:
 # Risk — sized for $100k account
 risk:
   max_daily_loss: 3000.0          # 3% of account
-  max_risk_per_trade: 3000.0      # 3% risk per trade
-  max_open_risk: 10000.0          # 10% total open risk
+  max_risk_per_trade: 6000.0      # 6% risk per trade — amplify winners
+  max_open_risk: 12000.0          # 12% total open risk
   max_trades_per_day: 50
   max_open_positions: 8
   max_positions_per_strategy: 4
@@ -320,16 +320,16 @@ risk:
   # max_notional_pct now defaults to 0.50 (50%) in code — caps qty instead of rejecting
   time_in_force: "day"
   risk_mode: "normal"
-  slippage_bps: 3.0               # Realistic slippage for liquid names
-  commission_per_share: 0.003      # ~IBKR tiered rate; Alpaca is 0 but models execution cost
-  min_commission: 0.50             # Minimum per-order commission floor
+  slippage_bps: 1.5               # Tight slippage for mega-cap liquid names (SPY/QQQ/AAPL/NVDA)
+  commission_per_share: 0.0        # Alpaca zero-commission
+  min_commission: 0.0              # Alpaca zero-commission
 
   advanced_exits:
     enabled: true
     trailing_stop:
       enabled: true
       trail_pct: 0.02
-      min_profit_to_activate: 0.005
+      min_profit_to_activate: 0.008
     partial_exits:
       enabled: false              # V2 ExitManager handles partials
     regime_aware_stops: true
@@ -345,7 +345,7 @@ risk:
 backtest:
   disable_flow_strategies: true
   partial_fill_mode: "random"
-  partial_fill_pct: 0.7              # Min fill ratio; actual = uniform(0.7, 1.0)
+  partial_fill_pct: 0.85             # Min fill ratio; actual = uniform(0.85, 1.0) — mega-cap liquidity
   slippage_mode: "fixed"
   slippage_impact_mult: 5.0
   spread_mode: "fixed"
