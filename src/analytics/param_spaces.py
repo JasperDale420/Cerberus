@@ -40,7 +40,12 @@ class ParamDef:
 LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "orb_v2": {"target_range_mult": 3.5},
     "trend_rider_pro": {},
-    "daily_research_strategy": {"stop_atr_mult": 1.5, "target_atr_mult": 6.0},
+    "daily_research_strategy": {
+        "stop_atr_mult": 1.5,
+        "target_atr_mult": 6.0,
+        "rsi2_threshold": 25.0,
+        "pullback_rsi_lo": 25.0,
+    },
 }
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
@@ -125,9 +130,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
     "daily_research_strategy": [
-        ParamDef("rsi2_threshold", "float", low=20.0, high=30.0, step=5.0, description="RSI(2) oversold"),
         ParamDef("breakout_period", "int", low=5, high=20, step=5, description="Breakout lookback"),
-        ParamDef("pullback_rsi_lo", "float", low=20.0, high=30.0, step=5.0, description="Pullback RSI low"),
         ParamDef("pullback_rsi_hi", "float", low=60.0, high=75.0, step=5.0, description="Pullback RSI high"),
         ParamDef("max_hold_days", "int", low=5, high=15, step=5, description="Max hold days"),
     ],
