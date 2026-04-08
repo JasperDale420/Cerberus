@@ -208,7 +208,7 @@ strategies:
     enabled: true
     stop_atr_mult: 1.5
     target_atr_mult: 6.0
-    rsi2_threshold: 25.0
+    rsi2_threshold: 20.0
     breakout_period: 10
     pullback_rsi_lo: 25.0
     pullback_rsi_hi: 65.0
