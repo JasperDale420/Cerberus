@@ -127,8 +127,10 @@ class DailyResearchStrategy(BaseStrategy):
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
 
-        # SHOCK vol gate only — allow DOWN for mean-reversion signals
+        # Block SHOCK always, block DOWN+HIGH (loses money)
         if vol == "shock":
+            return None
+        if trend == "down" and vol == "high":
             return None
 
         # Moving averages
