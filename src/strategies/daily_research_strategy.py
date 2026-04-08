@@ -127,8 +127,8 @@ class DailyResearchStrategy(BaseStrategy):
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
 
-        # Hard gates: skip DOWN trend and SHOCK volatility
-        if trend == "down" or vol == "shock":
+        # SHOCK vol gate only — allow DOWN for mean-reversion signals
+        if vol == "shock":
             return None
 
         # Moving averages
@@ -139,11 +139,13 @@ class DailyResearchStrategy(BaseStrategy):
         if sma20 is None or ema10 is None or ema20 is None:
             return None
 
-        # Max conviction sizing — trailing stop caps upside, so maximize position
+        # Max conviction sizing
         size = 1.0
 
-        # --- Signal 1: RSI(2) Mean Reversion (relaxed threshold) ---
         rsi2 = self._rsi(c, n=2)
+        rsi14 = self._rsi(c, n=14)
+
+        # --- Signal 1: RSI(2) Mean Reversion (works in ALL trends) ---
         if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
             stop = price - atr * self.stop_m
             target = price + atr * 4.0
@@ -159,11 +161,31 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
+        # --- Signal 5: RSI(14) Deep Oversold Bounce (works in ALL trends) ---
+        if rsi14 is not None and rsi14 < 30.0 and price > cl[-2]:
+            stop = price - atr * self.stop_m
+            target = price + atr * 3.0
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=size,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
+
+        # Gate: remaining signals only in UP or FLAT
+        if trend == "down":
+            return None
+
         # --- Signal 2: Momentum Breakout (UP or FLAT, no volume filter) ---
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
 
-        if trend in ("up", "flat") and len(prev) >= bp and price > max(prev) and ema10 > ema20:
+        if len(prev) >= bp and price > max(prev) and ema10 > ema20:
             stop = price - atr * 2.0
             target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
@@ -179,7 +201,6 @@ class DailyResearchStrategy(BaseStrategy):
             )
 
         # --- Signal 3: Pullback in Uptrend (wider RSI range) ---
-        rsi14 = self._rsi(c, n=14)
         if (
             rsi14 is not None
             and self.pullback_rsi_lo <= rsi14 <= self.pullback_rsi_hi

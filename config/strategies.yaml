@@ -220,7 +220,7 @@ strategies:
     max_hold_days: 15
     activation:
       session: [opening, midday, power_hour, close]
-      trend: [up, flat]
+      trend: [up, down, flat]
       vol: [low, normal, high]
       liquidity: [good, thin]
       risk: [risk_on, neutral, risk_off]
