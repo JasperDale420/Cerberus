@@ -124,10 +124,11 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("cooldown_bars", "int", low=3, high=15, step=3, description="Min bars between signals"),
     ],
     "daily_research_strategy": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=3.0, step=0.25, description="ATR stop"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.25, description="ATR stop"),
         ParamDef("target_atr_mult", "float", low=4.0, high=10.0, step=1.0, description="ATR target wide"),
-        ParamDef("rsi_threshold", "float", low=25.0, high=45.0, step=5.0, description="RSI threshold"),
-        ParamDef("breakout_period", "int", low=10, high=25, step=5, description="Breakout lookback"),
+        ParamDef("rsi_threshold", "float", low=30.0, high=55.0, step=5.0, description="RSI threshold"),
+        ParamDef("breakout_period", "int", low=10, high=30, step=5, description="Breakout lookback"),
+        ParamDef("max_hold_days", "int", low=3, high=15, step=2, description="Max hold days"),
     ],
 }
 
