@@ -40,10 +40,10 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=80)
-            self._h[s] = deque(maxlen=80)
-            self._lo[s] = deque(maxlen=80)
-            self._vol[s] = deque(maxlen=80)
+            self._c[s] = deque(maxlen=120)
+            self._h[s] = deque(maxlen=120)
+            self._lo[s] = deque(maxlen=120)
+            self._vol[s] = deque(maxlen=120)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
 
