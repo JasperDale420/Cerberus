@@ -1,12 +1,12 @@
-"""Daily Research Strategy — buy dips in uptrends, trailing stop captures."""
+"""Daily Research Strategy — regime-adaptive RSI + wide targets."""
 
 from __future__ import annotations
 
 from collections import deque
 from datetime import date, datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
+from src.core.domain import OrderSide, Signal
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -40,13 +40,13 @@ class DailyResearchStrategy(BaseStrategy):
             self._pd[s] = None
             self._dhlc[s] = [0.0, 0.0, 0.0]
 
-    def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
+    def _atr(self, h, lo, c, p=14):
         if len(h) < p + 1:
             return None
         hl, ll, cl = list(h), list(lo), list(c)
         return sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(1, p + 1)) / p
 
-    def _rsi(self, v: deque, n: int = 14) -> float | None:
+    def _rsi(self, v, n=14):
         if len(v) < n + 1:
             return None
         d = list(v)
@@ -54,13 +54,7 @@ class DailyResearchStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def on_bar(
-        self,
-        symbol: str,
-        bar: Bar,
-        symbol_state: SymbolState,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
+    def on_bar(self, symbol, bar, symbol_state, market_state):
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
         d = self._dhlc[symbol]
@@ -81,61 +75,53 @@ class DailyResearchStrategy(BaseStrategy):
         self._pd[symbol] = dt
         return None
 
-    def _sig(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
+    def _sig(self, sym, bar, ms):
         c = self._c[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
         atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
-
         cl = list(c)
         price = cl[-1]
-
-        # Regime gate: skip DOWN trend and SHOCK volatility
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if trend == "down" or vol == "shock":
             return None
-
-        # Near-term trend: price above SMA(20)
         sma20 = sum(cl[-20:]) / 20
         if price <= sma20:
             return None
-
-        # 10-day positive momentum
         if len(cl) >= 11 and price <= cl[-11]:
             return None
-
-        # Regime-adaptive RSI threshold: relax in UP trend
-        rsi_thr = self.rsi_threshold + 15.0 if trend == "up" else self.rsi_threshold
-
-        # Signal 1: RSI(2) extreme oversold
+        if trend == "up":
+            rsi_thr = self.rsi_threshold + 15.0
+        elif trend == "flat":
+            rsi_thr = self.rsi_threshold + 10.0
+        else:
+            rsi_thr = self.rsi_threshold
         rsi2 = self._rsi(c, n=2)
         rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
-
-        # Signal 2: RSI(14) moderate pullback
         rsi14 = self._rsi(c, n=14)
         rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
-
-        # Signal 3: Price dip below SMA(5) while above SMA(20)
         sma5 = sum(cl[-5:]) / 5
         dip_ok = price < sma5 and price > sma20
-
-        # Signal 4: Breakout — new N-day high close (UP trend only)
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
         breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
-
         if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
             return None
+
+        # Regime-adaptive position sizing
+        size = 1.0 if trend == "up" else 0.8 if trend == "flat" else 0.5
+        if vol == "high":
+            size *= 0.7
 
         self.last_signal_time[sym] = bar.time
         return Signal(
             symbol=sym,
             side=OrderSide.BUY,
-            size_hint=0.0,
+            size_hint=size,
             entry_price=price,
             stop_price=price - atr * self.stop_m,
             target_price=price + atr * self.tgt_m,
