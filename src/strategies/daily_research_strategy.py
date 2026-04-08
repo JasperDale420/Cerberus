@@ -144,12 +144,15 @@ class DailyResearchStrategy(BaseStrategy):
         # Max conviction sizing
         size = 1.0
 
+        # Symmetric stop: cap at 2% of price to match trailing stop upside
+        stop_dist = min(atr * self.stop_m, price * 0.02)
+
         rsi2 = self._rsi(c, n=2)
         rsi14 = self._rsi(c, n=14)
 
         # --- Signal 1: RSI(2) Mean Reversion (works in ALL trends) ---
         if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
-            stop = price - atr * self.stop_m
+            stop = price - stop_dist
             target = price + atr * 4.0
             self.last_signal_time[sym] = bar.time
             return Signal(
@@ -165,7 +168,7 @@ class DailyResearchStrategy(BaseStrategy):
 
         # --- Signal 5: RSI(14) Deep Oversold Bounce (works in ALL trends) ---
         if rsi14 is not None and rsi14 < 30.0 and price > cl[-2]:
-            stop = price - atr * self.stop_m
+            stop = price - stop_dist
             target = price + atr * 3.0
             self.last_signal_time[sym] = bar.time
             return Signal(
@@ -188,7 +191,7 @@ class DailyResearchStrategy(BaseStrategy):
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
 
         if len(prev) >= bp and price > max(prev) and ema10 > ema20:
-            stop = price - atr * 2.0
+            stop = price - stop_dist
             target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
             return Signal(
@@ -209,7 +212,7 @@ class DailyResearchStrategy(BaseStrategy):
             and ema10 > ema20
             and price > sma20
         ):
-            stop = price - atr * self.stop_m
+            stop = price - stop_dist
             target = price + atr * 5.0
             self.last_signal_time[sym] = bar.time
             return Signal(
@@ -225,7 +228,7 @@ class DailyResearchStrategy(BaseStrategy):
 
         # --- Signal 4: Momentum Continuation (2+ up days + above SMA20) ---
         if len(cl) >= 3 and cl[-1] > cl[-2] > cl[-3] and price > sma20 and ema10 > ema20:
-            stop = price - atr * self.stop_m
+            stop = price - stop_dist
             target = price + atr * 3.5
             self.last_signal_time[sym] = bar.time
             return Signal(
