@@ -207,13 +207,12 @@ strategies:
   daily_research_strategy:
     enabled: true
     stop_atr_mult: 1.5
-    target_atr_mult: 6.0
-    rsi2_threshold: 15.0
+    target_atr_mult: 8.0
+    rsi2_threshold: 10.0
     breakout_period: 20
-    pullback_rsi_lo: 30.0
-    pullback_rsi_hi: 55.0
-    vol_mult: 1.0
-    min_bars: 25
+    vol_mult: 1.2
+    roc_period: 20
+    min_bars: 55
     cooldown_bars: 1
     bar_duration_minutes: 1440.0
     allow_overnight: true
