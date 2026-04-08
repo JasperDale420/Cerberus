@@ -129,7 +129,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("rsi2_threshold", "float", low=15.0, high=35.0, step=5.0, description="RSI(2) oversold"),
         ParamDef("breakout_period", "int", low=5, high=20, step=5, description="Breakout lookback"),
         ParamDef("pullback_rsi_lo", "float", low=20.0, high=35.0, step=5.0, description="Pullback RSI low"),
-        ParamDef("pullback_rsi_hi", "float", low=55.0, high=70.0, step=5.0, description="Pullback RSI high"),
+        ParamDef("pullback_rsi_hi", "float", low=55.0, high=75.0, step=5.0, description="Pullback RSI high"),
+        ParamDef("max_hold_days", "int", low=5, high=20, step=5, description="Max hold days"),
     ],
 }
 
