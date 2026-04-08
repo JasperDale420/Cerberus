@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Import sort in `src/main.py`**: Corrected unsorted import block in `_build_strategy_registry()` to satisfy ruff I001 rule (auto-fixed by ruff).
+
+
 ### Added
 
 - **Strategy routing config**: Added `strategy_routing` section to `config/config.yaml` mapping all three regimes (bull/bear/chop) to eligible strategies. Scanner was producing empty strategy lists because no routing was defined.
