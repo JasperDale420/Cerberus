@@ -209,10 +209,12 @@ strategies:
     stop_atr_mult: 1.5
     target_atr_mult: 6.0
     rsi2_threshold: 15.0
+    rsi2_short_threshold: 85.0
     breakout_period: 20
     pullback_rsi_lo: 30.0
     pullback_rsi_hi: 55.0
     vol_mult: 1.0
+    vol_target: 0.15
     min_bars: 25
     cooldown_bars: 1
     bar_duration_minutes: 1440.0
@@ -220,7 +222,7 @@ strategies:
     max_hold_days: 15
     activation:
       session: [opening, midday, power_hour, close]
-      trend: [up, flat]
+      trend: [up, flat, down]
       vol: [low, normal, high]
       liquidity: [good, thin]
       risk: [risk_on, neutral, risk_off]
