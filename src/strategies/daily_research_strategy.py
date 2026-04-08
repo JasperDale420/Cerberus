@@ -1,4 +1,4 @@
-"""Daily Research Strategy — buy dips in uptrends, trailing stop captures."""
+"""Daily Research Strategy — multi-signal regime-adaptive momentum+reversion."""
 
 from __future__ import annotations
 
@@ -20,16 +20,20 @@ class DailyResearchStrategy(BaseStrategy):
         self._c: dict[str, deque[float]] = {}
         self._h: dict[str, deque[float]] = {}
         self._lo: dict[str, deque[float]] = {}
+        self._vol: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
-        self._dhlc: dict[str, list[float]] = {}
+        self._dhlcv: dict[str, list[float]] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 8.0))
-        self.rsi_threshold = float(config.get("rsi_threshold", 40.0))
+        self.tgt_m = float(config.get("target_atr_mult", 6.0))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 15.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
+        self.pullback_rsi_lo = float(config.get("pullback_rsi_lo", 30.0))
+        self.pullback_rsi_hi = float(config.get("pullback_rsi_hi", 55.0))
+        self.vol_mult = float(config.get("vol_mult", 1.0))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -37,14 +41,18 @@ class DailyResearchStrategy(BaseStrategy):
             self._c[s] = deque(maxlen=80)
             self._h[s] = deque(maxlen=80)
             self._lo[s] = deque(maxlen=80)
+            self._vol[s] = deque(maxlen=80)
             self._pd[s] = None
-            self._dhlc[s] = [0.0, 0.0, 0.0]
+            self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
             return None
         hl, ll, cl = list(h), list(lo), list(c)
-        return sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(1, p + 1)) / p
+        return (
+            sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
+            / p
+        )
 
     def _rsi(self, v: deque, n: int = 14) -> float | None:
         if len(v) < n + 1:
@@ -53,6 +61,15 @@ class DailyResearchStrategy(BaseStrategy):
         g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+
+    def _ema(self, vals: list[float], period: int) -> float | None:
+        if len(vals) < period:
+            return None
+        k = 2.0 / (period + 1)
+        ema = vals[0]
+        for v in vals[1:]:
+            ema = v * k + ema * (1 - k)
+        return ema
 
     def on_bar(
         self,
@@ -63,12 +80,13 @@ class DailyResearchStrategy(BaseStrategy):
     ) -> Optional[Signal]:
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
-        d = self._dhlc[symbol]
+        d = self._dhlcv[symbol]
         if self._pd[symbol] is not None and dt != self._pd[symbol]:
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
-            d[0], d[1], d[2] = bar.high, bar.low, bar.close
+            self._vol[symbol].append(d[3])
+            d[0], d[1], d[2], d[3] = bar.high, bar.low, bar.close, bar.volume
             sig = self._sig(symbol, bar, market_state)
             self._pd[symbol] = dt
             return sig
@@ -78,6 +96,7 @@ class DailyResearchStrategy(BaseStrategy):
             d[0] = max(d[0], bar.high)
             d[1] = min(d[1], bar.low)
         d[2] = bar.close
+        d[3] = bar.volume
         self._pd[symbol] = dt
         return None
 
@@ -92,53 +111,99 @@ class DailyResearchStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Regime gate: skip DOWN trend and SHOCK volatility
+        # Regime info
         snap = ms.regime_snapshot
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
+
+        # Hard gates: skip DOWN trend and SHOCK volatility
         if trend == "down" or vol == "shock":
             return None
 
-        # Near-term trend: price above SMA(20)
-        sma20 = sum(cl[-20:]) / 20
-        if price <= sma20:
+        # Moving averages
+        sma20 = sum(cl[-20:]) / 20 if len(cl) >= 20 else None
+        ema10 = self._ema(cl, 10)
+        ema20 = self._ema(cl, 20)
+
+        if sma20 is None or ema10 is None or ema20 is None:
             return None
 
-        # 10-day positive momentum
-        if len(cl) >= 11 and price <= cl[-11]:
-            return None
+        # Regime-adaptive position sizing
+        if trend == "up" and vol in ("low", "normal"):
+            size = 1.0
+        elif trend == "up" and vol == "high":
+            size = 0.6
+        elif trend == "flat" and vol in ("low", "normal"):
+            size = 0.5
+        else:
+            size = 0.3
 
-        # Regime-adaptive RSI threshold: relax in UP trend
-        rsi_thr = self.rsi_threshold + 15.0 if trend == "up" else self.rsi_threshold
-
-        # Signal 1: RSI(2) extreme oversold
+        # --- Signal 1: RSI(2) Mean Reversion ---
         rsi2 = self._rsi(c, n=2)
-        rsi2_ok = rsi2 is not None and rsi2 < rsi_thr
+        if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
+            stop = price - atr * self.stop_m
+            target = price + atr * 4.0  # Tighter target for MR
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=size,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
 
-        # Signal 2: RSI(14) moderate pullback
-        rsi14 = self._rsi(c, n=14)
-        rsi14_ok = rsi14 is not None and rsi14 < rsi_thr
-
-        # Signal 3: Price dip below SMA(5) while above SMA(20)
-        sma5 = sum(cl[-5:]) / 5
-        dip_ok = price < sma5 and price > sma20
-
-        # Signal 4: Breakout — new N-day high close (UP trend only)
+        # --- Signal 2: Momentum Breakout (UP trend only) ---
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        breakout_ok = trend == "up" and len(prev) >= bp and price > max(prev)
+        vol_list = list(self._vol[sym])
+        avg_vol = sum(vol_list[-20:]) / min(20, len(vol_list[-20:])) if len(vol_list) >= 5 else 0
+        cur_vol = vol_list[-1] if vol_list else 0
 
-        if not rsi2_ok and not rsi14_ok and not dip_ok and not breakout_ok:
-            return None
+        if (
+            trend == "up"
+            and len(prev) >= bp
+            and price > max(prev)
+            and ema10 > ema20
+            and (avg_vol == 0 or cur_vol > avg_vol * self.vol_mult)
+        ):
+            stop = price - atr * 2.0  # Wider stop for momentum
+            target = price + atr * self.tgt_m  # Wide target, let it run
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=size * 0.8,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
 
-        self.last_signal_time[sym] = bar.time
-        return Signal(
-            symbol=sym,
-            side=OrderSide.BUY,
-            size_hint=0.0,
-            entry_price=price,
-            stop_price=price - atr * self.stop_m,
-            target_price=price + atr * self.tgt_m,
-            strategy=self.name,
-            generated_at=bar.time,
-        )
+        # --- Signal 3: Pullback in Uptrend ---
+        rsi14 = self._rsi(c, n=14)
+        if (
+            rsi14 is not None
+            and self.pullback_rsi_lo <= rsi14 <= self.pullback_rsi_hi
+            and ema10 > ema20
+            and price > sma20
+            and price <= ema10  # Pulled back to fast EMA
+        ):
+            stop = price - atr * self.stop_m
+            target = price + atr * 5.0  # Medium target
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=size * 0.7,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
+
+        return None
