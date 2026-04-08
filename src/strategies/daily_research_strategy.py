@@ -202,13 +202,12 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
-        # --- Signal 3: Pullback in Uptrend (wider RSI range) ---
+        # --- Signal 3: Pullback in Uptrend (wider RSI range, relaxed price gate) ---
         if (
             rsi14 is not None
             and self.pullback_rsi_lo <= rsi14 <= self.pullback_rsi_hi
             and ema10 > ema20
             and price > sma20
-            and price <= ema10
         ):
             stop = price - atr * self.stop_m
             target = price + atr * 5.0

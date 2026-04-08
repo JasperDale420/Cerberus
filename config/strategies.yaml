@@ -213,8 +213,8 @@ strategies:
     pullback_rsi_lo: 25.0
     pullback_rsi_hi: 65.0
     vol_mult: 1.0
-    min_bars: 25
-    cooldown_bars: 1
+    min_bars: 20
+    cooldown_bars: 0
     bar_duration_minutes: 1440.0
     allow_overnight: true
     max_hold_days: 15
