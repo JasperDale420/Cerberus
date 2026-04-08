@@ -1,4 +1,4 @@
-"""Daily Research Strategy — vol-targeted sizing + multi-signal trend capture."""
+"""Daily Research Strategy — wide stops, vol-targeted sizing, multi-signal."""
 
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ class DailyResearchStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.stop_m = float(config.get("stop_atr_mult", 1.5))
-        self.tgt_m = float(config.get("target_atr_mult", 6.0))
+        self.stop_m = float(config.get("stop_atr_mult", 3.0))
+        self.tgt_m = float(config.get("target_atr_mult", 8.0))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 15.0))
         self.breakout_period = int(config.get("breakout_period", 20))
         self.min_bars = int(config.get("min_bars", 25))
@@ -74,7 +74,6 @@ class DailyResearchStrategy(BaseStrategy):
         return ema
 
     def _realized_vol(self, closes: list[float], lookback: int = 20) -> float | None:
-        """Annualized realized vol from daily returns."""
         if len(closes) < lookback + 1:
             return None
         rets = [(closes[i] / closes[i - 1]) - 1 for i in range(-lookback, 0)]
@@ -127,7 +126,7 @@ class DailyResearchStrategy(BaseStrategy):
         trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
 
-        # Hard gates: skip DOWN trend and SHOCK volatility
+        # Hard gates
         if trend == "down" or vol == "shock":
             return None
 
@@ -139,7 +138,7 @@ class DailyResearchStrategy(BaseStrategy):
         if sma20 is None or ema10 is None or ema20 is None:
             return None
 
-        # Volatility-targeted position sizing
+        # Vol-targeted sizing with regime boost
         rv = self._realized_vol(cl)
         if rv and rv > 0.01:
             size = min(self.vol_target / rv, 1.0)
@@ -147,16 +146,16 @@ class DailyResearchStrategy(BaseStrategy):
             size = 0.8
         else:
             size = 0.5
-
-        # Boost sizing in UP regime
         if trend == "up":
             size = min(size * 1.2, 1.0)
+
+        # Wide stop: 3 ATR survives daily noise, trailing stop handles exit
+        stop = price - atr * self.stop_m
+        target = price + atr * self.tgt_m
 
         # --- Signal 1: RSI(2) Mean Reversion ---
         rsi2 = self._rsi(c, n=2)
         if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
-            stop = price - atr * self.stop_m
-            target = price + atr * 4.0
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
@@ -183,8 +182,6 @@ class DailyResearchStrategy(BaseStrategy):
             and ema10 > ema20
             and (avg_vol == 0 or cur_vol > avg_vol * self.vol_mult)
         ):
-            stop = price - atr * 2.0
-            target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
@@ -206,8 +203,6 @@ class DailyResearchStrategy(BaseStrategy):
             and price > sma20
             and price <= ema10
         ):
-            stop = price - atr * self.stop_m
-            target = price + atr * 5.0
             self.last_signal_time[sym] = bar.time
             return Signal(
                 symbol=sym,
