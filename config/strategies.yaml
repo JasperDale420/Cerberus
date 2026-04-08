@@ -206,9 +206,13 @@ strategies:
 
   daily_research_strategy:
     enabled: true
-    stop_atr_mult: 1.5
-    target_atr_mult: 6.0
-    rsi_threshold: 32.0
+    stop_atr_mult: 1.25
+    target_atr_mult: 10.0
+    rsi_oversold: 25.0
+    rsi_oversold_uptrend: 40.0
+    momentum_period: 20
+    sma_fast: 10
+    sma_slow: 50
     breakout_period: 20
     min_bars: 55
     cooldown_bars: 1
@@ -217,8 +221,8 @@ strategies:
     max_hold_days: 15
     activation:
       session: [premarket, opening, midday, power_hour, close]
-      trend: [up, flat]
-      vol: [low, normal]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
       liquidity: [good, thin, stressed]
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
