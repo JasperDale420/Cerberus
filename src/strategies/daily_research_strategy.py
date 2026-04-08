@@ -1,4 +1,4 @@
-"""Daily Research Strategy — vol-targeted sizing + multi-signal trend capture."""
+"""Daily Research Strategy — vol-targeted sizing + relaxed multi-signal trend capture."""
 
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ class DailyResearchStrategy(BaseStrategy):
         if trend == "up":
             size = min(size * 1.2, 1.0)
 
-        # --- Signal 1: RSI(2) Mean Reversion ---
+        # --- Signal 1: RSI(2) Mean Reversion (relaxed threshold) ---
         rsi2 = self._rsi(c, n=2)
         if rsi2 is not None and rsi2 < self.rsi2_threshold and price > sma20:
             stop = price - atr * self.stop_m
@@ -169,20 +169,11 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
-        # --- Signal 2: Momentum Breakout (UP trend only) ---
+        # --- Signal 2: Momentum Breakout (UP or FLAT, no volume filter) ---
         bp = self.breakout_period
         prev = cl[-(bp + 1) : -1] if len(cl) > bp else []
-        vol_list = list(self._vol[sym])
-        avg_vol = sum(vol_list[-20:]) / min(20, len(vol_list[-20:])) if len(vol_list) >= 5 else 0
-        cur_vol = vol_list[-1] if vol_list else 0
 
-        if (
-            trend == "up"
-            and len(prev) >= bp
-            and price > max(prev)
-            and ema10 > ema20
-            and (avg_vol == 0 or cur_vol > avg_vol * self.vol_mult)
-        ):
+        if trend in ("up", "flat") and len(prev) >= bp and price > max(prev) and ema10 > ema20:
             stop = price - atr * 2.0
             target = price + atr * self.tgt_m
             self.last_signal_time[sym] = bar.time
@@ -197,7 +188,7 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
-        # --- Signal 3: Pullback in Uptrend ---
+        # --- Signal 3: Pullback in Uptrend (wider RSI range) ---
         rsi14 = self._rsi(c, n=14)
         if (
             rsi14 is not None
@@ -213,6 +204,22 @@ class DailyResearchStrategy(BaseStrategy):
                 symbol=sym,
                 side=OrderSide.BUY,
                 size_hint=size * 0.8,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
+
+        # --- Signal 4: Momentum Continuation (2+ up days + above SMA20) ---
+        if len(cl) >= 3 and cl[-1] > cl[-2] > cl[-3] and price > sma20 and ema10 > ema20:
+            stop = price - atr * self.stop_m
+            target = price + atr * 3.5
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=size * 0.7,
                 entry_price=price,
                 stop_price=stop,
                 target_price=target,
