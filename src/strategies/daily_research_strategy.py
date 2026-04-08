@@ -139,18 +139,8 @@ class DailyResearchStrategy(BaseStrategy):
         if sma20 is None or ema10 is None or ema20 is None:
             return None
 
-        # Volatility-targeted position sizing
-        rv = self._realized_vol(cl)
-        if rv and rv > 0.01:
-            size = min(self.vol_target / rv, 1.0)
-        elif trend == "up":
-            size = 0.8
-        else:
-            size = 0.5
-
-        # Boost sizing in UP regime
-        if trend == "up":
-            size = min(size * 1.2, 1.0)
+        # Max conviction sizing — trailing stop caps upside, so maximize position
+        size = 1.0
 
         # --- Signal 1: RSI(2) Mean Reversion (relaxed threshold) ---
         rsi2 = self._rsi(c, n=2)
@@ -203,7 +193,7 @@ class DailyResearchStrategy(BaseStrategy):
             return Signal(
                 symbol=sym,
                 side=OrderSide.BUY,
-                size_hint=size * 0.8,
+                size_hint=size,
                 entry_price=price,
                 stop_price=stop,
                 target_price=target,
@@ -219,7 +209,7 @@ class DailyResearchStrategy(BaseStrategy):
             return Signal(
                 symbol=sym,
                 side=OrderSide.BUY,
-                size_hint=size * 0.7,
+                size_hint=size,
                 entry_price=price,
                 stop_price=stop,
                 target_price=target,
