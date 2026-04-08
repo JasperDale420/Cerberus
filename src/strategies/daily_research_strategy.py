@@ -166,22 +166,6 @@ class DailyResearchStrategy(BaseStrategy):
                 generated_at=bar.time,
             )
 
-        # --- Signal 5: RSI(14) Deep Oversold Bounce (works in ALL trends) ---
-        if rsi14 is not None and rsi14 < 30.0 and price > cl[-2]:
-            stop = price - stop_dist
-            target = price + atr * 3.0
-            self.last_signal_time[sym] = bar.time
-            return Signal(
-                symbol=sym,
-                side=OrderSide.BUY,
-                size_hint=size,
-                entry_price=price,
-                stop_price=stop,
-                target_price=target,
-                strategy=self.name,
-                generated_at=bar.time,
-            )
-
         # Gate: remaining signals only in UP or FLAT
         if trend == "down":
             return None
