@@ -250,8 +250,7 @@ strategies:
     vol_ratio_threshold: 1.5
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
-    rsi_long_period: 14
-    rsi_long_threshold: 50
+    sma_period: 20
     max_drawdown_pct: 0.12
     max_stop_pct: 0.04
     max_hold_days: 5
