@@ -1,17 +1,10 @@
-"""Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
 
-Optimized config (WFO-validated, 3/4 random splits pass gate):
-- Price-based trend filter: close > SMA(20)
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR5/14 ratio > 1.5)
-- Symmetric 2x ATR stop and target (capped at 4% of price)
-- 12% drawdown filter (40-bar lookback)
-- 5-day max hold, long-only, daily bars
-
-Key insight: symmetric stops only need 47% WR for PF~0.9 (vs 57% for
-the original 3:2 stop:target). This was the single change that
-turned a failing strategy into a passing one.
-
-WFO scores: 0.92, 0.95, 0.90 PASS | 0.58 FAIL (randomized splits)
+iter7: Maximum simplicity — RSI(2) < 15, no SMA filter, no vol adaptation.
+Only the drawdown filter + stop cap for protection.
+Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
+regimes. No trend filter needed because extreme RSI readings are rare
+enough to be high-quality. Fewer params = more robust.
 """
 
 from __future__ import annotations
@@ -35,13 +28,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
+        self.rsi_entry = float(config.get("rsi_entry", 15))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.sma_period = int(config.get("sma_period", 20))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
@@ -93,12 +83,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Price-based trend filter: close > SMA(20)
-        if len(closes) >= self.sma_period:
-            sma = sum(closes[-self.sma_period :]) / self.sma_period
-            if bar.close < sma:
-                return None
-
         # Drawdown filter
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
@@ -108,31 +92,20 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2)
+        # RSI(2) — single tight threshold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
+        if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # ATR calculations
-        atr_short = self._atr(bars, 5)
-        atr_long = self._atr(bars, 14)
-        if atr_short is None or atr_long is None or atr_long < 0.01:
+        # ATR for stop/target
+        atr = self._atr(bars, 14)
+        if atr is None or atr < 0.01:
             return None
 
-        # Volatility-adaptive RSI threshold (ATR ratio only)
-        vol_ratio = atr_short / atr_long
-        if vol_ratio > self.vol_ratio_threshold:
-            effective_rsi_entry = self.rsi_entry_highvol
-        else:
-            effective_rsi_entry = self.rsi_entry
-
-        if rsi >= effective_rsi_entry:
-            return None
-
-        # Stop/target with cap at max_stop_pct of price
+        # Stop/target with cap
         max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr_long * self.stop_atr_mult, max_dist)
-        target_dist = min(atr_long * self.target_atr_mult, max_dist)
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
@@ -148,7 +121,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "vol_ratio": round(vol_ratio, 2),
                 "drawdown": round(drawdown, 3),
             },
         )
