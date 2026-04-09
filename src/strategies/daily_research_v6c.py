@@ -1,8 +1,11 @@
-"""Daily Research v6c — Time-Exit Mean Reversion.
+"""Daily Research v6c — Down-Day Confirmed IBS+RSI Mean Reversion.
 
-Session 3, Iteration 2: Looser entry + 2-day hold.
-Entry: IBS < 0.3 + RSI(2) < 50 + momentum guard + drawdown 10%.
-Exit: max_hold_days=2. Wide 5x ATR stops (safety net only).
+Session 3, Iteration 3: Add down-day confirmation to the proven recipe.
+Entry: IBS < 0.3 + RSI(2) < 50 + today is a down day (close < prev close)
++ momentum guard (close > close[5]) + drawdown filter 10%.
+The down-day filter ensures we're buying into confirmed selling pressure,
+not just a low-IBS doji. No SMA filter.
+Symmetric 1.5x ATR stop/target, 2% cap.
 """
 
 from __future__ import annotations
@@ -28,12 +31,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.rsi_entry = float(config.get("rsi_entry", 50))
         self.ibs_entry = float(config.get("ibs_entry", 0.3))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
-        self.max_hold_days = int(config.get("max_hold_days", 2))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 5.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 5.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.10))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -91,7 +94,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # IBS: close in bottom 20% of day's range
+        # Down-day confirmation: today closed lower than yesterday
+        if len(closes) >= 2:
+            if bar.close >= closes[-2]:
+                return None
+
+        # IBS: close near day's low
         bar_range = bar.high - bar.low
         if bar_range <= 0:
             return None
@@ -109,12 +117,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if bar.close <= closes[-self.momentum_lookback - 1]:
                 return None
 
-        # ATR for wide stop/target (essentially never hit)
+        # ATR for stop/target
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
 
-        # Wide stop/target — exits via max_hold_days=1 instead
+        # Symmetric stop/target capped at 2%
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
