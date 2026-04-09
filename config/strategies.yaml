@@ -248,10 +248,10 @@ strategies:
     rsi_entry: 25
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
-    max_drawdown_pct: 0.08
+    max_drawdown_pct: 0.12
     max_stop_pct: 0.04
     max_hold_days: 5
-    drawdown_lookback: 20
+    drawdown_lookback: 40
     allow_overnight: true
     cooldown_bars: 1
     activation:
