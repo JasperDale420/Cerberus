@@ -1,8 +1,8 @@
 """Daily Research v6c — Tight Drawdown IBS+RSI Mean Reversion.
 
-Session 3, Iteration 10: 5% drawdown filter (was 10%).
-IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + drawdown 5%.
-Aggressive bear-market blocking. Symmetric 1.5x ATR, 2% cap.
+Session 3, Iteration 11: SMA(10) trend filter + 10% drawdown.
+IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + SMA(10) + drawdown 10%.
+Symmetric 1.5x ATR, 2% cap.
 """
 
 from __future__ import annotations
@@ -31,9 +31,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.05))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.sma_period = int(config.get("sma_period", 10))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -107,6 +108,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         # Momentum guard
         if len(closes) > self.momentum_lookback:
             if bar.close <= closes[-self.momentum_lookback - 1]:
+                return None
+
+        # SMA trend filter: price must be above SMA
+        if len(closes) >= self.sma_period:
+            sma = sum(closes[-self.sma_period :]) / self.sma_period
+            if bar.close < sma:
                 return None
 
         # ATR for stop/target
