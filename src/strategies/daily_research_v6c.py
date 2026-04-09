@@ -1,8 +1,8 @@
 """Daily Research v6c — Volume-Quality IBS+RSI Mean Reversion.
 
-Session 5: IBS < 0.45 + RSI(2) < 50 + volume filter (0.6x avg).
+IBS < 0.45 + RSI(2) < 50 + volume filter (0.6x avg).
 Momentum guard(5) + drawdown 10%. Symmetric 1.5x ATR, 2% cap.
-3-day max hold.
+3-day max hold. Configurable RSI period.
 """
 
 from __future__ import annotations
