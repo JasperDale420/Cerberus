@@ -911,8 +911,6 @@ def _apply_params_to_config(
         "max_drawdown_pct",
         "drawdown_lookback",
         "max_stop_pct",
-        "stop_pct",
-        "target_pct",
     }
 
     for key, value in params.items():
