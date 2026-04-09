@@ -1,10 +1,11 @@
-"""Daily Research v6a — RSI(2) mean reversion with SMA(20) trend filter.
+"""Daily Research v6a — RSI(2) mean reversion with SMA(50) trend filter.
 
-Key design: SMA(20) adapts faster than SMA(50), more trades in transitions.
-- SMA(20) per-symbol short-term trend filter
-- RSI(2) < threshold oversold entry
-- Block HIGH and SHOCK vol — avoid falling knives in high-vol downtrends
+Designed for CONSISTENCY across all market regimes:
+- SMA(50) per-symbol trend filter
+- RSI(2) oversold entry (Connors-style)
+- Only blocks SHOCK volatility (mean reversion thrives in HIGH vol)
 - ATR-based exits with 2% hard stop cap
+- Decline confirmation (price < previous close)
 """
 
 from __future__ import annotations
@@ -36,8 +37,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 20))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -112,26 +113,29 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block HIGH and SHOCK volatility — avoid falling knives
+        # Only block SHOCK volatility — mean reversion thrives in HIGH vol
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
+        if vol == "shock":
             return None
 
-        # SMA(20) short-term uptrend filter — adapts faster than SMA(50)
-        sma20 = self._sma(cl, 20)
-        if sma20 is None or price < sma20:
+        # SMA(50) per-symbol uptrend filter
+        sma50 = self._sma(cl, 50)
+        if sma50 is None or price < sma50:
             return None
 
-        # RSI(2) oversold — wider threshold for more trades
+        # RSI(2) oversold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
 
         if rsi2 < self.rsi2_threshold:
+            # Confirm: price declined
+            if price >= cl[-2]:
+                return None
+
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
-            # Tight target — take small profits quickly
             target = price + atr * self.target_atr_mult
 
             self.last_signal_time[sym] = bar.time
