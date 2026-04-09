@@ -1,14 +1,11 @@
-"""Daily Research v6c — Consecutive Lower Closes Mean Reversion.
+"""Daily Research v6c — Combined Mean Reversion Signals.
 
-Iteration 7: Fundamentally different approach. RSI(2) has structural
-PF variance that can't be tuned away (iters 1-6, best min_pf=0.51).
+Iteration 8: Combine two complementary entry signals for regime coverage.
+- RSI(2) < 25: works best in UP markets, high trade count
+- 3+ consecutive lower closes + RSI(2) < 50: works best in DOWN markets
 
-New approach: Buy after 3+ consecutive lower closes (exhaustion selling).
-This is a proven high-win-rate pattern (Connors-style). Combined with:
-- Tight drawdown filter (10%)
-- Short max hold (3 days) to limit exposure
-- 1.5x ATR symmetric stop/target, 3% cap
-- RSI(2) < 50 confirmation (not oversold, just declining)
+Together they produce 600+ trades with coverage across all regimes.
+Tight risk: 1.5x ATR, 3% cap, 10% drawdown filter, 3-day max hold.
 """
 
 from __future__ import annotations
@@ -31,8 +28,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.consec_down = int(config.get("consec_down", 3))
-        self.rsi_confirm = float(config.get("rsi_confirm", 50))
+        self.consec_rsi_confirm = float(config.get("consec_rsi_confirm", 50))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
@@ -104,13 +102,17 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # Core signal: 3+ consecutive lower closes
-        if not self._consecutive_down(closes, self.consec_down):
+        # RSI(2) for both entry conditions
+        rsi = self._rsi(closes, 2)
+        if rsi is None:
             return None
 
-        # RSI(2) confirmation: declining but not necessarily extreme
-        rsi = self._rsi(closes, 2)
-        if rsi is None or rsi >= self.rsi_confirm:
+        # Entry condition 1: RSI(2) extreme oversold
+        signal_rsi = rsi < self.rsi_entry
+        # Entry condition 2: Consecutive lower closes + moderate RSI decline
+        signal_consec = self._consecutive_down(closes, self.consec_down) and rsi < self.consec_rsi_confirm
+
+        if not signal_rsi and not signal_consec:
             return None
 
         # ATR for stop/target
@@ -125,6 +127,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
+        mode = "RSI" if signal_rsi else "CONSEC"
         self.last_signal_time[symbol] = bar.time
         return Signal(
             symbol=symbol,
@@ -137,7 +140,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "consec_down": self.consec_down,
+                "mode": mode,
                 "drawdown": round(drawdown, 3),
             },
         )
