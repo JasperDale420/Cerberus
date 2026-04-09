@@ -245,8 +245,8 @@ strategies:
     enabled: true
     min_bars: 20
     rsi_period: 2
-    rsi_entry: 30
-    rsi_entry_highvol: 15
+    rsi_entry: 25
+    rsi_entry_highvol: 10
     vol_ratio_threshold: 1.5
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
