@@ -34,7 +34,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr = float(config.get("stop_atr", 1.5))
         self.target_atr = float(config.get("target_atr", 2.0))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.max_target_pct = float(config.get("max_target_pct", 0.03))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -102,10 +103,9 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Stop capped at max_stop_pct, target uncapped (let winners run)
-        max_stop = price * self.max_stop_pct
-        stop_dist = min(atr * self.stop_atr, max_stop)
-        target_dist = atr * self.target_atr
+        # Asymmetric caps: stop at 2%, target at 3% (maintains R:R in high-vol)
+        stop_dist = min(atr * self.stop_atr, price * self.max_stop_pct)
+        target_dist = min(atr * self.target_atr, price * self.max_target_pct)
         stop_price = price - stop_dist
         target_price = price + target_dist
 
