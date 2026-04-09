@@ -1,8 +1,8 @@
-"""Daily Research v6a — Cumulative RSI(2) mean reversion.
+"""Daily Research v6a — RSI(2) mean reversion with SMA20 trend filter.
 
 Single-signal design for maximum consistency:
-- Cumulative RSI(2) over 2 days (CumRSI) identifies extreme oversold
-- SMA50 filter: only buy dips in structural uptrends
+- RSI(2) identifies extreme oversold conditions
+- SMA20 filter: faster adaptive trend gate
 - ATR-based stops and targets with 2% hard cap on stops
 - No regime gating beyond SHOCK vol block
 
@@ -119,45 +119,31 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA50 gate: only buy dips in stocks with structural strength
-        sma50 = self._sma(cl, 50)
-        if sma50 is not None and price < sma50:
+        # SMA20 gate: faster adaptive trend filter
+        sma20 = self._sma(cl, 20)
+        if sma20 is not None and price < sma20:
             return None
 
-        # Cumulative RSI(2): sum of last 2 RSI(2) readings
-        # More robust than single RSI(2) — filters out single-bar noise
-        rsi2_now = self._rsi(c, n=2)
-        if rsi2_now is None:
+        # RSI(2) oversold — simple, robust mean reversion signal
+        rsi2 = self._rsi(c, n=2)
+        if rsi2 is None:
             return None
 
-        # Compute RSI(2) for previous bar by using a shifted deque
-        if len(c) < 4:
-            return None
-        prev_rsi_data = list(c)[:-1]
-        g = sum(max(prev_rsi_data[i] - prev_rsi_data[i - 1], 0) for i in range(-2, 0))
-        ls = sum(max(prev_rsi_data[i - 1] - prev_rsi_data[i], 0) for i in range(-2, 0))
-        rsi2_prev = 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+        if rsi2 < self.rsi2_threshold:
+            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+            stop = price - stop_dist
+            target = price + atr * self.target_atr_mult
 
-        cum_rsi = rsi2_now + rsi2_prev
-
-        # Cumulative RSI threshold: lower = more selective/consistent
-        if cum_rsi < self.rsi2_threshold * 2:
-            # Confirm: price must have dropped (bearish pressure)
-            if price < cl[-2]:
-                stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
-                stop = price - stop_dist
-                target = price + atr * self.target_atr_mult
-
-                self.last_signal_time[sym] = bar.time
-                return Signal(
-                    symbol=sym,
-                    side=OrderSide.BUY,
-                    size_hint=1.0,
-                    entry_price=price,
-                    stop_price=stop,
-                    target_price=target,
-                    strategy=self.name,
-                    generated_at=bar.time,
-                )
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=1.0,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
 
         return None
