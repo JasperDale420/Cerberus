@@ -33,12 +33,12 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 20))
+        self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.25))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
-        self.rsi14_lo = float(config.get("rsi14_lo", 25))
-        self.rsi14_hi = float(config.get("rsi14_hi", 70))
+        self.rsi14_lo = float(config.get("rsi14_lo", 30))
+        self.rsi14_hi = float(config.get("rsi14_hi", 65))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
