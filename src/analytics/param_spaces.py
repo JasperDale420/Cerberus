@@ -136,7 +136,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("max_hold_days", "int", low=5, high=15, step=5, description="Max hold days"),
     ],
     "daily_research_v6a": [
-        ParamDef("ibs_threshold", "float", low=0.1, high=0.3, step=0.05, description="IBS threshold"),
+        ParamDef("rsi2_threshold", "float", low=10.0, high=25.0, step=5.0, description="RSI(2) oversold threshold"),
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
 }
