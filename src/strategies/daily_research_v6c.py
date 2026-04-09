@@ -1,8 +1,9 @@
-"""Daily Research v6c — Tight Drawdown IBS+RSI Mean Reversion.
+"""Daily Research v6c — Volume-Filtered IBS+RSI Mean Reversion.
 
-Session 3, Iteration 13: Restore s2-iter10 exact config (PASS 0.97).
+Session 4, Iteration 3: Add volume spike filter.
+Only trade when volume > 1.2x 20-day average (capitulation signal).
 IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + drawdown 10%.
-Symmetric 1.5x ATR, 2% cap. No SMA filter.
+Symmetric 1.5x ATR, 2% cap.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.vol_mult = float(config.get("vol_mult", 1.2))
+        self.vol_lookback = int(config.get("vol_lookback", 20))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -89,6 +92,13 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
+                return None
+
+        # Volume spike filter — only trade on above-average volume days
+        volumes = [b.volume for b in bars if b.volume and b.volume > 0]
+        if len(volumes) >= self.vol_lookback:
+            avg_vol = sum(volumes[-self.vol_lookback :]) / self.vol_lookback
+            if avg_vol > 0 and bar.volume < avg_vol * self.vol_mult:
                 return None
 
         # IBS: close near day's low
