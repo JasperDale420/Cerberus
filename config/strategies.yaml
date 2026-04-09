@@ -267,7 +267,7 @@ strategies:
     min_bars: 20
     rsi_entry: 50
     ibs_entry: 0.45
-    rsi_period: 3
+    rsi_period: 2
     momentum_lookback: 5
     stop_atr_mult: 1.5
     target_atr_mult: 1.5
