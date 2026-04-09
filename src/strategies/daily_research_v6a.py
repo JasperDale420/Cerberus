@@ -1,12 +1,11 @@
-"""Daily Research v6a — RSI(2) mean reversion, UP regime only.
+"""Daily Research v6a — IBS mean reversion.
 
-Only trade in UP trend regimes — mean reversion works best when the
-broader trend supports bounces. DOWN/FLAT windows get 0 trades and
-are excluded from the min_pf metric.
-- RSI(2) < 10 deep oversold entry
-- Regime gate: trend must be UP
-- ATR-based stops/targets with 2% hard cap
-- Only blocks SHOCK volatility (plus DOWN/FLAT via trend gate)
+Internal Bar Strength (IBS) measures where price closed within the
+day's range. IBS < 0.15 = closed near daily low = oversold.
+- Simple, regime-agnostic signal
+- No RSI, no trend filter, no regime gate
+- Only blocks SHOCK volatility
+- ATR stops/targets with 1.5% hard cap (tighter than 2% for consistency)
 """
 
 from __future__ import annotations
@@ -35,10 +34,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -57,14 +56,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
             / p
         )
-
-    def _rsi(self, v: deque, n: int = 2) -> float | None:
-        if len(v) < n + 1:
-            return None
-        d = list(v)
-        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
-        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
-        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def on_bar(
         self,
@@ -95,41 +86,32 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
+        h, lo = self._h[sym], self._lo[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
-        atr = self._atr(self._h[sym], self._lo[sym], c)
+        atr = self._atr(h, lo, c)
         if not atr or atr < 0.01:
             return None
 
-        cl = list(c)
-        price = cl[-1]
+        price = list(c)[-1]
 
-        # Regime gate: only trade in UP trends
+        # Only block SHOCK volatility
         snap = ms.regime_snapshot
-        if not snap or not snap.trend:
-            return None
-        trend = str(snap.trend.value).lower()
-        if trend != "up":
+        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
+        if vol == "shock":
             return None
 
-        # Block SHOCK and HIGH volatility
-        vol = str(snap.vol.value).lower() if snap.vol else ""
-        if vol in ("shock", "high"):
+        # IBS — where did yesterday close within its range?
+        hl, ll = list(h), list(lo)
+        day_range = hl[-1] - ll[-1]
+        if day_range <= 0:
+            return None
+        ibs = (price - ll[-1]) / day_range
+        if ibs >= self.ibs_threshold:
             return None
 
-        # Per-symbol SMA(10) gate — stock must be in short-term uptrend
-        if len(cl) >= 10:
-            sma10 = sum(cl[-10:]) / 10
-            if price < sma10:
-                return None
-
-        # RSI(2) deep oversold
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None or rsi2 >= self.rsi2_threshold:
-            return None
-
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.015)
         stop = price - stop_dist
         target = price + atr * self.target_atr_mult
 
