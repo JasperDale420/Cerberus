@@ -37,6 +37,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.vol_mult = float(config.get("vol_mult", 0.8))
         self.vol_lookback = int(config.get("vol_lookback", 20))
+        self.rsi_period = int(config.get("rsi_period", 2))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -109,8 +110,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if ibs >= self.ibs_entry:
             return None
 
-        # RSI(2) confirmation
-        rsi = self._rsi(closes, 2)
+        # RSI confirmation
+        rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
 
