@@ -1,8 +1,9 @@
-"""Daily Research Strategy v6b — Simplified RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter4: Simplify — single RSI<20 threshold (no vol-adaptive), fewer params.
-- Price-based trend filter: close > SMA(20)
-- RSI(2) < 20 (single threshold everywhere)
+iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
+Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
+- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
+- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
 - 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
@@ -29,7 +30,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
+        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -105,12 +108,20 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if rsi is None:
             return None
 
-        if rsi >= self.rsi_entry:
+        # ATR calculations
+        atr_short = self._atr(bars, 5)
+        atr_long = self._atr(bars, 14)
+        if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # ATR for stop/target
-        atr_long = self._atr(bars, 14)
-        if atr_long is None or atr_long < 0.01:
+        # Volatility-adaptive RSI threshold (ATR ratio only)
+        vol_ratio = atr_short / atr_long
+        if vol_ratio > self.vol_ratio_threshold:
+            effective_rsi_entry = self.rsi_entry_highvol
+        else:
+            effective_rsi_entry = self.rsi_entry
+
+        if rsi >= effective_rsi_entry:
             return None
 
         # Stop/target with cap at max_stop_pct of price
@@ -132,6 +143,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
+                "vol_ratio": round(vol_ratio, 2),
                 "drawdown": round(drawdown, 3),
             },
         )
