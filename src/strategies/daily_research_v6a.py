@@ -36,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.25))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 35))
         self.rsi14_lo = float(config.get("rsi14_lo", 25))
         self.rsi14_hi = float(config.get("rsi14_hi", 70))
         self.allow_overnight = True
@@ -134,7 +134,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if rsi2 is None:
             return None
 
-        if rsi2 < self.rsi2_threshold:
+        # 2-day decline confirmation
+        if len(cl) < 3:
+            return None
+
+        if rsi2 < self.rsi2_threshold and price < cl[-2]:
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult
