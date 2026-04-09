@@ -32,7 +32,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.trend_period = int(config.get("trend_period", 50))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25.0))
+        self.rsi_entry = float(config.get("rsi_entry", 30.0))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr = float(config.get("stop_atr", 1.5))
         self.target_atr = float(config.get("target_atr", 2.0))
@@ -92,6 +93,14 @@ class dailyresearchv6dStrategy(BaseStrategy):
             return None
         sma = sum(closes[-self.trend_period :]) / self.trend_period
         if price < sma:
+            return None
+
+        # IBS: close near day's low (selling pressure confirmation)
+        bar_range = bar.high - bar.low
+        if bar_range <= 0:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+        if ibs >= self.ibs_entry:
             return None
 
         # RSI(2) — buy on short-term oversold dip
