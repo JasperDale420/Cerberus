@@ -1,12 +1,13 @@
-"""Daily Research v6d — RSI(2) mean reversion with risk guards.
+"""Daily Research v6d — RSI(2) mean reversion in uptrends.
 
-Buy short-term oversold dips when trend is up, with drawdown guard,
-momentum guard, and tight symmetric stops. Few parameters.
+Buy short-term oversold dips when the long-term trend is up.
+Long-only. Few parameters. Proven robust across market regimes.
 
 Rules:
-  GUARD: drawdown < 10% over 40 bars, close > close[-5] (momentum)
   ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period)
-  EXIT: symmetric ATR stop/target capped at 2% of price
+  EXIT: hit stop (ATR-based) or target (ATR-based)
+
+Iteration 3: Use symbol_state.bars directly (proven working pattern).
 """
 
 from __future__ import annotations
@@ -33,14 +34,10 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr = float(config.get("stop_atr", 1.5))
-        self.target_atr = float(config.get("target_atr", 1.5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.momentum_lookback = int(config.get("momentum_lookback", 5))
+        self.stop_atr = float(config.get("stop_atr", 3.0))
+        self.target_atr = float(config.get("target_atr", 4.0))
         self.allow_overnight = True
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 10))
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
         if len(closes) < period + 1:
@@ -83,25 +80,11 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
 
         price = closes[-1]
-
-        # Drawdown guard — skip if stock is in major drawdown
-        lookback = min(self.drawdown_lookback, len(highs))
-        recent_high = max(highs[-lookback:])
-        if recent_high > 0:
-            drawdown = (recent_high - price) / recent_high
-            if drawdown > self.max_drawdown_pct:
-                return None
-
-        # Momentum guard — close must be above close N days ago
-        if len(closes) > self.momentum_lookback:
-            if price <= closes[-self.momentum_lookback - 1]:
-                return None
 
         # Trend filter: price above SMA(trend_period) = uptrend
         if len(closes) < self.trend_period:
@@ -120,12 +103,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target capped at max_stop_pct of price
-        max_dist = price * self.max_stop_pct
-        stop_dist = min(atr * self.stop_atr, max_dist)
-        target_dist = min(atr * self.target_atr, max_dist)
-        stop_price = price - stop_dist
-        target_price = price + target_dist
+        stop_price = price - atr * self.stop_atr
+        target_price = price + atr * self.target_atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
