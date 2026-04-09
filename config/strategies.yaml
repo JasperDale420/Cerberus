@@ -296,7 +296,7 @@ strategies:
     bar_duration_minutes: 1440
     trend_period: 50
     rsi_period: 2
-    rsi_entry: 30.0
+    rsi_entry: 25.0
     atr_period: 14
     stop_atr: 1.5
     target_atr: 2.0
