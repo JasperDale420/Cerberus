@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) + IBS mean reversion, tight scalp.
+"""Daily Research v6a — RSI(2) + IBS mean reversion with SMA(200) filter.
 
-Dual oversold with tight risk:
+Connors-style mean reversion:
+- Price > SMA(200) — only buy dips in long-term uptrends
 - RSI(2) < 10 deep oversold
 - IBS < 0.3 (closed in bottom 30% of daily range)
-- Tight stop (1.0 ATR / 1.5% cap) + tight target (1.5 ATR)
-- Quick capture of mean reversion bounce
+- 1.5 ATR / 2% hard stop
 - Only blocks SHOCK volatility
 """
 
@@ -34,8 +34,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.max_hold_days = int(config.get("max_hold_days", 7))
@@ -43,9 +43,9 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=60)
-            self._h[s] = deque(maxlen=60)
-            self._lo[s] = deque(maxlen=60)
+            self._c[s] = deque(maxlen=250)
+            self._h[s] = deque(maxlen=250)
+            self._lo[s] = deque(maxlen=250)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0]
 
@@ -65,6 +65,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+
+    def _sma(self, v: deque, n: int) -> float | None:
+        if len(v) < n:
+            return None
+        return sum(list(v)[-n:]) / n
 
     def on_bar(
         self,
@@ -96,7 +101,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
         h, lo = self._h[sym], self._lo[sym]
-        if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
+        if len(c) < max(self.min_bars, 200) or not self._check_cooldown(sym, bar.time):
             return None
 
         atr = self._atr(h, lo, c)
@@ -105,10 +110,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
         price = list(c)[-1]
 
-        # Block SHOCK volatility only
+        # Block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
+            return None
+
+        # SMA(200) trend filter — only buy in long-term uptrends
+        sma200 = self._sma(c, 200)
+        if sma200 is None or price <= sma200:
             return None
 
         # RSI(2) deep oversold
@@ -124,7 +134,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             if ibs > self.ibs_threshold:
                 return None
 
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.015)
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
         target = price + atr * self.target_atr_mult
 
