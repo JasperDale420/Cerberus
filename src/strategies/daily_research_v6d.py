@@ -36,6 +36,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.target_atr = float(config.get("target_atr", 2.0))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -91,6 +93,13 @@ class dailyresearchv6dStrategy(BaseStrategy):
             return None
         sma = sum(closes[-self.trend_period :]) / self.trend_period
         if price < sma:
+            return None
+
+        # Drawdown filter: skip if recent drawdown too deep
+        highs = [b.high for b in bars]
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        if recent_high > 0 and (recent_high - price) / recent_high > self.max_drawdown_pct:
             return None
 
         # ATR for stop/target sizing
