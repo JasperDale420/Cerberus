@@ -1,9 +1,11 @@
-"""Daily Research v6c — IBS-Primary + SMA(50) Mean Reversion.
+"""Daily Research v6c — IBS-Primary Mean Reversion.
 
-Iteration 8: IBS < 0.3 primary + RSI(2) < 50 loose confirm.
-Add SMA(50) loose trend filter. Symmetric 1.5x ATR (avoid
-asymmetric 2:1 which amplifies single losses).
-Momentum guard + drawdown filter. 3% cap.
+Iteration 7: IBS < 0.3 is the primary edge (close near day's low).
+RSI(2) < 50 is loose confirmation (any selling pressure).
+No SMA filter — IBS works across all trends.
+Momentum guard (close > close[5]) prevents falling knives.
+Wider stop 2x ATR, tight target 1x ATR for high win rate.
+Max stop 3%, max hold 5 days.
 """
 
 from __future__ import annotations
@@ -28,11 +30,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 50))
         self.ibs_entry = float(config.get("ibs_entry", 0.3))
-        self.sma_period = int(config.get("sma_period", 50))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
@@ -93,12 +94,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # SMA(50) loose trend filter
-        if len(closes) >= self.sma_period:
-            sma = sum(closes[-self.sma_period :]) / self.sma_period
-            if bar.close < sma:
-                return None
-
         # IBS primary signal: close near day's low
         bar_range = bar.high - bar.low
         if bar_range <= 0:
@@ -122,7 +117,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target capped at max_stop_pct
+        # Asymmetric: wide stop, tight target for high win rate
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
