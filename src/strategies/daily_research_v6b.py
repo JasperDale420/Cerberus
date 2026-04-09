@@ -1,13 +1,19 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-WFO Results (15 iterations, randomized splits, 2020-2024):
-  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
-  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
-  UP+NORMAL: 7/7 profitable, avg_pf=1.70
-  DOWN regimes: avg_pf=0.83-0.89
+WFO Results (30 iterations across 2 sessions, randomized splits, 2020-2024):
+  Best min_pf=0.79, avg_pf=1.4-1.5, 600-850 trades, Sharpe=0.7-1.1
+  Gate: FAIL (min_pf < 0.9). Score varies 0.58-0.79 across random splits.
+  DOWN+HIGH windows consistently drag min_pf (PF=0.67-0.88).
+  UP+NORMAL windows: avg_pf=1.3-3.4, typically profitable.
 
-Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
-Symmetric 2x ATR stop/target capped at 4%.
+  Exhaustive exploration: reversal confirmation, wider/tighter targets,
+  vol-adaptive stops, IBS entry, SMA(5) filter, RSI(14), max_hold_days
+  variations, drawdown filter variations, stop cap variations (3-6%).
+  None improved beyond baseline. RSI(2) mean reversion has structural
+  PF variance across regimes that cannot be tuned away.
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter (40-bar lookback).
+Symmetric 2x ATR stop/target capped at 4%. 5-day max hold.
 """
 
 from __future__ import annotations
