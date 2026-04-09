@@ -80,13 +80,10 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Regime filter: always skip SHOCK, skip HIGH only when trend is DOWN
+        # Regime filter: skip HIGH/SHOCK vol (from pre-computed labels)
         regime = symbol_state.meta.get("regime_labels", {})
         regime_vol = str(regime.get("regime_vol", "")).upper()
-        regime_trend = str(regime.get("regime_trend", "")).upper()
-        if regime_vol == "SHOCK":
-            return None
-        if regime_vol == "HIGH" and regime_trend == "DOWN":
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
         bars = list(symbol_state.bars)
