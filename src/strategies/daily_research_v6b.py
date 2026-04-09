@@ -1,9 +1,13 @@
-"""Daily Research Strategy v6b — IBS Mean Reversion.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter4: IBS (Internal Bar Strength) entry signal.
-IBS = (close - low) / (high - low). Buy when IBS < 0.2 (closed near low).
-Combined with RSI(2) < 30 for confirmation.
-Drawdown filter, ATR stop/target, 5-day max hold.
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
@@ -27,8 +31,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 30))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -92,15 +95,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # IBS: Internal Bar Strength
-        bar_range = bar.high - bar.low
-        if bar_range < 0.01:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_threshold:
-            return None
-
-        # RSI(2) confirmation — relaxed threshold
+        # RSI(2) — single tight threshold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
@@ -128,7 +123,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
-                "ibs": round(ibs, 3),
                 "rsi2": round(rsi, 1),
                 "drawdown": round(drawdown, 3),
             },
