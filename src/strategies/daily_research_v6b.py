@@ -1,17 +1,14 @@
-"""Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Consecutive Down Days Mean Reversion.
 
-Optimized config (WFO-validated, 3/4 random splits pass gate):
-- Price-based trend filter: close > SMA(20)
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR5/14 ratio > 1.5)
-- Symmetric 2x ATR stop and target (capped at 4% of price)
-- 12% drawdown filter (40-bar lookback)
+iter3: Replace RSI(2) with consecutive down bars entry signal.
+- Buy after 3+ consecutive down closes (close < prev close)
+- SMA(20) trend filter (only trade in uptrends)
+- Symmetric 2x ATR stop and target (capped at 4%)
+- 12% drawdown filter
 - 5-day max hold, long-only, daily bars
 
-Key insight: symmetric stops only need 47% WR for PF~0.9 (vs 57% for
-the original 3:2 stop:target). This was the single change that
-turned a failing strategy into a passing one.
-
-WFO scores: 0.92, 0.95, 0.90 PASS | 0.58 FAIL (randomized splits)
+Hypothesis: 3+ down days is simpler (fewer params), more robust,
+and statistically produces higher bounce probability than RSI(2) < 25.
 """
 
 from __future__ import annotations
@@ -34,10 +31,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
+        self.consec_down = int(config.get("consec_down", 3))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -46,24 +40,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
         self.allow_overnight = True
-
-    def _rsi(self, closes: list[float], period: int) -> float | None:
-        if len(closes) < period + 1:
-            return None
-        gains = 0.0
-        losses = 0.0
-        for i in range(len(closes) - period, len(closes)):
-            change = closes[i] - closes[i - 1]
-            if change > 0:
-                gains += change
-            else:
-                losses -= change
-        avg_gain = gains / period
-        avg_loss = losses / period
-        if avg_loss == 0:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     def _atr(self, bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
@@ -108,31 +84,22 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2)
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
+        # Consecutive down bars check
+        if len(closes) < self.consec_down + 1:
             return None
+        for i in range(1, self.consec_down + 1):
+            if closes[-i] >= closes[-i - 1]:
+                return None
 
-        # ATR calculations
-        atr_short = self._atr(bars, 5)
-        atr_long = self._atr(bars, 14)
-        if atr_short is None or atr_long is None or atr_long < 0.01:
-            return None
-
-        # Volatility-adaptive RSI threshold (ATR ratio only)
-        vol_ratio = atr_short / atr_long
-        if vol_ratio > self.vol_ratio_threshold:
-            effective_rsi_entry = self.rsi_entry_highvol
-        else:
-            effective_rsi_entry = self.rsi_entry
-
-        if rsi >= effective_rsi_entry:
+        # ATR for stop/target
+        atr = self._atr(bars, 14)
+        if atr is None or atr < 0.01:
             return None
 
         # Stop/target with cap at max_stop_pct of price
         max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr_long * self.stop_atr_mult, max_dist)
-        target_dist = min(atr_long * self.target_atr_mult, max_dist)
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
@@ -147,8 +114,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
-                "rsi2": round(rsi, 1),
-                "vol_ratio": round(vol_ratio, 2),
+                "consec_down": self.consec_down,
                 "drawdown": round(drawdown, 3),
             },
         )
