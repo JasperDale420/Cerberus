@@ -1,10 +1,9 @@
-"""Daily Research v6c — Regime-Gated IBS+RSI Mean Reversion.
+"""Daily Research v6c — High-Volume IBS+RSI Mean Reversion.
 
-Session 3, Iteration 4: Add DOWN+HIGH regime gate.
-Entry: IBS < 0.3 + RSI(2) < 50 + down-day confirmation +
-momentum guard + drawdown 10%. SKIP when stock's per-day regime
-is DOWN trend + HIGH vol (falling knives). No SMA.
-Symmetric 1.5x ATR, 2% cap.
+Session 3, Iteration 5: Maximize trade count for variance reduction.
+Entry: IBS < 0.4 + RSI(2) < 50 + momentum guard (close > close[5]).
+Drawdown filter 10%. No SMA, no down-day, no regime gate.
+Symmetric 1.5x ATR, 3% cap. Target 400+ trades across windows.
 """
 
 from __future__ import annotations
@@ -28,14 +27,14 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 15))
         self.rsi_entry = float(config.get("rsi_entry", 50))
-        self.ibs_entry = float(config.get("ibs_entry", 0.3))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -93,20 +92,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # Regime gate: skip DOWN+HIGH (per-stock per-day label)
-        regime = symbol_state.meta.get("regime_labels", {})
-        if regime:
-            trend = str(regime.get("regime_trend", "")).upper()
-            vol = str(regime.get("regime_vol", "")).upper()
-            if trend == "DOWN" and vol == "HIGH":
-                return None
-
-        # Down-day confirmation: today closed lower than yesterday
-        if len(closes) >= 2:
-            if bar.close >= closes[-2]:
-                return None
-
-        # IBS: close near day's low
+        # IBS: close in bottom 40% of range
         bar_range = bar.high - bar.low
         if bar_range <= 0:
             return None
@@ -129,7 +115,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target capped at 2%
+        # Symmetric stop/target capped at 3%
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
