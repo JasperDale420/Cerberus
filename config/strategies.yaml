@@ -246,6 +246,8 @@ strategies:
     min_bars: 20
     rsi_period: 2
     rsi_entry: 20
+    rsi_entry_highvol: 10
+    vol_ratio_threshold: 1.5
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
     max_drawdown_pct: 0.12

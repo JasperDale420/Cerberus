@@ -1,10 +1,10 @@
-"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Vol-Adaptive RSI(2) Mean Reversion.
 
-iter9: RSI(2) < 20, no SMA filter, no vol adaptation.
-Only the drawdown filter + stop cap for protection.
-Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
-regimes. No trend filter needed because extreme RSI readings are rare
-enough to be high-quality. Fewer params = more robust.
+iter10: RSI(2)<20 with vol-adaptive tightening in high vol.
+- Normal vol: RSI(2) < 20
+- High vol (ATR5/14 > 1.5): RSI(2) < 10 (only deeply oversold)
+- No SMA filter, drawdown + stop cap protection
+- Symmetric 2x ATR stop/target (capped at 4%)
 """
 
 from __future__ import annotations
@@ -29,6 +29,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
+        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -92,14 +94,25 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2) — single tight threshold
+        # RSI(2)
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi >= self.rsi_entry:
+        if rsi is None:
             return None
 
-        # ATR for stop/target
+        # ATR calculations
+        atr_short = self._atr(bars, 5)
         atr = self._atr(bars, 14)
-        if atr is None or atr < 0.01:
+        if atr_short is None or atr is None or atr < 0.01:
+            return None
+
+        # Vol-adaptive RSI threshold
+        vol_ratio = atr_short / atr
+        if vol_ratio > self.vol_ratio_threshold:
+            effective_rsi = self.rsi_entry_highvol
+        else:
+            effective_rsi = self.rsi_entry
+
+        if rsi >= effective_rsi:
             return None
 
         # Stop/target with cap
@@ -121,6 +134,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
+                "vol_ratio": round(vol_ratio, 2),
                 "drawdown": round(drawdown, 3),
             },
         )
