@@ -231,11 +231,5 @@ strategies:
     min_bars: 25
     allow_overnight: true
     max_hold_days: 10
-    cooldown_bars: 1
-    activation:
-      session: [opening, midday, power_hour]
-      trend: [up, down, flat]
-      vol: [low, normal, high, shock]
-      liquidity: [good, thin]
-      risk: [risk_on, neutral, risk_off]
-      min_confidence: 0.0
+    cooldown_bars: 0
+    bar_duration_minutes: 1440.0
