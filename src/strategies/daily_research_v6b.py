@@ -1,11 +1,12 @@
-"""Daily Research Strategy v6b — RSI(2) Mean Reversion with Down-Days Filter.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion, Symmetric Risk.
 
-High win-rate mean reversion:
-- RSI(2) < 20 + IBS < 0.5 (oversold + closed near lows)
-- 2+ consecutive lower closes (exhaustion selling confirmed)
-- Tight target (1x ATR) for quick exits and high win rate
-- Moderate stop (2x ATR)
-- Drawdown filter prevents crash entries
+Key insight: symmetric stop/target (2x/2x ATR) only needs 47.4% WR
+for PF >= 0.9. This is the most forgiving math for consistency.
+
+- RSI(2) < 25 (generous threshold for more trades)
+- IBS < 0.5 (light quality filter)
+- Symmetric 2x ATR stop and target
+- Drawdown filter (12%) prevents crash entries
 - Long-only, daily bars.
 """
 
@@ -30,13 +31,12 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.5))
-        self.down_days = int(config.get("down_days", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.allow_overnight = True
 
@@ -67,15 +67,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
 
-    def _consecutive_down(self, closes: list[float], n: int) -> bool:
-        """Check if last n closes are consecutively lower."""
-        if len(closes) < n + 1:
-            return False
-        for i in range(1, n + 1):
-            if closes[-i] >= closes[-i - 1]:
-                return False
-        return True
-
     def on_bar(
         self,
         symbol: str,
@@ -102,10 +93,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
                 return None
-
-        # Consecutive down days — confirm exhaustion selling
-        if not self._consecutive_down(closes, self.down_days):
-            return None
 
         # RSI(2) — oversold
         rsi = self._rsi(closes, self.rsi_period)
