@@ -1,9 +1,9 @@
 """Daily Research v6c — Symmetric R/R + SMA Filter Mean Reversion.
 
-Iteration 11: Symmetric 1.5x ATR + SMA(20) + RSI(20).
-Iter 10 passed 1 seed (min_pf=1.01) but failed another (0.73). The 1:2
-asymmetric R/R needs 67% WR to break even — too demanding. Switch to
-symmetric 1.5x ATR (needs only 50% WR) + keep SMA(20) filter.
+Iteration 12: RSI(25) + SMA(20), no momentum guard, symmetric 1.5x ATR.
+Iter 11 min_pf=0.82. Momentum guard may be counterproductive — filtering
+good trades and skewing small samples. SMA(20) is sufficient trend filter.
+Wider RSI(25) for more trades per window = better statistical stability.
 """
 
 from __future__ import annotations
@@ -26,9 +26,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.sma_period = int(config.get("sma_period", 20))
-        self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
@@ -102,11 +101,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
-
-        # Momentum guard: close must be above close N days ago (not in freefall)
-        if len(closes) > self.momentum_lookback:
-            if bar.close <= closes[-self.momentum_lookback - 1]:
-                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
