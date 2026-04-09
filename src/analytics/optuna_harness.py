@@ -895,6 +895,8 @@ def _apply_params_to_config(
         "pullback_rsi_lo",
         "pullback_rsi_hi",
         "down_days",
+        "cum_rsi_threshold",
+        "cum_rsi_days",
     }
 
     for key, value in params.items():

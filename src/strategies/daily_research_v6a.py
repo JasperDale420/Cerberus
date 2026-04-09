@@ -1,9 +1,9 @@
-"""Daily Research v6a — RSI(2) + IBS dual oversold, wider stops.
+"""Daily Research v6a — Cumulative RSI(2) mean reversion.
 
-Dual oversold confirmation with wider stops to reduce stop-outs:
-- RSI(2) < 10 deep oversold
-- IBS < 0.3 (closed in lower 30% of daily range)
-- 2.0 ATR / 3% hard stop (wider than standard 1.5/2%)
+Cumulative RSI = sum of RSI(2) over N recent days. Requires SUSTAINED
+oversold, not just a 1-day spike. Reduces falling-knife entries.
+- CumRSI(2, 3) < 30 (avg RSI(2) < 10 per day for 3 days)
+- 1.5 ATR / 2% hard stop
 - No trend filter — trades all regimes
 - Only blocks SHOCK volatility
 """
@@ -30,14 +30,16 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._lo: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
+        self._rsi2_hist: dict[str, deque[float]] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.cum_rsi_threshold = float(config.get("cum_rsi_threshold", 30))
+        self.cum_rsi_days = int(config.get("cum_rsi_days", 3))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -47,6 +49,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0]
+            self._rsi2_hist[s] = deque(maxlen=10)
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -79,6 +82,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
+            # Track RSI(2) history
+            rsi2 = self._rsi(self._c[symbol], n=2)
+            if rsi2 is not None:
+                self._rsi2_hist[symbol].append(rsi2)
             d[0], d[1], d[2] = bar.high, bar.low, bar.close
             sig = self._evaluate(symbol, bar, market_state)
             self._pd[symbol] = dt
@@ -94,11 +101,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
-        h, lo = self._h[sym], self._lo[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
-        atr = self._atr(h, lo, c)
+        atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
 
@@ -110,20 +116,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # RSI(2) deep oversold
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None or rsi2 >= self.rsi2_threshold:
+        # Cumulative RSI(2) over N days
+        rsi_hist = self._rsi2_hist[sym]
+        if len(rsi_hist) < self.cum_rsi_days:
+            return None
+        cum_rsi = sum(list(rsi_hist)[-self.cum_rsi_days :])
+        if cum_rsi >= self.cum_rsi_threshold:
             return None
 
-        # IBS confirmation — closed in lower 30% of daily range
-        hl, ll = list(h), list(lo)
-        day_range = hl[-1] - ll[-1]
-        if day_range > 0:
-            ibs = (price - ll[-1]) / day_range
-            if ibs > 0.3:
-                return None
-
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.03)
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
         target = price + atr * self.target_atr_mult
 
