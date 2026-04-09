@@ -1,8 +1,13 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter14: RSI(2) < 25 (more permissive for more trades per window).
-More trades = more stable PF estimates = less variance in worst window.
-Everything else unchanged from iter9.
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
