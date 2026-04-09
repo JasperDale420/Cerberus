@@ -110,7 +110,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         else:
             effective_rsi_entry = self.rsi_entry
 
-        # === LONG when RSI(2) oversold (adaptive threshold) ===
+        # IBS filter: close should be in lower half of bar range
+        bar_range = bar.high - bar.low
+        ibs = (bar.close - bar.low) / bar_range if bar_range > 0.001 else 0.5
+        if ibs > 0.5:
+            return None
+
+        # === LONG when RSI(2) oversold (adaptive threshold) + IBS low ===
         if rsi < effective_rsi_entry:
             stop_price = bar.close - atr_long * self.stop_atr_mult
             target_price = bar.close + atr_long * self.target_atr_mult
