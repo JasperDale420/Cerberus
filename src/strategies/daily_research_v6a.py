@@ -1,10 +1,10 @@
 """Daily Research v6a — RSI(2) mean reversion with SMA10 trend filter.
 
-Balanced design: enough trades for reliability, trend filter for bear protection:
+Tighter risk management for consistency:
 - RSI(2) identifies oversold conditions
 - SMA10 fast trend gate: blocks acute downtrends
-- 2-day consecutive decline confirmation
-- ATR-based stops and targets with 2% hard cap
+- Tighter stops (1.0 ATR) for faster exit on failures
+- Closer targets (3.5 ATR) to capture profits sooner
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 5.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
         self.allow_overnight = True
 
@@ -127,12 +127,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if rsi2 is None:
             return None
 
-        # 2-day consecutive decline confirmation
-        if len(cl) < 3:
-            return None
-        two_day_decline = price < cl[-2] and cl[-2] < cl[-3]
-
-        if rsi2 < self.rsi2_threshold and two_day_decline:
+        if rsi2 < self.rsi2_threshold:
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult
