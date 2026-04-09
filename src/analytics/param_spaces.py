@@ -72,6 +72,9 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "rsi_period": 2,
         "trend_period": 50,
         "max_hold_days": 10,
+        "rsi_entry": 25.0,
+        "stop_atr": 3.0,
+        "target_atr": 4.0,
     },
 }
 
@@ -196,6 +199,8 @@ def suggest_params(
     params.update(locked)
 
     for p in space:
+        if p.name in locked:
+            continue
         if p.param_type == "float":
             if p.step:
                 params[p.name] = trial.suggest_float(p.name, p.low, p.high, step=p.step)
