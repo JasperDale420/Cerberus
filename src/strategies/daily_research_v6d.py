@@ -4,10 +4,10 @@ Buy short-term oversold dips when the long-term trend is up.
 Long-only. Few parameters. Proven robust across market regimes.
 
 Rules:
-  ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period) AND SMA rising
+  ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period)
   EXIT: hit stop (ATR-based) or target (ATR-based)
 
-Iteration 9: Add rising SMA filter to avoid buying dips in rolling bear.
+Iteration 3: Use symbol_state.bars directly (proven working pattern).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
+        self.min_bars = int(config.get("min_bars", 50))
         self.trend_period = int(config.get("trend_period", 50))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
@@ -86,12 +86,11 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
         price = closes[-1]
 
-        # Trend filter: price above SMA(trend_period) AND SMA rising
-        if len(closes) < self.trend_period + 5:
+        # Trend filter: price above SMA(trend_period) = uptrend
+        if len(closes) < self.trend_period:
             return None
         sma = sum(closes[-self.trend_period :]) / self.trend_period
-        sma_prev = sum(closes[-self.trend_period - 5 : -5]) / self.trend_period
-        if price < sma or sma <= sma_prev:
+        if price < sma:
             return None
 
         # RSI(2) — buy on short-term oversold dip

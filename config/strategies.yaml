@@ -289,7 +289,7 @@ strategies:
 
   daily_research_v6d:
     enabled: true
-    min_bars: 55
+    min_bars: 50
     allow_overnight: true
     max_hold_days: 10
     cooldown_bars: 1
