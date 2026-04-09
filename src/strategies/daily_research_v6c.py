@@ -1,9 +1,9 @@
-"""Daily Research v6c — Zero-Cooldown IBS+RSI Mean Reversion.
+"""Daily Research v6c — Long Momentum Guard IBS+RSI Mean Reversion.
 
-Session 3, Iteration 8: Session 2 best recipe with zero cooldown.
-IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + drawdown 10%.
-cooldown_bars=0 allows consecutive-day entries for max trade count.
-Symmetric 1.5x ATR, 2% cap. No SMA.
+Session 3, Iteration 9: 20-day momentum lookback as crash filter.
+IBS < 0.3 + RSI(2) < 50 + momentum guard(20) + drawdown 10%.
+20-day lookback blocks trades during multi-week crashes while
+allowing 1-2 day dips in uptrends. Symmetric 1.5x ATR, 2% cap.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 15))
         self.rsi_entry = float(config.get("rsi_entry", 50))
         self.ibs_entry = float(config.get("ibs_entry", 0.3))
-        self.momentum_lookback = int(config.get("momentum_lookback", 5))
+        self.momentum_lookback = int(config.get("momentum_lookback", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
