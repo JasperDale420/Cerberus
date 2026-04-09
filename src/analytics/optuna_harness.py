@@ -1318,6 +1318,11 @@ class WalkForwardOptimizer:
             for sname in oos_config.get("strategies", {}):
                 if sname != strategy_name:
                     oos_config["strategies"][sname]["enabled"] = False
+            # Ensure target strategy is in ALL regime routing lists (mirrors create_objective)
+            for regime in oos_config.get("strategy_routing", {}):
+                routing = oos_config["strategy_routing"][regime]
+                if strategy_name not in routing:
+                    routing.append(strategy_name)
 
             oos_metrics = run_backtest_for_optimization(
                 start_date=window["test_start"],
