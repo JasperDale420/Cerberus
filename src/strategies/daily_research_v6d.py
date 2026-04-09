@@ -87,7 +87,14 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
         price = closes[-1]
 
-        # RSI(2) — buy on short-term oversold dip (no trend filter)
+        # Trend filter: price above SMA(trend_period) = uptrend
+        if len(closes) < self.trend_period:
+            return None
+        sma = sum(closes[-self.trend_period :]) / self.trend_period
+        if price < sma:
+            return None
+
+        # RSI(2) — buy on short-term oversold dip
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
