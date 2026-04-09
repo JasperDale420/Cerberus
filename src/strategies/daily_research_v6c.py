@@ -1,13 +1,15 @@
-"""Daily Research v6c — RSI(2) + IBS Mean Reversion.
+"""Daily Research v6c — RSI(2) Mean Reversion with Momentum Guard.
 
-Iteration 3: IBS confirmation + asymmetric risk/reward.
-Iter 1: min_pf=0.60, SMA(50) too restrictive, DOWN+HIGH=0.00.
-Iter 2: min_pf=0.30, regime gate ineffective (per-stock, not per-window),
-        UP+NORMAL windows still inconsistent (PF=0.30-0.48).
+Iteration 4: High trade count with quality filter.
+Iter 1: min_pf=0.60, SMA(50) too restrictive.
+Iter 2: min_pf=0.30, regime gate ineffective.
+Iter 3: min_pf=0.37, IBS reduces trades too much, high variance.
 
-Changes: Add IBS < 0.3 filter for quality entries. Asymmetric
-stop/target (wider stop 2.5 ATR, tighter target 1.5 ATR) to improve
-win rate. Remove regime gate (ineffective). Keep SMA(20) trend filter.
+Approach: Back to v6b basics (RSI(2)<25, lots of trades) but add:
+1. 5-bar momentum guard: skip if close < min(last 5 closes). Prevents
+   catching falling knives which killed DOWN+HIGH windows.
+2. Symmetric 1.5x ATR stop/target — tighter, take profits faster.
+3. 3% max stop cap — limits loss per trade.
 """
 
 from __future__ import annotations
@@ -29,17 +31,16 @@ class dailyresearchv6cStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 25))
+        self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 30))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.05))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -69,11 +70,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
 
-    def _sma(self, values: list[float], period: int) -> float | None:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
-
     def on_bar(
         self,
         symbol: str,
@@ -93,12 +89,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # SMA(20) trend filter — only buy in uptrend
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma:
-            return None
-
-        # Drawdown filter — skip stocks in freefall
+        # Drawdown filter
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
@@ -107,24 +98,24 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
+        # Momentum guard: don't buy if price is at a new 5-bar low
+        # This prevents catching falling knives in sustained downtrends
+        if len(closes) >= self.momentum_lookback + 1:
+            recent_min = min(closes[-(self.momentum_lookback + 1) : -1])
+            if bar.close < recent_min:
+                return None
+
         # RSI(2) oversold entry
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
-
-        # IBS confirmation — close must be in bottom of daily range
-        day_range = bar.high - bar.low
-        if day_range > 0:
-            ibs = (bar.close - bar.low) / day_range
-            if ibs > self.ibs_threshold:
-                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
 
-        # Asymmetric: wider stop (survive), tighter target (take profit)
+        # Symmetric stop/target with tight cap
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
@@ -143,7 +134,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "ibs": round(ibs if day_range > 0 else 0.0, 2),
                 "drawdown": round(drawdown, 3),
             },
         )
