@@ -1,10 +1,9 @@
-"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion, short hold.
 
-iter9: RSI(2) < 20, no SMA filter, no vol adaptation.
-Only the drawdown filter + stop cap for protection.
-Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
-regimes. No trend filter needed because extreme RSI readings are rare
-enough to be high-quality. Fewer params = more robust.
+iter13: Reduce max_hold_days from 5 to 3.
+- Shorter hold = smaller time-exit losses
+- Time exits create avg_loss >> avg_win asymmetry
+- 3 days is enough for RSI(2) mean reversion to play out
 """
 
 from __future__ import annotations
