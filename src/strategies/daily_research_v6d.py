@@ -37,6 +37,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.stop_atr = float(config.get("stop_atr", 1.5))
         self.target_atr = float(config.get("target_atr", 2.0))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -86,6 +88,15 @@ class dailyresearchv6dStrategy(BaseStrategy):
             return None
 
         price = closes[-1]
+        highs = [b.high for b in bars]
+
+        # Drawdown guard — skip if stock already in major drawdown
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        if recent_high > 0:
+            drawdown = (recent_high - price) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
 
         # Trend filter: price above SMA(trend_period) = uptrend
         if len(closes) < self.trend_period:
