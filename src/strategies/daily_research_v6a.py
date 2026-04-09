@@ -1,11 +1,11 @@
-"""Daily Research v6a — RSI(2) mean reversion with multi-timeframe filter.
+"""Daily Research v6a — RSI(2) mean reversion with tight targets.
 
-Designed for CONSISTENCY across all market regimes:
+Key design: mean reversion = frequent small wins.
 - SMA(50) per-symbol trend filter
-- RSI(2) < threshold for short-term oversold entry
-- RSI(14) > 30 confirms longer-term isn't deeply bearish (dip is temporary)
-- Only blocks SHOCK volatility (mean reversion thrives in HIGH vol)
-- ATR-based exits with 2% hard stop cap
+- RSI(2) < 20 oversold entry (wider for more trades)
+- Tight target (1.5 ATR) — take profits quickly
+- Wider stop (3% cap) — give trades room
+- Only blocks SHOCK volatility
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
@@ -113,7 +113,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Only block SHOCK volatility — mean reversion thrives in HIGH vol
+        # Only block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
@@ -124,24 +124,16 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if sma50 is None or price < sma50:
             return None
 
-        # Multi-timeframe RSI confirmation:
-        # RSI(14) > 30: longer-term not deeply bearish (dip is temporary)
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is None or rsi14 < 30:
-            return None
-
-        # RSI(2) short-term oversold
+        # RSI(2) oversold — wider threshold for more trades
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
 
         if rsi2 < self.rsi2_threshold:
-            # Confirm: price declined
-            if price >= cl[-2]:
-                return None
-
-            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+            # Wider stop (3% cap) — give trades room to breathe
+            stop_dist = min(atr * self.stop_atr_mult, price * 0.03)
             stop = price - stop_dist
+            # Tight target — take small profits quickly
             target = price + atr * self.target_atr_mult
 
             self.last_signal_time[sym] = bar.time
