@@ -36,6 +36,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.target_atr = float(config.get("target_atr", 2.0))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.ibs_entry = float(config.get("ibs_entry", 0.5))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -106,6 +107,13 @@ class dailyresearchv6dStrategy(BaseStrategy):
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # IBS filter: close near day's low confirms selling pressure exhaustion
+        bar_range = bar.high - bar.low
+        if bar_range > 0:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs >= self.ibs_entry:
+                return None
 
         # Symmetric stop/target capped at max_stop_pct of price
         max_dist = price * self.max_stop_pct
