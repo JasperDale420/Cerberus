@@ -1,9 +1,9 @@
 """Daily Research v6c — Mild Asymmetric R/R + SMA + Momentum Guard.
 
-Iteration 13: Return to iter10 recipe (best: PASS min_pf=1.01) but with
-milder asymmetry. Stop=1.5x ATR, Target=1.2x ATR, 3% cap.
-Break-even WR = 55.6% (vs 67% for 2:1 asymmetric, 50% for symmetric).
-RSI(20) + SMA(20) + momentum guard (close > close[5]).
+Iteration 14: RSI(25) for more trades per window + iter13 recipe.
+Iter 13 passed (min_pf=1.02) on one seed but FLAT/DOWN windows with
+12-17 trades have noisy PF. RSI(25) should give ~50% more trades.
+Stop=1.5x ATR, Target=1.2x ATR, 3% cap. SMA(20) + momentum guard.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
