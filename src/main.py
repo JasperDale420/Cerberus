@@ -59,6 +59,7 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.daily_momentum import DailyMomentumStrategy
     from src.strategies.daily_research_strategy import DailyResearchStrategy
     from src.strategies.daily_research_v6a import dailyresearchv6aStrategy
+    from src.strategies.daily_research_v6b import dailyresearchv6bStrategy
     from src.strategies.daily_vol_fade import DailyVolFadeStrategy
     from src.strategies.failed_breakout import FailedBreakoutStrategy
     from src.strategies.flow_alpha import FlowAlphaStrategy
@@ -104,6 +105,7 @@ def _build_strategy_registry() -> dict[str, type]:
         "autoresearch_strategy": AutoresearchStrategy,
         "daily_research_strategy": DailyResearchStrategy,
         "daily_research_v6a": dailyresearchv6aStrategy,
+        "daily_research_v6b": dailyresearchv6bStrategy,
         "up_normal_strategy": UpNormalStrategy,
         # Legacy strategies (disabled in config)
         "vwap_reversion": VWAPReversionStrategy,
