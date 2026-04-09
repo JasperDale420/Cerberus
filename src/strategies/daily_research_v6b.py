@@ -30,14 +30,14 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
+        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 5))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
