@@ -273,7 +273,7 @@ strategies:
     max_drawdown_pct: 0.10
     drawdown_lookback: 40
     max_stop_pct: 0.02
-    vol_mult: 0.8
+    vol_mult: 0.6
     vol_lookback: 20
     allow_overnight: true
     max_hold_days: 3
