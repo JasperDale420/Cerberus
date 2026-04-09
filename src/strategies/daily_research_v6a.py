@@ -36,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.75))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
@@ -119,9 +119,12 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA(50) per-symbol uptrend filter
+        # SMA(50) per-symbol uptrend filter + proximity check
         sma = self._sma(cl, self.sma_period)
         if sma is None or price < sma:
+            return None
+        # Proximity: price must be within 5% of SMA (not overextended)
+        if price > sma * 1.05:
             return None
 
         # RSI(2) strict oversold — Connors-style
