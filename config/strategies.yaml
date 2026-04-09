@@ -265,7 +265,7 @@ strategies:
   daily_research_v6c:
     enabled: true
     min_bars: 20
-    rsi_entry: 55
+    rsi_entry: 50
     ibs_entry: 0.45
     rsi_period: 2
     momentum_lookback: 5
