@@ -32,8 +32,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.rsi_entry = float(config.get("rsi_entry", 20))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.allow_overnight = True

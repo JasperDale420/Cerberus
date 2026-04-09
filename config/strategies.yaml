@@ -247,8 +247,8 @@ strategies:
     rsi_period: 2
     rsi_entry: 20
     ibs_threshold: 0.5
-    stop_atr_mult: 2.5
-    target_atr_mult: 1.5
+    stop_atr_mult: 1.5
+    target_atr_mult: 2.5
     max_drawdown_pct: 0.15
     drawdown_lookback: 40
     allow_overnight: true
