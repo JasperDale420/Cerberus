@@ -1,17 +1,9 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-Optimized config (WFO-validated, 3/4 random splits pass gate):
-- Price-based trend filter: close > SMA(20)
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR5/14 ratio > 1.5)
-- Symmetric 2x ATR stop and target (capped at 4% of price)
-- 12% drawdown filter (40-bar lookback)
-- 5-day max hold, long-only, daily bars
-
-Key insight: symmetric stops only need 47% WR for PF~0.9 (vs 57% for
-the original 3:2 stop:target). This was the single change that
-turned a failing strategy into a passing one.
-
-WFO scores: 0.92, 0.95, 0.90 PASS | 0.58 FAIL (randomized splits)
+iter2: Disable max_hold_days (set to 0) to let all trades resolve at
+stop or target. Time exits with max_hold_days=5 were creating asymmetric
+P&L (avg_loss >> avg_win) even with symmetric stops, causing some windows
+to have PF=0.58 despite 49% WR (which should give PF~0.96 with true symmetry).
 """
 
 from __future__ import annotations
@@ -38,7 +30,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.rsi_entry = float(config.get("rsi_entry", 25))
         self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.sma_period = int(config.get("sma_period", 20))
