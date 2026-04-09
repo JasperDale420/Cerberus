@@ -1,8 +1,10 @@
-"""Daily Research v6c — Tight Drawdown IBS+RSI Mean Reversion.
+"""Daily Research v6c — Composite Mean Reversion.
 
-Session 3, Iteration 13: Restore s2-iter10 exact config (PASS 0.97).
-IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + drawdown 10%.
-Symmetric 1.5x ATR, 2% cap. No SMA filter.
+Session 4, Iteration 1: Composite signal for more trades.
+Signal A: IBS < 0.3 + RSI(2) < 50 (proven edge)
+Signal B: 2 consecutive down closes (independent edge)
+Either signal triggers entry. More trades = more consistent PF per window.
+Momentum guard + drawdown filter + ATR stop/target + 2% cap.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.consec_down_days = int(config.get("consec_down_days", 2))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -82,7 +85,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Drawdown filter
+        # Drawdown filter — skip stocks in freefall
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
@@ -91,23 +94,35 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # IBS: close near day's low
-        bar_range = bar.high - bar.low
-        if bar_range <= 0:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_entry:
-            return None
-
-        # RSI(2) confirmation
-        rsi = self._rsi(closes, 2)
-        if rsi is None or rsi >= self.rsi_entry:
-            return None
-
-        # Momentum guard
+        # Momentum guard — close must be above N days ago
         if len(closes) > self.momentum_lookback:
             if bar.close <= closes[-self.momentum_lookback - 1]:
                 return None
+
+        # Signal A: IBS + RSI(2)
+        signal_a = False
+        bar_range = bar.high - bar.low
+        ibs = None
+        if bar_range > 0:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs < self.ibs_entry:
+                rsi = self._rsi(closes, 2)
+                if rsi is not None and rsi < self.rsi_entry:
+                    signal_a = True
+
+        # Signal B: N consecutive down closes
+        signal_b = False
+        n = self.consec_down_days
+        if len(closes) >= n + 1:
+            all_down = True
+            for i in range(1, n + 1):
+                if closes[-i] >= closes[-i - 1]:
+                    all_down = False
+                    break
+            signal_b = all_down
+
+        if not signal_a and not signal_b:
+            return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
@@ -121,6 +136,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
+        rsi_val = self._rsi(closes, 2)
         self.last_signal_time[symbol] = bar.time
         return Signal(
             symbol=symbol,
@@ -132,8 +148,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
-                "rsi2": round(rsi, 1),
-                "ibs": round(ibs, 2),
+                "rsi2": round(rsi_val, 1) if rsi_val else 0,
+                "ibs": round(ibs, 2) if ibs else 0,
+                "signal": "ibs_rsi" if signal_a else "consec_down",
                 "drawdown": round(drawdown, 3),
             },
         )
