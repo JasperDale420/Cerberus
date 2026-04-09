@@ -1,10 +1,10 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter6: Tighter 3% stop/target cap (was 4%).
-- Tighter cap = more trades hit stop or target, fewer time-exits
-- Price-based trend filter: close > SMA(20)
+iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
+Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
+- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
 - RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
-- 2x ATR stop, 2x ATR target (capped at 3%)
+- 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
 """
@@ -39,7 +39,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 20))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
