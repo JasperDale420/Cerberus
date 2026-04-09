@@ -1,10 +1,11 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter9: Remove drawdown filter (may cut good pullback trades in uptrends).
-- Price-based trend filter: close > SMA(20)
+iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
+Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
+- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
 - RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
 - 2x ATR stop, 2x ATR target (capped at 4%)
-- No drawdown filter
+- 12% drawdown filter
 - Long-only, daily bars.
 """
 
@@ -82,6 +83,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
@@ -90,6 +92,15 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if len(closes) >= self.sma_period:
             sma = sum(closes[-self.sma_period :]) / self.sma_period
             if bar.close < sma:
+                return None
+
+        # Drawdown filter
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        drawdown = 0.0
+        if recent_high > 0:
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
                 return None
 
         # RSI(2)
@@ -133,5 +144,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             meta={
                 "rsi2": round(rsi, 1),
                 "vol_ratio": round(vol_ratio, 2),
+                "drawdown": round(drawdown, 3),
             },
         )
