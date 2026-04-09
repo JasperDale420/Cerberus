@@ -1,9 +1,9 @@
-"""Daily Research v6c — RSI(2) Mean Reversion with Triple Filter.
+"""Daily Research v6c — Mild Asymmetric R/R + SMA + Momentum Guard.
 
-Iteration 15: Return to iter13 config (PASS min_pf=1.02) + IBS filter.
-RSI(20) + SMA(20) + momentum guard + IBS<0.3 (close near day's low).
-IBS is orthogonal to RSI and improves signal quality in all regimes.
-Mild asymmetry: 1.5x ATR stop, 1.2x ATR target, 3% cap.
+Iteration 13: Return to iter10 recipe (best: PASS min_pf=1.01) but with
+milder asymmetry. Stop=1.5x ATR, Target=1.2x ATR, 3% cap.
+Break-even WR = 55.6% (vs 67% for 2:1 asymmetric, 50% for symmetric).
+RSI(20) + SMA(20) + momentum guard (close > close[5]).
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 20))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -103,13 +102,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
-
-        # IBS filter: close must be near day's low (selling exhaustion)
-        bar_range = bar.high - bar.low
-        if bar_range > 0:
-            ibs = (bar.close - bar.low) / bar_range
-            if ibs > self.ibs_threshold:
-                return None
 
         # Momentum guard: close must be above close N days ago
         if len(closes) > self.momentum_lookback:
