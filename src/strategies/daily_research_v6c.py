@@ -1,9 +1,9 @@
-"""Daily Research v6c — Pure IBS Mean Reversion.
+"""Daily Research v6c — IBS+RSI Tight Risk Mean Reversion.
 
-Iteration 9: Ultra-simple. IBS < 0.2 only (close in bottom 20% of range).
-No RSI, no SMA — minimum parameters for maximum robustness.
-Momentum guard + drawdown filter as safety nets.
-Symmetric 1.5x ATR, 3% cap, 5-day max hold.
+Iteration 10: IBS < 0.3 + RSI(2) < 50 + momentum guard.
+Key change: max_stop_pct=2% (was 3%) — limits per-trade damage.
+Symmetric 1.5x ATR. No SMA filter (IBS works across trends).
+Drawdown filter at 10%. 5-day max hold.
 """
 
 from __future__ import annotations
@@ -26,15 +26,34 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 15))
-        self.ibs_entry = float(config.get("ibs_entry", 0.2))
+        self.rsi_entry = float(config.get("rsi_entry", 50))
+        self.ibs_entry = float(config.get("ibs_entry", 0.3))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True
+
+    def _rsi(self, closes: list[float], period: int) -> float | None:
+        if len(closes) < period + 1:
+            return None
+        gains = 0.0
+        losses = 0.0
+        for i in range(len(closes) - period, len(closes)):
+            change = closes[i] - closes[i - 1]
+            if change > 0:
+                gains += change
+            else:
+                losses -= change
+        avg_gain = gains / period
+        avg_loss = losses / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     def _atr(self, bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
@@ -73,7 +92,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # IBS: close in bottom 20% of day's range
+        # IBS: close near day's low
         bar_range = bar.high - bar.low
         if bar_range <= 0:
             return None
@@ -81,7 +100,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if ibs >= self.ibs_entry:
             return None
 
-        # Momentum guard: close must be above close N days ago
+        # RSI(2) confirmation
+        rsi = self._rsi(closes, 2)
+        if rsi is None or rsi >= self.rsi_entry:
+            return None
+
+        # Momentum guard
         if len(closes) > self.momentum_lookback:
             if bar.close <= closes[-self.momentum_lookback - 1]:
                 return None
@@ -91,7 +115,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target capped at max_stop_pct
+        # Symmetric stop/target capped at tight max_stop_pct
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
@@ -109,6 +133,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
+                "rsi2": round(rsi, 1),
                 "ibs": round(ibs, 2),
                 "drawdown": round(drawdown, 3),
             },
