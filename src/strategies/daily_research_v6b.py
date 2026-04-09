@@ -1,8 +1,8 @@
-"""Daily Research Strategy v6b — RSI(2) Mean Reversion with recovery confirmation.
+"""Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
 
-Wait for RSI(2) to be oversold, then enter on the NEXT bar only if it closes
-higher (recovery confirmation). This avoids falling knives. Vol-adaptive RSI
-threshold + drawdown filter. Long-only, daily bars.
+Buy when RSI(2) is oversold. In high-vol or declining environments, require
+deeper oversold for entry. Drawdown filter prevents buying into crashes.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -21,20 +21,20 @@ class dailyresearchv6bStrategy(BaseStrategy):
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
         self.allow_overnight = True
-        self._pending_entry: dict[str, bool] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry_base = float(config.get("rsi_entry", 25))
-        self.rsi_entry_floor = float(config.get("rsi_entry_floor", 5))
-        self.vol_sensitivity = float(config.get("vol_sensitivity", 15))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry_cautious = float(config.get("rsi_entry_cautious", 10))
+        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
+        self.sma_slope_period = int(config.get("sma_slope_period", 20))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -54,6 +54,11 @@ class dailyresearchv6bStrategy(BaseStrategy):
             return 100.0
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
+
+    def _sma(self, values: list[float], period: int) -> float | None:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     def _atr(self, bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
@@ -90,10 +95,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
-                self._pending_entry[symbol] = False
                 return None
 
-        # RSI(2) — compute on the PREVIOUS bar's close
+        # RSI(2)
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None:
             return None
@@ -104,23 +108,26 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # Graduated RSI threshold
+        # Determine if environment is cautious (high vol OR declining trend)
         vol_ratio = atr_short / atr_long
-        vol_excess = max(0.0, vol_ratio - 1.0)
-        effective_rsi_entry = max(self.rsi_entry_floor, self.rsi_entry_base - self.vol_sensitivity * vol_excess)
+        is_high_vol = vol_ratio > self.vol_ratio_threshold
 
-        # Check for recovery confirmation
-        was_pending = self._pending_entry.get(symbol, False)
+        # SMA slope check: is the short-term trend declining?
+        is_declining = False
+        if len(closes) >= self.sma_slope_period + 5:
+            sma_now = self._sma(closes, self.sma_slope_period)
+            sma_prev = self._sma(closes[:-5], self.sma_slope_period)
+            if sma_now is not None and sma_prev is not None:
+                is_declining = sma_now < sma_prev
 
+        # Adaptive RSI threshold
+        if is_high_vol or is_declining:
+            effective_rsi_entry = self.rsi_entry_cautious
+        else:
+            effective_rsi_entry = self.rsi_entry
+
+        # === LONG when RSI(2) oversold (adaptive threshold) ===
         if rsi < effective_rsi_entry:
-            # RSI is oversold — set pending flag for next bar
-            self._pending_entry[symbol] = True
-            return None
-
-        if was_pending and len(closes) >= 2 and closes[-1] > closes[-2]:
-            # Previous bar was oversold, current bar closed UP — recovery confirmed
-            self._pending_entry[symbol] = False
-
             stop_price = bar.close - atr_long * self.stop_atr_mult
             target_price = bar.close + atr_long * self.target_atr_mult
 
@@ -137,13 +144,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
                 meta={
                     "rsi2": round(rsi, 1),
                     "vol_ratio": round(vol_ratio, 2),
+                    "declining": is_declining,
                     "drawdown": round(drawdown, 3),
-                    "mode": "recovery_confirmation",
                 },
             )
-
-        # Reset pending if no recovery
-        if was_pending:
-            self._pending_entry[symbol] = False
 
         return None
