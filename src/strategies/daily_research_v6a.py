@@ -1,10 +1,11 @@
-"""Daily Research v6a — Connors-style RSI(2) mean reversion.
+"""Daily Research v6a — Pure RSI(2) mean reversion, no trend filter.
 
-Best configuration from 15-iteration autoresearch:
-- SMA(50) per-symbol trend filter
-- RSI(2) < 10: strict oversold threshold (Connors research)
-- Block HIGH and SHOCK volatility regimes
-- ATR-based stops and targets with 2% hard cap
+Designed for CONSISTENCY across all market regimes:
+- RSI(2) oversold entry — works in UP, DOWN, and FLAT markets
+- No SMA trend filter (removes directional bias)
+- Only blocks SHOCK volatility
+- Tight ATR-based exits for quick mean reversion captures
+- 2% hard stop cap
 """
 
 from __future__ import annotations
@@ -33,11 +34,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
+        self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -65,11 +66,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
         g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
-
-    def _sma(self, vals: list[float], period: int) -> float | None:
-        if len(vals) < period:
-            return None
-        return sum(vals[-period:]) / period
 
     def on_bar(
         self,
@@ -112,23 +108,22 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block HIGH and SHOCK volatility
+        # Only block SHOCK volatility — mean reversion works in HIGH vol
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
+        if vol == "shock":
             return None
 
-        # SMA(50) per-symbol uptrend filter
-        sma = self._sma(cl, self.sma_period)
-        if sma is None or price < sma:
-            return None
-
-        # RSI(2) strict oversold — Connors-style
+        # RSI(2) oversold — pure mean reversion, no trend filter
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
 
         if rsi2 < self.rsi2_threshold:
+            # Confirm: price declined (not a gap-up with low RSI)
+            if price >= cl[-2]:
+                return None
+
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult
