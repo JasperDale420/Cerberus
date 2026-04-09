@@ -1,17 +1,15 @@
-"""Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Bollinger Band Mean Reversion.
 
-Optimized config (WFO-validated, 3/4 random splits pass gate):
-- Price-based trend filter: close > SMA(20)
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR5/14 ratio > 1.5)
-- Symmetric 2x ATR stop and target (capped at 4% of price)
+iter5: Bollinger Band entry with RSI(2) confirmation.
+- Entry: price < lower BB(20,2) AND RSI(2) < 30
+- Target: BB midline (SMA20) — natural mean reversion target
+- Stop: entry - 1.5 * BB_std — adaptive to volatility
 - 12% drawdown filter (40-bar lookback)
+- No SMA trend filter needed (BB provides implicit trend context)
 - 5-day max hold, long-only, daily bars
 
-Key insight: symmetric stops only need 47% WR for PF~0.9 (vs 57% for
-the original 3:2 stop:target). This was the single change that
-turned a failing strategy into a passing one.
-
-WFO scores: 0.92, 0.95, 0.90 PASS | 0.58 FAIL (randomized splits)
+Key advantage: BB adapts stop/target to current volatility. In low vol,
+tight bands → quick resolution. In high vol, wide bands → proportional R:R.
 """
 
 from __future__ import annotations
@@ -34,14 +32,12 @@ class dailyresearchv6bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
+        self.rsi_entry = float(config.get("rsi_entry", 30))
+        self.stop_bb_mult = float(config.get("stop_bb_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.sma_period = int(config.get("sma_period", 20))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
@@ -65,15 +61,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
 
-    def _atr(self, bars: list, period: int = 14) -> float | None:
-        if len(bars) < period + 1:
-            return None
-        tr_vals = []
-        for i in range(len(bars) - period, len(bars)):
-            hi, lo, pc = bars[i].high, bars[i].low, bars[i - 1].close
-            tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
-        return sum(tr_vals) / len(tr_vals)
-
     def on_bar(
         self,
         symbol: str,
@@ -90,14 +77,26 @@ class dailyresearchv6bStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
 
-        if len(closes) < self.min_bars:
+        if len(closes) < self.bb_period:
             return None
 
-        # Price-based trend filter: close > SMA(20)
-        if len(closes) >= self.sma_period:
-            sma = sum(closes[-self.sma_period :]) / self.sma_period
-            if bar.close < sma:
-                return None
+        # Bollinger Bands
+        bb_data = closes[-self.bb_period :]
+        sma = sum(bb_data) / self.bb_period
+        variance = sum((x - sma) ** 2 for x in bb_data) / self.bb_period
+        std = variance**0.5
+        if std < 0.01:
+            return None
+        lower_band = sma - self.bb_std_mult * std
+
+        # Entry: price below lower band
+        if bar.close >= lower_band:
+            return None
+
+        # RSI(2) confirmation
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi >= self.rsi_entry:
+            return None
 
         # Drawdown filter
         lookback = min(self.drawdown_lookback, len(highs))
@@ -108,33 +107,17 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2)
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
-            return None
-
-        # ATR calculations
-        atr_short = self._atr(bars, 5)
-        atr_long = self._atr(bars, 14)
-        if atr_short is None or atr_long is None or atr_long < 0.01:
-            return None
-
-        # Volatility-adaptive RSI threshold (ATR ratio only)
-        vol_ratio = atr_short / atr_long
-        if vol_ratio > self.vol_ratio_threshold:
-            effective_rsi_entry = self.rsi_entry_highvol
-        else:
-            effective_rsi_entry = self.rsi_entry
-
-        if rsi >= effective_rsi_entry:
-            return None
-
-        # Stop/target with cap at max_stop_pct of price
+        # Target = BB midline (SMA), Stop = entry - 1.5 * std
+        target_price = sma
+        stop_dist = self.stop_bb_mult * std
+        # Cap stop at max_stop_pct of price
         max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr_long * self.stop_atr_mult, max_dist)
-        target_dist = min(atr_long * self.target_atr_mult, max_dist)
+        stop_dist = min(stop_dist, max_dist)
         stop_price = bar.close - stop_dist
-        target_price = bar.close + target_dist
+
+        # Ensure target is above entry
+        if target_price <= bar.close:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return Signal(
@@ -148,7 +131,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "vol_ratio": round(vol_ratio, 2),
+                "bb_lower": round(lower_band, 2),
+                "bb_mid": round(sma, 2),
                 "drawdown": round(drawdown, 3),
             },
         )
