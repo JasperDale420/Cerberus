@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) + IBS + consecutive down days.
+"""Daily Research v6a — RSI(2) + IBS + down days + quick exit.
 
-Triple confirmation mean reversion:
+Triple confirmation mean reversion with fast exit:
 - 2+ consecutive lower closes (exhaustion selling)
 - RSI(2) < 10 deep oversold
 - IBS < 0.3 (closed in bottom 30% of daily range)
-- 1.5 ATR / 2% hard stop
+- 1.5 ATR / 2% hard stop, max 3-day hold
 - Only blocks SHOCK volatility
 """
 
@@ -39,7 +39,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.down_days = int(config.get("down_days", 2))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
