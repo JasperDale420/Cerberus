@@ -1,11 +1,11 @@
-"""Daily Research v6a — Connors RSI(2) mean reversion with dual SMA filter.
+"""Daily Research v6a — Connors RSI(2) mean reversion, tight exits.
 
-Two-level trend filtering for consistency:
-- Index SMA(50): only trade when SPY is above its 50-day SMA (bull market)
-- Per-symbol SMA(50): only buy stocks in their own uptrend
-- RSI(2) < 10: strict oversold threshold (Connors research)
-- Block HIGH and SHOCK volatility regimes
-- Tight ATR stops and targets for mean reversion
+Simple, fast mean reversion with minimal filtering:
+- SMA(50) per-symbol uptrend filter
+- RSI(2) < 10: strict oversold (Connors research)
+- Block SHOCK volatility only
+- Tight stops and targets for quick 1-3 day bounces
+- Short max hold to avoid extended exposure
 """
 
 from __future__ import annotations
@@ -31,26 +31,22 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._vol: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
-        # Track index (SPY) prices for market-level trend filter
-        self._idx_closes: deque[float] = deque(maxlen=250)
-        self._idx_pd: date | None = None
-        self._idx_last_close: float = 0.0
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.75))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=250)
-            self._h[s] = deque(maxlen=250)
-            self._lo[s] = deque(maxlen=250)
-            self._vol[s] = deque(maxlen=250)
+            self._c[s] = deque(maxlen=120)
+            self._h[s] = deque(maxlen=120)
+            self._lo[s] = deque(maxlen=120)
+            self._vol[s] = deque(maxlen=120)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
 
@@ -71,28 +67,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def _sma(self, vals, period: int) -> float | None:
+    def _sma(self, vals: list[float], period: int) -> float | None:
         if len(vals) < period:
             return None
-        v = list(vals)
-        return sum(v[-period:]) / period
-
-    def _update_index(self, bar: Bar) -> None:
-        """Track SPY prices for market-level trend filter."""
-        dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
-        if self._idx_pd is not None and dt != self._idx_pd:
-            self._idx_closes.append(self._idx_last_close)
-        self._idx_last_close = bar.close
-        self._idx_pd = dt
-
-    def _index_bullish(self) -> bool:
-        """Check if the market index is in an uptrend (above SMA50)."""
-        if len(self._idx_closes) < self.sma_period:
-            return True  # Allow trading during warmup
-        idx_sma = self._sma(self._idx_closes, self.sma_period)
-        if idx_sma is None:
-            return True
-        return self._idx_last_close > idx_sma
+        return sum(vals[-period:]) / period
 
     def on_bar(
         self,
@@ -101,10 +79,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        # Track index prices
-        if symbol.upper() == "SPY":
-            self._update_index(bar)
-
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
         d = self._dhlcv[symbol]
@@ -145,11 +119,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # Market-level filter: SPY must be above its SMA(50)
-        if not self._index_bullish():
-            return None
-
-        # Per-symbol SMA(50) uptrend filter
+        # SMA(50) per-symbol uptrend filter
         sma = self._sma(cl, self.sma_period)
         if sma is None or price < sma:
             return None
