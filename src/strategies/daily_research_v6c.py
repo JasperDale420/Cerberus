@@ -1,11 +1,10 @@
-"""Daily Research v6c — Down-Day Confirmed IBS+RSI Mean Reversion.
+"""Daily Research v6c — Regime-Gated IBS+RSI Mean Reversion.
 
-Session 3, Iteration 3: Add down-day confirmation to the proven recipe.
-Entry: IBS < 0.3 + RSI(2) < 50 + today is a down day (close < prev close)
-+ momentum guard (close > close[5]) + drawdown filter 10%.
-The down-day filter ensures we're buying into confirmed selling pressure,
-not just a low-IBS doji. No SMA filter.
-Symmetric 1.5x ATR stop/target, 2% cap.
+Session 3, Iteration 4: Add DOWN+HIGH regime gate.
+Entry: IBS < 0.3 + RSI(2) < 50 + down-day confirmation +
+momentum guard + drawdown 10%. SKIP when stock's per-day regime
+is DOWN trend + HIGH vol (falling knives). No SMA.
+Symmetric 1.5x ATR, 2% cap.
 """
 
 from __future__ import annotations
@@ -92,6 +91,14 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
+                return None
+
+        # Regime gate: skip DOWN+HIGH (per-stock per-day label)
+        regime = symbol_state.meta.get("regime_labels", {})
+        if regime:
+            trend = str(regime.get("regime_trend", "")).upper()
+            vol = str(regime.get("regime_vol", "")).upper()
+            if trend == "DOWN" and vol == "HIGH":
                 return None
 
         # Down-day confirmation: today closed lower than yesterday
