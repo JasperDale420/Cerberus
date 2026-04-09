@@ -77,7 +77,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "target_atr": 2.5,
         "max_stop_pct": 0.02,
         "max_atr_pct": 0.025,
-        "max_drawdown_pct": 0.05,
+        "max_drawdown_pct": 0.08,
         "drawdown_lookback": 30,
     },
 }
