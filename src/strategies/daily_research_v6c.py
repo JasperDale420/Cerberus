@@ -1,9 +1,8 @@
-"""Daily Research v6c — IBS+RSI Optimized Mean Reversion.
+"""Daily Research v6c — IBS+RSI Mean Reversion (Final).
 
-Iteration 13: IBS < 0.3 + RSI(2) < 50 + momentum guard (3-day).
-Shorter momentum lookback (3 vs 5) = more trades, less filtering.
-Symmetric 1.5x ATR, 2% cap, no SMA. Drawdown 10%.
-Iter7/10 scored 0.97 with 5-day lookback. 3-day should increase trades.
+Iteration 14: IBS < 0.3 + RSI(2) < 50 + momentum guard (5-day).
+Drawdown filter relaxed to 15% (was 10%) to allow trades in
+deeper pullbacks. Symmetric 1.5x ATR, 2% cap, no SMA.
 """
 
 from __future__ import annotations
@@ -28,11 +27,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 15))
         self.rsi_entry = float(config.get("rsi_entry", 50))
         self.ibs_entry = float(config.get("ibs_entry", 0.3))
-        self.momentum_lookback = int(config.get("momentum_lookback", 3))
+        self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True

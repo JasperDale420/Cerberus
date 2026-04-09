@@ -267,10 +267,10 @@ strategies:
     min_bars: 15
     rsi_entry: 50
     ibs_entry: 0.3
-    momentum_lookback: 3
+    momentum_lookback: 5
     stop_atr_mult: 1.5
     target_atr_mult: 1.5
-    max_drawdown_pct: 0.10
+    max_drawdown_pct: 0.15
     drawdown_lookback: 40
     max_stop_pct: 0.02
     allow_overnight: true
