@@ -264,10 +264,10 @@ strategies:
 
   daily_research_v6c:
     enabled: true
-    min_bars: 55
+    min_bars: 25
     rsi_period: 2
     rsi_entry: 25
-    sma_period: 50
+    sma_period: 20
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
     max_drawdown_pct: 0.12
