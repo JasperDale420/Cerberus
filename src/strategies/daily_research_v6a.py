@@ -102,7 +102,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        price = list(c)[-1]
+        cl = list(c)
+        price = cl[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -110,10 +111,25 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
+        # SMA(20) trend filter — only buy dips in short-term uptrends
+        if len(cl) >= 20:
+            sma20 = sum(cl[-20:]) / 20
+            if price < sma20:
+                return None
+
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
+
+        # IBS confirmation — stock closed near daily low
+        hl, ll = list(self._h[sym]), list(self._lo[sym])
+        if hl and ll:
+            day_range = hl[-1] - ll[-1]
+            if day_range > 0:
+                ibs = (price - ll[-1]) / day_range
+                if ibs > 0.3:
+                    return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
