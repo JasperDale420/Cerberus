@@ -1,10 +1,10 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter11: Tighter symmetric 1.5x/1.5x ATR stops (was 2x/2x).
-- Tighter stops = more trades resolved by stop/target, fewer time-exits
-- Price-based trend filter: close > SMA(20)
+iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
+Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
+- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
 - RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
-- 1.5x ATR stop, 1.5x ATR target (capped at 4%)
+- 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
 """
@@ -34,8 +34,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.sma_period = int(config.get("sma_period", 20))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
