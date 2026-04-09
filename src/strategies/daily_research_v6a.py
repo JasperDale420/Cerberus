@@ -1,12 +1,11 @@
-"""Daily Research v6a — RSI(2) mean reversion, fully locked params.
+"""Daily Research v6a — RSI(2) mean reversion + stock-level vol filter.
 
-Zero-optimization approach: all params locked for maximum consistency.
+Iter4 base (best min_pf=0.73) with stock-level ATR filter to reduce
+losses in high-volatility periods.
 - RSI(2) < 10 deep oversold entry
-- Tight 1.5 ATR target for high hit rate
-- 1.5 ATR / 2% hard stop cap
-- 7-day max hold
-- No trend filter — trades all regimes
-- Only blocks SHOCK volatility
+- Stock-level vol filter: skip if current ATR > 1.5x avg ATR
+- ATR-based stops/targets with 2% hard cap
+- Only blocks SHOCK volatility at regime level
 """
 
 from __future__ import annotations
@@ -39,6 +38,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.vol_filter_mult = float(config.get("vol_filter_mult", 1.5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -98,12 +98,12 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
-        atr = self._atr(self._h[sym], self._lo[sym], c)
+        h, lo = self._h[sym], self._lo[sym]
+        atr = self._atr(h, lo, c)
         if not atr or atr < 0.01:
             return None
 
-        cl = list(c)
-        price = cl[-1]
+        price = list(c)[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -111,25 +111,25 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA(20) trend filter — only buy dips in short-term uptrends
-        if len(cl) >= 20:
-            sma20 = sum(cl[-20:]) / 20
-            if price < sma20:
+        # Stock-level volatility filter: skip abnormally volatile stocks
+        # Compare short ATR (5-day) to long ATR (50-day) — if short >> long, skip
+        atr_short = self._atr(h, lo, c, p=5)
+        if len(h) >= 51:
+            hl, ll, cl = list(h), list(lo), list(c)
+            atr_long = (
+                sum(
+                    max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1]))
+                    for i in range(len(hl) - 50, len(hl))
+                )
+                / 50
+            )
+            if atr_short and atr_long > 0 and atr_short / atr_long > self.vol_filter_mult:
                 return None
 
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
-
-        # IBS confirmation — stock closed near daily low
-        hl, ll = list(self._h[sym]), list(self._lo[sym])
-        if hl and ll:
-            day_range = hl[-1] - ll[-1]
-            if day_range > 0:
-                ibs = (price - ll[-1]) / day_range
-                if ibs > 0.3:
-                    return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
