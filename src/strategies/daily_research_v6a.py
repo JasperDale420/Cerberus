@@ -1,11 +1,10 @@
-"""Daily Research v6a — RSI(2) + strict IBS mean reversion.
+"""Daily Research v6a — RSI(2) + IBS mean reversion, block DOWN+HIGH.
 
-Dual oversold with strict IBS threshold:
+Dual oversold:
 - RSI(2) < 10 deep oversold
-- IBS < 0.2 (closed in bottom 20% of daily range — stricter)
+- IBS < 0.3 (closed in bottom 30% of daily range)
 - 1.5 ATR / 2% hard stop
-- No trend filter — trades all regimes
-- Only blocks SHOCK volatility
+- Blocks SHOCK vol AND DOWN+HIGH regime (worst-performing combo)
 """
 
 from __future__ import annotations
@@ -37,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
@@ -105,10 +104,13 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
         price = list(c)[-1]
 
-        # Only block SHOCK volatility
+        # Block SHOCK vol and DOWN+HIGH regime
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
+        trend = str(snap.trend.value).lower() if snap and snap.trend else ""
         if vol == "shock":
+            return None
+        if trend == "down" and vol == "high":
             return None
 
         # RSI(2) deep oversold
@@ -116,7 +118,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
 
-        # IBS confirmation — closed in bottom 20% of daily range
+        # IBS confirmation — closed in bottom 30% of daily range
         hl, ll = list(h), list(lo)
         day_range = hl[-1] - ll[-1]
         if day_range > 0:
