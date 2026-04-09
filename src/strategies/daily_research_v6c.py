@@ -2,7 +2,7 @@
 
 IBS < 0.45 + RSI(2) < 50 + volume filter (0.6x avg).
 Momentum guard(5) + drawdown 10%. Symmetric 1.5x ATR, 2% cap.
-Hold max 3 days. RSI period configurable.
+Max 3 day hold. RSI period configurable.
 """
 
 from __future__ import annotations
