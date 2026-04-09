@@ -124,6 +124,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if sma is None or price < sma:
             return None
 
+        # Consecutive down days: require 2+ consecutive lower closes
+        if len(cl) < 3 or cl[-1] >= cl[-2] or cl[-2] >= cl[-3]:
+            return None
+
         # RSI(2) strict oversold — Connors-style
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
