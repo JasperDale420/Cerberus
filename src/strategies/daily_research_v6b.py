@@ -1,9 +1,17 @@
-"""Daily Research Strategy v6b — Tight Symmetric RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter6: Tighter 1.5x/1.5x ATR symmetric WITH SMA(20).
-Previous session tried 1.5x WITHOUT SMA → too tight. With SMA(20),
-only trading uptrending stocks where pullbacks are shallower, so
-1.5x ATR should resolve within 5 days more often → fewer time exits.
+Optimized config (WFO-validated, 3/4 random splits pass gate):
+- Price-based trend filter: close > SMA(20)
+- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR5/14 ratio > 1.5)
+- Symmetric 2x ATR stop and target (capped at 4% of price)
+- 12% drawdown filter (40-bar lookback)
+- 5-day max hold, long-only, daily bars
+
+Key insight: symmetric stops only need 47% WR for PF~0.9 (vs 57% for
+the original 3:2 stop:target). This was the single change that
+turned a failing strategy into a passing one.
+
+WFO scores: 0.92, 0.95, 0.90 PASS | 0.58 FAIL (randomized splits)
 """
 
 from __future__ import annotations
@@ -31,8 +39,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.sma_period = int(config.get("sma_period", 20))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
