@@ -294,7 +294,7 @@ strategies:
     max_hold_days: 5
     cooldown_bars: 1
     bar_duration_minutes: 1440
-    trend_period: 50
+    trend_period: 20
     rsi_period: 2
     rsi_entry: 25.0
     atr_period: 14
