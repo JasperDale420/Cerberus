@@ -1,6 +1,6 @@
 """Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
 
-iter7: Maximum simplicity — RSI(2) < 15, no SMA filter, no vol adaptation.
+iter9: RSI(2) < 20, no SMA filter, no vol adaptation.
 Only the drawdown filter + stop cap for protection.
 Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
 regimes. No trend filter needed because extreme RSI readings are rare
@@ -28,7 +28,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 15))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
