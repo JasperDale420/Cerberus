@@ -1,8 +1,7 @@
 """Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
 
-Previous session best (min_pf=0.85). Restored with one addition:
-- Cap stop/target at 4% of price to limit damage in high-vol.
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol
+iter15: Combined vol detection — ATR ratio spike + regime labels for sustained high vol.
+- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (detected via ATR5/14 ratio OR regime labels)
 - 3x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
@@ -106,22 +105,21 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # Volatility-adaptive RSI threshold
+        # Volatility-adaptive RSI threshold (combined: ATR ratio + regime labels)
         vol_ratio = atr_short / atr_long
-        if vol_ratio > self.vol_ratio_threshold:
+        is_high_vol = vol_ratio > self.vol_ratio_threshold
+        regime_labels = symbol_state.meta.get("regime_labels", {})
+        vol_label = str(regime_labels.get("vol", "")).upper()
+        if vol_label in ("HIGH", "SHOCK"):
+            is_high_vol = True
+
+        if is_high_vol:
             effective_rsi_entry = self.rsi_entry_highvol
         else:
             effective_rsi_entry = self.rsi_entry
 
         if rsi >= effective_rsi_entry:
             return None
-
-        # IBS filter — confirm weak close (lower 60% of range)
-        rng = bar.high - bar.low
-        if rng > 0:
-            ibs = (bar.close - bar.low) / rng
-            if ibs > 0.6:
-                return None
 
         # Stop/target with cap at max_stop_pct of price
         max_dist = bar.close * self.max_stop_pct
