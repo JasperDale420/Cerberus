@@ -911,6 +911,10 @@ def _apply_params_to_config(
         "max_drawdown_pct",
         "drawdown_lookback",
         "max_stop_pct",
+        "stop_pct",
+        "target_pct",
+        "ema_fast",
+        "ema_slow",
     }
 
     for key, value in params.items():
