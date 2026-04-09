@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) mean reversion with SMA10 trend filter.
+"""Daily Research v6a — Connors-style RSI(2) mean reversion.
 
-Tighter risk management for consistency:
-- RSI(2) identifies oversold conditions
-- SMA10 fast trend gate: blocks acute downtrends
-- Tighter stops (1.0 ATR) for faster exit on failures
-- Closer targets (3.5 ATR) to capture profits sooner
+Strong regime filtering for consistency across all market conditions:
+- SMA(200) trend filter: only buy when price is in long-term uptrend
+- RSI(2) < 10: strict oversold threshold (Connors research)
+- Block HIGH and SHOCK volatility regimes
+- ATR-based stops and targets with 2% hard cap
 """
 
 from __future__ import annotations
@@ -33,20 +33,19 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.25))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
-        self.rsi14_lo = float(config.get("rsi14_lo", 30))
-        self.rsi14_hi = float(config.get("rsi14_hi", 65))
+        self.min_bars = int(config.get("min_bars", 205))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.sma_period = int(config.get("sma_period", 200))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=120)
-            self._h[s] = deque(maxlen=120)
-            self._lo[s] = deque(maxlen=120)
-            self._vol[s] = deque(maxlen=120)
+            self._c[s] = deque(maxlen=250)
+            self._h[s] = deque(maxlen=250)
+            self._lo[s] = deque(maxlen=250)
+            self._vol[s] = deque(maxlen=250)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
 
@@ -113,23 +112,18 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block SHOCK volatility
+        # Block HIGH and SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
-        # SMA10 fast trend gate: blocks acute downtrends
-        sma10 = self._sma(cl, 10)
-        if sma10 is not None and price < sma10:
+        # SMA(200) regime filter: only buy in long-term uptrends
+        sma200 = self._sma(cl, self.sma_period)
+        if sma200 is None or price < sma200:
             return None
 
-        # RSI(14) band: avoid extremely oversold (falling knives) and overbought
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is not None and (rsi14 < self.rsi14_lo or rsi14 > self.rsi14_hi):
-            return None
-
-        # RSI(2) oversold — mean reversion signal
+        # RSI(2) extreme oversold — Connors-style strict threshold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
