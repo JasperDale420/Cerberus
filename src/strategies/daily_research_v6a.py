@@ -1,10 +1,12 @@
-"""Daily Research v6a — RSI(2) mean reversion + EMA trend pullback.
+"""Daily Research v6a — Cumulative RSI(2) mean reversion.
 
-Two complementary signals designed for consistency across all market regimes:
-1. RSI(2) mean reversion: Buy oversold dips above SMA50 (works in UP/FLAT/DOWN)
-2. EMA pullback: Buy dips to EMA20 in confirmed uptrends (UP/FLAT only)
+Single-signal design for maximum consistency:
+- Cumulative RSI(2) over 2 days (CumRSI) identifies extreme oversold
+- SMA50 filter: only buy dips in structural uptrends
+- ATR-based stops and targets with 2% hard cap on stops
+- No regime gating beyond SHOCK vol block
 
-Minimal parameters to avoid overfitting. ATR-based risk management.
+Designed for walk-forward stability with minimal parameters.
 """
 
 from __future__ import annotations
@@ -35,9 +37,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 20))
-        self.pullback_dist = float(config.get("pullback_dist", 0.02))
+        self.target_atr_mult = float(config.get("target_atr_mult", 5.0))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 25))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -48,8 +49,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._vol[s] = deque(maxlen=120)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
-
-    # --- Indicators ---
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -68,21 +67,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def _ema(self, vals: list[float], period: int) -> float | None:
-        if len(vals) < period:
-            return None
-        k = 2.0 / (period + 1)
-        ema = vals[0]
-        for v in vals[1:]:
-            ema = v * k + ema * (1 - k)
-        return ema
-
     def _sma(self, vals: list[float], period: int) -> float | None:
         if len(vals) < period:
             return None
         return sum(vals[-period:]) / period
-
-    # --- Bar processing ---
 
     def on_bar(
         self,
@@ -113,8 +101,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._pd[symbol] = dt
         return None
 
-    # --- Signal logic ---
-
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
@@ -127,33 +113,41 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Regime info
-        snap = ms.regime_snapshot
-        trend = str(snap.trend.value).lower() if snap and snap.trend else ""
-        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-
         # Block SHOCK volatility
+        snap = ms.regime_snapshot
+        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
             return None
 
-        # Moving averages
+        # SMA50 gate: only buy dips in stocks with structural strength
         sma50 = self._sma(cl, 50)
-        ema20 = self._ema(cl, 20)
-        ema10 = self._ema(cl, 10)
-
-        if ema20 is None or ema10 is None:
+        if sma50 is not None and price < sma50:
             return None
 
-        # Stop/target
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
-        stop = price - stop_dist
-        price + atr * self.target_atr_mult
+        # Cumulative RSI(2): sum of last 2 RSI(2) readings
+        # More robust than single RSI(2) — filters out single-bar noise
+        rsi2_now = self._rsi(c, n=2)
+        if rsi2_now is None:
+            return None
 
-        # --- Signal 1: RSI(2) Mean Reversion ---
-        # Works across ALL regimes. SMA50 gate ensures we buy dips in structurally sound stocks.
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is not None and rsi2 < self.rsi2_threshold:
-            if sma50 is None or price > sma50:
+        # Compute RSI(2) for previous bar by using a shifted deque
+        if len(c) < 4:
+            return None
+        prev_rsi_data = list(c)[:-1]
+        g = sum(max(prev_rsi_data[i] - prev_rsi_data[i - 1], 0) for i in range(-2, 0))
+        ls = sum(max(prev_rsi_data[i - 1] - prev_rsi_data[i], 0) for i in range(-2, 0))
+        rsi2_prev = 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+
+        cum_rsi = rsi2_now + rsi2_prev
+
+        # Cumulative RSI threshold: lower = more selective/consistent
+        if cum_rsi < self.rsi2_threshold * 2:
+            # Confirm: price must have dropped (bearish pressure)
+            if price < cl[-2]:
+                stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+                stop = price - stop_dist
+                target = price + atr * self.target_atr_mult
+
                 self.last_signal_time[sym] = bar.time
                 return Signal(
                     symbol=sym,
@@ -161,29 +155,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
                     size_hint=1.0,
                     entry_price=price,
                     stop_price=stop,
-                    target_price=price + atr * 4.0,
-                    strategy=self.name,
-                    generated_at=bar.time,
-                )
-
-        # Gate: remaining signals only in UP or FLAT
-        if trend == "down":
-            return None
-
-        # --- Signal 2: EMA Pullback in Uptrend ---
-        # Buy when price dips near EMA20 in a confirmed uptrend (EMA10 > EMA20, price > SMA50)
-        if ema10 > ema20 and (sma50 is None or price > sma50):
-            dist_to_ema = (price - ema20) / ema20
-            if -self.pullback_dist <= dist_to_ema <= 0.005:
-                # Price is near or just below EMA20 — pullback entry
-                self.last_signal_time[sym] = bar.time
-                return Signal(
-                    symbol=sym,
-                    side=OrderSide.BUY,
-                    size_hint=1.0,
-                    entry_price=price,
-                    stop_price=stop,
-                    target_price=price + atr * 5.0,
+                    target_price=target,
                     strategy=self.name,
                     generated_at=bar.time,
                 )
