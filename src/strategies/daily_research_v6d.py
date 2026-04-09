@@ -113,7 +113,9 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # ATR vol filter removed — regime_vol filter handles HIGH/SHOCK
+        # Volatility filter: skip when ATR/price too high (avoids HIGH vol regimes)
+        if atr / price > self.max_atr_pct:
+            return None
 
         # RSI(2) — buy on short-term oversold dip
         rsi = self._rsi(closes, self.rsi_period)
