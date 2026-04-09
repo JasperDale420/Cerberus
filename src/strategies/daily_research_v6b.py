@@ -1,6 +1,13 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter6: No drawdown filter. More entries for statistical stability.
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
@@ -74,9 +81,19 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
+
+        # Drawdown filter
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        drawdown = 0.0
+        if recent_high > 0:
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
 
         # RSI(2) — single tight threshold
         rsi = self._rsi(closes, self.rsi_period)
@@ -107,5 +124,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
+                "drawdown": round(drawdown, 3),
             },
         )
