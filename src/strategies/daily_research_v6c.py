@@ -1,11 +1,9 @@
-"""Daily Research v6c — Combined Mean Reversion Signals.
+"""Daily Research v6c — Asymmetric R/R Mean Reversion.
 
-Iteration 8: Combine two complementary entry signals for regime coverage.
-- RSI(2) < 25: works best in UP markets, high trade count
-- 3+ consecutive lower closes + RSI(2) < 50: works best in DOWN markets
-
-Together they produce 600+ trades with coverage across all regimes.
-Tight risk: 1.5x ATR, 3% cap, 10% drawdown filter, 3-day max hold.
+Iteration 9: Asymmetric R/R + momentum guard + Optuna param space.
+Problem: iter8 tight symmetric stops cause time-exit losses (WR~45% but
+avg_loss >> avg_win). Fix: tight target (1x ATR, hit quickly) + wide stop
+(2x ATR, room to breathe). Momentum guard filters freefall entries.
 """
 
 from __future__ import annotations
@@ -29,14 +27,14 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.consec_down = int(config.get("consec_down", 3))
-        self.consec_rsi_confirm = float(config.get("consec_rsi_confirm", 50))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.momentum_lookback = int(config.get("momentum_lookback", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
+        self.max_target_pct = float(config.get("max_target_pct", 0.02))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -66,14 +64,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
 
-    def _consecutive_down(self, closes: list[float], n: int) -> bool:
-        if len(closes) < n + 1:
-            return False
-        for i in range(1, n + 1):
-            if closes[-i] >= closes[-i - 1]:
-                return False
-        return True
-
     def on_bar(
         self,
         symbol: str,
@@ -102,32 +92,27 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2) for both entry conditions
+        # RSI(2) oversold entry
         rsi = self._rsi(closes, 2)
-        if rsi is None:
+        if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # Entry condition 1: RSI(2) extreme oversold
-        signal_rsi = rsi < self.rsi_entry
-        # Entry condition 2: Consecutive lower closes + moderate RSI decline
-        signal_consec = self._consecutive_down(closes, self.consec_down) and rsi < self.consec_rsi_confirm
-
-        if not signal_rsi and not signal_consec:
-            return None
+        # Momentum guard: close must be above close N days ago (not in freefall)
+        if len(closes) > self.momentum_lookback:
+            if bar.close <= closes[-self.momentum_lookback - 1]:
+                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
 
-        # Tight symmetric stop/target
-        max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr * self.stop_atr_mult, max_dist)
-        target_dist = min(atr * self.target_atr_mult, max_dist)
+        # Asymmetric: tight target (hit quickly), wide stop (room to breathe)
+        stop_dist = min(atr * self.stop_atr_mult, bar.close * self.max_stop_pct)
+        target_dist = min(atr * self.target_atr_mult, bar.close * self.max_target_pct)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
-        mode = "RSI" if signal_rsi else "CONSEC"
         self.last_signal_time[symbol] = bar.time
         return Signal(
             symbol=symbol,
@@ -140,7 +125,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "mode": mode,
                 "drawdown": round(drawdown, 3),
             },
         )

@@ -63,6 +63,11 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_drawdown_pct": 0.12,
         "drawdown_lookback": 40,
     },
+    "daily_research_v6c": {
+        "max_drawdown_pct": 0.10,
+        "drawdown_lookback": 40,
+        "max_hold_days": 5,
+    },
 }
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
@@ -157,6 +162,12 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     "daily_research_v6b": [
         ParamDef("stop_atr_mult", "float", low=2.5, high=3.5, step=0.5, description="ATR stop"),
         ParamDef("target_atr_mult", "float", low=1.5, high=2.5, step=0.5, description="ATR target"),
+    ],
+    "daily_research_v6c": [
+        ParamDef("rsi_entry", "float", low=15.0, high=30.0, step=5.0, description="RSI(2) entry threshold"),
+        ParamDef("stop_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=0.5, high=1.5, step=0.5, description="ATR target"),
+        ParamDef("momentum_lookback", "int", low=3, high=10, step=1, description="Momentum lookback days"),
     ],
 }
 
