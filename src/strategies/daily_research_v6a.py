@@ -1,7 +1,7 @@
 """Daily Research v6a — Connors-style RSI(2) mean reversion.
 
 Strong regime filtering for consistency across all market conditions:
-- SMA(50) trend filter: only buy when price is in uptrend
+- SMA(50) trend filter + market DOWN regime block
 - RSI(2) < 10: strict oversold threshold (Connors research)
 - Block HIGH and SHOCK volatility regimes
 - ATR-based stops and targets with 2% hard cap
@@ -112,13 +112,17 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block HIGH and SHOCK volatility
+        # Block DOWN trend and HIGH/SHOCK volatility at market level
         snap = ms.regime_snapshot
-        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
-            return None
+        if snap:
+            trend = str(snap.trend.value).lower() if snap.trend else ""
+            vol = str(snap.vol.value).lower() if snap.vol else ""
+            if trend == "down":
+                return None
+            if vol in ("high", "shock"):
+                return None
 
-        # SMA(200) regime filter: only buy in long-term uptrends
+        # SMA(50) per-symbol trend filter: only buy in uptrends
         sma200 = self._sma(cl, self.sma_period)
         if sma200 is None or price < sma200:
             return None
