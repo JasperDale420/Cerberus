@@ -1,15 +1,14 @@
 """Daily Research v6c — RSI(2) Mean Reversion with Momentum Guard.
 
-Iteration 4: High trade count with quality filter.
-Iter 1: min_pf=0.60, SMA(50) too restrictive.
-Iter 2: min_pf=0.30, regime gate ineffective.
-Iter 3: min_pf=0.37, IBS reduces trades too much, high variance.
+Iteration 5: Vol-adaptive stops + tighter cap.
+Iter 4: min_pf=0.51, 457 trades. DOWN+HIGH avg_pf=0.89 (close!).
+One bad DOWN+HIGH window (PF=0.51) drags min_pf.
 
-Approach: Back to v6b basics (RSI(2)<25, lots of trades) but add:
-1. 5-bar momentum guard: skip if close < min(last 5 closes). Prevents
-   catching falling knives which killed DOWN+HIGH windows.
-2. Symmetric 1.5x ATR stop/target — tighter, take profits faster.
-3. 3% max stop cap — limits loss per trade.
+Changes from iter4:
+1. Vol-adaptive: when ATR > 2% of price (high vol), tighten stop
+   multiplier to 1.0x ATR to limit per-trade loss.
+2. Max stop cap 2.5% (down from 3%).
+3. Target stays 1.5x ATR — favorable risk/reward in high vol.
 """
 
 from __future__ import annotations
@@ -39,8 +38,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
+        self.high_vol_threshold = float(config.get("high_vol_threshold", 0.02))
+        self.high_vol_stop_mult = float(config.get("high_vol_stop_mult", 1.0))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -99,7 +100,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
                 return None
 
         # Momentum guard: don't buy if price is at a new 5-bar low
-        # This prevents catching falling knives in sustained downtrends
         if len(closes) >= self.momentum_lookback + 1:
             recent_min = min(closes[-(self.momentum_lookback + 1) : -1])
             if bar.close < recent_min:
@@ -115,9 +115,15 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target with tight cap
+        # Vol-adaptive stop: tighter in high-ATR environments
+        atr_pct = atr / bar.close
+        if atr_pct > self.high_vol_threshold:
+            stop_mult = self.high_vol_stop_mult
+        else:
+            stop_mult = self.stop_atr_mult
+
         max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        stop_dist = min(atr * stop_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
@@ -135,5 +141,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
             meta={
                 "rsi2": round(rsi, 1),
                 "drawdown": round(drawdown, 3),
+                "atr_pct": round(atr_pct, 4),
             },
         )

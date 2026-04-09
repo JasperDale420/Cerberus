@@ -271,8 +271,10 @@ strategies:
     target_atr_mult: 1.5
     max_drawdown_pct: 0.12
     drawdown_lookback: 40
-    max_stop_pct: 0.03
+    max_stop_pct: 0.025
     momentum_lookback: 5
+    high_vol_threshold: 0.02
+    high_vol_stop_mult: 1.0
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
