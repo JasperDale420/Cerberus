@@ -1,9 +1,11 @@
-"""Daily Research v6c — Mild Asymmetric R/R + SMA + Momentum Guard.
+"""Daily Research v6c — IBS + RSI Dual Confirmation Mean Reversion.
 
-Iteration 13: Return to iter10 recipe (best: PASS min_pf=1.01) but with
-milder asymmetry. Stop=1.5x ATR, Target=1.2x ATR, 3% cap.
-Break-even WR = 55.6% (vs 67% for 2:1 asymmetric, 50% for symmetric).
-RSI(20) + SMA(20) + momentum guard (close > close[5]).
+Iteration 1 (new session): Add IBS (Internal Bar Strength) as dual
+confirmation to RSI(2) oversold. IBS = (close - low) / (high - low).
+IBS < 0.25 means close near day's low — genuine selling pressure.
+Requires BOTH RSI(2) < 20 AND IBS < 0.25 for entry.
+SMA(20) trend filter + momentum guard preserved from iter13.
+Stop=1.5x ATR, Target=1.5x ATR (symmetric), 3% cap.
 """
 
 from __future__ import annotations
@@ -27,11 +29,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.ibs_entry = float(config.get("ibs_entry", 0.25))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.2))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
@@ -102,6 +105,13 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # IBS confirmation: close must be near day's low
+        bar_range = bar.high - bar.low
+        if bar_range > 0:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs >= self.ibs_entry:
+                return None
 
         # Momentum guard: close must be above close N days ago
         if len(closes) > self.momentum_lookback:
