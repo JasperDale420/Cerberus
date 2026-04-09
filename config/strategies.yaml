@@ -301,6 +301,9 @@ strategies:
     atr_period: 14
     stop_atr: 3.0
     target_atr: 4.0
+    max_drawdown_pct: 0.12
+    drawdown_lookback: 40
+    ibs_entry: 0.4
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]
