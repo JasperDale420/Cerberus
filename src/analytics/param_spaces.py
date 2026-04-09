@@ -59,6 +59,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "ibs_entry": 0.35,
         "consecutive_down": 2,
         "max_hold_days": 5,
+        "stop_atr_mult": 3.0,
+        "target_atr_mult": 2.0,
     },
 }
 
@@ -152,8 +154,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
     "daily_research_v6b": [
-        ParamDef("stop_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR stop"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.5, step=0.5, description="ATR target"),
+        ParamDef("cooldown_bars", "int", low=1, high=1, step=1, description="Cooldown (locked)"),
     ],
 }
 
