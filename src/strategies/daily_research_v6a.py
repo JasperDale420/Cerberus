@@ -1,10 +1,11 @@
-"""Daily Research v6a — Connors-style RSI(2) mean reversion.
+"""Daily Research v6a — 20-day high breakout with volume confirmation.
 
-Strict filtering for consistency:
-- SMA(50) trend filter with positive slope requirement
-- RSI(2) < 10: strict oversold threshold (Connors research)
-- Block HIGH and SHOCK volatility regimes
-- ATR-based stops and targets with 2% hard cap
+A trend-continuation strategy that naturally self-filters in bad markets:
+- Buy when price breaks above 20-day high (momentum confirmation)
+- Volume must be above average (institutional participation)
+- SMA(50) uptrend filter
+- Block SHOCK volatility
+- ATR-based stops and targets
 """
 
 from __future__ import annotations
@@ -34,9 +35,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
+        self.breakout_period = int(config.get("breakout_period", 20))
+        self.vol_mult = float(config.get("vol_mult", 1.2))
         self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
 
@@ -57,14 +59,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
             / p
         )
-
-    def _rsi(self, v: deque, n: int = 14) -> float | None:
-        if len(v) < n + 1:
-            return None
-        d = list(v)
-        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
-        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
-        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def _sma(self, vals: list[float], period: int) -> float | None:
         if len(vals) < period:
@@ -112,42 +106,45 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block HIGH and SHOCK volatility
+        # Block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
+        if vol == "shock":
             return None
 
-        # SMA(50) trend filter: price must be above
-        sma_now = self._sma(cl, self.sma_period)
-        if sma_now is None or price < sma_now:
+        # SMA(50) uptrend filter
+        sma = self._sma(cl, self.sma_period)
+        if sma is None or price < sma:
             return None
 
-        # RSI(14) health band: avoid falling knives and overextended stocks
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is not None and (rsi14 < 35 or rsi14 > 60):
+        # 20-day high breakout: current close must exceed max of prior N closes
+        bp = self.breakout_period
+        if len(cl) < bp + 1:
+            return None
+        prior_high = max(cl[-(bp + 1) : -1])
+        if price <= prior_high:
             return None
 
-        # RSI(2) strict oversold — Connors-style
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None:
+        # Volume confirmation: today's volume above average
+        vl = list(self._vol[sym])
+        if len(vl) < 20:
+            return None
+        avg_vol = sum(vl[-20:]) / 20
+        if avg_vol <= 0 or vl[-1] < avg_vol * self.vol_mult:
             return None
 
-        if rsi2 < self.rsi2_threshold:
-            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
-            stop = price - stop_dist
-            target = price + atr * self.target_atr_mult
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+        stop = price - stop_dist
+        target = price + atr * self.target_atr_mult
 
-            self.last_signal_time[sym] = bar.time
-            return Signal(
-                symbol=sym,
-                side=OrderSide.BUY,
-                size_hint=1.0,
-                entry_price=price,
-                stop_price=stop,
-                target_price=target,
-                strategy=self.name,
-                generated_at=bar.time,
-            )
-
-        return None
+        self.last_signal_time[sym] = bar.time
+        return Signal(
+            symbol=sym,
+            side=OrderSide.BUY,
+            size_hint=1.0,
+            entry_price=price,
+            stop_price=stop,
+            target_price=target,
+            strategy=self.name,
+            generated_at=bar.time,
+        )
