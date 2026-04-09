@@ -74,7 +74,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_hold_days": 5,
         "rsi_entry": 25.0,
         "stop_atr": 1.5,
-        "target_atr": 2.5,
+        "target_atr": 2.0,
         "max_stop_pct": 0.02,
         "max_atr_pct": 0.025,
         "max_drawdown_pct": 0.08,
