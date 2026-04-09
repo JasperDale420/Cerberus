@@ -1,8 +1,8 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter12: Add 2+ consecutive down days filter (Connors RSI2 best practice).
-- Price-based trend filter: close > SMA(20)
-- 2+ consecutive lower closes (selling exhaustion)
+iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
+Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
+- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
 - RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
 - 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
@@ -101,11 +101,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
-                return None
-
-        # Consecutive down days (2+)
-        if len(closes) >= 3:
-            if not (closes[-1] < closes[-2] and closes[-2] < closes[-3]):
                 return None
 
         # RSI(2)
