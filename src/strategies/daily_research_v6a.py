@@ -1,11 +1,11 @@
-"""Daily Research v6a — IBS mean reversion.
+"""Daily Research v6a — RSI(2) + IBS dual oversold mean reversion.
 
-Internal Bar Strength (IBS) measures where price closed within the
-day's range. IBS < 0.15 = closed near daily low = oversold.
-- Simple, regime-agnostic signal
-- No RSI, no trend filter, no regime gate
+Best approach from iteration: RSI(2) < 10 (deep oversold) combined with
+IBS < 0.3 (closed in lower 30% of daily range). Dual confirmation
+improves signal quality.
+- No trend filter — trades all regimes
+- ATR-based stops/targets with 2% hard cap
 - Only blocks SHOCK volatility
-- ATR stops/targets with 1.5% hard cap (tighter than 2% for consistency)
 """
 
 from __future__ import annotations
@@ -34,10 +34,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -56,6 +56,14 @@ class dailyresearchv6aStrategy(BaseStrategy):
             sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
             / p
         )
+
+    def _rsi(self, v: deque, n: int = 2) -> float | None:
+        if len(v) < n + 1:
+            return None
+        d = list(v)
+        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
+        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
+        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def on_bar(
         self,
@@ -102,16 +110,20 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # IBS — where did yesterday close within its range?
-        hl, ll = list(h), list(lo)
-        day_range = hl[-1] - ll[-1]
-        if day_range <= 0:
-            return None
-        ibs = (price - ll[-1]) / day_range
-        if ibs >= self.ibs_threshold:
+        # RSI(2) deep oversold
+        rsi2 = self._rsi(c, n=2)
+        if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
 
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.015)
+        # IBS confirmation — closed in lower 30% of daily range
+        hl, ll = list(h), list(lo)
+        day_range = hl[-1] - ll[-1]
+        if day_range > 0:
+            ibs = (price - ll[-1]) / day_range
+            if ibs > 0.3:
+                return None
+
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
         target = price + atr * self.target_atr_mult
 
