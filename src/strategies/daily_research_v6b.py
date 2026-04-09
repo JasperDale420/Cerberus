@@ -1,13 +1,8 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-WFO Results (15 iterations, randomized splits, 2020-2024):
-  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
-  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
-  UP+NORMAL: 7/7 profitable, avg_pf=1.70
-  DOWN regimes: avg_pf=0.83-0.89
-
-Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
-Symmetric 2x ATR stop/target capped at 4%.
+iter9: RSI(2)<25 + SMA(5) filter. Only enter when close > SMA(5).
+SMA(5) is gentle — filters worst crash entries where price is falling
+below even its 5-day average, while keeping most normal pullback entries.
 """
 
 from __future__ import annotations
@@ -94,6 +89,11 @@ class dailyresearchv6bStrategy(BaseStrategy):
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
                 return None
+
+        # SMA(5) trend filter — skip entries below short-term average
+        sma5 = sum(closes[-5:]) / 5
+        if bar.close < sma5:
+            return None
 
         # RSI(2) — single tight threshold
         rsi = self._rsi(closes, self.rsi_period)
