@@ -29,8 +29,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
-        self.trend_period = int(config.get("trend_period", 50))
+        self.min_bars = int(config.get("min_bars", 200))
+        self.trend_period = int(config.get("trend_period", 200))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
         self.atr_period = int(config.get("atr_period", 14))

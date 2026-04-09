@@ -289,12 +289,12 @@ strategies:
 
   daily_research_v6d:
     enabled: true
-    min_bars: 50
+    min_bars: 200
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
     bar_duration_minutes: 1440
-    trend_period: 50
+    trend_period: 200
     rsi_period: 2
     rsi_entry: 25.0
     atr_period: 14
