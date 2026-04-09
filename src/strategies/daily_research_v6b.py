@@ -1,7 +1,7 @@
 """Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
 
-Buy when RSI(2) is oversold. In high-vol environments, require deeper
-oversold for entry. Drawdown filter prevents buying into crashes.
+Buy when RSI(2) is oversold. RSI threshold slides down as volatility rises
+(graduated, not binary). Drawdown filter prevents buying into crashes.
 Long-only, daily bars.
 """
 
@@ -26,9 +26,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
+        self.rsi_entry_base = float(config.get("rsi_entry", 25))
+        self.rsi_entry_floor = float(config.get("rsi_entry_floor", 5))
+        self.vol_sensitivity = float(config.get("vol_sensitivity", 15))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -102,21 +102,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # Volatility-adaptive RSI threshold
+        # Graduated RSI threshold: slides down as vol increases
+        # vol_ratio=1.0 → threshold=25, vol_ratio=1.5 → threshold=17.5, vol_ratio=2.0 → threshold=10
         vol_ratio = atr_short / atr_long
-        if vol_ratio > self.vol_ratio_threshold:
-            # High vol: require deeper oversold
-            effective_rsi_entry = self.rsi_entry_highvol
-        else:
-            effective_rsi_entry = self.rsi_entry
+        vol_excess = max(0.0, vol_ratio - 1.0)
+        effective_rsi_entry = max(self.rsi_entry_floor, self.rsi_entry_base - self.vol_sensitivity * vol_excess)
 
-        # IBS filter: close should be in lower half of bar range
-        bar_range = bar.high - bar.low
-        ibs = (bar.close - bar.low) / bar_range if bar_range > 0.001 else 0.5
-        if ibs > 0.5:
-            return None
-
-        # === LONG when RSI(2) oversold (adaptive threshold) + IBS low ===
+        # === LONG when RSI(2) oversold (graduated threshold) ===
         if rsi < effective_rsi_entry:
             stop_price = bar.close - atr_long * self.stop_atr_mult
             target_price = bar.close + atr_long * self.target_atr_mult
@@ -134,6 +126,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
                 meta={
                     "rsi2": round(rsi, 1),
                     "vol_ratio": round(vol_ratio, 2),
+                    "eff_rsi_threshold": round(effective_rsi_entry, 1),
                     "drawdown": round(drawdown, 3),
                 },
             )

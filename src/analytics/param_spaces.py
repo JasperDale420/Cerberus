@@ -56,8 +56,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "daily_research_v6b": {
         "rsi_period": 2,
         "rsi_entry": 25,
-        "rsi_entry_highvol": 10,
-        "vol_ratio_threshold": 1.5,
+        "rsi_entry_floor": 5,
+        "vol_sensitivity": 15,
         "max_hold_days": 5,
         "max_drawdown_pct": 0.12,
         "drawdown_lookback": 40,
