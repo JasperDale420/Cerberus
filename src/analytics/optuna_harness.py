@@ -887,6 +887,12 @@ def _apply_params_to_config(
         "rsi_max",
         "pullback_pct",
         "target_rr",
+        # Daily research params
+        "rsi2_threshold",
+        "pullback_dist",
+        "breakout_period",
+        "pullback_rsi_lo",
+        "pullback_rsi_hi",
     }
 
     for key, value in params.items():
