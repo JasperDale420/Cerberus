@@ -1,11 +1,11 @@
-"""Daily Research v6a — 20-day high breakout with volume confirmation.
+"""Daily Research v6a — Connors RSI(2) mean reversion with dual SMA filter.
 
-A trend-continuation strategy that naturally self-filters in bad markets:
-- Buy when price breaks above 20-day high (momentum confirmation)
-- Volume must be above average (institutional participation)
-- SMA(50) uptrend filter
-- Block SHOCK volatility
-- ATR-based stops and targets
+Two-level trend filtering for consistency:
+- Index SMA(50): only trade when SPY is above its 50-day SMA (bull market)
+- Per-symbol SMA(50): only buy stocks in their own uptrend
+- RSI(2) < 10: strict oversold threshold (Connors research)
+- Block HIGH and SHOCK volatility regimes
+- Tight ATR stops and targets for mean reversion
 """
 
 from __future__ import annotations
@@ -31,14 +31,17 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._vol: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
+        # Track index (SPY) prices for market-level trend filter
+        self._idx_closes: deque[float] = deque(maxlen=250)
+        self._idx_pd: date | None = None
+        self._idx_last_close: float = 0.0
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.breakout_period = int(config.get("breakout_period", 20))
-        self.vol_mult = float(config.get("vol_mult", 1.2))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
 
@@ -60,10 +63,36 @@ class dailyresearchv6aStrategy(BaseStrategy):
             / p
         )
 
-    def _sma(self, vals: list[float], period: int) -> float | None:
+    def _rsi(self, v: deque, n: int = 14) -> float | None:
+        if len(v) < n + 1:
+            return None
+        d = list(v)
+        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
+        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
+        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+
+    def _sma(self, vals, period: int) -> float | None:
         if len(vals) < period:
             return None
-        return sum(vals[-period:]) / period
+        v = list(vals)
+        return sum(v[-period:]) / period
+
+    def _update_index(self, bar: Bar) -> None:
+        """Track SPY prices for market-level trend filter."""
+        dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
+        if self._idx_pd is not None and dt != self._idx_pd:
+            self._idx_closes.append(self._idx_last_close)
+        self._idx_last_close = bar.close
+        self._idx_pd = dt
+
+    def _index_bullish(self) -> bool:
+        """Check if the market index is in an uptrend (above SMA50)."""
+        if len(self._idx_closes) < self.sma_period:
+            return True  # Allow trading during warmup
+        idx_sma = self._sma(self._idx_closes, self.sma_period)
+        if idx_sma is None:
+            return True
+        return self._idx_last_close > idx_sma
 
     def on_bar(
         self,
@@ -72,6 +101,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # Track index prices
+        if symbol.upper() == "SPY":
+            self._update_index(bar)
+
         self._init(symbol)
         dt = bar.time.date() if isinstance(bar.time, datetime) else bar.time
         d = self._dhlcv[symbol]
@@ -106,45 +139,41 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block SHOCK volatility
+        # Block HIGH and SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
-        # SMA(50) uptrend filter
+        # Market-level filter: SPY must be above its SMA(50)
+        if not self._index_bullish():
+            return None
+
+        # Per-symbol SMA(50) uptrend filter
         sma = self._sma(cl, self.sma_period)
         if sma is None or price < sma:
             return None
 
-        # 20-day high breakout: current close must exceed max of prior N closes
-        bp = self.breakout_period
-        if len(cl) < bp + 1:
-            return None
-        prior_high = max(cl[-(bp + 1) : -1])
-        if price <= prior_high:
+        # RSI(2) strict oversold — Connors-style
+        rsi2 = self._rsi(c, n=2)
+        if rsi2 is None:
             return None
 
-        # Volume confirmation: today's volume above average
-        vl = list(self._vol[sym])
-        if len(vl) < 20:
-            return None
-        avg_vol = sum(vl[-20:]) / 20
-        if avg_vol <= 0 or vl[-1] < avg_vol * self.vol_mult:
-            return None
+        if rsi2 < self.rsi2_threshold:
+            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+            stop = price - stop_dist
+            target = price + atr * self.target_atr_mult
 
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
-        stop = price - stop_dist
-        target = price + atr * self.target_atr_mult
+            self.last_signal_time[sym] = bar.time
+            return Signal(
+                symbol=sym,
+                side=OrderSide.BUY,
+                size_hint=1.0,
+                entry_price=price,
+                stop_price=stop,
+                target_price=target,
+                strategy=self.name,
+                generated_at=bar.time,
+            )
 
-        self.last_signal_time[sym] = bar.time
-        return Signal(
-            symbol=sym,
-            side=OrderSide.BUY,
-            size_hint=1.0,
-            entry_price=price,
-            stop_price=stop,
-            target_price=target,
-            strategy=self.name,
-            generated_at=bar.time,
-        )
+        return None
