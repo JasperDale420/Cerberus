@@ -69,13 +69,13 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_hold_days": 5,
     },
     "daily_research_v6d": {
-        "ema_fast": 10,
-        "ema_slow": 30,
-        "pullback_pct": 0.02,
+        "rsi_period": 2,
+        "trend_period": 50,
         "max_hold_days": 5,
+        "rsi_entry": 25.0,
         "stop_atr": 1.5,
         "target_atr": 2.0,
-        "max_stop_pct": 0.02,
+        "max_stop_pct": 0.03,
     },
 }
 
