@@ -289,10 +289,22 @@ strategies:
 
   daily_research_v6d:
     enabled: true
-    min_bars: 25
+    min_bars: 50
     allow_overnight: true
     max_hold_days: 10
     cooldown_bars: 1
+    bar_duration_minutes: 1440
+    sma_fast: 10
+    sma_slow: 40
+    atr_period: 14
+    stop_atr: 2.0
+    target_atr: 3.0
+    pullback_atr: 1.5
+    bb_period: 20
+    bb_std: 2.0
+    rsi_period: 14
+    rsi_oversold: 30.0
+    slope_threshold: 0.002
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]
