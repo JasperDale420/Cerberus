@@ -1,9 +1,9 @@
-"""Daily Research v6c — High-Volume IBS+RSI Mean Reversion.
+"""Daily Research v6c — Max Volume IBS+RSI Mean Reversion.
 
-Session 3, Iteration 5: Maximize trade count for variance reduction.
-Entry: IBS < 0.4 + RSI(2) < 50 + momentum guard (close > close[5]).
-Drawdown filter 10%. No SMA, no down-day, no regime gate.
-Symmetric 1.5x ATR, 3% cap. Target 400+ trades across windows.
+Session 3, Iteration 6: Aggressively maximize trades.
+Entry: IBS < 0.5 + RSI(2) < 50. No momentum guard. Drawdown 10%.
+Symmetric 1.5x ATR, 3% cap. Trading in bottom half of bar range
+with any selling pressure — highest volume approach.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 15))
         self.rsi_entry = float(config.get("rsi_entry", 50))
-        self.ibs_entry = float(config.get("ibs_entry", 0.4))
+        self.ibs_entry = float(config.get("ibs_entry", 0.5))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -104,11 +104,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
-
-        # Momentum guard
-        if len(closes) > self.momentum_lookback:
-            if bar.close <= closes[-self.momentum_lookback - 1]:
-                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
