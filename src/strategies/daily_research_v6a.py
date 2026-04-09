@@ -41,8 +41,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.sma_period = int(config.get("sma_period", 20))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -139,10 +139,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block HIGH and SHOCK volatility
+        # Block SHOCK volatility only
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
+        if vol == "shock":
             return None
 
         # Market-level filter: SPY must be above its SMA(50)
