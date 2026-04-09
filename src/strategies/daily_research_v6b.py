@@ -1,7 +1,13 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter2: Asymmetric R:R — wider target (3x ATR, 6% cap) vs stop (2x ATR, 4% cap).
-With 1.5:1 R:R, need only 38% WR for PF=0.9 (worst window had 45%).
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
@@ -32,7 +38,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
-        self.max_target_pct = float(config.get("max_target_pct", 0.06))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -100,11 +105,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Stop/target with separate caps
-        stop_cap = bar.close * self.max_stop_pct
-        target_cap = bar.close * self.max_target_pct
-        stop_dist = min(atr * self.stop_atr_mult, stop_cap)
-        target_dist = min(atr * self.target_atr_mult, target_cap)
+        # Stop/target with cap
+        max_dist = bar.close * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
