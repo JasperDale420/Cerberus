@@ -302,7 +302,6 @@ strategies:
     target_atr: 2.0
     max_stop_pct: 0.02
     max_atr_pct: 0.03
-    ibs_entry: 0.5
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]

@@ -76,7 +76,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "stop_atr": 1.5,
         "target_atr": 2.0,
         "max_stop_pct": 0.02,
-        "max_atr_pct": 0.03,
     },
 }
 
@@ -180,7 +179,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("momentum_lookback", "int", low=3, high=10, step=1, description="Momentum lookback days"),
     ],
     "daily_research_v6d": [
-        ParamDef("ibs_entry", "float", low=0.3, high=0.6, step=0.05, description="IBS entry threshold"),
+        ParamDef("max_atr_pct", "float", low=0.02, high=0.05, step=0.005, description="Max ATR/price ratio"),
     ],
 }
 
