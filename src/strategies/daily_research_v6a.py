@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) + IBS + RSI(14) band mean reversion.
+"""Daily Research v6a — RSI(2) + strict IBS mean reversion.
 
-Triple filter for high-quality oversold entries:
-- RSI(2) < 10: deep short-term oversold
-- IBS < 0.3: closed near daily low
-- RSI(14) in [30, 65]: not in deep downtrend AND not overbought
+Dual oversold with strict IBS threshold:
+- RSI(2) < 10 deep oversold
+- IBS < 0.2 (closed in bottom 20% of daily range — stricter)
 - 1.5 ATR / 2% hard stop
+- No trend filter — trades all regimes
 - Only blocks SHOCK volatility
 """
 
@@ -37,6 +37,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
@@ -57,7 +58,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             / p
         )
 
-    def _rsi(self, v: deque, n: int = 14) -> float | None:
+    def _rsi(self, v: deque, n: int = 2) -> float | None:
         if len(v) < n + 1:
             return None
         d = list(v)
@@ -110,22 +111,17 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # RSI(14) band — not deeply oversold on multi-week basis, not overbought
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is not None and (rsi14 < 30 or rsi14 > 65):
-            return None
-
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
 
-        # IBS confirmation — closed in lower 30% of daily range
+        # IBS confirmation — closed in bottom 20% of daily range
         hl, ll = list(h), list(lo)
         day_range = hl[-1] - ll[-1]
         if day_range > 0:
             ibs = (price - ll[-1]) / day_range
-            if ibs > 0.3:
+            if ibs > self.ibs_threshold:
                 return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
