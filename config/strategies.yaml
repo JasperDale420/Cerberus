@@ -253,7 +253,7 @@ strategies:
     sma_period: 20
     max_drawdown_pct: 0.12
     max_stop_pct: 0.04
-    max_hold_days: 5
+    max_hold_days: 10
     drawdown_lookback: 40
     allow_overnight: true
     cooldown_bars: 1
