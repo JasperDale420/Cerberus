@@ -122,10 +122,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # Confirm: today must be a down close (selling pressure)
-        if len(closes) >= 2 and closes[-1] >= closes[-2]:
-            return None
-
         # Symmetric stop/target capped at max_stop_pct of price
         max_dist = price * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr, max_dist)
