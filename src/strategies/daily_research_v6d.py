@@ -80,10 +80,12 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Regime filter: skip HIGH/SHOCK vol (from pre-computed labels)
+        # Regime filter: skip HIGH/SHOCK vol and earnings windows (from pre-computed labels)
         regime = symbol_state.meta.get("regime_labels", {})
         regime_vol = str(regime.get("regime_vol", "")).upper()
         if regime_vol in ("HIGH", "SHOCK"):
+            return None
+        if regime.get("near_earnings") or regime.get("earnings_window"):
             return None
 
         bars = list(symbol_state.bars)
