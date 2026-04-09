@@ -5,10 +5,9 @@ Long-only. Few parameters. Proven robust across market regimes.
 
 Rules:
   ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period)
-         AND N consecutive down closes (momentum exhaustion)
-  EXIT: hit stop (ATR-based, capped at max_stop_pct) or target
+  EXIT: hit stop (ATR-based) or target (ATR-based)
 
-Iteration 5: Add down-days filter + max stop cap.
+Iteration 3: Use symbol_state.bars directly (proven working pattern).
 """
 
 from __future__ import annotations
@@ -36,9 +35,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr = float(config.get("stop_atr", 3.0))
-        self.target_atr = float(config.get("target_atr", 3.0))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
-        self.down_days = int(config.get("down_days", 2))
+        self.target_atr = float(config.get("target_atr", 4.0))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 10))
 
@@ -96,12 +93,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if price < sma:
             return None
 
-        # Consecutive down-days filter: require N days of lower closes
-        if self.down_days > 0 and len(closes) > self.down_days:
-            for i in range(1, self.down_days + 1):
-                if closes[-i] >= closes[-i - 1]:
-                    return None
-
         # RSI(2) — buy on short-term oversold dip
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
@@ -112,9 +103,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Stop with ATR, capped at max_stop_pct
-        stop_dist = min(atr * self.stop_atr, price * self.max_stop_pct)
-        stop_price = price - stop_dist
+        stop_price = price - atr * self.stop_atr
         target_price = price + atr * self.target_atr
 
         self.last_signal_time[symbol] = bar.time
