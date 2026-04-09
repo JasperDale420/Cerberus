@@ -276,7 +276,7 @@ strategies:
     vol_mult: 0.8
     vol_lookback: 20
     allow_overnight: true
-    max_hold_days: 5
+    max_hold_days: 3
     cooldown_bars: 1
     activation:
       session: [opening, midday, power_hour]
