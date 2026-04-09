@@ -1,8 +1,13 @@
-"""Daily Research Strategy v6b — RSI(2) Reversal Confirmation.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter1: Buy on BOUNCE after oversold, not on the oversold bar itself.
-Entry: RSI(2) < 25 on previous bar AND today close > yesterday close.
-Stop/target: symmetric 2x ATR, 4% cap. Drawdown filter 12%/40-bar.
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -90,15 +95,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # Reversal confirmation: RSI(2) < threshold YESTERDAY + bounce TODAY
-        # Yesterday's RSI: compute on closes excluding today
-        prev_closes = closes[:-1]
-        rsi_yesterday = self._rsi(prev_closes, self.rsi_period)
-        if rsi_yesterday is None or rsi_yesterday >= self.rsi_entry:
-            return None
-
-        # Bounce confirmation: today's close > yesterday's close
-        if bar.close <= bars[-2].close:
+        # RSI(2) — single tight threshold
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi >= self.rsi_entry:
             return None
 
         # ATR for stop/target
@@ -124,8 +123,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
-                "rsi2_yesterday": round(rsi_yesterday, 1),
-                "bounce_pct": round((bar.close - bars[-2].close) / bars[-2].close * 100, 2),
+                "rsi2": round(rsi, 1),
                 "drawdown": round(drawdown, 3),
             },
         )
