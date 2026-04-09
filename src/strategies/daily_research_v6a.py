@@ -103,20 +103,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
         price = list(c)[-1]
 
-        # Only block SHOCK volatility
+        # Block HIGH and SHOCK volatility — mean reversion fails in high vol
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None or rsi2 >= self.rsi2_threshold:
-            return None
-
-        # Decline confirmation — price must have dropped from prior close
-        cl = list(c)
-        if price >= cl[-2]:
             return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
