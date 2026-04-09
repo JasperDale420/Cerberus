@@ -1,7 +1,7 @@
 """Daily Research v6c — Volume-Quality IBS+RSI Mean Reversion.
 
-Session 4, Iteration 7: IBS(0.35) + loose volume filter (0.8x avg).
-Tighter IBS for higher quality entries + volume noise filter.
+Session 4, Iteration 4: Wider IBS (0.4) + loose volume filter (0.8x avg).
+More entries from wider IBS, but low-volume noise filtered out.
 RSI(2) < 50 + momentum guard(5) + drawdown 10%.
 Symmetric 1.5x ATR, 2% cap.
 """
@@ -27,7 +27,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 50))
-        self.ibs_entry = float(config.get("ibs_entry", 0.35))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
