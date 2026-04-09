@@ -1,8 +1,13 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter3: Vol-adaptive stop/target sizing.
-High vol (ATR5/ATR14 > 1.3): 1.5x ATR, 3% cap (tighter to reduce losses).
-Normal vol: 2x ATR, 4% cap (standard).
+WFO Results (15 iterations, randomized splits, 2020-2024):
+  min_pf=0.79, avg_pf=1.45, 753 trades, Sharpe=1.12
+  Gate: FAIL (min_pf < 0.9). DOWN+HIGH windows drag min_pf.
+  UP+NORMAL: 7/7 profitable, avg_pf=1.70
+  DOWN regimes: avg_pf=0.83-0.89
+
+Strategy: Buy when RSI(2) < 25 with 12% drawdown filter.
+Symmetric 2x ATR stop/target capped at 4%.
 """
 
 from __future__ import annotations
@@ -26,17 +31,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.stop_atr_mult_highvol = float(config.get("stop_atr_mult_highvol", 1.5))
-        self.target_atr_mult_highvol = float(config.get("target_atr_mult_highvol", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
-        self.max_stop_pct_highvol = float(config.get("max_stop_pct_highvol", 0.03))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.3))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -94,7 +95,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2)
+        # RSI(2) — single tight threshold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
@@ -104,22 +105,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Vol-adaptive stop/target sizing
-        atr_short = self._atr(bars, 5)
-        is_highvol = atr_short is not None and atr > 0 and (atr_short / atr) > self.vol_ratio_threshold
-
-        if is_highvol:
-            s_mult = self.stop_atr_mult_highvol
-            t_mult = self.target_atr_mult_highvol
-            max_pct = self.max_stop_pct_highvol
-        else:
-            s_mult = self.stop_atr_mult
-            t_mult = self.target_atr_mult
-            max_pct = self.max_stop_pct
-
-        max_dist = bar.close * max_pct
-        stop_dist = min(atr * s_mult, max_dist)
-        target_dist = min(atr * t_mult, max_dist)
+        # Stop/target with cap
+        max_dist = bar.close * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
@@ -136,6 +125,5 @@ class dailyresearchv6bStrategy(BaseStrategy):
             meta={
                 "rsi2": round(rsi, 1),
                 "drawdown": round(drawdown, 3),
-                "highvol": is_highvol,
             },
         )
