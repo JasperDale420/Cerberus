@@ -1,10 +1,11 @@
-"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Tight-RSI + SMA + Tight Drawdown.
 
-iter7: Maximum simplicity — RSI(2) < 15, no SMA filter, no vol adaptation.
-Only the drawdown filter + stop cap for protection.
-Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
-regimes. No trend filter needed because extreme RSI readings are rare
-enough to be high-quality. Fewer params = more robust.
+iter8: Hybrid of best elements:
+- RSI(2) < 15 (tight threshold that works across all regimes, from iter7)
+- SMA(20) trend filter (uptrend protection, from baseline)
+- 8% drawdown filter (tighter than 12%, prevents entries in sharp pullbacks)
+- Symmetric 2x ATR stop/target (capped at 4%)
+- 5-day max hold, long-only, daily bars
 """
 
 from __future__ import annotations
@@ -32,7 +33,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.sma_period = int(config.get("sma_period", 20))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
         self.allow_overnight = True
@@ -83,7 +85,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Drawdown filter
+        # Price-based trend filter: close > SMA(20)
+        if len(closes) >= self.sma_period:
+            sma = sum(closes[-self.sma_period :]) / self.sma_period
+            if bar.close < sma:
+                return None
+
+        # Tight drawdown filter (8%)
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
@@ -92,7 +100,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2) — single tight threshold
+        # RSI(2) — tight threshold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
