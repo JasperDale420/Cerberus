@@ -1,9 +1,9 @@
 """Daily Research v6c — Volume-Quality IBS+RSI Mean Reversion.
 
-Session 5, Iteration 3: Add 2-day down confirmation.
-Yesterday must also be down (close < open) for stronger oversold signal.
-IBS < 0.4 + RSI(2) < 50 + momentum guard(5) + drawdown 10% + vol 0.6x.
-Symmetric 1.5x ATR, 2% cap, 3-day hold.
+Session 4, Iteration 4: Wider IBS (0.4) + loose volume filter (0.8x avg).
+More entries from wider IBS, but low-volume noise filtered out.
+RSI(2) < 50 + momentum guard(5) + drawdown 10%.
+Symmetric 1.5x ATR, 2% cap.
 """
 
 from __future__ import annotations
@@ -108,12 +108,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         ibs = (bar.close - bar.low) / bar_range
         if ibs >= self.ibs_entry:
             return None
-
-        # 2-day down confirmation: yesterday must also be a down day
-        if len(bars) >= 2:
-            prev = bars[-2]
-            if prev.close >= prev.open:
-                return None
 
         # RSI(2) confirmation
         rsi = self._rsi(closes, 2)
