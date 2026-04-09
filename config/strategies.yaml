@@ -301,8 +301,6 @@ strategies:
     stop_atr: 1.5
     target_atr: 2.0
     max_stop_pct: 0.02
-    vol_mult: 0.6
-    vol_lookback: 20
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]

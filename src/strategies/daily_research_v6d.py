@@ -37,8 +37,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.stop_atr = float(config.get("stop_atr", 1.5))
         self.target_atr = float(config.get("target_atr", 2.0))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
-        self.vol_mult = float(config.get("vol_mult", 0.6))
-        self.vol_lookback = int(config.get("vol_lookback", 20))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -88,13 +86,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
             return None
 
         price = closes[-1]
-
-        # Volume filter — skip low-volume noise days
-        volumes = [b.volume for b in bars if b.volume and b.volume > 0]
-        if len(volumes) >= self.vol_lookback:
-            avg_vol = sum(volumes[-self.vol_lookback :]) / self.vol_lookback
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_mult:
-                return None
 
         # Trend filter: price above SMA(trend_period) = uptrend
         if len(closes) < self.trend_period:
