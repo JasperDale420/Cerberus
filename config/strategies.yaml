@@ -265,12 +265,11 @@ strategies:
   daily_research_v6c:
     enabled: true
     min_bars: 20
-    rsi_entry: 35
-    ibs_entry: 0.4
-    sma_period: 20
+    rsi_entry: 50
+    ibs_entry: 0.3
     momentum_lookback: 5
-    stop_atr_mult: 1.5
-    target_atr_mult: 1.5
+    stop_atr_mult: 2.0
+    target_atr_mult: 1.0
     max_drawdown_pct: 0.10
     drawdown_lookback: 40
     max_stop_pct: 0.03
