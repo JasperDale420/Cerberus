@@ -36,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
