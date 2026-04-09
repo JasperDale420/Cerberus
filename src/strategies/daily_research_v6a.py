@@ -34,9 +34,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.25))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
+        self.rsi14_lo = float(config.get("rsi14_lo", 30))
+        self.rsi14_hi = float(config.get("rsi14_hi", 65))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -120,6 +122,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         # SMA10 fast trend gate: blocks acute downtrends
         sma10 = self._sma(cl, 10)
         if sma10 is not None and price < sma10:
+            return None
+
+        # RSI(14) band: avoid extremely oversold (falling knives) and overbought
+        rsi14 = self._rsi(c, n=14)
+        if rsi14 is not None and (rsi14 < self.rsi14_lo or rsi14 > self.rsi14_hi):
             return None
 
         # RSI(2) oversold — mean reversion signal
