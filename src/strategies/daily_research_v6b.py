@@ -1,10 +1,8 @@
-"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter9: RSI(2) < 20, no SMA filter, no vol adaptation.
-Only the drawdown filter + stop cap for protection.
-Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
-regimes. No trend filter needed because extreme RSI readings are rare
-enough to be high-quality. Fewer params = more robust.
+iter14: RSI(2) < 25 (more permissive for more trades per window).
+More trades = more stable PF estimates = less variance in worst window.
+Everything else unchanged from iter9.
 """
 
 from __future__ import annotations
