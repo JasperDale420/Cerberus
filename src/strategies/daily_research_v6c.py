@@ -1,9 +1,11 @@
-"""Daily Research v6c — High-Volume Dual Confirmation Mean Reversion.
+"""Daily Research v6c — Triple-Signal Mean Reversion.
 
-Iteration 3: Maximize trades via loose dual filter + momentum guard.
-RSI(2) < 35 AND IBS < 0.5 — loose individually but dual confirmation
-still filters noise. Momentum guard back (close > close[5]).
-SMA(20) trend. Symmetric 1.5x ATR, 3% cap. High trade count = less variance.
+Iteration 5: Use OR logic — fire on ANY of:
+  1) RSI(2) < 25 AND IBS < 0.5 (strong oversold + close near low)
+  2) 2+ consecutive lower closes AND IBS < 0.4 (selling exhaustion)
+SMA(20) trend filter on both. Momentum guard on RSI path only.
+Symmetric 1.5x ATR, 3% cap. OR logic maximizes trades while each
+path has its own quality gate.
 """
 
 from __future__ import annotations
@@ -26,8 +28,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 35))
-        self.ibs_entry = float(config.get("ibs_entry", 0.5))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.ibs_rsi = float(config.get("ibs_rsi", 0.5))
+        self.consec_down = int(config.get("consec_down", 2))
+        self.ibs_consec = float(config.get("ibs_consec", 0.4))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -99,22 +103,37 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if bar.close < sma:
                 return None
 
-        # RSI(2) oversold entry
-        rsi = self._rsi(closes, 2)
-        if rsi is None or rsi >= self.rsi_entry:
-            return None
-
-        # IBS confirmation: close must be near day's low
+        # IBS calculation
         bar_range = bar.high - bar.low
-        if bar_range > 0:
-            ibs = (bar.close - bar.low) / bar_range
-            if ibs >= self.ibs_entry:
-                return None
+        ibs = (bar.close - bar.low) / bar_range if bar_range > 0 else 0.5
 
-        # Momentum guard: close must be above close N days ago
-        if len(closes) > self.momentum_lookback:
-            if bar.close <= closes[-self.momentum_lookback - 1]:
-                return None
+        # RSI(2)
+        rsi = self._rsi(closes, 2)
+
+        # Signal path 1: RSI oversold + IBS confirmation + momentum guard
+        signal_rsi = False
+        if rsi is not None and rsi < self.rsi_entry and ibs < self.ibs_rsi:
+            # Momentum guard only for RSI path
+            if len(closes) > self.momentum_lookback:
+                if bar.close > closes[-self.momentum_lookback - 1]:
+                    signal_rsi = True
+            else:
+                signal_rsi = True
+
+        # Signal path 2: Consecutive lower closes + tight IBS
+        signal_consec = False
+        if len(closes) >= self.consec_down + 1 and ibs < self.ibs_consec:
+            down_count = 0
+            for i in range(len(closes) - 1, max(len(closes) - self.consec_down - 1, 0), -1):
+                if closes[i] < closes[i - 1]:
+                    down_count += 1
+                else:
+                    break
+            if down_count >= self.consec_down:
+                signal_consec = True
+
+        if not signal_rsi and not signal_consec:
+            return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
@@ -139,7 +158,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
             strategy=self.name,
             generated_at=bar.time,
             meta={
-                "rsi2": round(rsi, 1),
+                "rsi2": round(rsi, 1) if rsi is not None else None,
+                "ibs": round(ibs, 2),
+                "signal": "rsi" if signal_rsi else "consec",
                 "drawdown": round(drawdown, 3),
             },
         )
