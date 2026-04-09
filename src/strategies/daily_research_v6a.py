@@ -1,10 +1,9 @@
-"""Daily Research v6a — Cumulative RSI(2) mean reversion.
+"""Daily Research v6a — Momentum breakout strategy.
 
-Cumulative RSI = sum of RSI(2) over N recent days. Requires SUSTAINED
-oversold, not just a 1-day spike. Reduces falling-knife entries.
-- CumRSI(2, 3) < 30 (avg RSI(2) < 10 per day for 3 days)
-- 1.5 ATR / 2% hard stop
-- No trend filter — trades all regimes
+Buy on strength, not weakness. Completely different from mean reversion.
+- Entry: price > highest close of last N days (breakout)
+- RSI(14) > 50 confirmation (not in a downtrend)
+- ATR-based stops/targets with 2% hard cap
 - Only blocks SHOCK volatility
 """
 
@@ -30,16 +29,14 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._lo: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
-        self._rsi2_hist: dict[str, deque[float]] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 20))
+        self.min_bars = int(config.get("min_bars", 25))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.cum_rsi_threshold = float(config.get("cum_rsi_threshold", 30))
-        self.cum_rsi_days = int(config.get("cum_rsi_days", 3))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.breakout_period = int(config.get("breakout_period", 20))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -49,7 +46,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0]
-            self._rsi2_hist[s] = deque(maxlen=10)
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -60,7 +56,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             / p
         )
 
-    def _rsi(self, v: deque, n: int = 2) -> float | None:
+    def _rsi(self, v: deque, n: int = 14) -> float | None:
         if len(v) < n + 1:
             return None
         d = list(v)
@@ -82,10 +78,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
-            # Track RSI(2) history
-            rsi2 = self._rsi(self._c[symbol], n=2)
-            if rsi2 is not None:
-                self._rsi2_hist[symbol].append(rsi2)
             d[0], d[1], d[2] = bar.high, bar.low, bar.close
             sig = self._evaluate(symbol, bar, market_state)
             self._pd[symbol] = dt
@@ -108,7 +100,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        price = list(c)[-1]
+        cl = list(c)
+        price = cl[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -116,12 +109,16 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # Cumulative RSI(2) over N days
-        rsi_hist = self._rsi2_hist[sym]
-        if len(rsi_hist) < self.cum_rsi_days:
+        # Breakout: price > highest close of last N days
+        if len(cl) < self.breakout_period + 1:
             return None
-        cum_rsi = sum(list(rsi_hist)[-self.cum_rsi_days :])
-        if cum_rsi >= self.cum_rsi_threshold:
+        lookback = cl[-(self.breakout_period + 1) : -1]
+        if price <= max(lookback):
+            return None
+
+        # RSI(14) > 50 — confirm upward momentum
+        rsi14 = self._rsi(c, n=14)
+        if rsi14 is None or rsi14 <= 50:
             return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)

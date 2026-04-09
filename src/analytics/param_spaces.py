@@ -46,7 +46,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "rsi2_threshold": 25.0,
         "pullback_rsi_lo": 25.0,
     },
-    "daily_research_v6a": {"stop_atr_mult": 1.5, "max_hold_days": 7, "cum_rsi_days": 3},
+    "daily_research_v6a": {"stop_atr_mult": 1.5, "max_hold_days": 5},
 }
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
@@ -136,8 +136,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("max_hold_days", "int", low=5, high=15, step=5, description="Max hold days"),
     ],
     "daily_research_v6a": [
-        ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
-        ParamDef("cum_rsi_threshold", "float", low=20.0, high=40.0, step=5.0, description="Cum RSI threshold"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target"),
+        ParamDef("breakout_period", "int", low=10, high=20, step=5, description="Breakout lookback"),
     ],
 }
 
