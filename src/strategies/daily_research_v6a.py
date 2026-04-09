@@ -1,9 +1,10 @@
-"""Daily Research v6a — Momentum breakout strategy.
+"""Daily Research v6a — RSI(2) + IBS + RSI(14) band mean reversion.
 
-Buy on strength, not weakness. Completely different from mean reversion.
-- Entry: price > highest close of last N days (breakout)
-- RSI(14) > 50 confirmation (not in a downtrend)
-- ATR-based stops/targets with 2% hard cap
+Triple filter for high-quality oversold entries:
+- RSI(2) < 10: deep short-term oversold
+- IBS < 0.3: closed near daily low
+- RSI(14) in [30, 65]: not in deep downtrend AND not overbought
+- 1.5 ATR / 2% hard stop
 - Only blocks SHOCK volatility
 """
 
@@ -32,11 +33,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 25))
+        self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.breakout_period = int(config.get("breakout_period", 20))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -93,15 +94,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
+        h, lo = self._h[sym], self._lo[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
-        atr = self._atr(self._h[sym], self._lo[sym], c)
+        atr = self._atr(h, lo, c)
         if not atr or atr < 0.01:
             return None
 
-        cl = list(c)
-        price = cl[-1]
+        price = list(c)[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -109,17 +110,23 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # Breakout: price > highest close of last N days
-        if len(cl) < self.breakout_period + 1:
-            return None
-        lookback = cl[-(self.breakout_period + 1) : -1]
-        if price <= max(lookback):
+        # RSI(14) band — not deeply oversold on multi-week basis, not overbought
+        rsi14 = self._rsi(c, n=14)
+        if rsi14 is not None and (rsi14 < 30 or rsi14 > 65):
             return None
 
-        # RSI(14) > 50 — confirm upward momentum
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is None or rsi14 <= 50:
+        # RSI(2) deep oversold
+        rsi2 = self._rsi(c, n=2)
+        if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
+
+        # IBS confirmation — closed in lower 30% of daily range
+        hl, ll = list(h), list(lo)
+        day_range = hl[-1] - ll[-1]
+        if day_range > 0:
+            ibs = (price - ll[-1]) / day_range
+            if ibs > 0.3:
+                return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
