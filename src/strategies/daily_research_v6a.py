@@ -1,11 +1,13 @@
-"""Daily Research v6a — RSI(2) mean reversion with SMA(50) trend filter.
+"""Daily Research v6a — IBS (Internal Bar Strength) mean reversion.
 
-Designed for CONSISTENCY across all market regimes:
-- SMA(50) per-symbol trend filter
-- RSI(2) oversold entry (Connors-style)
-- Only blocks SHOCK volatility (mean reversion thrives in HIGH vol)
-- Tight ATR-based exits for quick mean reversion captures
-- 2% hard stop cap, decline confirmation
+IBS = (close - low) / (high - low). When IBS < 0.2, stock closed near
+its daily low — strong historical mean reversion signal.
+
+Design for CONSISTENCY:
+- IBS is regime-agnostic — works in UP, DOWN, FLAT markets
+- SMA(50) loose trend filter for safety
+- Only blocks SHOCK volatility
+- ATR-based exits with 2% hard stop cap
 """
 
 from __future__ import annotations
@@ -36,8 +38,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
@@ -59,14 +61,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             / p
         )
 
-    def _rsi(self, v: deque, n: int = 14) -> float | None:
-        if len(v) < n + 1:
-            return None
-        d = list(v)
-        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
-        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
-        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
-
     def _sma(self, vals: list[float], period: int) -> float | None:
         if len(vals) < period:
             return None
@@ -87,8 +81,10 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
             self._vol[symbol].append(d[3])
+            # Use PREVIOUS day's OHLC for IBS calculation
+            prev_high, prev_low, prev_close = d[0], d[1], d[2]
             d[0], d[1], d[2], d[3] = bar.high, bar.low, bar.close, bar.volume
-            sig = self._evaluate(symbol, bar, market_state)
+            sig = self._evaluate(symbol, bar, market_state, prev_high, prev_low, prev_close)
             self._pd[symbol] = dt
             return sig
         if self._pd[symbol] is None:
@@ -101,7 +97,9 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._pd[symbol] = dt
         return None
 
-    def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
+    def _evaluate(
+        self, sym: str, bar: Bar, ms: MarketState, prev_h: float, prev_l: float, prev_c: float
+    ) -> Signal | None:
         c = self._c[sym]
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
@@ -113,23 +111,24 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Only block SHOCK volatility — mean reversion thrives in HIGH vol
+        # Only block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
             return None
 
-        # SMA(50) per-symbol uptrend filter
+        # SMA(50) trend filter
         sma50 = self._sma(cl, 50)
         if sma50 is None or price < sma50:
             return None
 
-        # RSI(2) oversold
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None:
+        # IBS: Internal Bar Strength on PREVIOUS completed day
+        day_range = prev_h - prev_l
+        if day_range < 0.01:
             return None
+        ibs = (prev_c - prev_l) / day_range
 
-        if rsi2 < self.rsi2_threshold:
+        if ibs < self.ibs_threshold:
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult

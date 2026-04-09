@@ -889,6 +889,7 @@ def _apply_params_to_config(
         "target_rr",
         # Daily research params
         "rsi2_threshold",
+        "ibs_threshold",
         "pullback_dist",
         "breakout_period",
         "pullback_rsi_lo",

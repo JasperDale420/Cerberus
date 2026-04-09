@@ -21,7 +21,7 @@ class UpNormalStrategy(BaseStrategy):
         if mtf.get_trend_alignment(OrderSide.BUY) < 0.8 or ema is None or atr is None or atr <= 0:
             return None
         vd, d = mtf.get_vwap_distance("1m"), ema - bar.close
-        if (vd is not None and vd < self.vmin) or d < 0.05 * atr or d > 0.5 * atr:
+        if (vd is not None and vd < self.vmin) or d < 0.1 * atr or d > 0.4 * atr:
             return None
         self.last_signal_time[sym] = bar.time
         return self._create_signal(
