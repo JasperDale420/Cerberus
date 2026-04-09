@@ -1,7 +1,7 @@
-"""Daily Research v6a — RSI(2) + IBS mean reversion with SMA(200) filter.
+"""Daily Research v6a — RSI(2) + IBS mean reversion with SMA(50) filter.
 
 Connors-style mean reversion:
-- Price > SMA(200) — only buy dips in long-term uptrends
+- Price > SMA(50) — only buy dips in medium-term uptrends
 - RSI(2) < 10 deep oversold
 - IBS < 0.3 (closed in bottom 30% of daily range)
 - 1.5 ATR / 2% hard stop
@@ -43,9 +43,9 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=250)
-            self._h[s] = deque(maxlen=250)
-            self._lo[s] = deque(maxlen=250)
+            self._c[s] = deque(maxlen=60)
+            self._h[s] = deque(maxlen=60)
+            self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0]
 
@@ -101,7 +101,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
         h, lo = self._h[sym], self._lo[sym]
-        if len(c) < max(self.min_bars, 200) or not self._check_cooldown(sym, bar.time):
+        if len(c) < max(self.min_bars, 50) or not self._check_cooldown(sym, bar.time):
             return None
 
         atr = self._atr(h, lo, c)
@@ -116,9 +116,9 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA(200) trend filter — only buy in long-term uptrends
-        sma200 = self._sma(c, 200)
-        if sma200 is None or price <= sma200:
+        # SMA(50) trend filter — only buy in medium-term uptrends
+        sma50 = self._sma(c, 50)
+        if sma50 is None or price <= sma50:
             return None
 
         # RSI(2) deep oversold
