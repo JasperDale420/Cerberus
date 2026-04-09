@@ -36,8 +36,9 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -129,8 +130,11 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        stop_price = bar.close - atr * self.stop_atr_mult
-        target_price = bar.close + atr * self.target_atr_mult
+        # Cap stop at max_stop_pct of price — limits damage in high-vol
+        stop_dist = min(atr * self.stop_atr_mult, bar.close * self.max_stop_pct)
+        target_dist = min(atr * self.target_atr_mult, bar.close * self.max_stop_pct)
+        stop_price = bar.close - stop_dist
+        target_price = bar.close + target_dist
 
         self.last_signal_time[symbol] = bar.time
         return Signal(

@@ -251,7 +251,8 @@ strategies:
     ibs_cautious: 0.3
     stop_atr_mult: 2.0
     target_atr_mult: 2.0
-    max_drawdown_pct: 0.12
+    max_drawdown_pct: 0.10
+    max_stop_pct: 0.03
     drawdown_lookback: 40
     allow_overnight: true
     max_hold_days: 5
