@@ -1,8 +1,8 @@
-"""Daily Research Strategy v6b — RSI(2) + IBS Mean Reversion with crash filter.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion with crash filter.
 
-Buy when RSI(2) is oversold AND IBS is low. Long-only. Includes drawdown
-filter to avoid buying into sustained crashes. Fixed entry params (locked),
-optimizer tunes stop/target only.
+Buy when RSI(2) is oversold. Long-only. Drawdown filter prevents buying
+into sustained crashes. Simple, high-trade-count approach for statistical
+significance across WFO windows.
 """
 
 from __future__ import annotations
@@ -26,12 +26,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 15))
-        self.ibs_entry = float(config.get("ibs_entry", 0.35))
-        self.consecutive_down = int(config.get("consecutive_down", 2))
+        self.rsi_entry = float(config.get("rsi_entry", 25))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.allow_overnight = True
@@ -85,6 +83,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         # Drawdown filter: skip if price is too far below recent high
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
+        drawdown = 0.0
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
@@ -95,25 +94,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if rsi is None:
             return None
 
-        # IBS = (close - low) / (high - low)
-        bar_range = bar.high - bar.low
-        ibs = (bar.close - bar.low) / bar_range if bar_range > 0.001 else 0.5
-
-        # Count consecutive down closes
-        down_days = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                down_days += 1
-            else:
-                break
-
         # ATR for stop/target
         atr = self._atr(bars)
         if atr is None or atr < 0.01:
             return None
 
-        # === LONG when RSI(2) oversold + IBS low + down days ===
-        if rsi < self.rsi_entry and ibs < self.ibs_entry and down_days >= self.consecutive_down:
+        # === LONG when RSI(2) oversold ===
+        if rsi < self.rsi_entry:
             stop_price = bar.close - atr * self.stop_atr_mult
             target_price = bar.close + atr * self.target_atr_mult
 
@@ -129,9 +116,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
                 generated_at=bar.time,
                 meta={
                     "rsi2": round(rsi, 1),
-                    "ibs": round(ibs, 2),
-                    "down_days": down_days,
-                    "drawdown": round(drawdown, 3) if recent_high > 0 else 0,
+                    "drawdown": round(drawdown, 3),
                 },
             )
 
