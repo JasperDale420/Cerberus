@@ -28,12 +28,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry_normal = float(config.get("rsi_entry_normal", 15))
+        self.rsi_entry_normal = float(config.get("rsi_entry_normal", 10))
         self.rsi_entry_cautious = float(config.get("rsi_entry_cautious", 5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
+        self.ibs_threshold_cautious = float(config.get("ibs_threshold_cautious", 0.25))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.allow_overnight = True
@@ -119,16 +120,18 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
+        # IBS filter — all entries must close near the low
+        ibs = self._ibs(bar)
+
         # Regime-adaptive entry
         cautious = self._is_cautious_regime(symbol_state)
         if cautious:
-            # Stricter: RSI(2) < 5 AND IBS < 0.3
-            ibs = self._ibs(bar)
-            if rsi >= self.rsi_entry_cautious or ibs >= self.ibs_threshold:
+            # Stricter: RSI(2) < 5 AND IBS < 0.25
+            if rsi >= self.rsi_entry_cautious or ibs >= self.ibs_threshold_cautious:
                 return None
         else:
-            # Normal: RSI(2) < 15
-            if rsi >= self.rsi_entry_normal:
+            # Normal: RSI(2) < 10 AND IBS < 0.4
+            if rsi >= self.rsi_entry_normal or ibs >= self.ibs_threshold:
                 return None
 
         stop_price = bar.close - atr * self.stop_atr_mult
