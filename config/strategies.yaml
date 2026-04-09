@@ -233,3 +233,10 @@ strategies:
     max_hold_days: 10
     cooldown_bars: 0
     bar_duration_minutes: 1440.0
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
