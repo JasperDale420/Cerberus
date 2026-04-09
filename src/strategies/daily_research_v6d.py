@@ -94,16 +94,9 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if price < sma:
             return None
 
-        # RSI(2) bounce confirmation:
-        # Yesterday's RSI must have been oversold AND today's close > yesterday's close
-        # This confirms the bounce has started, reducing whipsaw entries
+        # RSI(2) — buy on short-term oversold dip
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
-            return None
-        prev_rsi = self._rsi(closes[:-1], self.rsi_period)
-        if prev_rsi is None or prev_rsi >= self.rsi_entry:
-            return None
-        if price <= closes[-2]:
+        if rsi is None or rsi >= self.rsi_entry:
             return None
 
         # ATR for stop/target sizing
