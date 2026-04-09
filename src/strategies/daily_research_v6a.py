@@ -118,15 +118,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol in ("high", "shock"):
             return None
 
-        # SMA(50) trend filter: price must be above AND SMA must be rising
+        # SMA(50) trend filter: price must be above
         sma_now = self._sma(cl, self.sma_period)
         if sma_now is None or price < sma_now:
             return None
-        # SMA slope check: compare current SMA to SMA 10 bars ago
-        if len(cl) >= self.sma_period + 10:
-            sma_prev = self._sma(cl[:-10], self.sma_period)
-            if sma_prev is not None and sma_now <= sma_prev:
-                return None
+
+        # RSI(14) health band: avoid falling knives and overextended stocks
+        rsi14 = self._rsi(c, n=14)
+        if rsi14 is not None and (rsi14 < 35 or rsi14 > 60):
+            return None
 
         # RSI(2) strict oversold — Connors-style
         rsi2 = self._rsi(c, n=2)
