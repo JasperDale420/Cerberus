@@ -71,8 +71,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "daily_research_v6d": {
         "rsi_period": 2,
         "trend_period": 50,
-        "max_hold_days": 10,
-        "rsi_entry": 35.0,
+        "max_hold_days": 5,
+        "rsi_entry": 25.0,
         "stop_atr": 3.0,
         "target_atr": 4.0,
     },
