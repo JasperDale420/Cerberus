@@ -1,9 +1,9 @@
 """Daily Research v6a — Connors-style RSI(2) mean reversion.
 
-Balanced filtering for consistency with enough trades:
-- SMA(50) trend filter: only buy when price is in uptrend
-- RSI(2) < 15: moderately strict oversold threshold
-- Block SHOCK volatility only (HIGH vol can still trade)
+Strict filtering for consistency:
+- SMA(50) trend filter with positive slope requirement
+- RSI(2) < 10: strict oversold threshold (Connors research)
+- Block HIGH and SHOCK volatility regimes
 - ATR-based stops and targets with 2% hard cap
 """
 
@@ -36,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
 
@@ -112,18 +112,23 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block SHOCK volatility only
+        # Block HIGH and SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
-        # SMA(50) per-symbol trend filter
-        sma = self._sma(cl, self.sma_period)
-        if sma is None or price < sma:
+        # SMA(50) trend filter: price must be above AND SMA must be rising
+        sma_now = self._sma(cl, self.sma_period)
+        if sma_now is None or price < sma_now:
             return None
+        # SMA slope check: compare current SMA to SMA 10 bars ago
+        if len(cl) >= self.sma_period + 10:
+            sma_prev = self._sma(cl[:-10], self.sma_period)
+            if sma_prev is not None and sma_now <= sma_prev:
+                return None
 
-        # RSI(2) oversold — moderately strict Connors threshold
+        # RSI(2) strict oversold — Connors-style
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
