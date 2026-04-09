@@ -130,10 +130,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             return None
 
         if rsi2 < self.rsi2_threshold:
-            # Confirm: price declined today
-            if price >= cl[-2]:
-                return None
-
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult
