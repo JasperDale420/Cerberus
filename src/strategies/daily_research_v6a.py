@@ -2,7 +2,7 @@
 
 Triple confirmation mean reversion:
 - 2+ consecutive lower closes (exhaustion selling)
-- RSI(2) < 15 oversold (relaxed for more trades)
+- RSI(2) < 12 oversold (tighter for quality)
 - IBS < 0.3 (closed in bottom 30% of daily range)
 - 1.5 ATR / 2% hard stop, max 5-day hold
 - Only blocks SHOCK volatility
@@ -36,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 12))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.down_days = int(config.get("down_days", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
