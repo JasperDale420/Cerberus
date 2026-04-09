@@ -86,7 +86,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if regime_vol in ("HIGH", "SHOCK"):
             return None
         liq = str(regime.get("liquidity_regime", "")).upper()
-        if liq in ("DRY", "THIN"):
+        if liq == "DRY":
             return None
 
         bars = list(symbol_state.bars)
