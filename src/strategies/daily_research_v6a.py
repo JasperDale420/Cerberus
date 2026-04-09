@@ -1,7 +1,7 @@
 """Daily Research v6a — Connors-style RSI(2) mean reversion.
 
 Strong regime filtering for consistency across all market conditions:
-- SMA(200) trend filter: only buy when price is in long-term uptrend
+- SMA(50) trend filter: only buy when price is in uptrend
 - RSI(2) < 10: strict oversold threshold (Connors research)
 - Block HIGH and SHOCK volatility regimes
 - ATR-based stops and targets with 2% hard cap
@@ -33,11 +33,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 205))
+        self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.sma_period = int(config.get("sma_period", 200))
+        self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
