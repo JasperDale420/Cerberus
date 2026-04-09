@@ -1,8 +1,10 @@
-"""Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — SMA-filtered RSI(2) Mean Reversion.
 
-Buy when RSI(2) is oversold. In high-vol or declining environments, require
-deeper oversold for entry. Drawdown filter prevents buying into crashes.
-Long-only, daily bars.
+Connors-style RSI(2) with trend filter:
+- Only buy above SMA(200) (bull market filter)
+- RSI(2) < 10 (deep oversold)
+- Quick exit: 1x ATR target, 2x ATR stop
+- Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -24,17 +26,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 20))
+        self.min_bars = int(config.get("min_bars", 50))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_cautious = float(config.get("rsi_entry_cautious", 10))
-        self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.sma_slope_period = int(config.get("sma_slope_period", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 10))
+        self.sma_trend_period = int(config.get("sma_trend_period", 200))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -83,70 +81,42 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
 
-        # Drawdown filter
-        lookback = min(self.drawdown_lookback, len(highs))
-        recent_high = max(highs[-lookback:])
-        drawdown = 0.0
-        if recent_high > 0:
-            drawdown = (recent_high - bar.close) / recent_high
-            if drawdown > self.max_drawdown_pct:
-                return None
+        # SMA(200) trend filter — only buy in uptrends
+        sma_long = self._sma(closes, self.sma_trend_period)
+        if sma_long is None or bar.close < sma_long:
+            return None
 
-        # RSI(2)
+        # RSI(2) — deep oversold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
+        if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # ATR calculations
-        atr_short = self._atr(bars, 5)
-        atr_long = self._atr(bars, 14)
-        if atr_short is None or atr_long is None or atr_long < 0.01:
+        # ATR for stops/targets
+        atr = self._atr(bars, 14)
+        if atr is None or atr < 0.01:
             return None
 
-        # Determine if environment is cautious (high vol OR declining trend)
-        vol_ratio = atr_short / atr_long
-        is_high_vol = vol_ratio > self.vol_ratio_threshold
+        stop_price = bar.close - atr * self.stop_atr_mult
+        target_price = bar.close + atr * self.target_atr_mult
 
-        # SMA slope check: is the short-term trend declining?
-        is_declining = False
-        if len(closes) >= self.sma_slope_period + 5:
-            sma_now = self._sma(closes, self.sma_slope_period)
-            sma_prev = self._sma(closes[:-5], self.sma_slope_period)
-            if sma_now is not None and sma_prev is not None:
-                is_declining = sma_now < sma_prev
-
-        # Adaptive RSI threshold
-        if is_high_vol or is_declining:
-            effective_rsi_entry = self.rsi_entry_cautious
-        else:
-            effective_rsi_entry = self.rsi_entry
-
-        # === LONG when RSI(2) oversold (adaptive threshold) ===
-        if rsi < effective_rsi_entry:
-            stop_price = bar.close - atr_long * self.stop_atr_mult
-            target_price = bar.close + atr_long * self.target_atr_mult
-
-            self.last_signal_time[symbol] = bar.time
-            return Signal(
-                symbol=symbol,
-                side=OrderSide.BUY,
-                size_hint=0.0,
-                entry_price=bar.close,
-                stop_price=stop_price,
-                target_price=target_price,
-                strategy=self.name,
-                generated_at=bar.time,
-                meta={
-                    "rsi2": round(rsi, 1),
-                    "vol_ratio": round(vol_ratio, 2),
-                    "declining": is_declining,
-                    "drawdown": round(drawdown, 3),
-                },
-            )
+        self.last_signal_time[symbol] = bar.time
+        return Signal(
+            symbol=symbol,
+            side=OrderSide.BUY,
+            size_hint=0.0,
+            entry_price=bar.close,
+            stop_price=stop_price,
+            target_price=target_price,
+            strategy=self.name,
+            generated_at=bar.time,
+            meta={
+                "rsi2": round(rsi, 1),
+                "sma_dist": round((bar.close - sma_long) / sma_long * 100, 1),
+            },
+        )
 
         return None
