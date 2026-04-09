@@ -5,10 +5,9 @@ Long-only. Few parameters. Proven robust across market regimes.
 
 Rules:
   ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period)
-         AND drawdown < max_drawdown_pct (bear market guard)
   EXIT: hit stop (ATR-based) or target (ATR-based)
 
-Iteration 4: Add drawdown guard + IBS confirmation for bear protection.
+Iteration 3: Use symbol_state.bars directly (proven working pattern).
 """
 
 from __future__ import annotations
@@ -37,11 +36,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr = float(config.get("stop_atr", 3.0))
         self.target_atr = float(config.get("target_atr", 4.0))
-        # Bear market guard: skip if price dropped > X% from recent high
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        # IBS (Internal Bar Strength) confirmation: close near low = oversold
-        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 10))
 
@@ -86,7 +80,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
@@ -100,25 +93,10 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if price < sma:
             return None
 
-        # Drawdown guard: skip if price is in a drawdown from recent high
-        lookback = min(self.drawdown_lookback, len(highs))
-        recent_high = max(highs[-lookback:])
-        if recent_high > 0:
-            drawdown = (recent_high - price) / recent_high
-            if drawdown > self.max_drawdown_pct:
-                return None
-
         # RSI(2) — buy on short-term oversold dip
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
-
-        # IBS confirmation: close should be in lower portion of today's range
-        bar_range = bar.high - bar.low
-        if bar_range > 0.001:
-            ibs = (bar.close - bar.low) / bar_range
-            if ibs > self.ibs_entry:
-                return None
 
         # ATR for stop/target sizing
         atr = self._atr(bars, self.atr_period)
