@@ -1,9 +1,10 @@
-"""Daily Research v6c — Max Volume IBS+RSI Mean Reversion.
+"""Daily Research v6c — Balanced IBS+RSI Mean Reversion.
 
-Session 3, Iteration 6: Aggressively maximize trades.
-Entry: IBS < 0.5 + RSI(2) < 50. No momentum guard. Drawdown 10%.
-Symmetric 1.5x ATR, 3% cap. Trading in bottom half of bar range
-with any selling pressure — highest volume approach.
+Session 3, Iteration 7: Refined balance of entry quality and volume.
+IBS < 0.35 + RSI(2) < 45 + momentum guard(5) + drawdown 10%.
+Tighter RSI (45 vs 50) for quality in DOWN windows.
+Wider IBS (0.35 vs 0.3) for more trades.
+Symmetric 1.5x ATR, 3% cap. No SMA.
 """
 
 from __future__ import annotations
@@ -26,8 +27,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 15))
-        self.rsi_entry = float(config.get("rsi_entry", 50))
-        self.ibs_entry = float(config.get("ibs_entry", 0.5))
+        self.rsi_entry = float(config.get("rsi_entry", 45))
+        self.ibs_entry = float(config.get("ibs_entry", 0.35))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -92,7 +93,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # IBS: close in bottom 40% of range
+        # IBS: close in bottom 35% of range
         bar_range = bar.high - bar.low
         if bar_range <= 0:
             return None
@@ -104,6 +105,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # Momentum guard
+        if len(closes) > self.momentum_lookback:
+            if bar.close <= closes[-self.momentum_lookback - 1]:
+                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
