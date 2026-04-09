@@ -252,7 +252,7 @@ strategies:
     target_atr_mult: 2.0
     sma_period: 20
     max_drawdown_pct: 0.12
-    max_stop_pct: 0.04
+    max_stop_pct: 0.05
     max_hold_days: 5
     drawdown_lookback: 40
     allow_overnight: true
