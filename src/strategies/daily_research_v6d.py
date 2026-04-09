@@ -101,13 +101,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if price < sma:
             return None
 
-        # Drawdown filter: skip if recent drawdown too deep
-        highs = [b.high for b in bars]
-        lookback = min(self.drawdown_lookback, len(highs))
-        recent_high = max(highs[-lookback:])
-        if recent_high > 0 and (recent_high - price) / recent_high > self.max_drawdown_pct:
-            return None
-
         # ATR for stop/target sizing
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 0.01:
