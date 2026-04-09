@@ -1,8 +1,8 @@
-"""Daily Research Strategy v6b — RSI(2) + IBS Mean Reversion.
+"""Daily Research Strategy v6b — RSI(2) + IBS Mean Reversion with crash filter.
 
-Buy when RSI(2) is oversold AND IBS is low (close near the low of the day).
-Long-only. No trend filter — mean reversion works in all regimes when
-entry quality is high enough. Fixed hold period for consistency.
+Buy when RSI(2) is oversold AND IBS is low. Long-only. Includes drawdown
+filter to avoid buying into sustained crashes. Fixed entry params (locked),
+optimizer tunes stop/target only.
 """
 
 from __future__ import annotations
@@ -26,12 +26,14 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.rsi_entry = float(config.get("rsi_entry", 15))
         self.ibs_entry = float(config.get("ibs_entry", 0.35))
-        self.consecutive_down = int(config.get("consecutive_down", 1))
+        self.consecutive_down = int(config.get("consecutive_down", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -75,16 +77,25 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
+
+        # Drawdown filter: skip if price is too far below recent high
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        if recent_high > 0:
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
 
         # RSI(2)
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None:
             return None
 
-        # IBS = (close - low) / (high - low) — measures where close is within the day's range
+        # IBS = (close - low) / (high - low)
         bar_range = bar.high - bar.low
         ibs = (bar.close - bar.low) / bar_range if bar_range > 0.001 else 0.5
 
@@ -120,6 +131,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
                     "rsi2": round(rsi, 1),
                     "ibs": round(ibs, 2),
                     "down_days": down_days,
+                    "drawdown": round(drawdown, 3) if recent_high > 0 else 0,
                 },
             )
 
