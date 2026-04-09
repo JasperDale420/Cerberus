@@ -1,9 +1,9 @@
-"""Daily Research v6c — IBS + RSI Dual Confirmation Mean Reversion.
+"""Daily Research v6c — High-Volume Dual Confirmation Mean Reversion.
 
-Iteration 2: Loosen dual confirmation for more trades.
-RSI(2) < 30 AND IBS < 0.4 for entry (was 20/0.25 — too tight).
-Drop momentum guard to avoid filtering out valid mean reversion.
-Keep SMA(20) trend filter. Symmetric 1.5x ATR stop/target, 3% cap.
+Iteration 3: Maximize trades via loose dual filter + momentum guard.
+RSI(2) < 35 AND IBS < 0.5 — loose individually but dual confirmation
+still filters noise. Momentum guard back (close > close[5]).
+SMA(20) trend. Symmetric 1.5x ATR, 3% cap. High trade count = less variance.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 30))
-        self.ibs_entry = float(config.get("ibs_entry", 0.4))
+        self.rsi_entry = float(config.get("rsi_entry", 35))
+        self.ibs_entry = float(config.get("ibs_entry", 0.5))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -109,6 +109,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if bar_range > 0:
             ibs = (bar.close - bar.low) / bar_range
             if ibs >= self.ibs_entry:
+                return None
+
+        # Momentum guard: close must be above close N days ago
+        if len(closes) > self.momentum_lookback:
+            if bar.close <= closes[-self.momentum_lookback - 1]:
                 return None
 
         # ATR for stop/target
