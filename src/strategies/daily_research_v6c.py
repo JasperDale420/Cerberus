@@ -1,9 +1,9 @@
-"""Daily Research v6c — Symmetric R/R + SMA Filter Mean Reversion.
+"""Daily Research v6c — Mild Asymmetric R/R + SMA + Momentum Guard.
 
-Iteration 12: RSI(25) + SMA(20), no momentum guard, symmetric 1.5x ATR.
-Iter 11 min_pf=0.82. Momentum guard may be counterproductive — filtering
-good trades and skewing small samples. SMA(20) is sufficient trend filter.
-Wider RSI(25) for more trades per window = better statistical stability.
+Iteration 13: Return to iter10 recipe (best: PASS min_pf=1.01) but with
+milder asymmetry. Stop=1.5x ATR, Target=1.2x ATR, 3% cap.
+Break-even WR = 55.6% (vs 67% for 2:1 asymmetric, 50% for symmetric).
+RSI(20) + SMA(20) + momentum guard (close > close[5]).
 """
 
 from __future__ import annotations
@@ -26,11 +26,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
         self.sma_period = int(config.get("sma_period", 20))
+        self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.2))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
@@ -101,6 +102,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # Momentum guard: close must be above close N days ago
+        if len(closes) > self.momentum_lookback:
+            if bar.close <= closes[-self.momentum_lookback - 1]:
+                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
