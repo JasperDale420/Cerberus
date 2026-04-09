@@ -1,9 +1,9 @@
-"""Daily Research Strategy v6b — SMA-filtered RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Regime-Adaptive RSI(2) Mean Reversion.
 
-Connors-style RSI(2) with trend filter:
-- Only buy above SMA(200) (bull market filter)
-- RSI(2) < 10 (deep oversold)
-- Quick exit: 1x ATR target, 2x ATR stop
+Adapts entry strictness based on regime metadata:
+- Uptrend: RSI(2) < 15 (generous, high trade count)
+- Downtrend/high-vol: RSI(2) < 5 + IBS < 0.3 (very selective, no falling knives)
+- Tight 1x ATR target for high win rate
 - Long-only, daily bars.
 """
 
@@ -26,13 +26,16 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 10))
-        self.sma_trend_period = int(config.get("sma_trend_period", 200))
+        self.rsi_entry_normal = float(config.get("rsi_entry_normal", 15))
+        self.rsi_entry_cautious = float(config.get("rsi_entry_cautious", 5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -53,11 +56,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
 
-    def _sma(self, values: list[float], period: int) -> float | None:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
-
     def _atr(self, bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
             return None
@@ -66,6 +64,23 @@ class dailyresearchv6bStrategy(BaseStrategy):
             hi, lo, pc = bars[i].high, bars[i].low, bars[i - 1].close
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
+
+    def _ibs(self, bar: Bar) -> float:
+        """Internal Bar Strength: (close - low) / (high - low)."""
+        rng = bar.high - bar.low
+        if rng <= 0:
+            return 0.5
+        return (bar.close - bar.low) / rng
+
+    def _is_cautious_regime(self, symbol_state: SymbolState) -> bool:
+        """Check if we're in a downtrend or high-vol regime via meta."""
+        meta = symbol_state.meta
+        regime_labels = meta.get("regime_labels", {})
+        trend = str(regime_labels.get("trend", "")).upper()
+        vol = str(regime_labels.get("vol", "")).upper()
+        if trend == "DOWN" or vol in ("HIGH", "SHOCK"):
+            return True
+        return False
 
     def on_bar(
         self,
@@ -81,24 +96,40 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
 
         if len(closes) < self.min_bars:
             return None
 
-        # SMA(200) trend filter — only buy in uptrends
-        sma_long = self._sma(closes, self.sma_trend_period)
-        if sma_long is None or bar.close < sma_long:
-            return None
+        # Drawdown filter — skip crash scenarios
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        if recent_high > 0:
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
 
-        # RSI(2) — deep oversold
+        # RSI(2)
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi >= self.rsi_entry:
+        if rsi is None:
             return None
 
         # ATR for stops/targets
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
+
+        # Regime-adaptive entry
+        cautious = self._is_cautious_regime(symbol_state)
+        if cautious:
+            # Stricter: RSI(2) < 5 AND IBS < 0.3
+            ibs = self._ibs(bar)
+            if rsi >= self.rsi_entry_cautious or ibs >= self.ibs_threshold:
+                return None
+        else:
+            # Normal: RSI(2) < 15
+            if rsi >= self.rsi_entry_normal:
+                return None
 
         stop_price = bar.close - atr * self.stop_atr_mult
         target_price = bar.close + atr * self.target_atr_mult
@@ -115,8 +146,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "sma_dist": round((bar.close - sma_long) / sma_long * 100, 1),
+                "cautious": cautious,
+                "ibs": round(self._ibs(bar), 2),
             },
         )
-
-        return None
