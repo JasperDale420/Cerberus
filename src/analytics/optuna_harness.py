@@ -894,6 +894,7 @@ def _apply_params_to_config(
         "breakout_period",
         "pullback_rsi_lo",
         "pullback_rsi_hi",
+        "down_days",
     }
 
     for key, value in params.items():

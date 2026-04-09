@@ -1,10 +1,9 @@
-"""Daily Research v6a — Tight RSI(2) mean reversion.
+"""Daily Research v6a — Consecutive down days mean reversion.
 
-Consistency-first: strict oversold entry, tight target for quick exits.
-- RSI(2) < 10 — deep oversold only
-- Tight ATR target (1.5x) — quick mean reversion, high hit rate
-- 2% hard stop cap
-- No trend filter — trades all regimes
+Buy after N consecutive down days (close < prior close).
+Simpler than RSI — works across all regimes.
+- N consecutive down closes as entry trigger
+- ATR-based stops and targets with 2% hard cap
 - Only blocks SHOCK volatility
 """
 
@@ -35,8 +34,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.down_days = int(config.get("down_days", 3))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
@@ -56,14 +55,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             sum(max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1])) for i in range(len(hl) - p, len(hl)))
             / p
         )
-
-    def _rsi(self, v: deque, n: int = 2) -> float | None:
-        if len(v) < n + 1:
-            return None
-        d = list(v)
-        g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
-        ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
-        return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
     def on_bar(
         self,
@@ -101,18 +92,21 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        price = list(c)[-1]
+        cl = list(c)
+        price = cl[-1]
 
-        # Block HIGH and SHOCK volatility — mean reversion fails in high vol
+        # Only block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol in ("high", "shock"):
+        if vol == "shock":
             return None
 
-        # RSI(2) deep oversold
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None or rsi2 >= self.rsi2_threshold:
+        # Check N consecutive down days
+        if len(cl) < self.down_days + 1:
             return None
+        for i in range(1, self.down_days + 1):
+            if cl[-i] >= cl[-i - 1]:
+                return None
 
         stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
         stop = price - stop_dist
