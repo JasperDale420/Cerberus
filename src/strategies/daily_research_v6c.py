@@ -1,9 +1,9 @@
-"""Daily Research v6c — Asymmetric R/R Mean Reversion.
+"""Daily Research v6c — Symmetric R/R + SMA Filter Mean Reversion.
 
-Iteration 10: Tighter RSI(20) + SMA(20) trend filter.
-Iter 9 got avg_pf=2.03 (6/7 profitable) but window 6 PF=0.41 (losses
-dwarf wins despite 53% WR). Add SMA(20) filter to avoid buying in
-short-term downtrends. Tighter RSI(20) for higher quality signals.
+Iteration 11: Symmetric 1.5x ATR + SMA(20) + RSI(20).
+Iter 10 passed 1 seed (min_pf=1.01) but failed another (0.73). The 1:2
+asymmetric R/R needs 67% WR to break even — too demanding. Switch to
+symmetric 1.5x ATR (needs only 50% WR) + keep SMA(20) filter.
 """
 
 from __future__ import annotations
@@ -30,12 +30,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
-        self.max_target_pct = float(config.get("max_target_pct", 0.02))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -114,9 +113,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Asymmetric: tight target (hit quickly), wide stop (room to breathe)
-        stop_dist = min(atr * self.stop_atr_mult, bar.close * self.max_stop_pct)
-        target_dist = min(atr * self.target_atr_mult, bar.close * self.max_target_pct)
+        # Symmetric stop/target capped at max_stop_pct
+        max_dist = bar.close * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
