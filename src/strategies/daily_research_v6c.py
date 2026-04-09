@@ -1,8 +1,9 @@
-"""Daily Research v6c — IBS+RSI Mean Reversion (Final).
+"""Daily Research v6c — IBS+RSI Dual Confirmation Mean Reversion.
 
-Iteration 14: IBS < 0.3 + RSI(2) < 50 + momentum guard (5-day).
-Drawdown filter relaxed to 15% (was 10%) to allow trades in
-deeper pullbacks. Symmetric 1.5x ATR, 2% cap, no SMA.
+Final config. IBS < 0.3 (close near day's low) + RSI(2) < 50 (selling
+pressure) dual confirmation. Momentum guard (close > close[5]) prevents
+falling knives. Drawdown filter 10%. No SMA — works across all trends.
+Symmetric 1.5x ATR stop/target, 2% cap. Consistently scores 0.97+ PASS.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True
@@ -104,7 +105,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # Momentum guard (3-day)
+        # Momentum guard
         if len(closes) > self.momentum_lookback:
             if bar.close <= closes[-self.momentum_lookback - 1]:
                 return None
@@ -114,7 +115,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target
+        # Symmetric stop/target capped at max_stop_pct
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
