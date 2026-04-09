@@ -1,10 +1,9 @@
-"""Daily Research v6a — RSI(2) mean reversion with volume confirmation.
+"""Daily Research v6a — RSI(2) mean reversion with SMA(50) trend filter.
 
-Final iteration design for CONSISTENCY:
+Best approach from 15-iteration autoresearch (iter4: min_pf=0.83):
 - SMA(50) per-symbol trend filter
 - RSI(2) oversold entry with decline confirmation
-- Volume > 1.5x 20-day average — confirms real selling pressure
-- Only blocks SHOCK volatility
+- Only blocks SHOCK volatility (mean reversion thrives in HIGH vol)
 - ATR-based exits with 2% hard stop cap
 """
 
@@ -34,7 +33,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 20))
+        self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
@@ -113,7 +112,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Only block SHOCK volatility
+        # Only block SHOCK volatility — mean reversion thrives in HIGH vol
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
@@ -133,13 +132,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             # Confirm: price declined
             if price >= cl[-2]:
                 return None
-
-            # Volume confirmation: above 1.5x 20-day average
-            vols = list(self._vol[sym])
-            if len(vols) >= 20:
-                avg_vol = sum(vols[-20:]) / 20
-                if avg_vol > 0 and vols[-1] < avg_vol * 1.5:
-                    return None
 
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
