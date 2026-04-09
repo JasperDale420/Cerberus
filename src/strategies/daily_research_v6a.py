@@ -1,7 +1,7 @@
-"""Daily Research v6a — RSI(2) + IBS mean reversion with SMA(50) filter.
+"""Daily Research v6a — RSI(2) + IBS + consecutive down days.
 
-Connors-style mean reversion:
-- Price > SMA(50) — only buy dips in medium-term uptrends
+Triple confirmation mean reversion:
+- 2+ consecutive lower closes (exhaustion selling)
 - RSI(2) < 10 deep oversold
 - IBS < 0.3 (closed in bottom 30% of daily range)
 - 1.5 ATR / 2% hard stop
@@ -38,6 +38,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.down_days = int(config.get("down_days", 2))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
@@ -66,10 +67,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
 
-    def _sma(self, v: deque, n: int) -> float | None:
-        if len(v) < n:
-            return None
-        return sum(list(v)[-n:]) / n
+    def _consecutive_down(self, c: deque, n: int) -> bool:
+        if len(c) < n + 1:
+            return False
+        d = list(c)
+        return all(d[-(i + 1)] < d[-(i + 2)] for i in range(n))
 
     def on_bar(
         self,
@@ -101,7 +103,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _evaluate(self, sym: str, bar: Bar, ms: MarketState) -> Signal | None:
         c = self._c[sym]
         h, lo = self._h[sym], self._lo[sym]
-        if len(c) < max(self.min_bars, 50) or not self._check_cooldown(sym, bar.time):
+        if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
         atr = self._atr(h, lo, c)
@@ -116,9 +118,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA(50) trend filter — only buy in medium-term uptrends
-        sma50 = self._sma(c, 50)
-        if sma50 is None or price <= sma50:
+        # Consecutive down days — exhaustion selling
+        if not self._consecutive_down(c, self.down_days):
             return None
 
         # RSI(2) deep oversold
