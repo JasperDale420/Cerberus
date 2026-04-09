@@ -1,8 +1,8 @@
-"""Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — RSI(2) Mean Reversion with recovery confirmation.
 
-Buy when RSI(2) is oversold. RSI threshold slides down as volatility rises
-(graduated, not binary). Drawdown filter prevents buying into crashes.
-Long-only, daily bars.
+Wait for RSI(2) to be oversold, then enter on the NEXT bar only if it closes
+higher (recovery confirmation). This avoids falling knives. Vol-adaptive RSI
+threshold + drawdown filter. Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
         self.allow_overnight = True
+        self._pending_entry: dict[str, bool] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
@@ -89,9 +90,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
+                self._pending_entry[symbol] = False
                 return None
 
-        # RSI(2)
+        # RSI(2) — compute on the PREVIOUS bar's close
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None:
             return None
@@ -102,14 +104,23 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # Graduated RSI threshold: slides down as vol increases
-        # vol_ratio=1.0 → threshold=25, vol_ratio=1.5 → threshold=17.5, vol_ratio=2.0 → threshold=10
+        # Graduated RSI threshold
         vol_ratio = atr_short / atr_long
         vol_excess = max(0.0, vol_ratio - 1.0)
         effective_rsi_entry = max(self.rsi_entry_floor, self.rsi_entry_base - self.vol_sensitivity * vol_excess)
 
-        # === LONG when RSI(2) oversold (graduated threshold) ===
+        # Check for recovery confirmation
+        was_pending = self._pending_entry.get(symbol, False)
+
         if rsi < effective_rsi_entry:
+            # RSI is oversold — set pending flag for next bar
+            self._pending_entry[symbol] = True
+            return None
+
+        if was_pending and len(closes) >= 2 and closes[-1] > closes[-2]:
+            # Previous bar was oversold, current bar closed UP — recovery confirmed
+            self._pending_entry[symbol] = False
+
             stop_price = bar.close - atr_long * self.stop_atr_mult
             target_price = bar.close + atr_long * self.target_atr_mult
 
@@ -126,9 +137,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
                 meta={
                     "rsi2": round(rsi, 1),
                     "vol_ratio": round(vol_ratio, 2),
-                    "eff_rsi_threshold": round(effective_rsi_entry, 1),
                     "drawdown": round(drawdown, 3),
+                    "mode": "recovery_confirmation",
                 },
             )
+
+        # Reset pending if no recovery
+        if was_pending:
+            self._pending_entry[symbol] = False
 
         return None
