@@ -1,11 +1,11 @@
-"""Daily Research v6a — RSI(2) mean reversion, regime-agnostic.
+"""Daily Research v6a — Tight RSI(2) mean reversion.
 
-Consistency-first design: trade in ALL regimes, not just uptrends.
-- RSI(2) oversold entry (no trend gate — works in up, down, flat)
-- ATR-based stops (tight) and targets
-- 2% hard stop cap for risk management
+Consistency-first: strict oversold entry, tight target for quick exits.
+- RSI(2) < 10 — deep oversold only
+- Tight ATR target (1.5x) — quick mean reversion, high hit rate
+- 2% hard stop cap
+- No trend filter — trades all regimes
 - Only blocks SHOCK volatility
-- High trade count for statistical stability across all WFO windows
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._c: dict[str, deque[float]] = {}
         self._h: dict[str, deque[float]] = {}
         self._lo: dict[str, deque[float]] = {}
-        self._vol: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
 
@@ -36,19 +35,18 @@ class dailyresearchv6aStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 25))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=120)
-            self._h[s] = deque(maxlen=120)
-            self._lo[s] = deque(maxlen=120)
-            self._vol[s] = deque(maxlen=120)
+            self._c[s] = deque(maxlen=60)
+            self._h[s] = deque(maxlen=60)
+            self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
-            self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
+            self._dhlcv[s] = [0.0, 0.0, 0.0]
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -59,7 +57,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             / p
         )
 
-    def _rsi(self, v: deque, n: int = 14) -> float | None:
+    def _rsi(self, v: deque, n: int = 2) -> float | None:
         if len(v) < n + 1:
             return None
         d = list(v)
@@ -81,8 +79,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
-            self._vol[symbol].append(d[3])
-            d[0], d[1], d[2], d[3] = bar.high, bar.low, bar.close, bar.volume
+            d[0], d[1], d[2] = bar.high, bar.low, bar.close
             sig = self._evaluate(symbol, bar, market_state)
             self._pd[symbol] = dt
             return sig
@@ -92,7 +89,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
             d[0] = max(d[0], bar.high)
             d[1] = min(d[1], bar.low)
         d[2] = bar.close
-        d[3] = bar.volume
         self._pd[symbol] = dt
         return None
 
@@ -105,8 +101,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        cl = list(c)
-        price = cl[-1]
+        price = list(c)[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -114,31 +109,23 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # RSI(14) filter — avoid deep multi-week downtrends
-        rsi14 = self._rsi(c, n=14)
-        if rsi14 is not None and rsi14 < 30:
-            return None
-
-        # RSI(2) oversold — no trend filter, works in all regimes
+        # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
-        if rsi2 is None:
+        if rsi2 is None or rsi2 >= self.rsi2_threshold:
             return None
 
-        if rsi2 < self.rsi2_threshold:
-            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
-            stop = price - stop_dist
-            target = price + atr * self.target_atr_mult
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+        stop = price - stop_dist
+        target = price + atr * self.target_atr_mult
 
-            self.last_signal_time[sym] = bar.time
-            return Signal(
-                symbol=sym,
-                side=OrderSide.BUY,
-                size_hint=1.0,
-                entry_price=price,
-                stop_price=stop,
-                target_price=target,
-                strategy=self.name,
-                generated_at=bar.time,
-            )
-
-        return None
+        self.last_signal_time[sym] = bar.time
+        return Signal(
+            symbol=sym,
+            side=OrderSide.BUY,
+            size_hint=1.0,
+            entry_price=price,
+            stop_price=stop,
+            target_price=target,
+            strategy=self.name,
+            generated_at=bar.time,
+        )
