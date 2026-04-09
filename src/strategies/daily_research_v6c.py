@@ -1,14 +1,17 @@
-"""Daily Research v6c — RSI(2) Mean Reversion with Momentum Guard.
+"""Daily Research v6c — RSI(2) Mean Reversion, Simplified.
 
-Iteration 5: Vol-adaptive stops + tighter cap.
-Iter 4: min_pf=0.51, 457 trades. DOWN+HIGH avg_pf=0.89 (close!).
-One bad DOWN+HIGH window (PF=0.51) drags min_pf.
+Iteration 6: Strip to essentials. Previous iterations added complexity
+that reduced trade count and introduced new failure modes.
 
-Changes from iter4:
-1. Vol-adaptive: when ATR > 2% of price (high vol), tighten stop
-   multiplier to 1.0x ATR to limit per-trade loss.
-2. Max stop cap 2.5% (down from 3%).
-3. Target stays 1.5x ATR — favorable risk/reward in high vol.
+Iter4 was best (min_pf=0.51, 457 trades). But added filters reduce
+trade count below v6b's 600-850, increasing per-window variance.
+
+Approach: Pure RSI(2) mean reversion with TIGHT risk management.
+- RSI(2) < 25 entry
+- 10% drawdown filter (tighter than v6b's 12%)
+- 1.5x ATR symmetric stop/target (tighter than v6b's 2x)
+- 3% max stop cap (tighter than v6b's 4%)
+- No SMA, no momentum guard, no vol-adaptive — just simple + tight.
 """
 
 from __future__ import annotations
@@ -36,12 +39,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
-        self.momentum_lookback = int(config.get("momentum_lookback", 5))
-        self.high_vol_threshold = float(config.get("high_vol_threshold", 0.02))
-        self.high_vol_stop_mult = float(config.get("high_vol_stop_mult", 1.0))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -90,19 +90,13 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Drawdown filter
+        # Drawdown filter — tighter to avoid stocks in freefall
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
-                return None
-
-        # Momentum guard: don't buy if price is at a new 5-bar low
-        if len(closes) >= self.momentum_lookback + 1:
-            recent_min = min(closes[-(self.momentum_lookback + 1) : -1])
-            if bar.close < recent_min:
                 return None
 
         # RSI(2) oversold entry
@@ -115,15 +109,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Vol-adaptive stop: tighter in high-ATR environments
-        atr_pct = atr / bar.close
-        if atr_pct > self.high_vol_threshold:
-            stop_mult = self.high_vol_stop_mult
-        else:
-            stop_mult = self.stop_atr_mult
-
+        # Tight symmetric stop/target
         max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr * stop_mult, max_dist)
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
@@ -141,6 +129,5 @@ class dailyresearchv6cStrategy(BaseStrategy):
             meta={
                 "rsi2": round(rsi, 1),
                 "drawdown": round(drawdown, 3),
-                "atr_pct": round(atr_pct, 4),
             },
         )
