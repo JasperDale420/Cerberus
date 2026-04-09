@@ -1,11 +1,10 @@
-"""Daily Research v6a — Connors RSI(2) mean reversion, tight exits.
+"""Daily Research v6a — Connors-style RSI(2) mean reversion.
 
-Simple, fast mean reversion with minimal filtering:
-- SMA(50) per-symbol uptrend filter
-- RSI(2) < 10: strict oversold (Connors research)
-- Block SHOCK volatility only
-- Tight stops and targets for quick 1-3 day bounces
-- Short max hold to avoid extended exposure
+Best configuration from 15-iteration autoresearch:
+- SMA(50) per-symbol trend filter
+- RSI(2) < 10: strict oversold threshold (Connors research)
+- Block HIGH and SHOCK volatility regimes
+- ATR-based stops and targets with 2% hard cap
 """
 
 from __future__ import annotations
@@ -35,8 +34,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.75))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.sma_period = int(config.get("sma_period", 50))
         self.allow_overnight = True
@@ -113,18 +112,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Block SHOCK volatility only
+        # Block HIGH and SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
-        # SMA(50) per-symbol uptrend filter + proximity check
+        # SMA(50) per-symbol uptrend filter
         sma = self._sma(cl, self.sma_period)
         if sma is None or price < sma:
-            return None
-        # Proximity: price must be within 5% of SMA (not overextended)
-        if price > sma * 1.05:
             return None
 
         # RSI(2) strict oversold — Connors-style
