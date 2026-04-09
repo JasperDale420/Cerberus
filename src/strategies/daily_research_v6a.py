@@ -102,7 +102,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        price = list(c)[-1]
+        cl = list(c)
+        price = cl[-1]
 
         # Regime gate: only trade in UP trends
         snap = ms.regime_snapshot
@@ -112,10 +113,16 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if trend != "up":
             return None
 
-        # Block SHOCK volatility
+        # Block SHOCK and HIGH volatility
         vol = str(snap.vol.value).lower() if snap.vol else ""
-        if vol == "shock":
+        if vol in ("shock", "high"):
             return None
+
+        # Per-symbol SMA(10) gate — stock must be in short-term uptrend
+        if len(cl) >= 10:
+            sma10 = sum(cl[-10:]) / 10
+            if price < sma10:
+                return None
 
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
