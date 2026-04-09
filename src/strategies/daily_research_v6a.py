@@ -1,11 +1,10 @@
-"""Daily Research v6a — RSI(2) mean reversion with tight targets.
+"""Daily Research v6a — RSI(2) mean reversion with SMA(20) trend filter.
 
-Key design: mean reversion = frequent small wins.
-- SMA(50) per-symbol trend filter
-- RSI(2) < 20 oversold entry (wider for more trades)
-- Tight target (1.5 ATR) — take profits quickly
-- Wider stop (3% cap) — give trades room
-- Only blocks SHOCK volatility
+Key design: SMA(20) adapts faster than SMA(50), more trades in transitions.
+- SMA(20) per-symbol short-term trend filter
+- RSI(2) < threshold oversold entry
+- Block HIGH and SHOCK vol — avoid falling knives in high-vol downtrends
+- ATR-based exits with 2% hard stop cap
 """
 
 from __future__ import annotations
@@ -35,8 +34,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
@@ -113,15 +112,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Only block SHOCK volatility
+        # Block HIGH and SHOCK volatility — avoid falling knives
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if vol in ("high", "shock"):
             return None
 
-        # SMA(50) per-symbol uptrend filter
-        sma50 = self._sma(cl, 50)
-        if sma50 is None or price < sma50:
+        # SMA(20) short-term uptrend filter — adapts faster than SMA(50)
+        sma20 = self._sma(cl, 20)
+        if sma20 is None or price < sma20:
             return None
 
         # RSI(2) oversold — wider threshold for more trades
@@ -130,8 +129,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             return None
 
         if rsi2 < self.rsi2_threshold:
-            # Wider stop (3% cap) — give trades room to breathe
-            stop_dist = min(atr * self.stop_atr_mult, price * 0.03)
+            stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             # Tight target — take small profits quickly
             target = price + atr * self.target_atr_mult
