@@ -1,9 +1,8 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
-Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
-- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
+iter10: RSI entry 25→30, highvol 10→15 (more trades, less variance).
+- Price-based trend filter: close > SMA(20)
+- RSI(2) < 30 normal, RSI(2) < 15 in high-vol (ATR ratio only)
 - 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
@@ -30,8 +29,8 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
+        self.rsi_entry = float(config.get("rsi_entry", 30))
+        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 15))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
