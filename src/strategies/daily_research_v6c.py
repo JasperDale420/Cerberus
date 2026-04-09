@@ -1,17 +1,14 @@
-"""Daily Research v6c — RSI(2) Mean Reversion, Simplified.
+"""Daily Research v6c — Consecutive Lower Closes Mean Reversion.
 
-Iteration 6: Strip to essentials. Previous iterations added complexity
-that reduced trade count and introduced new failure modes.
+Iteration 7: Fundamentally different approach. RSI(2) has structural
+PF variance that can't be tuned away (iters 1-6, best min_pf=0.51).
 
-Iter4 was best (min_pf=0.51, 457 trades). But added filters reduce
-trade count below v6b's 600-850, increasing per-window variance.
-
-Approach: Pure RSI(2) mean reversion with TIGHT risk management.
-- RSI(2) < 25 entry
-- 10% drawdown filter (tighter than v6b's 12%)
-- 1.5x ATR symmetric stop/target (tighter than v6b's 2x)
-- 3% max stop cap (tighter than v6b's 4%)
-- No SMA, no momentum guard, no vol-adaptive — just simple + tight.
+New approach: Buy after 3+ consecutive lower closes (exhaustion selling).
+This is a proven high-win-rate pattern (Connors-style). Combined with:
+- Tight drawdown filter (10%)
+- Short max hold (3 days) to limit exposure
+- 1.5x ATR symmetric stop/target, 3% cap
+- RSI(2) < 50 confirmation (not oversold, just declining)
 """
 
 from __future__ import annotations
@@ -34,9 +31,9 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.consec_down = int(config.get("consec_down", 3))
+        self.rsi_confirm = float(config.get("rsi_confirm", 50))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
@@ -71,6 +68,14 @@ class dailyresearchv6cStrategy(BaseStrategy):
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
 
+    def _consecutive_down(self, closes: list[float], n: int) -> bool:
+        if len(closes) < n + 1:
+            return False
+        for i in range(1, n + 1):
+            if closes[-i] >= closes[-i - 1]:
+                return False
+        return True
+
     def on_bar(
         self,
         symbol: str,
@@ -90,7 +95,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Drawdown filter — tighter to avoid stocks in freefall
+        # Drawdown filter
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
@@ -99,9 +104,13 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2) oversold entry
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi >= self.rsi_entry:
+        # Core signal: 3+ consecutive lower closes
+        if not self._consecutive_down(closes, self.consec_down):
+            return None
+
+        # RSI(2) confirmation: declining but not necessarily extreme
+        rsi = self._rsi(closes, 2)
+        if rsi is None or rsi >= self.rsi_confirm:
             return None
 
         # ATR for stop/target
@@ -128,6 +137,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
+                "consec_down": self.consec_down,
                 "drawdown": round(drawdown, 3),
             },
         )
