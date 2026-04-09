@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) mean reversion, no trend gate.
+"""Daily Research v6a — RSI(2) mean reversion with SMA10 trend filter.
 
-High-trade-count design for statistical reliability:
-- RSI(2) identifies oversold conditions (threshold ~40)
+Balanced design: enough trades for reliability, trend filter for bear protection:
+- RSI(2) identifies oversold conditions
+- SMA10 fast trend gate: blocks acute downtrends
 - 2-day consecutive decline confirmation
 - ATR-based stops and targets with 2% hard cap
-- No trend filter — works across all regimes
 """
 
 from __future__ import annotations
@@ -115,6 +115,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
+            return None
+
+        # SMA10 fast trend gate: blocks acute downtrends
+        sma10 = self._sma(cl, 10)
+        if sma10 is not None and price < sma10:
             return None
 
         # RSI(2) oversold — mean reversion signal
