@@ -1,8 +1,9 @@
-"""Daily Research v6c — Tight Drawdown IBS+RSI Mean Reversion.
+"""Daily Research v6c — Asymmetric IBS+RSI Mean Reversion.
 
-Session 3, Iteration 13: Restore s2-iter10 exact config (PASS 0.97).
+Session 4, Iteration 2: Asymmetric risk management.
 IBS < 0.3 + RSI(2) < 50 + momentum guard(5) + drawdown 10%.
-Symmetric 1.5x ATR, 2% cap. No SMA filter.
+Tight stop (1.0x ATR, 1.5% cap) + wide target (2.0x ATR, 3% cap).
+Limits per-trade losses while letting winners run.
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.015))
+        self.max_target_pct = float(config.get("max_target_pct", 0.03))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -114,10 +116,11 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Symmetric stop/target capped at 2%
-        max_dist = bar.close * self.max_stop_pct
-        stop_dist = min(atr * self.stop_atr_mult, max_dist)
-        target_dist = min(atr * self.target_atr_mult, max_dist)
+        # Asymmetric: tight stop, wide target
+        stop_cap = bar.close * self.max_stop_pct
+        target_cap = bar.close * self.max_target_pct
+        stop_dist = min(atr * self.stop_atr_mult, stop_cap)
+        target_dist = min(atr * self.target_atr_mult, target_cap)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
