@@ -34,8 +34,8 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr = float(config.get("stop_atr", 1.5))
-        self.target_atr = float(config.get("target_atr", 2.0))
+        self.stop_atr = float(config.get("stop_atr", 2.0))
+        self.target_atr = float(config.get("target_atr", 1.5))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
