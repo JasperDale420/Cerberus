@@ -1,7 +1,8 @@
-"""Daily Research Strategy v6b — RSI(2) Mean Reversion with regime filter.
+"""Daily Research Strategy v6b — RSI(2) + IBS Mean Reversion.
 
-Buy when short-term RSI is oversold. Long-only. Uses SMA(50) trend filter
-and regime labels to avoid buying into crashes. Tighter stops in high vol.
+Buy when RSI(2) is oversold AND IBS is low (close near the low of the day).
+Long-only. No trend filter — mean reversion works in all regimes when
+entry quality is high enough. Fixed hold period for consistency.
 """
 
 from __future__ import annotations
@@ -25,11 +26,12 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.ibs_entry = float(config.get("ibs_entry", 0.35))
+        self.consecutive_down = int(config.get("consecutive_down", 1))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -49,11 +51,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             return 100.0
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
-
-    def _sma(self, values: list[float], period: int) -> float | None:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     def _atr(self, bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
@@ -82,39 +79,31 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Regime filter: skip when DOWN trend + HIGH/SHOCK vol
-        meta = symbol_state.meta if isinstance(symbol_state.meta, dict) else {}
-        regime_labels = meta.get("regime_labels", {})
-        trend = regime_labels.get("trend", "").upper()
-        vol = regime_labels.get("vol", "").upper()
-
-        if trend == "DOWN" and vol in ("HIGH", "SHOCK"):
-            return None
-
-        # SMA(50) trend filter — only buy above the SMA
-        if len(closes) >= self.sma_period:
-            sma = self._sma(closes, self.sma_period)
-            if sma is not None and closes[-1] < sma:
-                return None
-
         # RSI(2)
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None:
             return None
+
+        # IBS = (close - low) / (high - low) — measures where close is within the day's range
+        bar_range = bar.high - bar.low
+        ibs = (bar.close - bar.low) / bar_range if bar_range > 0.001 else 0.5
+
+        # Count consecutive down closes
+        down_days = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                down_days += 1
+            else:
+                break
 
         # ATR for stop/target
         atr = self._atr(bars)
         if atr is None or atr < 0.01:
             return None
 
-        # Adjust stops by vol regime
-        stop_mult = self.stop_atr_mult
-        if vol in ("HIGH", "SHOCK"):
-            stop_mult = self.stop_atr_mult * 1.5  # Wider stops in high vol
-
-        # === LONG when RSI(2) oversold ===
-        if rsi < self.rsi_entry:
-            stop_price = bar.close - atr * stop_mult
+        # === LONG when RSI(2) oversold + IBS low + down days ===
+        if rsi < self.rsi_entry and ibs < self.ibs_entry and down_days >= self.consecutive_down:
+            stop_price = bar.close - atr * self.stop_atr_mult
             target_price = bar.close + atr * self.target_atr_mult
 
             self.last_signal_time[symbol] = bar.time
@@ -127,7 +116,11 @@ class dailyresearchv6bStrategy(BaseStrategy):
                 target_price=target_price,
                 strategy=self.name,
                 generated_at=bar.time,
-                meta={"rsi2": round(rsi, 1), "trend": trend, "vol": vol},
+                meta={
+                    "rsi2": round(rsi, 1),
+                    "ibs": round(ibs, 2),
+                    "down_days": down_days,
+                },
             )
 
         return None
