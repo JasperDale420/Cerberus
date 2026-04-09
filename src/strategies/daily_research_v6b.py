@@ -30,7 +30,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25))
-        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 5))
+        self.rsi_entry_highvol = float(config.get("rsi_entry_highvol", 10))
         self.vol_ratio_threshold = float(config.get("vol_ratio_threshold", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 3.0))
@@ -115,6 +115,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         if rsi >= effective_rsi_entry:
             return None
+
+        # IBS filter — confirm weak close (lower 60% of range)
+        rng = bar.high - bar.low
+        if rng > 0:
+            ibs = (bar.close - bar.low) / rng
+            if ibs > 0.6:
+                return None
 
         # Stop/target with cap at max_stop_pct of price
         max_dist = bar.close * self.max_stop_pct
