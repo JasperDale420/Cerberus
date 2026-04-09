@@ -30,6 +30,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
+        self.sma_fast_period = int(config.get("sma_fast_period", 20))
         self.trend_period = int(config.get("trend_period", 50))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
@@ -37,7 +38,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.stop_atr = float(config.get("stop_atr", 3.0))
         self.target_atr = float(config.get("target_atr", 4.0))
         self.allow_overnight = True
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
         if len(closes) < period + 1:
@@ -86,11 +87,12 @@ class dailyresearchv6dStrategy(BaseStrategy):
 
         price = closes[-1]
 
-        # Trend filter: price above SMA(trend_period) = uptrend
+        # Dual SMA trend filter: price > SMA(fast) AND SMA(fast) > SMA(slow)
         if len(closes) < self.trend_period:
             return None
-        sma = sum(closes[-self.trend_period :]) / self.trend_period
-        if price < sma:
+        sma_slow = sum(closes[-self.trend_period :]) / self.trend_period
+        sma_fast = sum(closes[-self.sma_fast_period :]) / self.sma_fast_period
+        if price < sma_fast or sma_fast < sma_slow:
             return None
 
         # RSI(2) — buy on short-term oversold dip
