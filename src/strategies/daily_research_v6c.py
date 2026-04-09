@@ -1,9 +1,9 @@
 """Daily Research v6c — Asymmetric R/R Mean Reversion.
 
-Iteration 9: Asymmetric R/R + momentum guard + Optuna param space.
-Problem: iter8 tight symmetric stops cause time-exit losses (WR~45% but
-avg_loss >> avg_win). Fix: tight target (1x ATR, hit quickly) + wide stop
-(2x ATR, room to breathe). Momentum guard filters freefall entries.
+Iteration 10: Tighter RSI(20) + SMA(20) trend filter.
+Iter 9 got avg_pf=2.03 (6/7 profitable) but window 6 PF=0.41 (losses
+dwarf wins despite 53% WR). Add SMA(20) filter to avoid buying in
+short-term downtrends. Tighter RSI(20) for higher quality signals.
 """
 
 from __future__ import annotations
@@ -26,7 +26,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
@@ -90,6 +91,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if recent_high > 0:
             drawdown = (recent_high - bar.close) / recent_high
             if drawdown > self.max_drawdown_pct:
+                return None
+
+        # SMA trend filter: only buy if close > SMA(20)
+        if len(closes) >= self.sma_period:
+            sma = sum(closes[-self.sma_period :]) / self.sma_period
+            if bar.close < sma:
                 return None
 
         # RSI(2) oversold entry
