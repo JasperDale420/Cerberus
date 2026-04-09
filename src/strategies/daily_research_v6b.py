@@ -1,9 +1,10 @@
-"""Daily Research Strategy v6b — Regime-Adaptive RSI(2) Mean Reversion.
+"""Daily Research Strategy v6b — Simple RSI(2) Mean Reversion.
 
-Adapts entry strictness based on regime metadata:
-- Uptrend: RSI(2) < 15 (generous, high trade count)
-- Downtrend/high-vol: RSI(2) < 5 + IBS < 0.3 (very selective, no falling knives)
-- Tight 1x ATR target for high win rate
+Simple and robust:
+- RSI(2) < 20 + IBS < 0.5 (moderate filter, decent trade count)
+- Drawdown filter prevents crash entries
+- No regime gating (trades everywhere for consistency)
+- 2.5x ATR stop, 1.5x ATR target
 - Long-only, daily bars.
 """
 
@@ -28,12 +29,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry_normal = float(config.get("rsi_entry_normal", 10))
-        self.rsi_entry_cautious = float(config.get("rsi_entry_cautious", 5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
-        self.ibs_threshold_cautious = float(config.get("ibs_threshold_cautious", 0.25))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
@@ -66,23 +65,6 @@ class dailyresearchv6bStrategy(BaseStrategy):
             tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
         return sum(tr_vals) / len(tr_vals)
 
-    def _ibs(self, bar: Bar) -> float:
-        """Internal Bar Strength: (close - low) / (high - low)."""
-        rng = bar.high - bar.low
-        if rng <= 0:
-            return 0.5
-        return (bar.close - bar.low) / rng
-
-    def _is_cautious_regime(self, symbol_state: SymbolState) -> bool:
-        """Check if we're in a downtrend or high-vol regime via meta."""
-        meta = symbol_state.meta
-        regime_labels = meta.get("regime_labels", {})
-        trend = str(regime_labels.get("trend", "")).upper()
-        vol = str(regime_labels.get("vol", "")).upper()
-        if trend == "DOWN" or vol in ("HIGH", "SHOCK"):
-            return True
-        return False
-
     def on_bar(
         self,
         symbol: str,
@@ -110,29 +92,22 @@ class dailyresearchv6bStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2)
+        # RSI(2) — oversold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None:
+        if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # IBS — must close in lower half of range
+        rng = bar.high - bar.low
+        if rng > 0:
+            ibs = (bar.close - bar.low) / rng
+            if ibs >= self.ibs_threshold:
+                return None
 
         # ATR for stops/targets
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
-
-        # IBS filter — all entries must close near the low
-        ibs = self._ibs(bar)
-
-        # Regime-adaptive entry
-        cautious = self._is_cautious_regime(symbol_state)
-        if cautious:
-            # Stricter: RSI(2) < 5 AND IBS < 0.25
-            if rsi >= self.rsi_entry_cautious or ibs >= self.ibs_threshold_cautious:
-                return None
-        else:
-            # Normal: RSI(2) < 10 AND IBS < 0.4
-            if rsi >= self.rsi_entry_normal or ibs >= self.ibs_threshold:
-                return None
 
         stop_price = bar.close - atr * self.stop_atr_mult
         target_price = bar.close + atr * self.target_atr_mult
@@ -149,7 +124,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
-                "cautious": cautious,
-                "ibs": round(self._ibs(bar), 2),
+                "ibs": round(ibs if rng > 0 else 0.5, 2),
+                "drawdown": round(drawdown, 3),
             },
         )

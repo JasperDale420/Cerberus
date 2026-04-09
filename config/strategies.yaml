@@ -245,16 +245,14 @@ strategies:
     enabled: true
     min_bars: 20
     rsi_period: 2
-    rsi_entry_normal: 10
-    rsi_entry_cautious: 5
-    ibs_threshold: 0.4
-    ibs_threshold_cautious: 0.25
-    stop_atr_mult: 2.0
+    rsi_entry: 20
+    ibs_threshold: 0.5
+    stop_atr_mult: 2.5
     target_atr_mult: 1.5
     max_drawdown_pct: 0.15
     drawdown_lookback: 40
     allow_overnight: true
-    max_hold_days: 3
+    max_hold_days: 5
     cooldown_bars: 1
     activation:
       session: [opening, midday, power_hour]
