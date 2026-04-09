@@ -85,14 +85,16 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if ema_f <= ema_s:
             return None
 
-        # Pullback: price must be near (within pullback_pct of) fast EMA
-        distance = (price - ema_f) / ema_f
-        if distance > self.pullback_pct or distance < -self.pullback_pct:
+        # Cross-above: price crossed above fast EMA (yesterday below, today above)
+        if len(closes) < 2:
             return None
-
-        # Bounce confirmation: today's close > yesterday's close
-        if len(closes) < 2 or price <= closes[-2]:
+        prev_ema_f = self._ema(closes[:-1], self.ema_fast)
+        if prev_ema_f is None:
             return None
+        if closes[-2] >= prev_ema_f:
+            return None  # Was already above — not a fresh cross
+        if price < ema_f:
+            return None  # Still below — hasn't crossed yet
 
         # ATR for stop/target sizing
         atr = self._atr(bars, self.atr_period)
