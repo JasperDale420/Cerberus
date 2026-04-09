@@ -122,13 +122,6 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if rsi is None or rsi >= self.rsi_entry:
             return None
 
-        # Volume confirmation: require today's volume >= 80% of 20-day avg
-        volumes = [b.volume for b in bars]
-        if len(volumes) >= 20:
-            avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume < avg_vol * 0.8:
-                return None
-
         # Symmetric stop/target capped at max_stop_pct of price
         max_dist = price * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr, max_dist)
