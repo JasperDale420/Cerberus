@@ -1,10 +1,10 @@
-"""Daily Research v6a — RSI(2) + IBS dual oversold mean reversion.
+"""Daily Research v6a — RSI(2) uptick mean reversion.
 
-Best approach from iteration: RSI(2) < 10 (deep oversold) combined with
-IBS < 0.3 (closed in lower 30% of daily range). Dual confirmation
-improves signal quality.
-- No trend filter — trades all regimes
-- ATR-based stops/targets with 2% hard cap
+Entry on recovery, not at the bottom:
+- Yesterday's RSI(2) was < threshold (oversold)
+- Today's close > yesterday's close (recovery starting)
+- IBS < 0.3 confirmation (closed in lower range)
+- Wider stop (2.0 ATR / 3%) to let mean reversion play out
 - Only blocks SHOCK volatility
 """
 
@@ -30,14 +30,15 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self._lo: dict[str, deque[float]] = {}
         self._pd: dict[str, date | None] = {}
         self._dhlcv: dict[str, list[float]] = {}
+        self._prev_rsi2: dict[str, float | None] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -47,6 +48,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._lo[s] = deque(maxlen=60)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0]
+            self._prev_rsi2[s] = None
 
     def _atr(self, h: deque, lo: deque, c: deque, p: int = 14) -> float | None:
         if len(h) < p + 1:
@@ -79,6 +81,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
             self._c[symbol].append(d[2])
             self._h[symbol].append(d[0])
             self._lo[symbol].append(d[1])
+            # Save previous RSI(2) before updating
+            self._prev_rsi2[symbol] = self._rsi(self._c[symbol], n=2)
             d[0], d[1], d[2] = bar.high, bar.low, bar.close
             sig = self._evaluate(symbol, bar, market_state)
             self._pd[symbol] = dt
@@ -102,7 +106,8 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if not atr or atr < 0.01:
             return None
 
-        price = list(c)[-1]
+        cl = list(c)
+        price = cl[-1]
 
         # Only block SHOCK volatility
         snap = ms.regime_snapshot
@@ -110,12 +115,18 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # RSI(2) deep oversold
-        rsi2 = self._rsi(c, n=2)
-        if rsi2 is None or rsi2 >= self.rsi2_threshold:
+        # RSI(2) uptick confirmation:
+        # Previous bar's RSI(2) was oversold (<threshold)
+        # AND current close > prior close (recovery starting)
+        prev_rsi = self._prev_rsi2[sym]
+        if prev_rsi is None or prev_rsi >= self.rsi2_threshold:
             return None
 
-        # IBS confirmation — closed in lower 30% of daily range
+        # Recovery: price must be up from prior close
+        if len(cl) < 2 or price <= cl[-2]:
+            return None
+
+        # IBS confirmation — yesterday closed in lower 30% of range
         hl, ll = list(h), list(lo)
         day_range = hl[-1] - ll[-1]
         if day_range > 0:
@@ -123,7 +134,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
             if ibs > 0.3:
                 return None
 
-        stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
+        stop_dist = min(atr * self.stop_atr_mult, price * 0.03)
         stop = price - stop_dist
         target = price + atr * self.target_atr_mult
 
