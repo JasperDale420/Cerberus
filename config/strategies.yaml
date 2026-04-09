@@ -266,7 +266,7 @@ strategies:
     enabled: true
     min_bars: 20
     rsi_entry: 35
-    ibs_entry: 0.5
+    ibs_entry: 0.4
     sma_period: 20
     momentum_lookback: 5
     stop_atr_mult: 1.5

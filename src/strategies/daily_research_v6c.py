@@ -1,9 +1,9 @@
-"""Daily Research v6c — High-Volume Dual Confirmation Mean Reversion.
+"""Daily Research v6c — Dual Confirmation Mean Reversion.
 
-Iteration 3: Maximize trades via loose dual filter + momentum guard.
-RSI(2) < 35 AND IBS < 0.5 — loose individually but dual confirmation
-still filters noise. Momentum guard back (close > close[5]).
-SMA(20) trend. Symmetric 1.5x ATR, 3% cap. High trade count = less variance.
+Iteration 4: Tighten IBS to 0.4 (from 0.5) for better signal quality.
+RSI(2) < 35 AND IBS < 0.4 + momentum guard + SMA(20).
+Symmetric 1.5x ATR, 3% cap. Iter3 scored 0.97 — tighter IBS should
+filter marginal trades and improve worst-window PF.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 35))
-        self.ibs_entry = float(config.get("ibs_entry", 0.5))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
