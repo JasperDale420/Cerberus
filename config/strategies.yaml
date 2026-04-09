@@ -291,7 +291,7 @@ strategies:
     enabled: true
     min_bars: 50
     allow_overnight: true
-    max_hold_days: 5
+    max_hold_days: 10
     cooldown_bars: 1
     bar_duration_minutes: 1440
     trend_period: 50
