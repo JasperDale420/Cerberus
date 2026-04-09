@@ -1,8 +1,8 @@
-"""Daily Research v6a — Pure RSI(2) mean reversion, no trend filter.
+"""Daily Research v6a — RSI(2) mean reversion with SMA(200) trend filter.
 
 Designed for CONSISTENCY across all market regimes:
-- RSI(2) oversold entry — works in UP, DOWN, and FLAT markets
-- No SMA trend filter (removes directional bias)
+- SMA(200) loose trend filter — allows trades in mild corrections
+- RSI(2) < 10 strict oversold (Connors research)
 - Only blocks SHOCK volatility
 - Tight ATR-based exits for quick mean reversion captures
 - 2% hard stop cap
@@ -34,19 +34,19 @@ class dailyresearchv6aStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 20))
+        self.min_bars = int(config.get("min_bars", 205))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 15))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
         if s not in self._c:
-            self._c[s] = deque(maxlen=120)
-            self._h[s] = deque(maxlen=120)
-            self._lo[s] = deque(maxlen=120)
-            self._vol[s] = deque(maxlen=120)
+            self._c[s] = deque(maxlen=250)
+            self._h[s] = deque(maxlen=250)
+            self._lo[s] = deque(maxlen=250)
+            self._vol[s] = deque(maxlen=250)
             self._pd[s] = None
             self._dhlcv[s] = [0.0, 0.0, 0.0, 0.0]
 
@@ -66,6 +66,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         g = sum(max(d[i] - d[i - 1], 0) for i in range(-n, 0))
         ls = sum(max(d[i - 1] - d[i], 0) for i in range(-n, 0))
         return 100.0 if ls == 0 else 100.0 - 100.0 / (1.0 + g / ls)
+
+    def _sma(self, vals: list[float], period: int) -> float | None:
+        if len(vals) < period:
+            return None
+        return sum(vals[-period:]) / period
 
     def on_bar(
         self,
@@ -108,19 +113,24 @@ class dailyresearchv6aStrategy(BaseStrategy):
         cl = list(c)
         price = cl[-1]
 
-        # Only block SHOCK volatility — mean reversion works in HIGH vol
+        # Only block SHOCK volatility
         snap = ms.regime_snapshot
         vol = str(snap.vol.value).lower() if snap and snap.vol else ""
         if vol == "shock":
             return None
 
-        # RSI(2) oversold — pure mean reversion, no trend filter
+        # SMA(200) loose trend filter — most stocks above this even in corrections
+        sma200 = self._sma(cl, 200)
+        if sma200 is None or price < sma200:
+            return None
+
+        # RSI(2) strict oversold — Connors-style
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
 
         if rsi2 < self.rsi2_threshold:
-            # Confirm: price declined (not a gap-up with low RSI)
+            # Confirm decline
             if price >= cl[-2]:
                 return None
 
