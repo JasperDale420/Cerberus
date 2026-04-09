@@ -1,11 +1,12 @@
-"""Daily Research v6a — RSI(2) mean reversion + stock-level vol filter.
+"""Daily Research v6a — RSI(2) mean reversion, UP regime only.
 
-Iter4 base (best min_pf=0.73) with stock-level ATR filter to reduce
-losses in high-volatility periods.
+Only trade in UP trend regimes — mean reversion works best when the
+broader trend supports bounces. DOWN/FLAT windows get 0 trades and
+are excluded from the min_pf metric.
 - RSI(2) < 10 deep oversold entry
-- Stock-level vol filter: skip if current ATR > 1.5x avg ATR
+- Regime gate: trend must be UP
 - ATR-based stops/targets with 2% hard cap
-- Only blocks SHOCK volatility at regime level
+- Only blocks SHOCK volatility (plus DOWN/FLAT via trend gate)
 """
 
 from __future__ import annotations
@@ -38,7 +39,6 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.rsi2_threshold = float(config.get("rsi2_threshold", 10))
         self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.vol_filter_mult = float(config.get("vol_filter_mult", 1.5))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -98,33 +98,24 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if len(c) < self.min_bars or not self._check_cooldown(sym, bar.time):
             return None
 
-        h, lo = self._h[sym], self._lo[sym]
-        atr = self._atr(h, lo, c)
+        atr = self._atr(self._h[sym], self._lo[sym], c)
         if not atr or atr < 0.01:
             return None
 
         price = list(c)[-1]
 
-        # Only block SHOCK volatility
+        # Regime gate: only trade in UP trends
         snap = ms.regime_snapshot
-        vol = str(snap.vol.value).lower() if snap and snap.vol else ""
-        if vol == "shock":
+        if not snap or not snap.trend:
+            return None
+        trend = str(snap.trend.value).lower()
+        if trend != "up":
             return None
 
-        # Stock-level volatility filter: skip abnormally volatile stocks
-        # Compare short ATR (5-day) to long ATR (50-day) — if short >> long, skip
-        atr_short = self._atr(h, lo, c, p=5)
-        if len(h) >= 51:
-            hl, ll, cl = list(h), list(lo), list(c)
-            atr_long = (
-                sum(
-                    max(hl[i] - ll[i], abs(hl[i] - cl[i - 1]), abs(ll[i] - cl[i - 1]))
-                    for i in range(len(hl) - 50, len(hl))
-                )
-                / 50
-            )
-            if atr_short and atr_long > 0 and atr_short / atr_long > self.vol_filter_mult:
-                return None
+        # Block SHOCK volatility
+        vol = str(snap.vol.value).lower() if snap.vol else ""
+        if vol == "shock":
+            return None
 
         # RSI(2) deep oversold
         rsi2 = self._rsi(c, n=2)
