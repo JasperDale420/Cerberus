@@ -1,7 +1,8 @@
 """Daily Research Strategy v6b — Volatility-Adaptive RSI(2) Mean Reversion.
 
-iter15: Combined vol detection — ATR ratio spike + regime labels for sustained high vol.
-- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (detected via ATR5/14 ratio OR regime labels)
+iter1: Trend filter — skip DOWN trend entirely (classic RSI2 rule: only buy in uptrends).
+- Regime-label trend gate: only trade when trend=UP or FLAT
+- RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio)
 - 3x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
@@ -105,15 +106,15 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr_short is None or atr_long is None or atr_long < 0.01:
             return None
 
-        # Volatility-adaptive RSI threshold (combined: ATR ratio + regime labels)
-        vol_ratio = atr_short / atr_long
-        is_high_vol = vol_ratio > self.vol_ratio_threshold
+        # Trend filter — skip DOWN trend entirely
         regime_labels = symbol_state.meta.get("regime_labels", {})
-        vol_label = str(regime_labels.get("vol", "")).upper()
-        if vol_label in ("HIGH", "SHOCK"):
-            is_high_vol = True
+        trend_label = str(regime_labels.get("trend", "")).upper()
+        if trend_label == "DOWN":
+            return None
 
-        if is_high_vol:
+        # Volatility-adaptive RSI threshold (ATR ratio)
+        vol_ratio = atr_short / atr_long
+        if vol_ratio > self.vol_ratio_threshold:
             effective_rsi_entry = self.rsi_entry_highvol
         else:
             effective_rsi_entry = self.rsi_entry
