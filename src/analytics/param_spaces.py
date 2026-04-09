@@ -76,7 +76,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "stop_atr": 1.5,
         "target_atr": 2.0,
         "max_stop_pct": 0.02,
-        "max_target_pct": 0.03,
     },
 }
 
@@ -179,7 +178,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=0.5, high=1.5, step=0.5, description="ATR target"),
         ParamDef("momentum_lookback", "int", low=3, high=10, step=1, description="Momentum lookback days"),
     ],
-    "daily_research_v6d": [],
+    "daily_research_v6d": [
+        ParamDef("max_atr_pct", "float", low=0.02, high=0.05, step=0.005, description="Max ATR/price ratio"),
+    ],
 }
 
 

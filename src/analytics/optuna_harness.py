@@ -912,6 +912,7 @@ def _apply_params_to_config(
         "drawdown_lookback",
         "max_stop_pct",
         "max_target_pct",
+        "max_atr_pct",
         "stop_pct",
         "target_pct",
         "ema_fast",

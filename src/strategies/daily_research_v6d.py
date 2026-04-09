@@ -1,11 +1,11 @@
-"""Daily Research v6d — RSI(2) mean reversion in uptrends.
+"""Daily Research v6d — RSI(2) mean reversion, high-frequency variant.
 
-Buy short-term oversold dips when the long-term trend is up.
-Long-only. Few parameters. Uses symbol_state.bars directly.
+Buy short-term oversold dips when trend is up. Wide RSI threshold
+for maximum trade count. Short hold period. Symmetric tight stops.
 
 Rules:
-  ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period)
-  EXIT: ATR-based stop/target, stop capped at max_stop_pct
+  ENTRY: RSI(2) < rsi_entry AND price > SMA(trend_period) AND ATR/price < max_atr_pct
+  EXIT: ATR-based stop/target capped at max_stop_pct, or max_hold
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.stop_atr = float(config.get("stop_atr", 1.5))
         self.target_atr = float(config.get("target_atr", 2.0))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
-        self.max_target_pct = float(config.get("max_target_pct", 0.03))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
         self.allow_overnight = True
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -93,19 +93,24 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if price < sma:
             return None
 
-        # RSI(2) — buy on short-term oversold dip
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi >= self.rsi_entry:
-            return None
-
         # ATR for stop/target sizing
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 0.01:
             return None
 
-        # Asymmetric caps: stop at 2%, target at 3% (maintains R:R in high-vol)
-        stop_dist = min(atr * self.stop_atr, price * self.max_stop_pct)
-        target_dist = min(atr * self.target_atr, price * self.max_target_pct)
+        # Volatility filter: skip when ATR/price too high (avoids HIGH vol regimes)
+        if atr / price > self.max_atr_pct:
+            return None
+
+        # RSI(2) — buy on short-term oversold dip
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi >= self.rsi_entry:
+            return None
+
+        # Symmetric stop/target capped at max_stop_pct of price
+        max_dist = price * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr, max_dist)
+        target_dist = min(atr * self.target_atr, max_dist)
         stop_price = price - stop_dist
         target_price = price + target_dist
 
