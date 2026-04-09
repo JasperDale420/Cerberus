@@ -1,11 +1,10 @@
-"""Daily Research Strategy v6b — RSI(2) Mean Reversion with Asymmetric R:R.
+"""Daily Research Strategy v6b — Ultra-Simple RSI(2) Mean Reversion.
 
-iter11: Asymmetric stop/target to fix time-exit P&L skew.
-- RSI(2) < 20, no SMA filter
-- Stop: 1.5x ATR (tighter, capped at 3%)
-- Target: 3x ATR (wider, capped at 6%)
-- Hypothesis: time exits (max_hold_days=5) create avg_loss >> avg_win.
-  Tighter stops cut losers faster; wider targets let winners run.
+iter9: RSI(2) < 20, no SMA filter, no vol adaptation.
+Only the drawdown filter + stop cap for protection.
+Hypothesis: deeply oversold entries (RSI<15) bounce reliably across ALL
+regimes. No trend filter needed because extreme RSI readings are rare
+enough to be high-quality. Fewer params = more robust.
 """
 
 from __future__ import annotations
@@ -35,8 +34,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
-        self.max_target_pct = float(config.get("max_target_pct", 0.06))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -104,9 +102,10 @@ class dailyresearchv6bStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        # Stop/target with separate caps
-        stop_dist = min(atr * self.stop_atr_mult, bar.close * self.max_stop_pct)
-        target_dist = min(atr * self.target_atr_mult, bar.close * self.max_target_pct)
+        # Stop/target with cap
+        max_dist = bar.close * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * self.target_atr_mult, max_dist)
         stop_price = bar.close - stop_dist
         target_price = bar.close + target_dist
 
