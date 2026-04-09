@@ -1,11 +1,13 @@
-"""Daily Research v6c — RSI(2) Mean Reversion with Trend Filter.
+"""Daily Research v6c — RSI(2) + IBS Mean Reversion.
 
-Iteration 2: Skip ALL DOWN trend trades (not just DOWN+HIGH).
-Use SMA(20) instead of SMA(50) for faster trend detection.
-Lower min_bars to 25 for more trades per window.
+Iteration 3: IBS confirmation + asymmetric risk/reward.
+Iter 1: min_pf=0.60, SMA(50) too restrictive, DOWN+HIGH=0.00.
+Iter 2: min_pf=0.30, regime gate ineffective (per-stock, not per-window),
+        UP+NORMAL windows still inconsistent (PF=0.30-0.48).
 
-Iter 1 results: min_pf=0.60, avg_pf=1.92, 175 trades, FAIL.
-DOWN+HIGH still problematic (PF=0.00-0.65). SMA(50) too restrictive.
+Changes: Add IBS < 0.3 filter for quality entries. Asymmetric
+stop/target (wider stop 2.5 ATR, tighter target 1.5 ATR) to improve
+win rate. Remove regime gate (ineffective). Keep SMA(20) trend filter.
 """
 
 from __future__ import annotations
@@ -29,14 +31,15 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 25))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 30))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.sma_period = int(config.get("sma_period", 20))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.05))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -90,20 +93,12 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Regime gate: skip ALL DOWN trend trades
-        regime = {}
-        if hasattr(symbol_state, "meta") and isinstance(symbol_state.meta, dict):
-            regime = symbol_state.meta.get("regime_labels", {})
-        trend = str(regime.get("regime_trend", "")).upper()
-        if trend == "DOWN":
-            return None
-
-        # SMA(20) uptrend filter — fallback when regime labels not available
+        # SMA(20) trend filter — only buy in uptrend
         sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma and not trend:
+        if sma is not None and bar.close < sma:
             return None
 
-        # Drawdown filter
+        # Drawdown filter — skip stocks in freefall
         lookback = min(self.drawdown_lookback, len(highs))
         recent_high = max(highs[-lookback:])
         drawdown = 0.0
@@ -112,17 +107,24 @@ class dailyresearchv6cStrategy(BaseStrategy):
             if drawdown > self.max_drawdown_pct:
                 return None
 
-        # RSI(2) entry
+        # RSI(2) oversold entry
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # IBS confirmation — close must be in bottom of daily range
+        day_range = bar.high - bar.low
+        if day_range > 0:
+            ibs = (bar.close - bar.low) / day_range
+            if ibs > self.ibs_threshold:
+                return None
 
         # ATR for stop/target
         atr = self._atr(bars, 14)
         if atr is None or atr < 0.01:
             return None
 
-        # Stop/target with cap
+        # Asymmetric: wider stop (survive), tighter target (take profit)
         max_dist = bar.close * self.max_stop_pct
         stop_dist = min(atr * self.stop_atr_mult, max_dist)
         target_dist = min(atr * self.target_atr_mult, max_dist)
@@ -141,7 +143,7 @@ class dailyresearchv6cStrategy(BaseStrategy):
             generated_at=bar.time,
             meta={
                 "rsi2": round(rsi, 1),
+                "ibs": round(ibs if day_range > 0 else 0.0, 2),
                 "drawdown": round(drawdown, 3),
-                "trend": trend,
             },
         )
