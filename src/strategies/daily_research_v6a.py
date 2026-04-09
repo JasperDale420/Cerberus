@@ -1,12 +1,10 @@
-"""Daily Research v6a — RSI(2) mean reversion with SMA20 trend filter.
+"""Daily Research v6a — RSI(2) mean reversion, no trend gate.
 
-Single-signal design for maximum consistency:
-- RSI(2) identifies extreme oversold conditions
-- SMA20 filter: faster adaptive trend gate
-- ATR-based stops and targets with 2% hard cap on stops
-- No regime gating beyond SHOCK vol block
-
-Designed for walk-forward stability with minimal parameters.
+High-trade-count design for statistical reliability:
+- RSI(2) identifies oversold conditions (threshold ~40)
+- 2-day consecutive decline confirmation
+- ATR-based stops and targets with 2% hard cap
+- No trend filter — works across all regimes
 """
 
 from __future__ import annotations
@@ -38,7 +36,7 @@ class dailyresearchv6aStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 5.0))
-        self.rsi2_threshold = float(config.get("rsi2_threshold", 25))
+        self.rsi2_threshold = float(config.get("rsi2_threshold", 40))
         self.allow_overnight = True
 
     def _init(self, s: str) -> None:
@@ -119,17 +117,17 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
-        # SMA20 gate: faster adaptive trend filter
-        sma20 = self._sma(cl, 20)
-        if sma20 is not None and price < sma20:
-            return None
-
-        # RSI(2) oversold — simple, robust mean reversion signal
+        # RSI(2) oversold — mean reversion signal
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
             return None
 
-        if rsi2 < self.rsi2_threshold:
+        # 2-day consecutive decline confirmation
+        if len(cl) < 3:
+            return None
+        two_day_decline = price < cl[-2] and cl[-2] < cl[-3]
+
+        if rsi2 < self.rsi2_threshold and two_day_decline:
             stop_dist = min(atr * self.stop_atr_mult, price * 0.02)
             stop = price - stop_dist
             target = price + atr * self.target_atr_mult
