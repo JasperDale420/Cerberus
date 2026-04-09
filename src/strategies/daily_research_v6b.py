@@ -1,9 +1,9 @@
 """Daily Research Strategy v6b — Symmetric-Exit RSI(2) Mean Reversion.
 
-iter2: Fix stop:target math — symmetric 2x/2x ATR (capped at 4%).
-Previous 3:2 ratio needed 57% WR; symmetric needs only 47%.
-- Price-based trend filter: close > SMA(20) (regime_labels unreliable in backtest)
+iter8: Add IBS < 0.3 confirmation (closed in bottom 30% of range).
+- Price-based trend filter: close > SMA(20)
 - RSI(2) < 25 normal, RSI(2) < 10 in high-vol (ATR ratio only)
+- IBS < 0.3 (Internal Bar Strength confirms capitulation)
 - 2x ATR stop, 2x ATR target (capped at 4%)
 - 12% drawdown filter
 - Long-only, daily bars.
@@ -40,6 +40,7 @@ class dailyresearchv6bStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_stop_pct = float(config.get("max_stop_pct", 0.04))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.allow_overnight = True
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
@@ -123,6 +124,13 @@ class dailyresearchv6bStrategy(BaseStrategy):
 
         if rsi >= effective_rsi_entry:
             return None
+
+        # IBS confirmation: closed in bottom 30% of range
+        bar_range = bar.high - bar.low
+        if bar_range > 0:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_threshold:
+                return None
 
         # Stop/target with cap at max_stop_pct of price
         max_dist = bar.close * self.max_stop_pct
