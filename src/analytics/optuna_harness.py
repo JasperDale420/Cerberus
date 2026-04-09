@@ -897,6 +897,20 @@ def _apply_params_to_config(
         "down_days",
         "cum_rsi_threshold",
         "cum_rsi_days",
+        # v6d params
+        "rsi_entry",
+        "rsi_exit",
+        "rsi_period",
+        "trend_period",
+        "stop_atr",
+        "target_atr",
+        "ibs_entry",
+        "momentum_lookback",
+        "vol_mult",
+        "vol_lookback",
+        "max_drawdown_pct",
+        "drawdown_lookback",
+        "max_stop_pct",
     }
 
     for key, value in params.items():
