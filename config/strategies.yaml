@@ -244,11 +244,13 @@ strategies:
   daily_research_v6b:
     enabled: true
     min_bars: 20
-    bb_period: 20
-    bb_std_mult: 2.0
     rsi_period: 2
-    rsi_entry: 30
-    stop_bb_mult: 1.5
+    rsi_entry: 25
+    rsi_entry_highvol: 10
+    vol_ratio_threshold: 1.5
+    stop_atr_mult: 2.0
+    target_atr_mult: 2.0
+    sma_period: 20
     max_drawdown_pct: 0.12
     max_stop_pct: 0.04
     max_hold_days: 5
