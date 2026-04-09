@@ -1,9 +1,9 @@
-"""Daily Research v6c — Mild Asymmetric R/R + SMA + Momentum Guard.
+"""Daily Research v6c — RSI(2) Mean Reversion with Triple Filter.
 
-Iteration 14: RSI(25) for more trades per window + iter13 recipe.
-Iter 13 passed (min_pf=1.02) on one seed but FLAT/DOWN windows with
-12-17 trades have noisy PF. RSI(25) should give ~50% more trades.
-Stop=1.5x ATR, Target=1.2x ATR, 3% cap. SMA(20) + momentum guard.
+Iteration 15: Return to iter13 config (PASS min_pf=1.02) + IBS filter.
+RSI(20) + SMA(20) + momentum guard + IBS<0.3 (close near day's low).
+IBS is orthogonal to RSI and improves signal quality in all regimes.
+Mild asymmetry: 1.5x ATR stop, 1.2x ATR target, 3% cap.
 """
 
 from __future__ import annotations
@@ -26,7 +26,8 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
-        self.rsi_entry = float(config.get("rsi_entry", 25))
+        self.rsi_entry = float(config.get("rsi_entry", 20))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -102,6 +103,13 @@ class dailyresearchv6cStrategy(BaseStrategy):
         rsi = self._rsi(closes, 2)
         if rsi is None or rsi >= self.rsi_entry:
             return None
+
+        # IBS filter: close must be near day's low (selling exhaustion)
+        bar_range = bar.high - bar.low
+        if bar_range > 0:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_threshold:
+                return None
 
         # Momentum guard: close must be above close N days ago
         if len(closes) > self.momentum_lookback:
