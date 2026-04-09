@@ -1,11 +1,8 @@
 """Daily Research v6c — Time-Exit Mean Reversion.
 
-Session 3, Iteration 1: Pure time-exit approach.
-Entry: IBS < 0.2 (close near day's low) + RSI(2) < 40 (selling pressure).
-Momentum guard (close > close[5]). Drawdown filter 10%.
-Exit: max_hold_days=1 (exit at next close). Stop/target at 5x ATR
-(essentially never hit — all exits via time). Eliminates stop-out
-randomness that was killing individual windows in previous sessions.
+Session 3, Iteration 2: Looser entry + 2-day hold.
+Entry: IBS < 0.3 + RSI(2) < 50 + momentum guard + drawdown 10%.
+Exit: max_hold_days=2. Wide 5x ATR stops (safety net only).
 """
 
 from __future__ import annotations
@@ -28,10 +25,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 15))
-        self.rsi_entry = float(config.get("rsi_entry", 40))
-        self.ibs_entry = float(config.get("ibs_entry", 0.2))
+        self.rsi_entry = float(config.get("rsi_entry", 50))
+        self.ibs_entry = float(config.get("ibs_entry", 0.3))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
-        self.max_hold_days = int(config.get("max_hold_days", 1))
+        self.max_hold_days = int(config.get("max_hold_days", 2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 5.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 5.0))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
