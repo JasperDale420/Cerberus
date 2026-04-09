@@ -114,6 +114,11 @@ class dailyresearchv6aStrategy(BaseStrategy):
         if vol == "shock":
             return None
 
+        # RSI(14) filter — avoid deep multi-week downtrends
+        rsi14 = self._rsi(c, n=14)
+        if rsi14 is not None and rsi14 < 30:
+            return None
+
         # RSI(2) oversold — no trend filter, works in all regimes
         rsi2 = self._rsi(c, n=2)
         if rsi2 is None:
