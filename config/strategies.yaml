@@ -264,7 +264,7 @@ strategies:
 
   daily_research_v6c:
     enabled: true
-    min_bars: 20
+    min_bars: 15
     rsi_entry: 50
     ibs_entry: 0.3
     momentum_lookback: 5
@@ -273,8 +273,6 @@ strategies:
     max_drawdown_pct: 0.10
     drawdown_lookback: 40
     max_stop_pct: 0.02
-    vol_mult: 1.2
-    vol_lookback: 20
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
