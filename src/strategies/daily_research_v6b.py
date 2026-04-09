@@ -1,8 +1,8 @@
 """Daily Research Strategy v6b — RSI(2) Mean Reversion.
 
-iter14: RSI(2) < 25 (more permissive for more trades per window).
-More trades = more stable PF estimates = less variance in worst window.
-Everything else unchanged from iter9.
+iter15: RSI(2) < 25 + tighter drawdown filter (8% from 20-bar high).
+Combines iter14's more permissive RSI for more trades with a
+tighter/shorter drawdown filter to catch recent downtrends faster.
 """
 
 from __future__ import annotations
