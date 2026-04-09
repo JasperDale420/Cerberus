@@ -1,9 +1,9 @@
-"""Daily Research v6c — Dual Confirmation + Volume Mean Reversion.
+"""Daily Research v6c — Dual Confirmation Mean Reversion.
 
-Iteration 6: RSI(2) < 35 + IBS < 0.5 + momentum guard + SMA(20) base.
-Add volume confirmation: only trade when volume >= 80% of 20-day avg.
-This filters thin-market drifts that look oversold but aren't genuine.
-Reduce max_hold to 3 days. Symmetric 1.5x ATR, 3% cap.
+Iteration 4: Tighten IBS to 0.4 (from 0.5) for better signal quality.
+RSI(2) < 35 AND IBS < 0.4 + momentum guard + SMA(20).
+Symmetric 1.5x ATR, 3% cap. Iter3 scored 0.97 — tighter IBS should
+filter marginal trades and improve worst-window PF.
 """
 
 from __future__ import annotations
@@ -27,11 +27,10 @@ class dailyresearchv6cStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 20))
         self.rsi_entry = float(config.get("rsi_entry", 35))
-        self.ibs_entry = float(config.get("ibs_entry", 0.5))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
         self.sma_period = int(config.get("sma_period", 20))
         self.momentum_lookback = int(config.get("momentum_lookback", 5))
-        self.vol_ratio = float(config.get("vol_ratio", 0.8))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
@@ -81,7 +80,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
-        volumes = [b.volume for b in bars]
 
         if len(closes) < self.min_bars:
             return None
@@ -99,12 +97,6 @@ class dailyresearchv6cStrategy(BaseStrategy):
         if len(closes) >= self.sma_period:
             sma = sum(closes[-self.sma_period :]) / self.sma_period
             if bar.close < sma:
-                return None
-
-        # Volume confirmation: current volume >= vol_ratio * avg volume
-        if len(volumes) >= self.sma_period and bar.volume > 0:
-            avg_vol = sum(volumes[-self.sma_period :]) / self.sma_period
-            if avg_vol > 0 and bar.volume < self.vol_ratio * avg_vol:
                 return None
 
         # RSI(2) oversold entry

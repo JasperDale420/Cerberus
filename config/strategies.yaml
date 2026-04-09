@@ -266,8 +266,7 @@ strategies:
     enabled: true
     min_bars: 20
     rsi_entry: 35
-    ibs_entry: 0.5
-    vol_ratio: 0.8
+    ibs_entry: 0.4
     sma_period: 20
     momentum_lookback: 5
     stop_atr_mult: 1.5
@@ -276,7 +275,7 @@ strategies:
     drawdown_lookback: 40
     max_stop_pct: 0.03
     allow_overnight: true
-    max_hold_days: 3
+    max_hold_days: 5
     cooldown_bars: 1
     activation:
       session: [opening, midday, power_hour]
