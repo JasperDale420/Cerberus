@@ -34,10 +34,11 @@ class dailyresearchv6dStrategy(BaseStrategy):
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_entry = float(config.get("rsi_entry", 25.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr = float(config.get("stop_atr", 3.0))
-        self.target_atr = float(config.get("target_atr", 4.0))
+        self.stop_atr = float(config.get("stop_atr", 1.5))
+        self.target_atr = float(config.get("target_atr", 2.0))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
         self.allow_overnight = True
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     def _rsi(self, closes: list[float], period: int) -> float | None:
         if len(closes) < period + 1:
@@ -103,8 +104,12 @@ class dailyresearchv6dStrategy(BaseStrategy):
         if atr is None or atr < 0.01:
             return None
 
-        stop_price = price - atr * self.stop_atr
-        target_price = price + atr * self.target_atr
+        # Symmetric stop/target capped at max_stop_pct of price
+        max_dist = price * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr, max_dist)
+        target_dist = min(atr * self.target_atr, max_dist)
+        stop_price = price - stop_dist
+        target_price = price + target_dist
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(

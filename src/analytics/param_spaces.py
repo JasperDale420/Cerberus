@@ -71,10 +71,11 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "daily_research_v6d": {
         "rsi_period": 2,
         "trend_period": 50,
-        "max_hold_days": 10,
+        "max_hold_days": 5,
         "rsi_entry": 25.0,
-        "stop_atr": 3.0,
-        "target_atr": 4.0,
+        "stop_atr": 1.5,
+        "target_atr": 2.0,
+        "max_stop_pct": 0.02,
     },
 }
 
@@ -177,11 +178,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=0.5, high=1.5, step=0.5, description="ATR target"),
         ParamDef("momentum_lookback", "int", low=3, high=10, step=1, description="Momentum lookback days"),
     ],
-    "daily_research_v6d": [
-        ParamDef("rsi_entry", "float", low=5.0, high=25.0, step=5.0, description="RSI(2) entry threshold"),
-        ParamDef("stop_atr", "float", low=2.0, high=4.0, step=0.5, description="ATR stop multiplier"),
-        ParamDef("target_atr", "float", low=2.0, high=5.0, step=0.5, description="ATR target multiplier"),
-    ],
+    "daily_research_v6d": [],
 }
 
 
