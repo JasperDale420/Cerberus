@@ -806,7 +806,23 @@ def run_backtest_for_optimization(
             return result
         # BacktestReportCard — use to_dict() for correctly-keyed metrics
         if hasattr(result, "to_dict"):
-            return dict(result.to_dict())
+            metrics = dict(result.to_dict())
+            if hasattr(result, "trades") and result.trades:
+                trade_summaries = []
+                for t in result.trades:
+                    ts = {
+                        "symbol": getattr(t, "symbol", ""),
+                        "side": getattr(t, "side", ""),
+                        "pnl": getattr(t, "pnl", 0.0),
+                        "entry_time": t.entry_time.isoformat() if hasattr(t, "entry_time") and t.entry_time else "",
+                        "exit_time": t.exit_time.isoformat() if hasattr(t, "exit_time") and t.exit_time else "",
+                        "entry_regime_trend": getattr(t, "entry_regime_trend", "unknown"),
+                        "entry_regime_vol": getattr(t, "entry_regime_vol", "unknown"),
+                        "meta": getattr(t, "meta", {}) or {},
+                    }
+                    trade_summaries.append(ts)
+                metrics["_trade_summaries"] = trade_summaries
+            return metrics
         return {"n_trades": 0}
     except Exception as e:
         print(f"[optuna] Backtest trial failed: {e}", file=sys.stderr)

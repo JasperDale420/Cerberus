@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Autoresearch v7 overhaul**: Complete system redesign to fix strategy convergence (all v6 campaigns converged on RSI(2) mean-reversion and failed OOS holdout). Includes:
+  - 4 structurally different seed templates (mean reversion, trend pullback, vol breakout, regime-switch) replacing blank template
+  - Richer eval feedback in `.last_eval.md` — hold time distribution, PnL by weekday, win rate by regime, top winners/losers
+  - Trade summary extraction from backtest report card for diagnostics
+  - Dynamic strategy import fallback in backtest runner (loads strategies not in hardcoded registry)
+  - v7 param spaces for all seed archetypes + fixed v6d empty param space
+  - Default Optuna trials increased from 8 to 20
+  - v7 agent program doc with accurate data documentation and anti-convergence rules
+  - v7 loop script with seed rotation, hard iteration cap, midpoint holdout abort
+
+### Fixed
+
+- **Holdout eval bug**: WFO configured with train+test period exceeding holdout window produced 0 windows. Fixed by injecting exact train/test window via lambda override.
+- **v6d empty param space**: `PARAM_SPACES["daily_research_v6d"]` was `[]` — Optuna had nothing to optimize.
+
 ### Fixed
 
 - **Import sort in `src/main.py`**: Corrected unsorted import block in `_build_strategy_registry()` to satisfy ruff I001 rule (auto-fixed by ruff).

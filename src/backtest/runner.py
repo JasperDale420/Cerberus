@@ -942,6 +942,33 @@ async def run_backtest(
     for name, strat_cfg in strategies_cfg.items():
         if isinstance(strat_cfg, dict) and strat_cfg.get("enabled", True):
             cls = registry.get(name)
+            if cls is None:
+                # Dynamic import fallback for autoresearch strategies not in the hardcoded registry
+                import importlib.util as _ilu
+                import sys as _sys_mod
+
+                from src.strategies.base import BaseStrategy as _BaseStrategy
+
+                _strat_path = Path(f"src/strategies/{name}.py")
+                if _strat_path.exists():
+                    try:
+                        _spec = _ilu.spec_from_file_location(f"src.strategies.{name}", _strat_path)
+                        if _spec and _spec.loader:
+                            _mod = _ilu.module_from_spec(_spec)
+                            _sys_mod.modules[_spec.name] = _mod
+                            _spec.loader.exec_module(_mod)
+                            for _attr_name in dir(_mod):
+                                _attr = getattr(_mod, _attr_name)
+                                if (
+                                    isinstance(_attr, type)
+                                    and issubclass(_attr, _BaseStrategy)
+                                    and _attr is not _BaseStrategy
+                                    and getattr(_attr, "name", None) == name
+                                ):
+                                    cls = _attr
+                                    break
+                    except Exception as _e:
+                        logger.warning("Dynamic strategy import failed", strategy=name, error=str(_e))
             if cls:
                 engine.register_strategy(cls(strat_cfg, logger))
 

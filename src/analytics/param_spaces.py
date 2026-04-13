@@ -80,6 +80,29 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_drawdown_pct": 0.08,
         "drawdown_lookback": 30,
     },
+    # v7 seed archetypes
+    "daily_research_v7a": {
+        "rsi_period": 2,
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "max_drawdown_pct": 0.12,
+        "drawdown_lookback": 40,
+        "max_hold_days": 5,
+    },
+    "daily_research_v7b": {
+        "ema_fast": 20,
+        "sma_slow": 50,
+        "max_hold_days": 10,
+    },
+    "daily_research_v7c": {
+        "breakout_lookback": 10,
+        "max_hold_days": 7,
+    },
+    "daily_research_v7d": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "max_hold_days": 5,
+    },
 }
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
@@ -181,7 +204,38 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=0.5, high=1.5, step=0.5, description="ATR target"),
         ParamDef("momentum_lookback", "int", low=3, high=10, step=1, description="Momentum lookback days"),
     ],
-    "daily_research_v6d": [],
+    "daily_research_v6d": [
+        ParamDef("rsi_entry", "float", low=15.0, high=35.0, step=5.0, description="RSI(2) entry threshold"),
+        ParamDef("stop_atr", "float", low=1.0, high=2.5, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr", "float", low=1.5, high=3.5, step=0.5, description="ATR target multiplier"),
+        ParamDef("max_atr_pct", "float", low=0.02, high=0.04, step=0.005, description="Max ATR/price ratio filter"),
+    ],
+    # v7 seed archetypes
+    "daily_research_v7a": [
+        ParamDef("rsi_entry", "float", low=15.0, high=30.0, step=5.0, description="RSI(2) entry"),
+        ParamDef("ibs_threshold", "float", low=0.2, high=0.5, step=0.05, description="IBS entry"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
+        ParamDef("cooldown_bars", "int", low=1, high=5, step=1, description="Cooldown"),
+    ],
+    "daily_research_v7b": [
+        ParamDef("pullback_pct", "float", low=0.005, high=0.025, step=0.005, description="Pullback distance"),
+        ParamDef("rsi_min", "float", low=35.0, high=50.0, step=5.0, description="RSI lower bound"),
+        ParamDef("rsi_max", "float", low=50.0, high=65.0, step=5.0, description="RSI upper bound"),
+        ParamDef("stop_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=3.0, high=5.0, step=0.5, description="ATR target"),
+    ],
+    "daily_research_v7c": [
+        ParamDef("atr_expansion", "float", low=1.2, high=2.0, step=0.2, description="ATR expansion ratio"),
+        ParamDef("vol_surge_mult", "float", low=1.2, high=2.0, step=0.2, description="Volume surge multiplier"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
+    ],
+    "daily_research_v7d": [
+        ParamDef("rsi_long_entry", "float", low=35.0, high=50.0, step=5.0, description="RSI buy in UP"),
+        ParamDef("rsi_short_entry", "float", low=55.0, high=70.0, step=5.0, description="RSI sell in DOWN"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target"),
+    ],
 }
 
 
