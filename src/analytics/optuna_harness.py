@@ -514,6 +514,14 @@ def _mp_optimize_worker(
     )
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
+    # Free bar cache in worker process to reduce memory pressure
+    try:
+        from src.backtest.runner import clear_bar_cache
+
+        clear_bar_cache()
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Composite objective function
@@ -1328,7 +1336,18 @@ class WalkForwardOptimizer:
                 p.start()
 
             for p in processes:
-                p.join()
+                p.join(timeout=600)  # 10-minute timeout per worker
+                if p.is_alive():
+                    p.terminate()
+                    p.join(timeout=10)
+
+            # Clear bar cache between windows to prevent unbounded growth
+            try:
+                from src.backtest.runner import clear_bar_cache
+
+                clear_bar_cache()
+            except Exception:
+                pass
 
             # Reload study to pick up all worker results
             study = optuna.load_study(
@@ -1348,6 +1367,12 @@ class WalkForwardOptimizer:
                 is_score = study.best_value
             all_params.append(best_params)
             all_is_scores.append(is_score)
+
+            # Explicitly free Optuna study to release trial data from memory
+            del study
+            import gc
+
+            gc.collect()
 
             print(f"  IS best score: {is_score:.4f}")
             print(f"  IS best params: {best_params}")
@@ -1371,6 +1396,11 @@ class WalkForwardOptimizer:
                 data_dir=data_dir,
                 config_path=config_path,
             )
+
+            # Force GC after OOS backtest to free temporary objects
+            import gc
+
+            gc.collect()
 
             # Proportional min trades for OOS: use oos_min_trades_per_month if provided,
             # otherwise fall back to IS min_trades_per_month. For pair strategies with
@@ -1417,6 +1447,9 @@ class WalkForwardOptimizer:
                     )
                 except Exception:
                     pass  # analytics save failure must not break optimization
+
+            # Free heavy analytics data after saving — keep only summary metrics in memory
+            oos_metrics.pop("analytics", None)
 
             window_elapsed = time.time() - window_t0
             print(f"  OOS score: {oos_score:.4f}")

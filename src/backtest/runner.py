@@ -27,7 +27,13 @@ from src.data.client import UnifiedDataClient
 from src.engine.execution import ExecutionEngine
 
 _BAR_DATAFRAME_CACHE: dict[tuple[str, tuple[str, ...], str, str, int], pd.DataFrame] = {}
+_BAR_CACHE_MAX_SIZE = 4  # Keep at most 4 entries (2 windows x raw + aggregated)
 _ET_TZ = ZoneInfo("America/New_York")
+
+
+def clear_bar_cache() -> None:
+    """Explicitly clear the bar DataFrame cache to free memory between WFO windows."""
+    _BAR_DATAFRAME_CACHE.clear()
 
 
 def _dynamic_import_strategy_class(strategy_file: str):
@@ -211,6 +217,12 @@ def _load_cached_parquet_bars(
 
     loaded = _load_bars_from_parquet(data_dir, symbols, start_dt, end_dt, logger)
     prepared = _prepare_bars_dataframe(loaded, bar_resolution_minutes)
+
+    # Evict oldest entries if cache exceeds max size
+    while len(_BAR_DATAFRAME_CACHE) >= _BAR_CACHE_MAX_SIZE:
+        oldest_key = next(iter(_BAR_DATAFRAME_CACHE))
+        del _BAR_DATAFRAME_CACHE[oldest_key]
+
     _BAR_DATAFRAME_CACHE[cache_key] = prepared
     return prepared
 
