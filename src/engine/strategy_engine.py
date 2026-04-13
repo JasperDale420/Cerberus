@@ -105,6 +105,11 @@ class StrategyEngine:
         self.on_error = on_error
         self.causal_filter = causal_filter
 
+    @property
+    def strategies(self) -> Dict[str, BaseStrategy]:
+        """Alias for strategies_by_name for compatibility with external wrappers."""
+        return self.strategies_by_name
+
     def on_bar(
         self,
         symbol: str,

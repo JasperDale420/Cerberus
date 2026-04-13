@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **StrategyEngine crash from external debug wrapper**: Added `strategies` property alias on `StrategyEngine` pointing to `strategies_by_name`. A dynamically-injected `debug_run_strategies` wrapper accessed `.strategies` (which only exists on `ExecutionEngine`), causing `AttributeError` and triggering the safety shutdown after 5 consecutive errors.
+
 ### Added
 
 - **Autoresearch v7 overhaul**: Complete system redesign to fix strategy convergence (all v6 campaigns converged on RSI(2) mean-reversion and failed OOS holdout). Includes:
