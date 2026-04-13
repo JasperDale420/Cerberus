@@ -331,7 +331,7 @@ strategies:
     vol_mult: 0.6
     momentum_lookback: 5
     activation:
-      session: [opening, midday, power_hour]
+      session: [premarket, opening, midday, power_hour, close]
       trend: [up, down, flat]
       vol: [low, normal, high, shock]
       liquidity: [good, thin]
