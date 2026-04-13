@@ -314,10 +314,24 @@ strategies:
 
   daily_research_v7a:
     enabled: true
-    min_bars: 25
+    min_bars: 50
     allow_overnight: true
-    max_hold_days: 10
+    max_hold_days: 7
     cooldown_bars: 1
+    bb_period: 20
+    bb_std: 2.0
+    zscore_entry: -1.5
+    zscore_deep: -2.5
+    ibs_threshold: 0.3
+    ema_fast: 10
+    ema_slow: 40
+    pullback_atr_mult: 1.0
+    atr_period: 14
+    stop_atr_mult: 1.5
+    target_atr_mult: 2.5
+    drawdown_lookback: 40
+    drawdown_max: 0.12
+    vol_avg_mult: 0.5
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]
