@@ -82,12 +82,12 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     # v7 seed archetypes
     "daily_research_v7a": {
-        "rsi_period": 2,
-        "bb_period": 20,
-        "bb_std": 2.0,
-        "max_drawdown_pct": 0.12,
+        "rsi_period": 5,
+        "trend_period": 50,
+        "max_drawdown_pct": 0.10,
         "drawdown_lookback": 40,
         "max_hold_days": 5,
+        "max_stop_pct": 0.025,
     },
     "daily_research_v7b": {
         "ema_fast": 20,
@@ -212,10 +212,11 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     # v7 seed archetypes
     "daily_research_v7a": [
-        ParamDef("rsi_entry", "float", low=15.0, high=30.0, step=5.0, description="RSI(2) entry"),
-        ParamDef("ibs_threshold", "float", low=0.2, high=0.5, step=0.05, description="IBS entry"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
-        ParamDef("cooldown_bars", "int", low=1, high=5, step=1, description="Cooldown"),
+        ParamDef("rsi_entry", "float", low=30.0, high=55.0, step=5.0, description="RSI(5) entry threshold"),
+        ParamDef("ibs_entry", "float", low=0.25, high=0.5, step=0.05, description="IBS entry threshold"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("momentum_lookback", "int", low=5, high=15, step=5, description="Momentum guard lookback"),
     ],
     "daily_research_v7b": [
         ParamDef("pullback_pct", "float", low=0.005, high=0.025, step=0.005, description="Pullback distance"),
