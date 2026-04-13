@@ -1,12 +1,11 @@
-"""Regime-Adaptive Multi-Factor Strategy.
+"""Regime-Adaptive Multi-Factor Strategy v2.
 
-Switches between mean-reversion and trend-pullback based on regime labels.
-- FLAT: Z-score mean reversion (Bollinger deviation + IBS + volume)
-- UP: EMA pullback (buy dips in uptrend with volume confirmation)
-- DOWN: Very selective oversold bounce only (deep Z-score + IBS)
-- Event filters: skip near_earnings, near_fomc
+Switches behavior based on regime_trend labels:
+- UP: Buy dips with EMA alignment + mild oversold (IBS + momentum guard)
+- FLAT: Mean reversion via Z-score + IBS
+- DOWN: Selective deep oversold bounce
 
-Long-only, daily bars.
+Long-only, daily bars. Loose filters to ensure sufficient trade count.
 """
 
 from __future__ import annotations
@@ -28,91 +27,73 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
-        # Bollinger / Z-score params
-        self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.zscore_entry = float(config.get("zscore_entry", -1.5))
-        self.zscore_deep = float(config.get("zscore_deep", -2.5))
+        self.min_bars = int(config.get("min_bars", 25))
         # IBS threshold
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        # Trend pullback params
-        self.ema_fast = int(config.get("ema_fast", 10))
-        self.ema_slow = int(config.get("ema_slow", 40))
-        self.pullback_atr_mult = float(config.get("pullback_atr_mult", 1.0))
+        self.ibs_entry = float(config.get("ibs_entry", 0.4))
+        # RSI
+        self.rsi_period = int(config.get("rsi_period", 5))
+        self.rsi_entry = float(config.get("rsi_entry", 45.0))
+        # Trend EMA
+        self.trend_period = int(config.get("trend_period", 50))
         # ATR / risk
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.drawdown_max = float(config.get("drawdown_max", 0.12))
-        # Hold
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         # Volume filter
-        self.vol_avg_mult = float(config.get("vol_avg_mult", 0.5))
+        self.vol_mult = float(config.get("vol_mult", 0.5))
+        # Momentum guard
+        self.momentum_lookback = int(config.get("momentum_lookback", 10))
+        # Hold
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
-    # --- Indicator helpers ---
+    # --- Indicators ---
 
     @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
+    def _rsi(closes: list[float], period: int) -> float | None:
+        if len(closes) < period + 1:
+            return None
+        gains = 0.0
+        losses = 0.0
+        for i in range(len(closes) - period, len(closes)):
+            change = closes[i] - closes[i - 1]
+            if change > 0:
+                gains += change
+            else:
+                losses -= change
+        avg_gain = gains / period
+        avg_loss = losses / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> float | None:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
 
     @staticmethod
-    def _ema_calc(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = values[0]
-        for v in values[1:]:
-            ema = v * mult + ema * (1 - mult)
-        return ema
-
-    @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        subset = values[-period:]
-        mean = sum(subset) / period
-        variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance**0.5
-
-    @staticmethod
-    def _atr(bars: list[Bar], period: int) -> Optional[float]:
+    def _atr(bars: list, period: int = 14) -> float | None:
         if len(bars) < period + 1:
             return None
-        trs = []
-        for i in range(-period, 0):
-            b = bars[i]
-            prev_close = bars[i - 1].close
-            tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
-            trs.append(tr)
-        return sum(trs) / period
-
-    def _volume_ok(self, bars: list[Bar]) -> bool:
-        """Check if recent volume is above average."""
-        if len(bars) < 20:
-            return True
-        vols = [b.volume for b in bars[-20:]]
-        avg_vol = sum(vols) / len(vols)
-        if avg_vol <= 0:
-            return True
-        return bars[-1].volume >= avg_vol * self.vol_avg_mult
+        tr_vals = []
+        for i in range(len(bars) - period, len(bars)):
+            hi, lo, pc = bars[i].high, bars[i].low, bars[i - 1].close
+            tr_vals.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+        return sum(tr_vals) / len(tr_vals)
 
     def _get_regime(self, symbol_state: SymbolState) -> str:
-        """Get trend regime from labels, fallback to EMA-based detection."""
+        """Get trend regime from labels."""
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "")
         if trend in ("UP", "DOWN", "FLAT"):
             return trend
-        return "FLAT"  # default
-
-    def _near_event(self, symbol_state: SymbolState) -> bool:
-        """Check if near earnings or FOMC."""
-        labels = symbol_state.meta.get("regime_labels", {})
-        return labels.get("near_earnings", False) or labels.get("near_fomc", False)
+        return "UNKNOWN"
 
     def on_bar(
         self,
@@ -126,167 +107,111 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip events
-        if self._near_event(symbol_state):
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
 
-        # Core indicators
-        sma = self._sma(closes, self.bb_period)
-        std = self._std(closes, self.bb_period)
-        atr = self._atr(bars, self.atr_period)
-        if sma is None or std is None or atr is None or std < 1e-9 or atr < 1e-9:
+        if len(closes) < self.min_bars:
             return None
 
-        # Z-score
-        zscore = (bar.close - sma) / std
-
-        # IBS
-        bar_range = bar.high - bar.low
-        ibs = (bar.close - bar.low) / bar_range if bar_range > 1e-9 else 0.5
+        # --- Common filters ---
 
         # Drawdown filter
-        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
-        peak = max(lookback_highs)
-        if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
-            return None
+        lookback = min(self.drawdown_lookback, len(highs))
+        recent_high = max(highs[-lookback:])
+        drawdown = 0.0
+        if recent_high > 0:
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
 
         # Volume filter
-        if not self._volume_ok(bars):
+        volumes = [b.volume for b in bars if b.volume and b.volume > 0]
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume < avg_vol * self.vol_mult:
+                return None
+
+        # IBS: close near day's low
+        bar_range = bar.high - bar.low
+        if bar_range <= 0:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+
+        # RSI
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None:
             return None
 
-        # Regime routing
+        # ATR for stop/target
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 0.01:
+            return None
+
+        # Trend context
+        trend_sma = self._sma(closes, self.trend_period)
         regime = self._get_regime(symbol_state)
 
-        if regime == "UP":
-            return self._trend_pullback_signal(symbol, bar, bars, closes, atr, zscore, ibs, market_state)
-        elif regime == "FLAT":
-            return self._mean_reversion_signal(symbol, bar, bars, closes, sma, atr, zscore, ibs, market_state)
+        # --- Regime-specific entry logic ---
+
+        if regime == "UP" or (regime == "UNKNOWN" and trend_sma is not None and bar.close > trend_sma):
+            # UP: buy dips — looser IBS, moderate RSI, momentum guard
+            if ibs >= self.ibs_entry:
+                return None
+            if rsi >= self.rsi_entry:
+                return None
+            # Momentum guard: price should be above N-day-ago (still in uptrend)
+            if len(closes) > self.momentum_lookback:
+                if bar.close <= closes[-self.momentum_lookback - 1]:
+                    return None
+            target_mult = self.target_atr_mult
+
+        elif regime == "FLAT" or (regime == "UNKNOWN" and trend_sma is not None):
+            # FLAT: mean reversion — tighter IBS, moderate RSI
+            if ibs >= self.ibs_entry * 0.85:  # slightly tighter
+                return None
+            if rsi >= self.rsi_entry:
+                return None
+            target_mult = self.target_atr_mult * 0.8  # smaller target in flat
+
         elif regime == "DOWN":
-            return self._deep_oversold_signal(symbol, bar, bars, closes, sma, atr, zscore, ibs, market_state)
+            # DOWN: very selective — tight IBS, low RSI
+            if ibs >= self.ibs_entry * 0.6:
+                return None
+            if rsi >= self.rsi_entry * 0.6:
+                return None
+            target_mult = self.target_atr_mult * 0.6  # modest target
 
-        return None
+        else:
+            # Unknown regime without trend_sma: use FLAT-like logic
+            if ibs >= self.ibs_entry:
+                return None
+            if rsi >= self.rsi_entry:
+                return None
+            target_mult = self.target_atr_mult * 0.8
 
-    def _trend_pullback_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        atr: float,
-        zscore: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        """UP regime: buy pullbacks in uptrend."""
-        ema_f = self._ema_calc(closes, self.ema_fast)
-        ema_s = self._ema_calc(closes, self.ema_slow)
-        if ema_f is None or ema_s is None:
-            return None
-
-        # Confirm uptrend: fast EMA > slow EMA
-        if ema_f <= ema_s:
-            return None
-
-        # Price pulled back near or below fast EMA
-        pullback_zone = ema_f + self.pullback_atr_mult * atr
-        if bar.close > pullback_zone:
-            return None  # too extended
-
-        # Need some oversold confirmation: IBS < threshold OR mild negative Z-score
-        if ibs >= self.ibs_threshold and zscore > -0.5:
-            return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # --- Stop/target ---
+        max_dist = bar.close * self.max_stop_pct
+        stop_dist = min(atr * self.stop_atr_mult, max_dist)
+        target_dist = min(atr * target_mult, max_dist * 1.5)
+        stop_price = bar.close - stop_dist
+        target_price = bar.close + target_dist
 
         self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "trend_pullback", "zscore": round(zscore, 2), "ibs": round(ibs, 3), "atr": round(atr, 4)},
-        )
-
-    def _mean_reversion_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        sma: float,
-        atr: float,
-        zscore: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        """FLAT regime: fade oversold extremes."""
-        # Need negative Z-score (oversold)
-        if zscore > self.zscore_entry:
-            return None
-
-        # IBS confirmation: close near low
-        if ibs >= self.ibs_threshold:
-            return None
-
-        # Target: SMA (mean reversion target)
-        target = sma
-        if target <= bar.close:
-            return None  # no upside to mean
-
-        stop = bar.close - self.stop_atr_mult * atr
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "mean_reversion", "zscore": round(zscore, 2), "ibs": round(ibs, 3), "atr": round(atr, 4)},
-        )
-
-    def _deep_oversold_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        sma: float,
-        atr: float,
-        zscore: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        """DOWN regime: only enter on deep oversold bounces."""
-        # Need very deep oversold
-        if zscore > self.zscore_deep:
-            return None
-
-        # IBS must be very low (close near absolute low)
-        if ibs >= 0.2:
-            return None
-
-        # Tighter target in downtrend: partial reversion
-        target = bar.close + 0.5 * (sma - bar.close) if sma > bar.close else None
-        if target is None or target <= bar.close:
-            return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "deep_oversold", "zscore": round(zscore, 2), "ibs": round(ibs, 3), "atr": round(atr, 4)},
+        return Signal(
+            symbol=symbol,
+            side=OrderSide.BUY,
+            size_hint=0.0,
+            entry_price=bar.close,
+            stop_price=stop_price,
+            target_price=target_price,
+            strategy=self.name,
+            generated_at=bar.time,
+            meta={
+                "regime": regime,
+                "rsi": round(rsi, 1),
+                "ibs": round(ibs, 3),
+                "drawdown": round(drawdown, 3),
+                "atr": round(atr, 4),
+            },
         )

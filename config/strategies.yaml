@@ -314,24 +314,22 @@ strategies:
 
   daily_research_v7a:
     enabled: true
-    min_bars: 50
+    min_bars: 25
     allow_overnight: true
-    max_hold_days: 7
+    max_hold_days: 5
     cooldown_bars: 1
-    bb_period: 20
-    bb_std: 2.0
-    zscore_entry: -1.5
-    zscore_deep: -2.5
-    ibs_threshold: 0.3
-    ema_fast: 10
-    ema_slow: 40
-    pullback_atr_mult: 1.0
+    ibs_entry: 0.4
+    rsi_period: 5
+    rsi_entry: 45.0
+    trend_period: 50
     atr_period: 14
     stop_atr_mult: 1.5
-    target_atr_mult: 2.5
+    target_atr_mult: 2.0
+    max_stop_pct: 0.025
     drawdown_lookback: 40
-    drawdown_max: 0.12
-    vol_avg_mult: 0.5
+    max_drawdown_pct: 0.10
+    vol_mult: 0.5
+    momentum_lookback: 10
     activation:
       session: [opening, midday, power_hour]
       trend: [up, down, flat]
