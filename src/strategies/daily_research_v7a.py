@@ -1,11 +1,7 @@
-"""daily_research_v7a — Regime-adaptive multi-factor mean reversion.
+"""daily_research_v7a — Multi-factor scoring aligned with WFO param space.
 
-Multi-factor scoring: z-score + IBS + down days + close rank + volume.
-Internal trend detection via SMA(20) vs SMA(50) — no reliance on regime labels.
-Regime-adapted entry/exit:
-- UP: easier entry, wide target
-- FLAT: moderate entry, BB midline target
-- DOWN: require strong oversold, tight quick target
+Composite score from: z-score + IBS + RSI(2) + consecutive down days + volume.
+Regime-adaptive threshold. Param names match optuna_harness search space.
 Long-only, daily bars.
 """
 
@@ -28,18 +24,25 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
+        # Locked by harness
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.trend_period = int(config.get("trend_period", 50))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        # Optimized by harness
+        self.rsi_entry = float(config.get("rsi_entry", 25.0))
+        self.ibs_entry = float(config.get("ibs_entry", 0.35))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.vol_mult = float(config.get("vol_mult", 0.5))
+        # Internal
         self.min_bars = int(config.get("min_bars", 55))
         self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.trend_fast = int(config.get("trend_fast", 20))
-        self.trend_slow = int(config.get("trend_slow", 50))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+
+    # --- Indicator helpers ---
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -55,6 +58,23 @@ class SeedMeanReversionStrategy(BaseStrategy):
         mean = sum(subset) / period
         variance = sum((v - mean) ** 2 for v in subset) / period
         return variance**0.5
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -76,20 +96,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
                 count += 1
             else:
                 break
-            if count >= 6:
+            if count >= 5:
                 break
         return count
 
-    @staticmethod
-    def _pct_rank(values: list[float], current: float) -> float:
-        if len(values) < 2:
-            return 0.5
-        below = sum(1 for v in values if v < current)
-        return below / len(values)
-
     def _detect_trend(self, closes: list[float]) -> str:
-        sma_f = self._sma(closes, self.trend_fast)
-        sma_s = self._sma(closes, self.trend_slow)
+        sma_f = self._sma(closes, 20)
+        sma_s = self._sma(closes, self.trend_period)
         if sma_f is None or sma_s is None:
             return "FLAT"
         spread = (sma_f - sma_s) / sma_s if sma_s > 0 else 0.0
@@ -115,72 +128,113 @@ class SeedMeanReversionStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
 
+        # BB z-score
         sma = self._sma(closes, self.bb_period)
         std = self._std(closes, self.bb_period)
         if sma is None or std is None or std < 1e-9:
             return None
+        zscore = (bar.close - sma) / std
 
-        z_score = (bar.close - sma) / std
-        lower_bb = sma - self.bb_std * std
-
+        # ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
+        # RSI(2)
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None:
+            return None
+
+        # IBS
         bar_range = bar.high - bar.low
         ibs = (bar.close - bar.low) / bar_range if bar_range > 1e-9 else 0.5
 
-        down_days = self._count_down_days(closes)
-        close_rank = self._pct_rank(closes[-40:], bar.close)
-
+        # Volume
         volumes = [b.volume for b in bars[-20:]]
         avg_vol = sum(volumes) / len(volumes) if len(volumes) >= 5 else 1
         vol_ratio = bar.volume / avg_vol if avg_vol > 0 else 1.0
 
-        trend = self._detect_trend(closes)
-
+        # Drawdown filter (locked param)
         lookback_highs = highs[-self.drawdown_lookback :]
         peak = max(lookback_highs)
-        dd_pct = (peak - bar.close) / peak if peak > 0 else 0
-        if dd_pct > self.max_drawdown_pct:
+        drawdown = (peak - bar.close) / peak if peak > 0 else 0
+        if drawdown > self.max_drawdown_pct:
             return None
 
+        # Regime filters
+        labels = symbol_state.meta.get("regime_labels", {})
+        vol_regime = labels.get("regime_vol", "NORMAL")
+        if vol_regime == "SHOCK":
+            return None
+        if labels.get("near_earnings", False):
+            return None
+
+        # Internal trend detection
+        trend = self._detect_trend(closes)
+        down_days = self._count_down_days(closes)
+
+        # --- Multi-factor composite score ---
         score = 0.0
-        if z_score < -0.5:
-            score += min(25.0, 10.0 * abs(z_score))
-        if ibs < self.ibs_threshold:
-            score += 15.0 * (1.0 - ibs / max(self.ibs_threshold, 0.01))
-        if ibs < 0.15:
+
+        # Factor 1: RSI(2) oversold (0-25 pts) — uses rsi_entry from harness
+        if rsi < self.rsi_entry:
+            score += 15.0 + 10.0 * (1.0 - rsi / max(self.rsi_entry, 1.0))
+
+        # Factor 2: Z-score oversold (0-25 pts)
+        if zscore < -1.0:
+            score += min(25.0, 10.0 * abs(zscore))
+        elif zscore < -0.5:
             score += 5.0
+
+        # Factor 3: IBS near low (0-20 pts) — uses ibs_entry from harness
+        if ibs < self.ibs_entry:
+            score += 20.0 * (1.0 - ibs / max(self.ibs_entry, 0.01))
+
+        # Factor 4: Consecutive down days (0-15 pts)
         if down_days >= 2:
             score += min(15.0, 5.0 * down_days)
-        if close_rank < 0.25:
-            score += 15.0 * (1.0 - close_rank / 0.25)
-        if vol_ratio > 1.0:
-            score += min(10.0, 5.0 * (vol_ratio - 1.0))
-        if bar.close < lower_bb:
-            score += 10.0
 
+        # Factor 5: Volume participation (0-10 pts) — uses vol_mult from harness
+        if vol_ratio > self.vol_mult:
+            score += min(10.0, 5.0 * (vol_ratio - self.vol_mult))
+
+        # Factor 6: Close rank in 40-day range (0-10 pts)
+        if len(closes) >= 40:
+            below = sum(1 for c in closes[-40:] if c < bar.close)
+            rank = below / 40.0
+            if rank < 0.25:
+                score += 10.0 * (1.0 - rank / 0.25)
+
+        # Regime-adaptive threshold
         if trend == "UP":
-            entry_threshold = 30.0
-            stop_mult = self.stop_atr_mult
-            target = max(sma, bar.close + self.target_atr_mult * atr)
+            threshold = 30.0
         elif trend == "FLAT":
-            entry_threshold = 35.0
-            stop_mult = self.stop_atr_mult
-            target = sma if sma > bar.close else bar.close + 1.5 * atr
-        else:
-            entry_threshold = 45.0
-            stop_mult = self.stop_atr_mult * 0.75
-            target = bar.close + 1.0 * atr
+            threshold = 35.0
+        else:  # DOWN
+            threshold = 45.0
 
-        if score < entry_threshold:
+        if score < threshold:
             return None
 
-        stop = bar.close - stop_mult * atr
+        # Target and stop — use harness-tuned params
+        if trend == "DOWN":
+            target = bar.close + 1.0 * atr
+            stop_mult = self.stop_atr_mult * 0.75
+        elif trend == "FLAT":
+            target = sma if sma > bar.close else bar.close + self.target_atr_mult * atr
+            stop_mult = self.stop_atr_mult
+        else:  # UP
+            target = max(sma, bar.close + self.target_atr_mult * atr)
+            stop_mult = self.stop_atr_mult
 
         if target <= bar.close:
             return None
+
+        stop = bar.close - stop_mult * atr
+        # Cap stop at max_stop_pct
+        max_stop = bar.close * (1.0 - self.max_stop_pct)
+        if stop < max_stop:
+            stop = max_stop
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -192,10 +246,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "score": round(score, 1),
-                "z_score": round(z_score, 2),
+                "rsi2": round(rsi, 1),
+                "zscore": round(zscore, 2),
                 "ibs": round(ibs, 3),
                 "down_days": down_days,
-                "close_rank": round(close_rank, 3),
                 "trend": trend,
             },
         )
