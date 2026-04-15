@@ -1,12 +1,15 @@
-"""IBS Mean Reversion v2 — regime-aware with DOWN+HIGH skip.
+"""IBS Mean Reversion v3 — skip HIGH vol + max_stop_pct loss cap.
 
-Core signal: Internal Bar Strength (IBS) < threshold AND 2+ consecutive down days.
-Long-only. Works across UP, FLAT, and normal DOWN regimes.
+Core signal: IBS < threshold AND 2+ consecutive down days.
+Long-only. Works across UP, FLAT, and DOWN+NORMAL/LOW regimes.
 
-Key improvement over v1: skip DOWN+HIGH vol combo (consistently loses),
-and tighter stop/target in DOWN regime to cap losses.
+Key filters:
+  1. Skip HIGH and SHOCK vol entirely — large daily moves kill mean reversion
+  2. Skip DOWN+HIGH combo
+  3. max_stop_pct caps per-trade loss regardless of ATR
+  4. Tighter stop/target in DOWN regime
 
-Skip SHOCK vol, earnings, FOMC.
+Skip earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
         self.down_target_scale = float(config.get("down_target_scale", 0.7))
         self.down_stop_scale = float(config.get("down_stop_scale", 0.7))
 
@@ -80,9 +84,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH and SHOCK volatility — mean reversion fails in large-move environments
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
         # Skip earnings and FOMC
@@ -92,11 +96,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
         # Regime context
         regime_trend = labels.get("regime_trend", "FLAT").upper()
-        regime_vol = labels.get("regime_vol", "NORMAL").upper()
-
-        # Skip DOWN+HIGH vol combo — consistently loses for long-only
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -122,7 +121,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if ibs is None or ibs >= self.ibs_threshold:
             return None
 
-        # Consecutive down day confirmation (fixed at 2 for stability)
+        # Consecutive down day confirmation (fixed at 2)
         consec = self._count_consecutive_down(closes)
         if consec < 2:
             return None
@@ -132,11 +131,14 @@ class dailyresearchv7dStrategy(BaseStrategy):
         target_mult = self.target_atr_mult
 
         if regime_trend == "DOWN":
-            # Tighter in downtrends: take profits faster, cut losses faster
             target_mult *= self.down_target_scale
             stop_mult *= self.down_stop_scale
 
-        stop = bar.close - stop_mult * atr
+        # ATR-based stop with max_stop_pct cap
+        stop_atr = bar.close - stop_mult * atr
+        max_stop = bar.close * (1.0 - self.max_stop_pct)
+        stop = max(stop_atr, max_stop)
+
         target = bar.close + target_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -151,8 +153,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
                 "ibs": round(ibs, 3),
                 "consec_down": consec,
                 "regime": regime_trend,
-                "vol_regime": regime_vol,
                 "atr": round(atr, 4),
-                "seed": "ibs_mr_v2",
+                "seed": "ibs_mr_v3",
             },
         )
