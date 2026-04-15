@@ -1,13 +1,14 @@
-"""IBS + Donchian Hybrid with Max-Loss Clamp.
+"""Keltner Channel Breakout Strategy.
 
-Two modes:
-  1. IBS Mean Reversion — buy when IBS < 0.2 (close near day low), price above SMA.
-  2. Donchian Breakout — new N-day high with ATR expansion.
+Keltner Channel = EMA(20) ± ATR(14) * multiplier.
+Upper channel break = volatility breakout + trend confirmation in ONE signal.
+This naturally combines: price > trend (EMA), ATR expansion, and breakout.
 
-Key: max_loss_pct clamps stop loss to prevent catastrophic single-trade losses.
-This caps downside per trade, making worst-window PF more consistent.
+Entry: close > upper Keltner AND close > yesterday's close (momentum confirm)
+Stop: EMA or lower Keltner (whichever is closer)
+Target: 2-3x ATR above entry
 
-Long-only, daily bars.
+Long-only, daily bars. Skips DOWN regime and SHOCK vol.
 """
 
 from __future__ import annotations
@@ -31,21 +32,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
+        self.ema_period = int(config.get("ema_period", 20))
 
         # Optimizable
-        self.atr_expansion = float(config.get("atr_expansion", 1.3))
-        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.3))
+        self.atr_expansion = float(config.get("atr_expansion", 1.5))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
 
-        # IBS params
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
-        self.sma_period = int(config.get("sma_period", 20))
-
-        # Structural
+        # Keltner channel width (ATR multiplier for upper/lower bands)
+        self.keltner_mult = float(config.get("keltner_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_loss_pct = float(config.get("max_loss_pct", 0.03))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -60,27 +58,20 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = v * mult + ema * (1 - mult)
+        return ema
+
+    @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
-        result = []
-        for i in range(count):
-            end_idx = len(bars) - count + i + 1
-            if end_idx < period + 1:
-                continue
-            sub = bars[:end_idx]
-            val = self._atr(sub, period)
-            if val is not None:
-                result.append(val)
-        return result
-
-    def _clamp_stop(self, price: float, stop: float) -> float:
-        """Never lose more than max_loss_pct per trade."""
-        min_stop = price * (1.0 - self.max_loss_pct)
-        return max(stop, min_stop)
 
     def on_bar(
         self,
@@ -98,14 +89,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_earnings"):
             return None
 
-        bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
-
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
         vol_regime = regime_labels.get("regime_vol", "NORMAL")
         if vol_regime == "SHOCK":
             return None
@@ -114,87 +97,44 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if trend == "DOWN":
             return None
 
-        # Mode 1: IBS Mean Reversion
-        signal = self._try_ibs(symbol, bar, closes, atr, market_state)
-        if signal is not None:
-            return signal
+        bars = list(symbol_state.bars)
+        closes = [b.close for b in bars]
 
-        # Mode 2: Donchian Breakout
-        signal = self._try_donchian(symbol, bar, bars, closes, volumes, atr, market_state)
-        return signal
-
-    def _try_ibs(
-        self,
-        symbol: str,
-        bar: Bar,
-        closes: list[float],
-        atr: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs > self.ibs_threshold:
+        ema = self._ema(closes, self.ema_period)
+        if ema is None:
             return None
 
-        sma = self._sma(closes, self.sma_period)
-        if sma is None:
-            return None
-        if bar.close < sma - atr:
-            return None
+        # Keltner Channels
+        upper_keltner = ema + self.keltner_mult * atr
+        price = bar.close
 
-        if bar.close < sma:
-            target = sma
-        else:
-            target = bar.close + self.target_atr_mult * atr
-
-        stop = self._clamp_stop(bar.close, bar.close - self.stop_atr_mult * atr)
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "IBS", "ibs": round(ibs, 3)},
-        )
-
-    def _try_donchian(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        volumes: list[float],
-        atr: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        if len(bars) < self.breakout_lookback + 1:
+        # Entry: close above upper Keltner channel
+        if price <= upper_keltner:
             return None
 
-        lookback_highs = [b.high for b in bars[-(self.breakout_lookback + 1) : -1]]
-        if bar.close <= max(lookback_highs):
+        # Momentum confirmation: close > yesterday's close
+        if len(closes) >= 2 and price <= closes[-2]:
             return None
 
-        # ATR expansion
-        atr_values = self._atr_series(bars, self.atr_period, 20)
-        if len(atr_values) >= 10:
-            atr_avg = sum(atr_values) / len(atr_values)
-            if atr_avg > 1e-9 and atr / atr_avg < self.atr_expansion:
-                return None
-
-        # Volume confirmation
+        # Volume confirmation (optional — use softer filter)
+        volumes = [b.volume for b in bars]
         avg_vol = self._sma(volumes, 20)
         if avg_vol is not None and avg_vol > 1e-9:
-            if bar.volume / avg_vol < self.vol_surge_mult:
+            vol_ratio = bar.volume / avg_vol
+            if vol_ratio < self.vol_surge_mult:
                 return None
 
-        stop = self._clamp_stop(bar.close, bar.close - self.stop_atr_mult * atr)
-        target = bar.close + self.target_atr_mult * atr
+        # Stop: EMA or ATR-based (whichever is higher = tighter)
+        stop_ema = ema
+        stop_atr = price - self.stop_atr_mult * atr
+        stop = max(stop_ema, stop_atr)
+
+        # Target
+        target = price + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -204,5 +144,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             market_state,
             stop_price=stop,
             target_price=target,
-            meta={"mode": "DONCHIAN"},
+            meta={
+                "mode": "KELTNER",
+                "keltner_dist": round((price - upper_keltner) / atr, 2),
+                "trend": trend,
+            },
         )
