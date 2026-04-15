@@ -1,8 +1,9 @@
-"""Seed: Trend-Following Pullback Entry.
+"""IBS Mean Reversion — fade daily closes near the low.
 
-Buy pullbacks to EMA(20) in confirmed uptrends (price > SMA50, EMA20 > SMA50).
-Volume and RSI(14) filters. Skips SHOCK volatility regime.
-Long-only, daily bars, max_hold_days=10.
+Internal Bar Strength = (close - low) / (high - low).
+Low IBS (close near low) is a robust next-day reversal signal.
+Long only above SMA(200). Skip earnings/FOMC/SHOCK.
+Target: SMA(20) midline. Stop: ATR-based.
 """
 
 from __future__ import annotations
@@ -25,19 +26,15 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.ema_fast_period = int(config.get("ema_fast_period", 20))
-        self.pullback_min_pct = float(config.get("pullback_min_pct", 0.01))
-        self.pullback_max_pct = float(config.get("pullback_max_pct", 0.02))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_low = float(config.get("rsi_low", 40.0))
-        self.rsi_high = float(config.get("rsi_high", 55.0))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
+        self.sma_long_period = int(config.get("sma_long_period", 200))
+        self.sma_mid_period = int(config.get("sma_mid_period", 20))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.rsi_period = int(config.get("rsi_period", 14))
+        self.rsi_max = float(config.get("rsi_max", 50.0))
 
     # --- Indicator helpers ---
 
@@ -46,16 +43,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
 
     @staticmethod
     def _rsi(closes: list[float], period: int) -> Optional[float]:
@@ -98,49 +85,65 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility regime
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
+        # Skip earnings and FOMC
+        labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # Trend confirmation: price > SMA(50)
-        sma50 = self._sma(closes, self.sma_slow_period)
-        if sma50 is None or bar.close <= sma50:
+        # Need enough bars for SMA(200) — but if not enough, use SMA(50) as fallback
+        sma_long = self._sma(closes, self.sma_long_period)
+        if sma_long is None:
+            # Fallback: use SMA(50) if not enough data for 200
+            sma_long = self._sma(closes, 50)
+            if sma_long is None:
+                return None
+
+        # Long-term trend filter: price must be above long SMA
+        if bar.close <= sma_long:
             return None
 
-        # Momentum alignment: EMA(20) > SMA(50)
-        ema20 = self._ema(closes, self.ema_fast_period)
-        if ema20 is None or ema20 <= sma50:
+        # IBS: Internal Bar Strength
+        bar_range = bar.high - bar.low
+        if bar_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+
+        # Entry: IBS below threshold (close near the low = oversold)
+        if ibs >= self.ibs_threshold:
             return None
 
-        # Pullback to EMA(20): close within 1-2% of EMA20
-        if ema20 < 1e-9:
-            return None
-        dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_max_pct or dist_pct > self.pullback_min_pct:
-            return None
-
-        # RSI(14) in sweet spot: not overbought, not oversold
+        # RSI filter: not overbought (helps avoid catching falling knives)
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
+        if rsi is None or rsi > self.rsi_max:
             return None
 
-        # Volume confirmation: above 0.8x 20-day average
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
+        # Target: SMA(20) midline
+        sma_mid = self._sma(closes, self.sma_mid_period)
+        if sma_mid is None:
             return None
 
-        # ATR for stop and target
+        # Only enter if target is above current price (room to profit)
+        if sma_mid <= bar.close:
+            return None
+
+        # ATR for stop
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
+
+        # Use SMA target if it's closer (tighter target = more consistent)
+        target = min(target, sma_mid)
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -151,12 +154,10 @@ class dailyresearchv7bStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema20": round(ema20, 2),
-                "sma50": round(sma50, 2),
-                "pullback_pct": round(dist_pct, 4),
-                "rsi14": round(rsi, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
+                "ibs": round(ibs, 4),
+                "rsi": round(rsi, 2),
+                "sma_mid": round(sma_mid, 2),
                 "atr": round(atr, 4),
-                "seed": "trend_pullback",
+                "seed": "ibs_mean_reversion",
             },
         )
