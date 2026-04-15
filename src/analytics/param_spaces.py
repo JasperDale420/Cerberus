@@ -228,10 +228,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=3.0, high=5.0, step=0.5, description="ATR target"),
     ],
     "daily_research_v7c": [
-        ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
-        ParamDef("vol_surge_mult", "float", low=1.1, high=1.8, step=0.1, description="Volume surge multiplier"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
+        ParamDef("atr_expansion", "float", low=1.0, high=1.5, step=0.1, description="ATR expansion ratio"),
+        ParamDef("stop_atr_mult", "float", low=1.5, high=2.5, step=0.5, description="ATR stop"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target"),
     ],
     "daily_research_v7d": [
         ParamDef("rsi_long_entry", "float", low=35.0, high=50.0, step=5.0, description="RSI buy in UP"),

@@ -30,14 +30,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
 
         # Optimizable
-        self.atr_expansion = float(config.get("atr_expansion", 1.2))
-        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
+        self.atr_expansion = float(config.get("atr_expansion", 1.1))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
 
         # Structural
         self.breakout_lookback = int(config.get("breakout_lookback", 5))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.sma_period = int(config.get("sma_period", 10))
         self.max_hold_days = int(config.get("max_hold_days", 10))
 
     @staticmethod
@@ -118,13 +118,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 atr_ratio = atr / atr_avg
                 if atr_ratio < self.atr_expansion:
                     return None
-
-        # Volume confirmation
-        volumes = [b.volume for b in bars]
-        avg_vol = self._sma(volumes, 20)
-        if avg_vol is not None and avg_vol > 1e-9:
-            if bar.volume / avg_vol < self.vol_surge_mult:
-                return None
 
         # Price above SMA (trend filter)
         sma = self._sma(closes, self.sma_period)
