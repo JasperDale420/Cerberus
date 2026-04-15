@@ -214,10 +214,12 @@ def _load_daily_bars_fast(
     Daily files are ~137× smaller than 1-min files, cutting worker RSS from ~1.9 GB to ~15 MB.
     """
     frames: list[pd.DataFrame] = []
+    missing_daily: list[str] = []
     for symbol in sorted(symbols):
         daily_path = data_dir / f"{symbol}_1Day.parquet"
         if not daily_path.exists():
-            return None  # Not all symbols have daily files — fall back to full load
+            missing_daily.append(symbol)
+            continue  # Skip symbols without daily files — they won't be in the backtest
         df = pd.read_parquet(daily_path)
         # Ensure timestamp column for compatibility
         if "timestamp" not in df.columns and "date" in df.columns:
