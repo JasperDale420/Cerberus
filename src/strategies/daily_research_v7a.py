@@ -1,9 +1,12 @@
-"""daily_research_v7a — Multi-factor composite score mean reversion.
+"""daily_research_v7a — Regime-adaptive multi-factor mean reversion.
 
-Archetype: Soft-scoring mean reversion (no hard trend gate).
-Entry: composite score from z-score + IBS + volume + consecutive downs + regime.
-Regime adapts the entry threshold rather than blocking trades entirely.
-Target: BB midline or ATR-based. Stop: 2x ATR. Long-only, daily bars.
+Trades in ALL market regimes with adapted entry/exit logic:
+- UP: buy pullbacks (moderate oversold, wide target)
+- FLAT: classic mean reversion (z-score + IBS scoring)
+- DOWN: buy extreme oversold bounces (tight target, tight stop)
+
+Multi-factor score: z-score + IBS + down days + volume.
+No single-indicator gating — composite scoring only.
 """
 
 from __future__ import annotations
@@ -28,13 +31,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
-        self.zscore_entry = float(config.get("zscore_entry", 1.5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.vol_avg_mult = float(config.get("vol_avg_mult", 0.5))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.drawdown_max = float(config.get("drawdown_max", 0.15))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -67,7 +67,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _count_down_days(closes: list[float], max_look: int = 5) -> int:
+    def _count_down_days(closes: list[float], max_look: int = 6) -> int:
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -77,6 +77,14 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if count >= max_look:
                 break
         return count
+
+    @staticmethod
+    def _pct_rank(values: list[float], current: float) -> float:
+        """Percentile rank of current value within historical values."""
+        if len(values) < 2:
+            return 0.5
+        below = sum(1 for v in values if v < current)
+        return below / len(values)
 
     def on_bar(
         self,
@@ -92,97 +100,105 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        [b.high for b in bars]
 
-        # Bollinger Band z-score
+        # --- Core indicators ---
         sma = self._sma(closes, self.bb_period)
         std = self._std(closes, self.bb_period)
         if sma is None or std is None or std < 1e-9:
             return None
 
-        zscore = (bar.close - sma) / std
+        z_score = (bar.close - sma) / std
+        lower_bb = sma - self.bb_std * std
 
-        # ATR for stop/target
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # IBS (Internal Bar Strength)
+        # IBS
         bar_range = bar.high - bar.low
         ibs = (bar.close - bar.low) / bar_range if bar_range > 1e-9 else 0.5
 
+        # Down days
+        down_days = self._count_down_days(closes)
+
+        # Close percentile rank over lookback (low = oversold)
+        close_rank = self._pct_rank(closes[-40:], bar.close)
+
         # Volume ratio
         volumes = [b.volume for b in bars[-20:]]
-        avg_vol = sum(volumes) / len(volumes) if volumes else 1
+        avg_vol = sum(volumes) / len(volumes) if len(volumes) >= 5 else 1
         vol_ratio = bar.volume / avg_vol if avg_vol > 0 else 1.0
 
-        # Hard drawdown filter
-        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
-        peak = max(lookback_highs)
-        drawdown = (peak - bar.close) / peak if peak > 0 else 0
-        if drawdown > self.drawdown_max:
-            return None
-
-        # Regime labels
+        # --- Regime detection ---
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
         vol_regime = labels.get("regime_vol", "NORMAL")
 
-        # Skip SHOCK volatility
+        # Hard filters: skip near earnings, skip SHOCK
+        if labels.get("near_earnings", False):
+            return None
         if vol_regime == "SHOCK":
             return None
 
-        # Skip near earnings
-        if labels.get("near_earnings", False):
-            return None
-
-        # Consecutive down days
-        down_days = self._count_down_days(closes)
-
-        # --- Multi-factor composite score (0-100) ---
+        # --- Multi-factor score (0-100 scale) ---
         score = 0.0
 
-        # Factor 1: Z-score oversold (0-30 pts)
-        if zscore < -self.zscore_entry:
-            score += min(30.0, 10.0 * abs(zscore))
-        elif zscore < -0.5:
-            score += 10.0 * (abs(zscore) - 0.5) / max(self.zscore_entry - 0.5, 0.01)
+        # Z-score oversold (0-25 pts)
+        if z_score < -0.5:
+            score += min(25.0, 10.0 * abs(z_score))
 
-        # Factor 2: Low IBS (0-25 pts)
+        # Low IBS (0-20 pts)
         if ibs < self.ibs_threshold:
-            score += 20.0 * (1.0 - ibs / self.ibs_threshold)
-            if ibs < 0.15:
-                score += 5.0
-        elif ibs < 0.5:
+            score += 15.0 * (1.0 - ibs / max(self.ibs_threshold, 0.01))
+        if ibs < 0.15:
             score += 5.0
 
-        # Factor 3: Volume confirmation (0-15 pts)
-        if vol_ratio >= self.vol_avg_mult:
-            score += min(15.0, 5.0 * vol_ratio)
+        # Down days (0-15 pts)
+        if down_days >= 2:
+            score += min(15.0, 5.0 * down_days)
 
-        # Factor 4: Drawdown safety (0-15 pts)
-        safety = 1.0 - drawdown / self.drawdown_max
-        score += 15.0 * safety
+        # Close rank oversold (0-15 pts)
+        if close_rank < 0.25:
+            score += 15.0 * (1.0 - close_rank / 0.25)
 
-        # Factor 5: Consecutive down days (0-20 pts)
-        score += min(20.0, 10.0 * down_days)
+        # Volume participation (0-10 pts)
+        if vol_ratio > 1.0:
+            score += min(10.0, 5.0 * (vol_ratio - 1.0))
 
-        # Regime-adaptive threshold
+        # Below lower BB bonus (0-10 pts)
+        if bar.close < lower_bb:
+            score += 10.0
+
+        # --- Regime-adaptive thresholds and risk ---
         if trend == "UP":
-            threshold = 40.0
+            # In uptrend: easier entry, wide target (ride the trend)
+            entry_threshold = 30.0
+            stop_mult = self.stop_atr_mult
+            target = max(sma, bar.close + self.target_atr_mult * atr)
         elif trend == "FLAT":
-            threshold = 45.0
-        else:  # DOWN
-            threshold = 60.0
+            # In flat: moderate entry, target BB midline
+            entry_threshold = 35.0
+            stop_mult = self.stop_atr_mult
+            target = sma
+        else:
+            # In downtrend: require strong signal, tight target (quick exit)
+            entry_threshold = 45.0
+            stop_mult = self.stop_atr_mult * 0.75  # tighter stop in DOWN
+            target = bar.close + 1.0 * atr  # modest target
 
-        if score < threshold:
+        # HIGH vol: tighten stop but keep same threshold
+        if vol_regime == "HIGH":
+            stop_mult *= 0.85
+
+        if score < entry_threshold:
             return None
 
-        # Target: BB midline (SMA) or ATR-based, whichever is higher
-        target = max(sma, bar.close + 1.5 * atr)
+        stop = bar.close - stop_mult * atr
+
+        # Only enter if target above entry
         if target <= bar.close:
             return None
-
-        stop = bar.close - self.stop_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -193,11 +209,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "zscore": round(zscore, 2),
-                "ibs": round(ibs, 3),
                 "score": round(score, 1),
+                "z_score": round(z_score, 2),
+                "ibs": round(ibs, 3),
                 "down_days": down_days,
+                "close_rank": round(close_rank, 3),
                 "trend": trend,
-                "threshold": threshold,
+                "vol_regime": vol_regime,
             },
         )
