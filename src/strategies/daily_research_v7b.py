@@ -1,8 +1,8 @@
-"""Connors RSI(2) Mean Reversion — skip HIGH vol for consistency.
+"""Connors RSI(2) Mean Reversion — with max stop pct cap.
 
 Entry: 2+ consecutive down closes AND RSI(2) < threshold.
-Skips HIGH and SHOCK vol (DOWN+HIGH windows consistently lose).
-Skip earnings, FOMC. Min ATR filter for meaningful bounces.
+Regime-neutral. Skips SHOCK vol, earnings, FOMC.
+Max stop pct caps losses in HIGH vol periods.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -85,9 +86,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility (DOWN+HIGH consistently loses)
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         # Skip earnings and FOMC
@@ -116,12 +117,11 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Min volatility filter
-        atr_pct = atr / bar.close
-        if atr_pct < 0.01:
-            return None
+        # Stop: ATR-based but capped at max_stop_pct of price
+        atr_stop = bar.close - self.stop_atr_mult * atr
+        pct_stop = bar.close * (1.0 - self.max_stop_pct)
+        stop = max(atr_stop, pct_stop)  # Use the TIGHTER stop
 
-        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -135,7 +135,8 @@ class dailyresearchv7bStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "rsi2": round(rsi, 2),
-                "atr_pct": round(atr_pct, 4),
-                "seed": "connors_rsi2_no_high_vol",
+                "atr_pct": round(atr / bar.close, 4),
+                "stop_type": "pct" if pct_stop > atr_stop else "atr",
+                "seed": "connors_rsi2_capped_stop",
             },
         )
