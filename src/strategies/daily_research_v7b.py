@@ -1,20 +1,22 @@
-"""Regime-Adaptive IBS + Multi-Factor Strategy.
+"""Mean-Reversion-to-SMA Strategy.
 
-Uses Internal Bar Strength (IBS) mean reversion as the core signal,
-with regime-adaptive thresholds and multiple orthogonal confirmation factors.
+Buys when price dips below its short-term moving average with intraday
+capitulation (IBS confirmation). Targets the SMA itself as exit, creating
+a natural mean-reversion mechanic that works across all regimes.
 
 Entry logic:
-  - IBS < threshold (close near day's low = oversold intraday)
-  - At least 1-4 consecutive down days (selling pressure, not free-fall)
-  - Volume above minimum (participation)
-  - Regime adapts IBS threshold and stop/target sizing
+  - Price is below SMA(20) by at least min_dip_pct
+  - Close in lower portion of day's range (IBS < threshold)
+  - At least 1 consecutive down close (selling pressure)
+  - Volume above minimum threshold
+  - Skip SHOCK volatility
 
-Regime adaptation:
-  - UP: moderate IBS threshold, price must be above SMA
-  - DOWN: stricter IBS threshold (deeper oversold required)
-  - FLAT: standard IBS threshold (most MR-friendly)
+Exit logic:
+  - Target: SMA(20) — the mean itself
+  - Stop: entry - stop_atr_mult * ATR(14)
+  - Max hold: 5 days
 
-Long-only, daily bars.
+Long-only, daily bars. Few parameters for robustness.
 """
 
 from __future__ import annotations
@@ -36,26 +38,27 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        # IBS thresholds
-        self.ibs_buy_threshold = float(config.get("ibs_buy_threshold", 0.25))
-        # Trend filter
-        self.sma_period = int(config.get("sma_period", 40))
-        # Volatility
+        self.min_bars = int(config.get("min_bars", 25))
+        # SMA period for mean target
+        self.sma_period = int(config.get("sma_period", 20))
+        # Minimum dip below SMA to trigger (pct)
+        self.min_dip_pct = float(config.get("min_dip_pct", 0.01))
+        # Max dip — avoid catching falling knives
+        self.max_dip_pct = float(config.get("max_dip_pct", 0.08))
+        # IBS threshold — close in lower portion of range
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        # ATR for stop
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         # Volume filter
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
-        # Range filter
-        self.min_range_atr_ratio = float(config.get("min_range_atr_ratio", 0.5))
-        # Down regime adjustment
-        self.ibs_down_threshold = float(config.get("ibs_down_threshold", 0.15))
-        # Consecutive down days
+        # Max hold
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Min consecutive down days
         self.min_down_days = int(config.get("min_down_days", 1))
-        self.max_down_days = int(config.get("max_down_days", 4))
+        # Max consecutive down days — avoid free-falls
+        self.max_down_days = int(config.get("max_down_days", 5))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -83,7 +86,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return (bar.close - bar.low) / rng
 
     @staticmethod
-    def _count_down_days(bars: list[Bar], max_lookback: int = 5) -> int:
+    def _count_down_days(bars: list[Bar], max_lookback: int = 6) -> int:
         count = 0
         for i in range(len(bars) - 1, 0, -1):
             if bars[i].close < bars[i - 1].close:
@@ -106,6 +109,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
@@ -114,63 +118,44 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        ibs = self._ibs(bar)
-        if ibs is None:
-            return None
-
-        # Range filter: skip tiny-range days
-        day_range = bar.high - bar.low
-        if day_range < self.min_range_atr_ratio * atr:
-            return None
-
-        # Volume confirmation
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
-            return None
-
-        # Trend context
+        # SMA — our mean-reversion target
         sma = self._sma(closes, self.sma_period)
-        if sma is None:
+        if sma is None or sma < 1e-9:
             return None
 
-        labels = symbol_state.meta.get("regime_labels", {})
-        trend = labels.get("regime_trend", "FLAT")
+        # Price must be BELOW the SMA (dip)
+        dip_pct = (sma - bar.close) / sma
+        if dip_pct < self.min_dip_pct or dip_pct > self.max_dip_pct:
+            return None
 
-        # Consecutive down days filter
+        # IBS confirmation — close near low of day
+        ibs = self._ibs(bar)
+        if ibs is None or ibs > self.ibs_threshold:
+            return None
+
+        # Consecutive down days — selling pressure confirmation
         down_days = self._count_down_days(bars)
         if down_days < self.min_down_days or down_days > self.max_down_days:
             return None
 
-        # Regime-adaptive IBS threshold
-        if trend == "UP":
-            if ibs > self.ibs_buy_threshold:
-                return None
-            if bar.close < sma:
-                return None
-        elif trend == "DOWN":
-            if ibs > self.ibs_down_threshold:
-                return None
-        else:
-            if ibs > self.ibs_buy_threshold:
-                return None
+        # Volume — must have participation
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
+            return None
 
-        # Dynamic stop/target by regime
-        if trend == "DOWN":
-            stop_mult = self.stop_atr_mult * 0.8
-            target_mult = self.target_atr_mult * 0.7
-        elif trend == "UP":
-            stop_mult = self.stop_atr_mult
-            target_mult = self.target_atr_mult * 1.2
-        else:
-            stop_mult = self.stop_atr_mult
-            target_mult = self.target_atr_mult
+        # ATR for stop
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
 
-        stop = bar.close - stop_mult * atr
-        target = bar.close + target_mult * atr
+        # Target = SMA (the mean we're reverting to)
+        target = sma
+        # Stop = below entry by ATR multiple
+        stop = bar.close - self.stop_atr_mult * atr
+
+        # Sanity: target must be above entry
+        if target <= bar.close:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -181,11 +166,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
+                "dip_pct": round(dip_pct, 4),
                 "ibs": round(ibs, 3),
-                "trend": trend,
                 "down_days": down_days,
+                "sma": round(sma, 2),
                 "atr": round(atr, 4),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
-                "archetype": "regime_adaptive_ibs",
+                "archetype": "mean_reversion_to_sma",
             },
         )
