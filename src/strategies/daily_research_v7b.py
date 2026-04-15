@@ -1,8 +1,9 @@
-"""Connors RSI(2) + IBS Mean Reversion — double-confirmation oversold bounce.
+"""Connors RSI(2) Mean Reversion — buy oversold bounces after consecutive down days.
 
-Entry: 2+ consecutive down closes AND RSI(2) < threshold AND IBS < 0.3.
-The IBS filter (close near low) confirms selling exhaustion.
-Regime-neutral. Skips SHOCK vol, earnings, FOMC.
+Entry: 2+ consecutive down closes AND RSI(2) < threshold.
+Works in both UP and DOWN trends (short-term bounce is regime-neutral).
+Tight target (1.5 ATR), short hold (max 3 days) for consistency.
+Skips SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -33,7 +34,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.sma_period = int(config.get("sma_period", 50))
-        self.ibs_max = float(config.get("ibs_max", 0.3))
 
     # --- Indicator helpers ---
 
@@ -117,14 +117,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if sma is None:
             return None
 
-        # IBS: Internal Bar Strength — close near the low confirms selling exhaustion
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs > self.ibs_max:
-            return None
-
         # Core signal: consecutive down days
         consec = self._count_consecutive_down(closes)
         if consec < self.consec_down_days:
@@ -156,7 +148,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
                 "rsi2": round(rsi, 2),
                 "above_sma": bar.close > sma,
                 "atr": round(atr, 4),
-                "ibs": round(ibs, 4),
-                "seed": "connors_rsi2_ibs_mr",
+                "seed": "connors_rsi2_mr",
             },
         )
