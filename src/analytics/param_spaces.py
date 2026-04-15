@@ -90,12 +90,14 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_stop_pct": 0.02,
     },
     "daily_research_v7b": {
-        "ema_fast": 20,
-        "sma_slow": 50,
-        "max_hold_days": 10,
+        "sma_period": 20,
+        "atr_period": 14,
+        "vol_avg_period": 20,
+        "max_hold_days": 5,
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
+        "bb_period": 20,
         "max_hold_days": 7,
     },
     "daily_research_v7d": {
@@ -226,8 +228,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=3.0, high=5.0, step=0.5, description="ATR target"),
     ],
     "daily_research_v7c": [
-        ParamDef("atr_expansion", "float", low=1.2, high=2.0, step=0.2, description="ATR expansion ratio"),
-        ParamDef("vol_surge_mult", "float", low=1.2, high=2.0, step=0.2, description="Volume surge multiplier"),
+        ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
+        ParamDef("vol_surge_mult", "float", low=1.1, high=1.8, step=0.1, description="Volume surge multiplier"),
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
         ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
     ],

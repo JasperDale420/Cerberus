@@ -1,7 +1,10 @@
-"""Seed: Volatility Breakout.
+"""Regime-Adaptive Volatility Strategy.
 
-Buy when ATR expands, price breaks 10-day high, and volume confirms.
-Skips near-earnings symbols. Long-only, daily bars, max_hold_days=7.
+Dual-mode: volatility breakout in trending markets, ATR-contraction
+mean-reversion in flat/range-bound markets.  Adapts entry thresholds
+and risk sizing to regime_trend and regime_vol labels.
+
+Long-only, daily bars, max_hold_days configurable.
 """
 
 from __future__ import annotations
@@ -25,11 +28,19 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_avg_period = int(config.get("atr_avg_period", 20))
-        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.5))
+
+        # Breakout mode params
+        self.atr_expansion = float(config.get("atr_expansion", 1.3))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 1.5))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.3))
+
+        # Mean-reversion mode params
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
+        self.mr_atr_contraction = float(config.get("mr_atr_contraction", 0.9))
+
+        # Risk params
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
 
@@ -53,8 +64,16 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         return sum(values[-period:]) / period
 
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        data = values[-period:]
+        mean = sum(data) / len(data)
+        variance = sum((x - mean) ** 2 for x in data) / len(data)
+        return variance**0.5
+
     def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
-        """Compute a series of ATR values for the last `count` bars."""
         result = []
         for i in range(count):
             end_idx = len(bars) - count + i + 1
@@ -78,9 +97,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip near-earnings symbols
         regime_labels = symbol_state.meta.get("regime_labels", {})
-        if regime_labels.get("near_earnings"):
+
+        # Skip near-earnings and near-FOMC
+        if regime_labels.get("near_earnings") or regime_labels.get("near_fomc"):
             return None
 
         bars = list(symbol_state.bars)
@@ -92,29 +112,73 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR expansion: current ATR > 1.5x its 20-day average
-        atr_values = self._atr_series(bars, self.atr_period, self.atr_avg_period)
-        if len(atr_values) < self.atr_avg_period:
+        # ATR average for expansion/contraction detection
+        atr_values = self._atr_series(bars, self.atr_period, 20)
+        if len(atr_values) < 10:
             return None
         atr_avg = sum(atr_values) / len(atr_values)
-        if atr_avg < 1e-9 or atr < self.atr_expansion_mult * atr_avg:
+        if atr_avg < 1e-9:
+            return None
+        atr_ratio = atr / atr_avg
+
+        # Regime
+        trend = regime_labels.get("regime_trend", "FLAT")
+        vol_regime = regime_labels.get("regime_vol", "NORMAL")
+
+        # Skip SHOCK volatility — too chaotic
+        if vol_regime == "SHOCK":
             return None
 
-        # Breakout: close above 10-day high (excluding current bar)
+        # Volume average
+        avg_vol = self._sma(volumes, 20)
+        if avg_vol is None or avg_vol < 1e-9:
+            return None
+        vol_ratio = bar.volume / avg_vol
+
+        # Try breakout mode (UP or FLAT with expanding vol)
+        signal = self._try_breakout(symbol, bar, bars, closes, atr, atr_ratio, vol_ratio, trend, market_state)
+        if signal is not None:
+            return signal
+
+        # Try mean-reversion mode (FLAT or DOWN with contracting vol)
+        signal = self._try_mean_reversion(symbol, bar, bars, closes, atr, atr_ratio, vol_ratio, trend, market_state)
+        return signal
+
+    def _try_breakout(
+        self,
+        symbol: str,
+        bar: Bar,
+        bars: list[Bar],
+        closes: list[float],
+        atr: float,
+        atr_ratio: float,
+        vol_ratio: float,
+        trend: str,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        """Volatility breakout: expanding ATR + new highs + volume surge."""
+        # Require ATR expansion
+        if atr_ratio < self.atr_expansion:
+            return None
+
+        # Breakout: close above N-day high
         if len(bars) < self.breakout_lookback + 1:
             return None
         lookback_highs = [b.high for b in bars[-(self.breakout_lookback + 1) : -1]]
-        high_10d = max(lookback_highs)
-        if bar.close <= high_10d:
+        high_nd = max(lookback_highs)
+        if bar.close <= high_nd:
             return None
 
-        # Volume confirmation: > 1.5x 20-day average
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
+        # Volume confirmation
+        if vol_ratio < self.vol_surge_mult:
             return None
 
-        # Stop below breakout bar's low, target 2x ATR above entry
-        stop = bar.low
+        # In DOWN trend, require stronger breakout
+        if trend == "DOWN" and atr_ratio < self.atr_expansion * 1.3:
+            return None
+
+        # Stop/target
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -126,11 +190,73 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "atr": round(atr, 4),
-                "atr_avg": round(atr_avg, 4),
-                "atr_expansion": round(atr / atr_avg, 2),
-                "high_10d": round(high_10d, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
-                "seed": "vol_breakout",
+                "mode": "BREAKOUT",
+                "atr_ratio": round(atr_ratio, 2),
+                "vol_ratio": round(vol_ratio, 2),
+                "trend": trend,
+            },
+        )
+
+    def _try_mean_reversion(
+        self,
+        symbol: str,
+        bar: Bar,
+        bars: list[Bar],
+        closes: list[float],
+        atr: float,
+        atr_ratio: float,
+        vol_ratio: float,
+        trend: str,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        """Mean reversion: price below lower BB in contracting/normal ATR."""
+        # Mean reversion works best in FLAT/non-trending — skip strong UP
+        if trend == "UP" and atr_ratio > 1.2:
+            return None
+
+        # Require ATR not expanding wildly (contracting or normal)
+        if atr_ratio > 1.2:
+            return None
+
+        # Bollinger Bands
+        bb_mean = self._sma(closes, self.bb_period)
+        bb_std = self._std(closes, self.bb_period)
+        if bb_mean is None or bb_std is None or bb_std < 0.01:
+            return None
+
+        lower_band = bb_mean - self.bb_std_mult * bb_std
+        price = bar.close
+
+        # Price below lower band
+        if price >= lower_band:
+            return None
+
+        # Confirmation: price above previous close (bounce starting)
+        if len(closes) >= 2 and price <= closes[-2]:
+            return None
+
+        # In DOWN trend, require deeper oversold (more below band)
+        if trend == "DOWN":
+            deeper_band = bb_mean - (self.bb_std_mult + 0.5) * bb_std
+            if price >= deeper_band:
+                return None
+
+        # Stop/target — tighter for mean reversion
+        stop = price - self.stop_atr_mult * atr
+        target = bb_mean  # Target the mean
+
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={
+                "mode": "MEAN_REV",
+                "atr_ratio": round(atr_ratio, 2),
+                "z_score": round((price - bb_mean) / bb_std, 2) if bb_std > 0 else 0,
+                "trend": trend,
             },
         )
