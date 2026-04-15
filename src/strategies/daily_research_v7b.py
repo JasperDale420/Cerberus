@@ -1,9 +1,8 @@
-"""Connors RSI(2) Mean Reversion — buy oversold bounces after consecutive down days.
+"""Connors RSI(2) Mean Reversion — regime-adaptive threshold.
 
-Entry: 2+ consecutive down closes AND RSI(2) < threshold.
-Works in both UP and DOWN trends (short-term bounce is regime-neutral).
-Tight target (1.5 ATR), short hold (max 3 days) for consistency.
-Skips SHOCK vol, earnings, FOMC.
+Entry: consecutive down closes AND RSI(2) < threshold.
+RSI threshold adapts to regime: stricter in DOWN (avoid knives), looser in UP.
+Skips SHOCK vol, earnings, FOMC. Min ATR filter.
 """
 
 from __future__ import annotations
@@ -28,11 +27,11 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_max = float(config.get("rsi_max", 10.0))
+        self.rsi_max = float(config.get("rsi_max", 20.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.sma_period = int(config.get("sma_period", 50))
 
     # --- Indicator helpers ---
@@ -73,7 +72,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         return sum(trs) / period
 
     def _count_consecutive_down(self, closes: list[float]) -> int:
-        """Count consecutive down closes ending at the most recent bar."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -107,14 +105,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Need enough history
         if len(closes) < self.min_bars:
-            return None
-
-        # Trend context: price above SMA(50) = stronger bounce expected
-        # But we trade in both directions — just size differently
-        sma = self._sma(closes, self.sma_period)
-        if sma is None:
             return None
 
         # Core signal: consecutive down days
@@ -122,9 +113,21 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if consec < self.consec_down_days:
             return None
 
-        # RSI(2) oversold confirmation
+        # Regime-adaptive RSI threshold
+        # In DOWN: stricter (rsi_max * 0.5) to avoid catching falling knives
+        # In FLAT: moderate (rsi_max * 0.75)
+        # In UP: full threshold (rsi_max) — bounces are reliable
+        regime_trend = labels.get("regime_trend", "UP")
+        if regime_trend == "DOWN":
+            effective_rsi_max = self.rsi_max * 0.5
+        elif regime_trend == "FLAT":
+            effective_rsi_max = self.rsi_max * 0.75
+        else:
+            effective_rsi_max = self.rsi_max
+
+        # RSI(2) oversold confirmation with regime-adapted threshold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > self.rsi_max:
+        if rsi is None or rsi > effective_rsi_max:
             return None
 
         # ATR for stop and target
@@ -132,7 +135,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Min volatility filter: skip when ATR/price < 1% (bounces too small)
+        # Min volatility filter: skip when ATR/price < 1%
         atr_pct = atr / bar.close
         if atr_pct < 0.01:
             return None
@@ -151,8 +154,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "rsi2": round(rsi, 2),
-                "above_sma": bar.close > sma,
-                "atr": round(atr, 4),
-                "seed": "connors_rsi2_mr",
+                "regime_trend": regime_trend,
+                "eff_rsi_max": round(effective_rsi_max, 1),
+                "atr_pct": round(atr_pct, 4),
+                "seed": "connors_rsi2_regime_adaptive",
             },
         )
