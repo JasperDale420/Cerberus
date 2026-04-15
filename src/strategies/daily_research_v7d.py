@@ -1,15 +1,11 @@
-"""Trend Pullback — buy dips in confirmed uptrends.
+"""IBS Mean Reversion v2 — regime-aware with DOWN+HIGH skip.
 
-Entry: EMA(10) > EMA(30) (uptrend) AND price pulls back to within
-pullback_pct of EMA(10). This naturally filters bear markets since
-the EMA crossover won't be bullish.
+Core signal: Internal Bar Strength (IBS) < threshold AND 2+ consecutive down days.
+Long-only. Works across UP, FLAT, and normal DOWN regimes.
 
-Second confirmation: prior day was a down close (buying the dip).
+Key improvement over v1: skip DOWN+HIGH vol combo (consistently loses),
+and tighter stop/target in DOWN regime to cap losses.
 
-Stop: below recent N-day low (swing low).
-Target: risk-reward ratio applied to stop distance.
-
-Trades in all regimes but EMA crossover naturally limits DOWN entries.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -32,27 +28,16 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 35))
-        self.ema_fast = int(config.get("ema_fast", 10))
-        self.ema_slow = int(config.get("ema_slow", 30))
-        self.pullback_pct = float(config.get("pullback_pct", 0.02))
+        self.min_bars = int(config.get("min_bars", 30))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.risk_reward = float(config.get("risk_reward", 2.0))
-        self.swing_low_period = int(config.get("swing_low_period", 5))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.down_target_scale = float(config.get("down_target_scale", 0.7))
+        self.down_stop_scale = float(config.get("down_stop_scale", 0.7))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -65,6 +50,23 @@ class dailyresearchv7dStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _ibs(bar: Bar) -> Optional[float]:
+        """Internal Bar Strength: (close - low) / (high - low)."""
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return None
+        return (bar.close - bar.low) / rng
+
+    def _count_consecutive_down(self, closes: list[float]) -> int:
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
 
     def on_bar(
         self,
@@ -88,9 +90,16 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
+        # Regime context
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        regime_vol = labels.get("regime_vol", "NORMAL").upper()
+
+        # Skip DOWN+HIGH vol combo — consistently loses for long-only
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        lows = [b.low for b in bars]
 
         if len(closes) < self.min_bars:
             return None
@@ -104,46 +113,31 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # ATR/price filter
+        # ATR/price filter: skip dead stocks
         if atr / bar.close < 0.005:
             return None
 
-        # EMA crossover: fast > slow = uptrend
-        ema_f = self._ema(closes, self.ema_fast)
-        ema_s = self._ema(closes, self.ema_slow)
-        if ema_f is None or ema_s is None:
-            return None
-        if ema_f <= ema_s:
+        # IBS signal
+        ibs = self._ibs(bar)
+        if ibs is None or ibs >= self.ibs_threshold:
             return None
 
-        # Pullback: price near or just below the fast EMA
-        distance = (bar.close - ema_f) / ema_f
-        if distance > self.pullback_pct:
-            return None  # Too far above — chasing
-        if distance < -self.pullback_pct * 2:
-            return None  # Too far below — broken trend
-
-        # Confirmation: prior day was a down close
-        if len(closes) >= 2 and closes[-1] >= closes[-2]:
+        # Consecutive down day confirmation (fixed at 2 for stability)
+        consec = self._count_consecutive_down(closes)
+        if consec < 2:
             return None
 
-        # Swing low stop: lowest low of recent N bars
-        if len(lows) >= self.swing_low_period:
-            swing_low = min(lows[-self.swing_low_period :])
-        else:
-            swing_low = min(lows)
+        # Regime-adaptive stop/target
+        stop_mult = self.stop_atr_mult
+        target_mult = self.target_atr_mult
 
-        # Cap stop loss
-        max_stop_price = bar.close * (1.0 - self.max_stop_pct)
-        stop = max(swing_low - atr * 0.1, max_stop_price)
+        if regime_trend == "DOWN":
+            # Tighter in downtrends: take profits faster, cut losses faster
+            target_mult *= self.down_target_scale
+            stop_mult *= self.down_stop_scale
 
-        # Ensure stop is below entry
-        if stop >= bar.close:
-            return None
-
-        # Risk-reward target
-        risk = bar.close - stop
-        target = bar.close + risk * self.risk_reward
+        stop = bar.close - stop_mult * atr
+        target = bar.close + target_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -154,12 +148,11 @@ class dailyresearchv7dStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema_fast": round(ema_f, 2),
-                "ema_slow": round(ema_s, 2),
-                "pullback_dist": round(distance, 4),
-                "swing_low": round(swing_low, 2),
-                "risk": round(risk, 2),
+                "ibs": round(ibs, 3),
+                "consec_down": consec,
+                "regime": regime_trend,
+                "vol_regime": regime_vol,
                 "atr": round(atr, 4),
-                "seed": "trend_pullback",
+                "seed": "ibs_mr_v2",
             },
         )
