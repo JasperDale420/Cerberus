@@ -1,14 +1,10 @@
-"""IBS + Donchian Hybrid Strategy.
+"""Simple Breakout + Wide Target Strategy.
 
-Two complementary modes:
-  1. IBS Mean Reversion — buy when Internal Bar Strength is low (close near day low)
-     and SMA trend is not strongly down. IBS is one of the most robust daily signals.
-  2. Donchian Breakout — buy on new N-day high with volume and ATR expansion.
+Buy when price closes above recent high with ATR expansion.
+Wide targets (3x ATR) let winners run — short holds lose, long holds win.
+Minimal filters for maximum trade generation across all regimes.
 
-IBS = (close - low) / (high - low). Low IBS (~0.2) predicts next-day bounce.
-This is structurally different from RSI — measures bar structure, not momentum.
-
-Long-only, daily bars.
+Long-only, daily bars, max_hold_days=10.
 """
 
 from __future__ import annotations
@@ -34,20 +30,15 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
 
         # Optimizable
-        self.atr_expansion = float(config.get("atr_expansion", 1.3))
-        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.3))
+        self.atr_expansion = float(config.get("atr_expansion", 1.2))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
 
-        # IBS params
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        # Structural
+        self.breakout_lookback = int(config.get("breakout_lookback", 5))
         self.sma_period = int(config.get("sma_period", 20))
-
-        # Donchian params
-        self.breakout_lookback = int(config.get("breakout_lookback", 10))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-
-    # --- Indicator helpers ---
+        self.max_hold_days = int(config.get("max_hold_days", 10))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -92,119 +83,34 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
+
+        # Skip earnings and FOMC
         if regime_labels.get("near_earnings") or regime_labels.get("near_fomc"):
+            return None
+
+        # Skip SHOCK and DOWN
+        vol_regime = regime_labels.get("regime_vol", "NORMAL")
+        if vol_regime == "SHOCK":
+            return None
+        trend = regime_labels.get("regime_trend", "FLAT")
+        if trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        vol_regime = regime_labels.get("regime_vol", "NORMAL")
-        if vol_regime == "SHOCK":
-            return None
-
-        trend = regime_labels.get("regime_trend", "FLAT")
-
-        # Skip DOWN trend — use both per-symbol and market-wide checks
-        if trend == "DOWN":
-            return None
-        # Also check broad market trend
-        snapshot = market_state.regime_snapshot
-        if snapshot is not None:
-            from src.core.domain import TrendRegime
-
-            if snapshot.trend == TrendRegime.DOWN:
-                return None
-
-        # --- Mode 1: IBS Mean Reversion ---
-        signal = self._try_ibs_reversion(symbol, bar, bars, closes, atr, trend, market_state)
-        if signal is not None:
-            return signal
-
-        # --- Mode 2: Donchian Breakout ---
-        signal = self._try_donchian_breakout(symbol, bar, bars, closes, volumes, atr, trend, market_state)
-        return signal
-
-    def _try_ibs_reversion(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        atr: float,
-        trend: str,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        """Buy when IBS is low (close near day low) — predicts next-day bounce."""
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-
-        ibs = (bar.close - bar.low) / bar_range
-
-        # Low IBS = bearish close = likely bounce
-        if ibs > self.ibs_threshold:
-            return None
-
-        # Require 2-day selloff: today closed down from yesterday
-        if len(closes) >= 2 and bar.close >= closes[-2]:
-            return None
-
-        # Require price above SMA (avoid catching falling knives)
-        sma = self._sma(closes, self.sma_period)
-        if sma is None:
-            return None
-
-        # Require price not too far below SMA (within 1 ATR)
-        if bar.close < sma - atr:
-            return None
-
-        # Target: close back to SMA or 1.5 ATR above entry
-        if bar.close < sma:
-            target = sma
-        else:
-            target = bar.close + self.target_atr_mult * atr
-
-        stop = bar.close - self.stop_atr_mult * atr
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "IBS_REV", "ibs": round(ibs, 3), "trend": trend},
-        )
-
-    def _try_donchian_breakout(
-        self,
-        symbol: str,
-        bar: Bar,
-        bars: list[Bar],
-        closes: list[float],
-        volumes: list[float],
-        atr: float,
-        trend: str,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        """Buy on Donchian channel breakout with vol/ATR confirmation."""
+        # Breakout: close above N-day high
         if len(bars) < self.breakout_lookback + 1:
             return None
-
-        # Donchian upper: highest high of lookback period (excluding current bar)
         lookback_highs = [b.high for b in bars[-(self.breakout_lookback + 1) : -1]]
-        donchian_upper = max(lookback_highs)
-
-        if bar.close <= donchian_upper:
+        if bar.close <= max(lookback_highs):
             return None
 
-        # ATR expansion check
+        # ATR expansion: current ATR > threshold * average ATR
         atr_values = self._atr_series(bars, self.atr_period, 20)
         if len(atr_values) >= 10:
             atr_avg = sum(atr_values) / len(atr_values)
@@ -214,20 +120,19 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                     return None
 
         # Volume confirmation
+        volumes = [b.volume for b in bars]
         avg_vol = self._sma(volumes, 20)
         if avg_vol is not None and avg_vol > 1e-9:
-            vol_ratio = bar.volume / avg_vol
-            if vol_ratio < self.vol_surge_mult:
+            if bar.volume / avg_vol < self.vol_surge_mult:
                 return None
 
-        # Donchian lower for stop: lowest low of lookback
-        lookback_lows = [b.low for b in bars[-(self.breakout_lookback + 1) : -1]]
-        donchian_lower = min(lookback_lows)
+        # Price above SMA (trend filter)
+        sma = self._sma(closes, self.sma_period)
+        if sma is not None and bar.close < sma:
+            return None
 
-        # Stop: max of ATR-based or Donchian lower
-        stop_atr = bar.close - self.stop_atr_mult * atr
-        stop = max(stop_atr, donchian_lower)
-
+        # Wide stop and target
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -238,5 +143,5 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             market_state,
             stop_price=stop,
             target_price=target,
-            meta={"mode": "DONCHIAN", "trend": trend},
+            meta={"mode": "BREAKOUT", "trend": trend},
         )
