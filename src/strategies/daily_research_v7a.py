@@ -67,7 +67,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         subset = values[-period:]
         mean = sum(subset) / period
         variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance ** 0.5
+        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -128,6 +128,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         stop = bar.close - self.stop_atr_mult * atr
         target = sma  # BB midline (SMA20)
+        lower_bb = sma - self.bb_std * std
 
         # Only enter if target is above entry (positive expectancy)
         if target <= bar.close:
