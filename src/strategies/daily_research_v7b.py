@@ -1,8 +1,8 @@
-"""Cumulative Return Mean Reversion — buy after multi-day decline.
+"""Connors RSI(2) Mean Reversion — skip HIGH vol for consistency.
 
-Entry: N-day cumulative return drops below threshold (e.g. -5% over 5 days).
-Simpler than RSI — directly measures total decline magnitude.
-Regime-neutral. Skips SHOCK vol, earnings, FOMC.
+Entry: 2+ consecutive down closes AND RSI(2) < threshold.
+Skips HIGH and SHOCK vol (DOWN+HIGH windows consistently lose).
+Skip earnings, FOMC. Min ATR filter for meaningful bounces.
 """
 
 from __future__ import annotations
@@ -25,14 +25,32 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.lookback_days = int(config.get("lookback_days", 5))
-        self.return_threshold = float(config.get("return_threshold", -0.05))
+        self.consec_down_days = int(config.get("consec_down_days", 2))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_max = float(config.get("rsi_max", 20.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -46,6 +64,15 @@ class dailyresearchv7bStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    def _count_consecutive_down(self, closes: list[float]) -> int:
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
+
     def on_bar(
         self,
         symbol: str,
@@ -58,9 +85,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH and SHOCK volatility (DOWN+HIGH consistently loses)
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
         # Skip earnings and FOMC
@@ -71,16 +98,17 @@ class dailyresearchv7bStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < max(self.min_bars, self.lookback_days + 1):
+        if len(closes) < self.min_bars:
             return None
 
-        # Core signal: N-day cumulative return
-        past_close = closes[-(self.lookback_days + 1)]
-        if past_close < 1e-9:
+        # Core signal: consecutive down days
+        consec = self._count_consecutive_down(closes)
+        if consec < self.consec_down_days:
             return None
-        cumul_return = (bar.close - past_close) / past_close
 
-        if cumul_return > self.return_threshold:
+        # RSI(2) oversold confirmation
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi > self.rsi_max:
             return None
 
         # ATR for stop and target
@@ -105,9 +133,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "cumul_return": round(cumul_return, 4),
-                "lookback": self.lookback_days,
+                "consec_down": consec,
+                "rsi2": round(rsi, 2),
                 "atr_pct": round(atr_pct, 4),
-                "seed": "cumul_return_mr",
+                "seed": "connors_rsi2_no_high_vol",
             },
         )
