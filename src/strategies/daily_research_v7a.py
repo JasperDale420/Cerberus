@@ -1,7 +1,10 @@
-"""daily_research_v7a — Multi-Factor Mean Reversion with Regime + Trend Filter.
+"""daily_research_v7a — Trend Pullback with Volatility Squeeze.
 
-IBS (Internal Bar Strength) + RSI(2) + trend context + regime labels.
-Long-only, daily bars. Skips DOWN regimes. Wider stops for consistency.
+Archetype: Trend Pullback (NOT mean reversion)
+Buy dips in established uptrends. EMA alignment confirms trend,
+ATR-normalized pullback depth finds entries.
+Uses volatility contraction (narrowing ATR) as setup condition.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -23,43 +26,29 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 25))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_entry = float(config.get("rsi_entry", 30.0))
-        self.ibs_entry = float(config.get("ibs_entry", 0.4))
-        self.trend_period = int(config.get("trend_period", 50))
+        self.min_bars = int(config.get("min_bars", 55))
+        self.ema_fast = int(config.get("ema_fast", 10))
+        self.ema_slow = int(config.get("ema_slow", 40))
         self.atr_period = int(config.get("atr_period", 14))
+        self.pullback_atr = float(config.get("pullback_atr", 1.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 8))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
+        self.max_hold_days = int(config.get("max_hold_days", 10))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
-        self.vol_mult = float(config.get("vol_mult", 0.5))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.vol_squeeze_ratio = float(config.get("vol_squeeze_ratio", 1.2))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
+    def _ema(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
-        return sum(values[-period:]) / period
+        mult = 2.0 / (period + 1)
+        result = values[0]
+        for v in values[1:]:
+            result = v * mult + result * (1 - mult)
+        return result
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -67,6 +56,19 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
         trs = []
         for i in range(-period, 0):
+            b = bars[i]
+            prev_close = bars[i - 1].close
+            tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
+            trs.append(tr)
+        return sum(trs) / period
+
+    @staticmethod
+    def _atr_at(bars: list[Bar], end_idx: int, period: int) -> Optional[float]:
+        """ATR ending at a specific index."""
+        if end_idx < period:
+            return None
+        trs = []
+        for i in range(end_idx - period + 1, end_idx + 1):
             b = bars[i]
             prev_close = bars[i - 1].close
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
@@ -85,43 +87,47 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # --- Regime filter: skip DOWN trend ---
-        labels = symbol_state.meta.get("regime_labels", {})
-        regime_trend = labels.get("regime_trend", "FLAT")
-        if regime_trend == "DOWN":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # --- Trend filter: SMA(trend_period) ---
-        trend_sma = self._sma(closes, self.trend_period)
-        if trend_sma is None:
-            return None
-        trend_pct = (bar.close - trend_sma) / trend_sma
-        # Skip if more than 3% below trend SMA (stricter than before)
-        if trend_pct < -0.03:
+        # --- EMA trend alignment ---
+        ema_f = self._ema(closes, self.ema_fast)
+        ema_s = self._ema(closes, self.ema_slow)
+        if ema_f is None or ema_s is None:
             return None
 
-        # --- RSI(2) filter ---
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi >= self.rsi_entry:
+        # Must be in uptrend: fast EMA above slow EMA
+        if ema_f <= ema_s:
             return None
 
-        # --- IBS (Internal Bar Strength): must be low ---
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_entry:
+        # Price must be above slow EMA (confirms we're in the trend)
+        if bar.close <= ema_s:
             return None
 
-        # --- Volume filter: require minimum participation ---
-        if len(volumes) >= 20:
-            avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_mult:
+        # --- ATR ---
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        # --- Pullback detection ---
+        # Price pulled back from recent high by at least pullback_atr * ATR
+        recent_high = max(highs[-10:])
+        pullback_depth = recent_high - bar.close
+        if pullback_depth < self.pullback_atr * atr:
+            return None  # Not enough pullback
+
+        # But not too deep — shouldn't be more than 3x ATR (trend break)
+        if pullback_depth > 3.0 * atr:
+            return None
+
+        # --- Volatility squeeze (optional boost) ---
+        # Current ATR vs ATR from 20 bars ago — contracting vol suggests impending move
+        atr_old = self._atr_at(bars, len(bars) - 20, self.atr_period) if len(bars) > 35 else None
+        if atr_old is not None and atr_old > 1e-9:
+            vol_ratio = atr / atr_old
+            # Skip if volatility is expanding too much (unstable)
+            if vol_ratio > self.vol_squeeze_ratio:
                 return None
 
         # --- Drawdown filter ---
@@ -130,15 +136,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # --- ATR for stop/target ---
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
+        # --- Trend strength: EMA spread must be meaningful ---
+        ema_spread = (ema_f - ema_s) / ema_s
+        if ema_spread < 0.005:
+            return None  # Trend too weak
 
-        # Stop: fixed 2x ATR (was unstable, now hardened)
+        # --- Stop and target ---
         stop = bar.close - self.stop_atr_mult * atr
-
-        # Target: 2.5x ATR
         target = bar.close + self.target_atr_mult * atr
 
         if target <= bar.close:
@@ -153,10 +157,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "rsi2": round(rsi, 2),
-                "ibs": round(ibs, 3),
+                "ema_spread": round(ema_spread, 4),
+                "pullback_atr": round(pullback_depth / atr, 2),
                 "atr": round(atr, 4),
-                "trend_pct": round(trend_pct, 4),
-                "regime_trend": regime_trend,
+                "archetype": "trend_pullback",
             },
         )
