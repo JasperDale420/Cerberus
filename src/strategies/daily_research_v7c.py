@@ -5,7 +5,8 @@ Upper channel break = volatility breakout + trend confirmation in ONE signal.
 This naturally combines: price > trend (EMA), ATR expansion, and breakout.
 
 Entry: close > upper Keltner AND close > yesterday's close (momentum confirm)
-Stop: EMA or lower Keltner (whichever is closer)
+       AND price > SMA(50) (broader trend confirmation)
+Stop: EMA or ATR-based (whichever is higher = tighter), capped at max_stop_pct
 Target: 2-3x ATR above entry
 
 Long-only, daily bars. Skips DOWN regime and SHOCK vol.
@@ -42,8 +43,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         # Keltner channel width (ATR multiplier for upper/lower bands)
         self.keltner_mult = float(config.get("keltner_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
+
+        # Max stop distance as % of price — caps overnight gap risk
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+
+        # Broader trend filter period
+        self.trend_sma_period = int(config.get("trend_sma_period", 50))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -108,6 +115,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema is None:
             return None
 
+        # Broader trend filter: price must be above SMA(50)
+        sma50 = self._sma(closes, self.trend_sma_period)
+        if sma50 is not None and bar.close < sma50:
+            return None
+
         # Keltner Channels
         upper_keltner = ema + self.keltner_mult * atr
         price = bar.close
@@ -132,6 +144,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         stop_ema = ema
         stop_atr = price - self.stop_atr_mult * atr
         stop = max(stop_ema, stop_atr)
+
+        # Cap stop distance at max_stop_pct of price
+        max_stop_price = price * (1.0 - self.max_stop_pct)
+        stop = max(stop, max_stop_price)
 
         # Target
         target = price + self.target_atr_mult * atr

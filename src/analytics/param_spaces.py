@@ -97,8 +97,10 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
-        "max_hold_days": 7,
+        "max_hold_days": 5,
         "stop_atr_mult": 1.5,
+        "max_stop_pct": 0.03,
+        "trend_sma_period": 50,
     },
     "daily_research_v7d": {
         "bb_period": 20,
