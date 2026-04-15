@@ -1,8 +1,8 @@
-"""Connors RSI(2) Mean Reversion v2 — tighter for consistency.
+"""Connors RSI(2) Mean Reversion — buy oversold bounces after consecutive down days.
 
 Entry: 2+ consecutive down closes AND RSI(2) < threshold.
-In HIGH vol: require 3+ down days and use tighter stops.
-Regime-neutral (works in UP, DOWN, FLAT).
+Works in both UP and DOWN trends (short-term bounce is regime-neutral).
+Tight target (1.5 ATR), short hold (max 3 days) for consistency.
 Skips SHOCK vol, earnings, FOMC.
 """
 
@@ -27,7 +27,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.consec_down_days_high_vol = int(config.get("consec_down_days_high_vol", 3))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_max = float(config.get("rsi_max", 10.0))
         self.atr_period = int(config.get("atr_period", 14))
@@ -35,8 +34,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.sma_period = int(config.get("sma_period", 50))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
 
     # --- Indicator helpers ---
 
@@ -76,6 +73,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         return sum(trs) / period
 
     def _count_consecutive_down(self, closes: list[float]) -> int:
+        """Count consecutive down closes ending at the most recent bar."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -108,23 +106,20 @@ class dailyresearchv7bStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
+        # Need enough history
         if len(closes) < self.min_bars:
             return None
 
-        # Volume filter: need decent participation
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
+        # Trend context: price above SMA(50) = stronger bounce expected
+        # But we trade in both directions — just size differently
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
             return None
-
-        # Determine if we're in HIGH vol
-        is_high_vol = snapshot and snapshot.vol == VolRegime.HIGH
 
         # Core signal: consecutive down days
         consec = self._count_consecutive_down(closes)
-        required_down = self.consec_down_days_high_vol if is_high_vol else self.consec_down_days
-        if consec < required_down:
+        if consec < self.consec_down_days:
             return None
 
         # RSI(2) oversold confirmation
@@ -137,9 +132,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Tighter stop in HIGH vol
-        stop_mult = self.stop_atr_mult * 0.8 if is_high_vol else self.stop_atr_mult
-        stop = bar.close - stop_mult * atr
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -153,8 +146,8 @@ class dailyresearchv7bStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "rsi2": round(rsi, 2),
-                "high_vol": is_high_vol,
+                "above_sma": bar.close > sma,
                 "atr": round(atr, 4),
-                "seed": "connors_rsi2_mr_v2",
+                "seed": "connors_rsi2_mr",
             },
         )
