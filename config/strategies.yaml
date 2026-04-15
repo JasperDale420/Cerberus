@@ -316,20 +316,18 @@ strategies:
     enabled: true
     min_bars: 25
     allow_overnight: true
-    max_hold_days: 5
+    max_hold_days: 8
     cooldown_bars: 1
     ibs_entry: 0.4
     rsi_period: 2
     rsi_entry: 30.0
     trend_period: 50
     atr_period: 14
-    stop_atr_mult: 1.5
-    target_atr_mult: 2.0
-    max_stop_pct: 0.02
+    stop_atr_mult: 2.0
+    target_atr_mult: 2.5
     drawdown_lookback: 40
     max_drawdown_pct: 0.10
-    vol_mult: 0.6
-    momentum_lookback: 5
+    vol_mult: 0.5
     activation:
       session: [premarket, opening, midday, power_hour, close]
       trend: [up, down, flat]
