@@ -132,6 +132,11 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
+        # Min volatility filter: skip when ATR/price < 1% (bounces too small)
+        atr_pct = atr / bar.close
+        if atr_pct < 0.01:
+            return None
+
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
