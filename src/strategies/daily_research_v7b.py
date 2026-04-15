@@ -1,9 +1,9 @@
-"""IBS Mean Reversion — fade daily closes near the low.
+"""IBS Mean Reversion v2 — fade daily closes near the low.
 
 Internal Bar Strength = (close - low) / (high - low).
-Low IBS (close near low) is a robust next-day reversal signal.
-Long only above SMA(200). Skip earnings/FOMC/SHOCK.
-Target: SMA(20) midline. Stop: ATR-based.
+Low IBS after a down day is a robust next-day reversal signal.
+Uses RSI(2) for sharper short-term oversold detection.
+Skips FLAT regime (poor WR), earnings, FOMC, SHOCK.
 """
 
 from __future__ import annotations
@@ -26,15 +26,14 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_long_period = int(config.get("sma_long_period", 200))
-        self.sma_mid_period = int(config.get("sma_mid_period", 20))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.sma_trend_period = int(config.get("sma_trend_period", 50))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_max = float(config.get("rsi_max", 10.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_max = float(config.get("rsi_max", 50.0))
 
     # --- Indicator helpers ---
 
@@ -95,55 +94,44 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
+        # Skip FLAT regime (42% WR in iter1 — consistent loser)
+        regime_trend = labels.get("regime_trend", "")
+        if regime_trend == "FLAT":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Need enough bars for SMA(200) — but if not enough, use SMA(50) as fallback
-        sma_long = self._sma(closes, self.sma_long_period)
-        if sma_long is None:
-            # Fallback: use SMA(50) if not enough data for 200
-            sma_long = self._sma(closes, 50)
-            if sma_long is None:
-                return None
-
-        # Long-term trend filter: price must be above long SMA
-        if bar.close <= sma_long:
+        # Trend filter: price above SMA(50)
+        sma_trend = self._sma(closes, self.sma_trend_period)
+        if sma_trend is None or bar.close <= sma_trend:
             return None
 
-        # IBS: Internal Bar Strength
+        # Down day filter: today's close < yesterday's close (confirms selling pressure)
+        if len(closes) < 2 or bar.close >= closes[-2]:
+            return None
+
+        # IBS: Internal Bar Strength — close near the low
         bar_range = bar.high - bar.low
         if bar_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / bar_range
 
-        # Entry: IBS below threshold (close near the low = oversold)
         if ibs >= self.ibs_threshold:
             return None
 
-        # RSI filter: not overbought (helps avoid catching falling knives)
+        # RSI(2) oversold confirmation
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
             return None
 
-        # Target: SMA(20) midline
-        sma_mid = self._sma(closes, self.sma_mid_period)
-        if sma_mid is None:
-            return None
-
-        # Only enter if target is above current price (room to profit)
-        if sma_mid <= bar.close:
-            return None
-
-        # ATR for stop
+        # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
-
-        # Use SMA target if it's closer (tighter target = more consistent)
-        target = min(target, sma_mid)
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -155,9 +143,8 @@ class dailyresearchv7bStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "ibs": round(ibs, 4),
-                "rsi": round(rsi, 2),
-                "sma_mid": round(sma_mid, 2),
+                "rsi2": round(rsi, 2),
                 "atr": round(atr, 4),
-                "seed": "ibs_mean_reversion",
+                "seed": "ibs_mean_reversion_v2",
             },
         )
