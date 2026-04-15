@@ -1,9 +1,9 @@
-"""IBS Mean Reversion v2 — fade daily closes near the low.
+"""Connors RSI(2) Mean Reversion — buy oversold bounces after consecutive down days.
 
-Internal Bar Strength = (close - low) / (high - low).
-Low IBS after a down day is a robust next-day reversal signal.
-Uses RSI(2) for sharper short-term oversold detection.
-Skips FLAT regime (poor WR), earnings, FOMC, SHOCK.
+Entry: 2+ consecutive down closes AND RSI(2) < threshold.
+Works in both UP and DOWN trends (short-term bounce is regime-neutral).
+Tight target (1.5 ATR), short hold (max 3 days) for consistency.
+Skips SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_trend_period = int(config.get("sma_trend_period", 50))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.consec_down_days = int(config.get("consec_down_days", 2))
         self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_max = float(config.get("rsi_max", 10.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.sma_period = int(config.get("sma_period", 50))
 
     # --- Indicator helpers ---
 
@@ -72,6 +72,16 @@ class dailyresearchv7bStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    def _count_consecutive_down(self, closes: list[float]) -> int:
+        """Count consecutive down closes ending at the most recent bar."""
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
+
     def on_bar(
         self,
         symbol: str,
@@ -94,30 +104,22 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip FLAT regime (42% WR in iter1 — consistent loser)
-        regime_trend = labels.get("regime_trend", "")
-        if regime_trend == "FLAT":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Trend filter: price above SMA(50)
-        sma_trend = self._sma(closes, self.sma_trend_period)
-        if sma_trend is None or bar.close <= sma_trend:
+        # Need enough history
+        if len(closes) < self.min_bars:
             return None
 
-        # Down day filter: today's close < yesterday's close (confirms selling pressure)
-        if len(closes) < 2 or bar.close >= closes[-2]:
+        # Trend context: price above SMA(50) = stronger bounce expected
+        # But we trade in both directions — just size differently
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
             return None
 
-        # IBS: Internal Bar Strength — close near the low
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-
-        if ibs >= self.ibs_threshold:
+        # Core signal: consecutive down days
+        consec = self._count_consecutive_down(closes)
+        if consec < self.consec_down_days:
             return None
 
         # RSI(2) oversold confirmation
@@ -142,9 +144,10 @@ class dailyresearchv7bStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ibs": round(ibs, 4),
+                "consec_down": consec,
                 "rsi2": round(rsi, 2),
+                "above_sma": bar.close > sma,
                 "atr": round(atr, 4),
-                "seed": "ibs_mean_reversion_v2",
+                "seed": "connors_rsi2_mr",
             },
         )
