@@ -42,7 +42,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
 
         # Keltner channel width (ATR multiplier for upper/lower bands)
-        self.keltner_mult = float(config.get("keltner_mult", 1.5))
+        self.keltner_mult = float(config.get("keltner_mult", 1.6))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
 
