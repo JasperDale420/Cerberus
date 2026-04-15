@@ -36,7 +36,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Optimizable
         self.atr_expansion = float(config.get("atr_expansion", 1.3))
         self.vol_surge_mult = float(config.get("vol_surge_mult", 1.3))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
 
         # IBS params
@@ -92,7 +92,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
-        if regime_labels.get("near_earnings"):
+        if regime_labels.get("near_earnings") or regime_labels.get("near_fomc"):
             return None
 
         bars = list(symbol_state.bars)
@@ -109,9 +109,16 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         trend = regime_labels.get("regime_trend", "FLAT")
 
-        # Skip DOWN trend entirely — consistently loses in data
+        # Skip DOWN trend — use both per-symbol and market-wide checks
         if trend == "DOWN":
             return None
+        # Also check broad market trend
+        snapshot = market_state.regime_snapshot
+        if snapshot is not None:
+            from src.core.domain import TrendRegime
+
+            if snapshot.trend == TrendRegime.DOWN:
+                return None
 
         # --- Mode 1: IBS Mean Reversion ---
         signal = self._try_ibs_reversion(symbol, bar, bars, closes, atr, trend, market_state)
@@ -141,6 +148,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         # Low IBS = bearish close = likely bounce
         if ibs > self.ibs_threshold:
+            return None
+
+        # Require 2-day selloff: today closed down from yesterday
+        if len(closes) >= 2 and bar.close >= closes[-2]:
             return None
 
         # Require price above SMA (avoid catching falling knives)
