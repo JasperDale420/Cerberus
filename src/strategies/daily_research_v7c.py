@@ -1,10 +1,10 @@
-"""Regime-Adaptive Volatility Strategy.
+"""Regime-Adaptive Multi-Mode Strategy.
 
-Dual-mode: volatility breakout in trending markets, ATR-contraction
-mean-reversion in flat/range-bound markets.  Adapts entry thresholds
-and risk sizing to regime_trend and regime_vol labels.
+Three modes: volatility breakout (trending), mean-reversion (flat/oversold),
+and trend pullback (dip-buying in uptrends). Adapts to regime_trend and
+regime_vol labels. Long-only, daily bars.
 
-Long-only, daily bars, max_hold_days configurable.
+Designed for CONSISTENCY — every WFO window must generate trades and profit.
 """
 
 from __future__ import annotations
@@ -29,15 +29,19 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
 
-        # Breakout mode params
-        self.atr_expansion = float(config.get("atr_expansion", 1.3))
+        # Breakout mode
+        self.atr_expansion = float(config.get("atr_expansion", 1.2))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
-        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.3))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
 
-        # Mean-reversion mode params
+        # Mean-reversion mode
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
-        self.mr_atr_contraction = float(config.get("mr_atr_contraction", 0.9))
+
+        # Trend pullback mode
+        self.sma_fast = int(config.get("sma_fast", 10))
+        self.sma_slow = int(config.get("sma_slow", 30))
+        self.pullback_atr_mult = float(config.get("pullback_atr_mult", 0.5))
 
         # Risk params
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -59,7 +63,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
+    def _sma_vals(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
@@ -99,8 +103,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
 
-        # Skip near-earnings and near-FOMC
-        if regime_labels.get("near_earnings") or regime_labels.get("near_fomc"):
+        # Skip near-earnings
+        if regime_labels.get("near_earnings"):
             return None
 
         bars = list(symbol_state.bars)
@@ -112,7 +116,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR average for expansion/contraction detection
+        # ATR average for expansion detection
         atr_values = self._atr_series(bars, self.atr_period, 20)
         if len(atr_values) < 10:
             return None
@@ -121,27 +125,34 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         atr_ratio = atr / atr_avg
 
-        # Regime
-        trend = regime_labels.get("regime_trend", "FLAT")
-        vol_regime = regime_labels.get("regime_vol", "NORMAL")
-
-        # Skip SHOCK volatility — too chaotic
-        if vol_regime == "SHOCK":
-            return None
-
-        # Volume average
-        avg_vol = self._sma(volumes, 20)
+        # Volume ratio
+        avg_vol = self._sma_vals(volumes, 20)
         if avg_vol is None or avg_vol < 1e-9:
             return None
         vol_ratio = bar.volume / avg_vol
 
-        # Try breakout mode (UP or FLAT with expanding vol)
+        # Regime
+        trend = regime_labels.get("regime_trend", "FLAT")
+        vol_regime = regime_labels.get("regime_vol", "NORMAL")
+
+        # Skip SHOCK volatility
+        if vol_regime == "SHOCK":
+            return None
+
+        # Moving averages for trend pullback
+        sma_f = self._sma_vals(closes, self.sma_fast)
+        sma_s = self._sma_vals(closes, self.sma_slow)
+
+        # Try modes in priority order
         signal = self._try_breakout(symbol, bar, bars, closes, atr, atr_ratio, vol_ratio, trend, market_state)
         if signal is not None:
             return signal
 
-        # Try mean-reversion mode (FLAT or DOWN with contracting vol)
-        signal = self._try_mean_reversion(symbol, bar, bars, closes, atr, atr_ratio, vol_ratio, trend, market_state)
+        signal = self._try_trend_pullback(symbol, bar, closes, atr, sma_f, sma_s, vol_ratio, trend, market_state)
+        if signal is not None:
+            return signal
+
+        signal = self._try_mean_reversion(symbol, bar, closes, atr, atr_ratio, trend, market_state)
         return signal
 
     def _try_breakout(
@@ -156,12 +167,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         trend: str,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        """Volatility breakout: expanding ATR + new highs + volume surge."""
-        # Require ATR expansion
+        """Volatility breakout: expanding ATR + new highs + volume."""
         if atr_ratio < self.atr_expansion:
             return None
 
-        # Breakout: close above N-day high
         if len(bars) < self.breakout_lookback + 1:
             return None
         lookback_highs = [b.high for b in bars[-(self.breakout_lookback + 1) : -1]]
@@ -169,15 +178,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close <= high_nd:
             return None
 
-        # Volume confirmation
         if vol_ratio < self.vol_surge_mult:
             return None
 
-        # In DOWN trend, require stronger breakout
-        if trend == "DOWN" and atr_ratio < self.atr_expansion * 1.3:
+        # In DOWN trend, require stronger signals
+        if trend == "DOWN" and (atr_ratio < 1.5 or vol_ratio < 1.5):
             return None
 
-        # Stop/target
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
@@ -189,37 +196,76 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             market_state,
             stop_price=stop,
             target_price=target,
-            meta={
-                "mode": "BREAKOUT",
-                "atr_ratio": round(atr_ratio, 2),
-                "vol_ratio": round(vol_ratio, 2),
-                "trend": trend,
-            },
+            meta={"mode": "BREAKOUT", "atr_ratio": round(atr_ratio, 2), "trend": trend},
+        )
+
+    def _try_trend_pullback(
+        self,
+        symbol: str,
+        bar: Bar,
+        closes: list[float],
+        atr: float,
+        sma_f: Optional[float],
+        sma_s: Optional[float],
+        vol_ratio: float,
+        trend: str,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        """Buy dips in uptrends: price pulls back toward fast SMA in UP regime."""
+        if sma_f is None or sma_s is None:
+            return None
+
+        # Need uptrend: fast SMA > slow SMA
+        if sma_f <= sma_s:
+            return None
+
+        # Only in UP or FLAT trend
+        if trend == "DOWN":
+            return None
+
+        price = bar.close
+
+        # Price must be near or below fast SMA (pullback)
+        pullback_zone = sma_f - self.pullback_atr_mult * atr
+        if price > sma_f:
+            return None
+        if price < pullback_zone:
+            return None  # Too deep — momentum broken
+
+        # Price must be above slow SMA (still in uptrend)
+        if price < sma_s:
+            return None
+
+        stop = price - self.stop_atr_mult * atr
+        target = price + self.target_atr_mult * atr
+
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={"mode": "PULLBACK", "sma_f": round(sma_f, 2), "trend": trend},
         )
 
     def _try_mean_reversion(
         self,
         symbol: str,
         bar: Bar,
-        bars: list[Bar],
         closes: list[float],
         atr: float,
         atr_ratio: float,
-        vol_ratio: float,
         trend: str,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        """Mean reversion: price below lower BB in contracting/normal ATR."""
-        # Mean reversion works best in FLAT/non-trending — skip strong UP
-        if trend == "UP" and atr_ratio > 1.2:
+        """Mean reversion: price below lower Bollinger Band."""
+        # Skip if ATR is expanding (breakout territory, not mean-rev)
+        if atr_ratio > 1.3:
             return None
 
-        # Require ATR not expanding wildly (contracting or normal)
-        if atr_ratio > 1.2:
-            return None
-
-        # Bollinger Bands
-        bb_mean = self._sma(closes, self.bb_period)
+        bb_mean = self._sma_vals(closes, self.bb_period)
         bb_std = self._std(closes, self.bb_period)
         if bb_mean is None or bb_std is None or bb_std < 0.01:
             return None
@@ -227,23 +273,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         lower_band = bb_mean - self.bb_std_mult * bb_std
         price = bar.close
 
-        # Price below lower band
         if price >= lower_band:
             return None
 
-        # Confirmation: price above previous close (bounce starting)
-        if len(closes) >= 2 and price <= closes[-2]:
-            return None
-
-        # In DOWN trend, require deeper oversold (more below band)
+        # In DOWN trend, require deeper oversold
         if trend == "DOWN":
-            deeper_band = bb_mean - (self.bb_std_mult + 0.5) * bb_std
-            if price >= deeper_band:
+            deeper = bb_mean - (self.bb_std_mult + 0.5) * bb_std
+            if price >= deeper:
                 return None
 
-        # Stop/target — tighter for mean reversion
         stop = price - self.stop_atr_mult * atr
-        target = bb_mean  # Target the mean
+        target = bb_mean
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -255,7 +295,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "mode": "MEAN_REV",
-                "atr_ratio": round(atr_ratio, 2),
                 "z_score": round((price - bb_mean) / bb_std, 2) if bb_std > 0 else 0,
                 "trend": trend,
             },
