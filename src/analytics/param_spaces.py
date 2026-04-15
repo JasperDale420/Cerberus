@@ -97,8 +97,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
-        "bb_period": 20,
         "max_hold_days": 7,
+        "stop_atr_mult": 2.0,
     },
     "daily_research_v7d": {
         "bb_period": 20,
@@ -229,9 +229,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     "daily_research_v7c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
-        ParamDef("vol_surge_mult", "float", low=1.1, high=1.8, step=0.1, description="Volume surge multiplier"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
     "daily_research_v7d": [
         ParamDef("rsi_long_entry", "float", low=35.0, high=50.0, step=5.0, description="RSI buy in UP"),

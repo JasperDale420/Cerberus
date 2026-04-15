@@ -36,8 +36,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         # Optimizable
         self.atr_expansion = float(config.get("atr_expansion", 1.5))
-        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
 
         # Keltner channel width (ATR multiplier for upper/lower bands)
@@ -119,14 +118,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Momentum confirmation: close > yesterday's close
         if len(closes) >= 2 and price <= closes[-2]:
             return None
-
-        # Volume confirmation (optional — use softer filter)
-        volumes = [b.volume for b in bars]
-        avg_vol = self._sma(volumes, 20)
-        if avg_vol is not None and avg_vol > 1e-9:
-            vol_ratio = bar.volume / avg_vol
-            if vol_ratio < self.vol_surge_mult:
-                return None
 
         # Stop: EMA or ATR-based (whichever is higher = tighter)
         stop_ema = ema
