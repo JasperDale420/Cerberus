@@ -318,13 +318,13 @@ strategies:
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
-    bb_period: 20
-    bb_std_mult: 2.0
-    zscore_entry: 1.5
-    ibs_entry: 0.35
-    trend_period: 50
+    ibs_entry: 0.4
+    down_days_min: 2
+    sma_fast: 20
+    sma_slow: 50
     atr_period: 14
     stop_atr_mult: 2.0
+    target_atr_mult: 2.5
     drawdown_lookback: 40
     max_drawdown_pct: 0.15
     vol_mult: 0.5
