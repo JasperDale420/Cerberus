@@ -109,6 +109,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         trend = regime_labels.get("regime_trend", "FLAT")
 
+        # Skip DOWN trend entirely — consistently loses in data
+        if trend == "DOWN":
+            return None
+
         # --- Mode 1: IBS Mean Reversion ---
         signal = self._try_ibs_reversion(symbol, bar, bars, closes, atr, trend, market_state)
         if signal is not None:
@@ -144,12 +148,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if sma is None:
             return None
 
-        # In DOWN trend: require price above SMA (stricter filter)
-        if trend == "DOWN" and bar.close < sma:
-            return None
-
-        # In UP/FLAT: allow price slightly below SMA (within 1 ATR)
-        if trend != "DOWN" and bar.close < sma - atr:
+        # Require price not too far below SMA (within 1 ATR)
+        if bar.close < sma - atr:
             return None
 
         # Target: close back to SMA or 1.5 ATR above entry
@@ -208,10 +208,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             vol_ratio = bar.volume / avg_vol
             if vol_ratio < self.vol_surge_mult:
                 return None
-
-        # In DOWN trend, require stronger breakout
-        if trend == "DOWN":
-            return None  # Skip breakouts in downtrends — mean reversion is better
 
         # Donchian lower for stop: lowest low of lookback
         lookback_lows = [b.low for b in bars[-(self.breakout_lookback + 1) : -1]]
