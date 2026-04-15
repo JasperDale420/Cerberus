@@ -40,8 +40,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
 
         # IBS params
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
         self.sma_period = int(config.get("sma_period", 20))
+        self.sma_long = int(config.get("sma_long", 50))
 
         # Donchian params
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
@@ -92,7 +93,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
-        if regime_labels.get("near_earnings"):
+        if regime_labels.get("near_earnings") or regime_labels.get("near_fomc"):
             return None
 
         bars = list(symbol_state.bars)
@@ -143,12 +144,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ibs > self.ibs_threshold:
             return None
 
-        # Require price above SMA (avoid catching falling knives)
+        # Require price above longer-term SMA (avoid catching falling knives)
+        sma_long = self._sma(closes, self.sma_long)
+        if sma_long is None:
+            return None
+        if bar.close < sma_long:
+            return None
+
         sma = self._sma(closes, self.sma_period)
         if sma is None:
             return None
 
-        # Require price not too far below SMA (within 1 ATR)
+        # Require price not too far below short SMA (within 1 ATR)
         if bar.close < sma - atr:
             return None
 
