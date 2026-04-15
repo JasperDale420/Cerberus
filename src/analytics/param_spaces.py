@@ -105,7 +105,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v7d": {
         "atr_period": 14,
-        "sma_period": 50,
+        "ema_fast": 10,
+        "ema_slow": 30,
     },
 }
 
@@ -232,10 +233,12 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
     "daily_research_v7d": [
-        ParamDef("ibs_threshold", "float", low=0.15, high=0.30, step=0.05, description="IBS oversold threshold"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
-        ParamDef("max_hold_days", "int", low=3, high=7, step=1, description="Max hold days"),
+        ParamDef(
+            "pullback_pct", "float", low=0.01, high=0.03, step=0.005, description="Max pullback distance from EMA"
+        ),
+        ParamDef("risk_reward", "float", low=1.5, high=3.0, step=0.5, description="Risk:reward ratio"),
+        ParamDef("swing_low_period", "int", low=3, high=10, step=1, description="Swing low lookback"),
+        ParamDef("max_hold_days", "int", low=5, high=10, step=1, description="Max hold days"),
         ParamDef("max_stop_pct", "float", low=0.02, high=0.04, step=0.005, description="Max stop loss %"),
     ],
 }
