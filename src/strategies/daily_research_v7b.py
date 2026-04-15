@@ -1,8 +1,8 @@
-"""Connors RSI(2) Mean Reversion — regime-adaptive threshold.
+"""Cumulative Return Mean Reversion — buy after multi-day decline.
 
-Entry: consecutive down closes AND RSI(2) < threshold.
-RSI threshold adapts to regime: stricter in DOWN (avoid knives), looser in UP.
-Skips SHOCK vol, earnings, FOMC. Min ATR filter.
+Entry: N-day cumulative return drops below threshold (e.g. -5% over 5 days).
+Simpler than RSI — directly measures total decline magnitude.
+Regime-neutral. Skips SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -25,39 +25,14 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_max = float(config.get("rsi_max", 20.0))
+        self.lookback_days = int(config.get("lookback_days", 5))
+        self.return_threshold = float(config.get("return_threshold", -0.05))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.sma_period = int(config.get("sma_period", 50))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -70,15 +45,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    def _count_consecutive_down(self, closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
 
     def on_bar(
         self,
@@ -105,29 +71,16 @@ class dailyresearchv7bStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < self.min_bars:
+        if len(closes) < max(self.min_bars, self.lookback_days + 1):
             return None
 
-        # Core signal: consecutive down days
-        consec = self._count_consecutive_down(closes)
-        if consec < self.consec_down_days:
+        # Core signal: N-day cumulative return
+        past_close = closes[-(self.lookback_days + 1)]
+        if past_close < 1e-9:
             return None
+        cumul_return = (bar.close - past_close) / past_close
 
-        # Regime-adaptive RSI threshold
-        # In DOWN: stricter (rsi_max * 0.5) to avoid catching falling knives
-        # In FLAT: moderate (rsi_max * 0.75)
-        # In UP: full threshold (rsi_max) — bounces are reliable
-        regime_trend = labels.get("regime_trend", "UP")
-        if regime_trend == "DOWN":
-            effective_rsi_max = self.rsi_max * 0.5
-        elif regime_trend == "FLAT":
-            effective_rsi_max = self.rsi_max * 0.75
-        else:
-            effective_rsi_max = self.rsi_max
-
-        # RSI(2) oversold confirmation with regime-adapted threshold
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > effective_rsi_max:
+        if cumul_return > self.return_threshold:
             return None
 
         # ATR for stop and target
@@ -135,7 +88,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Min volatility filter: skip when ATR/price < 1%
+        # Min volatility filter
         atr_pct = atr / bar.close
         if atr_pct < 0.01:
             return None
@@ -152,11 +105,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "consec_down": consec,
-                "rsi2": round(rsi, 2),
-                "regime_trend": regime_trend,
-                "eff_rsi_max": round(effective_rsi_max, 1),
+                "cumul_return": round(cumul_return, 4),
+                "lookback": self.lookback_days,
                 "atr_pct": round(atr_pct, 4),
-                "seed": "connors_rsi2_regime_adaptive",
+                "seed": "cumul_return_mr",
             },
         )

@@ -90,7 +90,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_stop_pct": 0.02,
     },
     "daily_research_v7b": {
-        "rsi_period": 2,
         "atr_period": 14,
         "max_hold_days": 5,
         "stop_atr_mult": 2.0,
@@ -223,8 +222,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("vol_mult", "float", low=0.4, high=0.8, step=0.1, description="Volume filter multiplier"),
     ],
     "daily_research_v7b": [
-        ParamDef("consec_down_days", "int", low=2, high=3, step=1, description="Consecutive down days"),
-        ParamDef("rsi_max", "float", low=10.0, high=30.0, step=5.0, description="RSI(2) oversold threshold"),
+        ParamDef("lookback_days", "int", low=3, high=7, step=1, description="Return lookback days"),
+        ParamDef("return_threshold", "float", low=-0.08, high=-0.03, step=0.01, description="Min cumul return"),
         ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
     ],
     "daily_research_v7c": [
