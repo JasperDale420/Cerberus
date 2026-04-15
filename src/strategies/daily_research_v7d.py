@@ -1,13 +1,14 @@
-"""RSI(2) Mean Reversion with Regime-Adaptive Entry.
+"""Cumulative Return Mean Reversion — buy multi-day drops.
 
-Core: 2+ consecutive down closes AND RSI(2) < regime-adapted threshold.
-RSI threshold adapts to regime_trend:
-  UP   — full threshold (bounces are reliable in uptrends)
-  FLAT — 75% of threshold (moderate selectivity)
-  DOWN — 50% of threshold (strict: only deep oversold to avoid knives)
+Core signal: stock has dropped > drop_pct over lookback_days.
+This captures multi-day selloffs that tend to revert, not single-bar anomalies.
 
-Tight stop/target (1.5/1.5 ATR) and short hold (max 3-5 days) for consistency.
-Skip SHOCK vol, earnings, FOMC. Min ATR/price filter.
+Different from IBS (single bar) and RSI (momentum oscillator).
+Uses cumulative return which is a simple, stable signal.
+
+Add max_stop_pct to cap per-trade risk.
+Skip SHOCK vol, earnings, FOMC.
+Exclude leveraged/inverse ETFs (VXX, SQQQ, etc.) that don't mean-revert.
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ from typing import Any, Dict, Optional
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
+
+# Leveraged and inverse ETFs that don't mean-revert normally
+_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD"}
 
 
 class dailyresearchv7dStrategy(BaseStrategy):
@@ -29,33 +33,16 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_max = float(config.get("rsi_max", 20.0))
+        self.min_bars = int(config.get("min_bars", 30))
+        self.lookback_days = int(config.get("lookback_days", 5))
+        self.drop_pct = float(config.get("drop_pct", 0.05))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -69,15 +56,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
-    def _count_consecutive_down(self, closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
-
     def on_bar(
         self,
         symbol: str,
@@ -85,6 +63,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
+        # Exclude leveraged/inverse ETFs
+        if symbol in _EXCLUDED:
+            return None
+
         if not self._check_cooldown(symbol, bar.time):
             return None
         if not self._require_min_bars(symbol_state, self.min_bars):
@@ -103,42 +85,35 @@ class dailyresearchv7dStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < self.min_bars:
+        if len(closes) < max(self.min_bars, self.lookback_days + 1):
             return None
 
-        # Core signal: consecutive down days
-        consec = self._count_consecutive_down(closes)
-        if consec < self.consec_down_days:
-            return None
-
-        # Regime-adaptive RSI threshold
-        regime_trend = labels.get("regime_trend", "UP")
-        if regime_trend == "DOWN":
-            effective_rsi_max = self.rsi_max * 0.5
-        elif regime_trend == "FLAT":
-            effective_rsi_max = self.rsi_max * 0.75
-        else:
-            effective_rsi_max = self.rsi_max
-
-        # RSI(2) oversold confirmation
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > effective_rsi_max:
-            return None
-
-        # ATR for stop and target
+        # ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
-            return None
-
-        # Min volatility filter
-        if atr / bar.close < 0.005:
             return None
 
         # Min price filter
         if bar.close < 5.0:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # ATR/price filter: skip dead stocks
+        if atr / bar.close < 0.005:
+            return None
+
+        # Core signal: cumulative return over lookback_days
+        past_close = closes[-(self.lookback_days + 1)]
+        cum_return = (bar.close / past_close) - 1.0
+
+        # Buy only if stock has dropped at least drop_pct
+        if cum_return >= -self.drop_pct:
+            return None
+
+        # Stop and target
+        stop_atr = bar.close - self.stop_atr_mult * atr
+        max_stop = bar.close * (1.0 - self.max_stop_pct)
+        stop = max(stop_atr, max_stop)
+
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -150,11 +125,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "consec_down": consec,
-                "rsi2": round(rsi, 2),
-                "regime_trend": regime_trend,
-                "eff_rsi_max": round(effective_rsi_max, 1),
-                "atr_pct": round(atr / bar.close, 4),
-                "seed": "rsi2_regime_adaptive",
+                "cum_return": round(cum_return, 4),
+                "lookback": self.lookback_days,
+                "atr": round(atr, 4),
+                "seed": "cumreturn_mean_reversion",
             },
         )
