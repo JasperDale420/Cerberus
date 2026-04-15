@@ -314,20 +314,21 @@ strategies:
 
   daily_research_v7a:
     enabled: true
-    min_bars: 55
+    min_bars: 50
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
-    ibs_entry: 0.4
+    ibs_threshold: 0.35
+    bb_period: 20
+    bb_std: 2.0
+    score_threshold: 35.0
     down_days_min: 2
-    sma_fast: 20
-    sma_slow: 50
+    vol_avg_mult: 0.3
+    drawdown_lookback: 40
+    drawdown_max: 0.25
     atr_period: 14
     stop_atr_mult: 2.0
-    target_atr_mult: 2.5
-    drawdown_lookback: 40
-    max_drawdown_pct: 0.15
-    vol_mult: 0.5
+    target_atr_mult: 1.5
     activation:
       session: [premarket, opening, midday, power_hour, close]
       trend: [up, down, flat]
