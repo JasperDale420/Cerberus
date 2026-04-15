@@ -101,7 +101,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "stop_atr_mult": 1.5,
         "max_stop_pct": 0.03,
         "trend_sma_period": 50,
-        "keltner_mult": 1.6,
     },
     "daily_research_v7d": {
         "bb_period": 20,
