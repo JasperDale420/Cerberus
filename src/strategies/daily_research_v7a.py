@@ -100,7 +100,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        [b.high for b in bars]
+        highs = [b.high for b in bars]
 
         # --- Core indicators ---
         sma = self._sma(closes, self.bb_period)
@@ -135,10 +135,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         trend = labels.get("regime_trend", "FLAT")
         vol_regime = labels.get("regime_vol", "NORMAL")
 
-        # Hard filters: skip near earnings, skip SHOCK
-        if labels.get("near_earnings", False):
-            return None
-        if vol_regime == "SHOCK":
+        # Hard filters: skip near earnings/FOMC only
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
         # --- Multi-factor score (0-100 scale) ---
@@ -170,26 +168,31 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if bar.close < lower_bb:
             score += 10.0
 
+        # --- Drawdown guard (avoid catching falling knives) ---
+        peak = max(highs[-40:]) if len(highs) >= 40 else max(highs)
+        dd_pct = (peak - bar.close) / peak if peak > 0 else 0
+        if dd_pct > 0.30:
+            return None
+
         # --- Regime-adaptive thresholds and risk ---
         if trend == "UP":
-            # In uptrend: easier entry, wide target (ride the trend)
             entry_threshold = 30.0
             stop_mult = self.stop_atr_mult
             target = max(sma, bar.close + self.target_atr_mult * atr)
         elif trend == "FLAT":
-            # In flat: moderate entry, target BB midline
-            entry_threshold = 35.0
+            entry_threshold = 33.0
             stop_mult = self.stop_atr_mult
             target = sma
         else:
-            # In downtrend: require strong signal, tight target (quick exit)
-            entry_threshold = 45.0
-            stop_mult = self.stop_atr_mult * 0.75  # tighter stop in DOWN
-            target = bar.close + 1.0 * atr  # modest target
+            # DOWN: still require strong signal but allow trades
+            entry_threshold = 40.0
+            stop_mult = self.stop_atr_mult * 0.8
+            target = bar.close + 1.2 * atr
 
-        # HIGH vol: tighten stop but keep same threshold
-        if vol_regime == "HIGH":
+        # HIGH/SHOCK vol: tighten stop, raise threshold slightly
+        if vol_regime in ("HIGH", "SHOCK"):
             stop_mult *= 0.85
+            entry_threshold += 5.0
 
         if score < entry_threshold:
             return None
