@@ -1,18 +1,13 @@
-"""IBS Mean Reversion with Trend Filter.
+"""IBS Mean Reversion — UP/FLAT regimes only.
 
-Core signal: Internal Bar Strength (IBS) < threshold AND price above SMA(50).
-The SMA filter ensures we only buy oversold bounces in uptrending stocks,
-avoiding falling knives in bear markets.
+Core signal: IBS < threshold AND 2+ consecutive down closes AND price > SMA(50).
+Only trade in UP or FLAT regime_trend — skip DOWN entirely.
+Long-only mean reversion works best when the broader trend is supportive.
 
-IBS near 0 = closed near day's low = oversold bounce expected.
-Require 2+ consecutive down closes for confirmation.
+Loss capping: max_stop_pct limits per-trade risk.
+Short hold (max 3 days) for consistency.
 
-Regime adaptation:
-  UP   — wider target (1.5x scale)
-  FLAT — standard
-  DOWN — skip entirely (long-only can't profit in sustained downtrends)
-
-Long-only. Skip SHOCK vol, earnings, FOMC.
+Skip SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -38,10 +33,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = 3  # Fixed for consistency
         self.sma_period = int(config.get("sma_period", 50))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
 
     # --- Indicator helpers ---
 
@@ -102,6 +97,11 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
+        # Skip DOWN regime — long-only mean reversion doesn't work in downtrends
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        if regime_trend == "DOWN":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -122,7 +122,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
             return None
 
         # Trend filter: price must be above SMA(50)
-        # This is the KEY filter — it prevents buying falling knives
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close <= sma:
             return None
@@ -137,20 +136,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if consec < 2:
             return None
 
-        # Regime-adaptive target
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
-        target_mult = self.target_atr_mult
-        stop_mult = self.stop_atr_mult
-
-        if regime_trend == "UP":
-            target_mult *= 1.5  # Let winners run in uptrends
-
-        # ATR-based stop with max_stop_pct cap
-        stop_atr = bar.close - stop_mult * atr
+        # Simple stop/target — no regime scaling
+        stop_atr = bar.close - self.stop_atr_mult * atr
         max_stop = bar.close * (1.0 - self.max_stop_pct)
         stop = max(stop_atr, max_stop)
 
-        target = bar.close + target_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -164,8 +155,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
                 "ibs": round(ibs, 3),
                 "consec_down": consec,
                 "regime": regime_trend,
-                "above_sma50": True,
                 "atr": round(atr, 4),
-                "seed": "ibs_sma_filter",
+                "seed": "ibs_upflat_only",
             },
         )
