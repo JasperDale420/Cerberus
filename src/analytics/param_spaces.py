@@ -82,9 +82,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     # v7 seed archetypes
     "daily_research_v7a": {
-        "breakout_lookback": 10,
+        "breakout_lookback": 5,
         "atr_period": 14,
-        "vol_avg_period": 20,
         "max_drawdown_pct": 0.12,
         "drawdown_lookback": 30,
         "max_hold_days": 5,
