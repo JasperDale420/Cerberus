@@ -1,9 +1,10 @@
-"""Dual-Mode Regime-Adaptive with Selective Filters.
+"""Dual-Mode Regime-Adaptive: Trend Pullback + Mean Reversion.
 
 UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
-FLAT/DOWN regime: buy only extreme BB lower band touches with very low IBS.
+FLAT regime: buy extreme BB lower band touches with very low IBS.
+Skip DOWN regime entirely — mean reversion and pullbacks both fail there.
 ATR/price vol filter + realized vol gate to avoid high-vol disaster.
-Skip Thu/Fri entries. Long-only, daily bars.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Mean reversion mode params
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
-        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
+        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.25))
         # Shared params
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -45,8 +46,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.rsi_max = float(config.get("rsi_max", 65.0))
         # Vol filter
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        # Realized vol hard gate (SPY 30d realized vol)
-        self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
+        # Realized vol hard gate
+        self.max_realized_vol = float(config.get("max_realized_vol", 0.22))
+        # Volume filter
+        self.vol_lookback = int(config.get("vol_lookback", 20))
+        self.min_vol_ratio = float(config.get("min_vol_ratio", 0.5))
 
     # --- Indicator helpers ---
 
@@ -123,21 +127,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip SHOCK and HIGH volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
-        # Realized vol hard gate — avoid entering during high-vol periods
+        # Realized vol hard gate
         if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
             return None
-
-        # Skip Thursday/Friday entries — data consistently shows losses
-        t = bar.time
-        if hasattr(t, "weekday"):
-            dow = t.weekday()
-            if dow >= 3:  # Thursday=3, Friday=4
-                return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -150,6 +147,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
+        # Volume filter — skip low-volume bars
+        volumes = [b.volume for b in bars]
+        if len(volumes) >= self.vol_lookback:
+            avg_vol = sum(volumes[-self.vol_lookback :]) / self.vol_lookback
+            if avg_vol > 0 and bar.volume < avg_vol * self.min_vol_ratio:
+                return None
+
         # RSI filter — not overbought
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
@@ -161,11 +165,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
 
+        # Skip DOWN regime — both pullbacks and mean reversion fail there
+        if trend == "DOWN":
+            return None
+
         # Mode 1: Trend pullback (UP regime)
         if trend == "UP":
             return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
 
-        # Mode 2: Mean reversion (FLAT or DOWN) — stricter filters
+        # Mode 2: Mean reversion (FLAT) — stricter filters
         return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
 
     def _trend_pullback_signal(
@@ -230,7 +238,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if bar.close > lower_band:
             return None
 
-        # Very strict IBS filter for non-UP regimes
+        # Strict IBS filter for FLAT regime
         if ibs > self.mr_ibs_threshold:
             return None
 
