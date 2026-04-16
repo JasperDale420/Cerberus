@@ -1,12 +1,12 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN/HIGH + 2 down days.
 
-Iter17: min PF 0.66. Window 0 (FLAT, WR 39%) is the problem.
-Fix: require 2 consecutive down days (not just 1) for stronger oversold.
-Lock all params for CV stability. Tighter entry = higher WR.
+Iter18/24: DOWN+HIGH windows always PF<0.5 regardless of strategy.
+Fix: skip both DOWN trend AND HIGH vol at bar level.
+This eliminates signals during bear markets AND volatile selloffs.
 
 Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
-Skip DOWN regime entirely. Exclude leveraged ETFs.
+Skip DOWN regime AND HIGH vol. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -91,10 +91,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip entire DOWN regime (iter16: DOWN windows PF 0.40-0.77)
+        # Skip DOWN regime AND HIGH vol (DOWN+HIGH windows always PF<0.5)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN":
+        if regime_trend == "DOWN" or regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
