@@ -1,11 +1,11 @@
 """IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
 
-Iter17: min PF 0.66. Window 0 (FLAT, WR 39%) is the problem.
-Fix: require 2 consecutive down days (not just 1) for stronger oversold.
-Lock all params for CV stability. Tighter entry = higher WR.
+Iter18: min PF 0.88 (0.02 below gate!). Window 4 WR=56% but PnL negative.
+Wider ATR mult (1.6) gives target slightly more room.
+Also raise min price to $10 to improve stock quality.
 
 Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
+Stop = target = 1.6 ATR (symmetric). Min price $10.
 Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
@@ -36,7 +36,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_mult = float(config.get("atr_mult", 1.5))
+        self.atr_mult = float(config.get("atr_mult", 1.6))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -104,7 +104,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
             return None
 
         # Min price filter
-        if bar.close < 5.0:
+        if bar.close < 10.0:
             return None
 
         # Trend filter: close must be above SMA(20)
