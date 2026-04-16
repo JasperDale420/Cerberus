@@ -1,13 +1,11 @@
-"""IBS Trend Pullback — buy oversold dips in confirmed uptrends.
+"""IBS Deep Oversold — high-conviction mean reversion entries only.
 
-Dual filter for higher-quality entries:
-  1. Close > SMA(50) — stock is in an uptrend
-  2. IBS < threshold — closed near day's low (oversold intraday)
-  3. 2+ consecutive down days — pullback confirmation
+Ultra-selective entry: requires BOTH deep IBS oversold AND extended
+consecutive down days. Trades fewer signals but higher quality.
 
-Only trades pullbacks in uptrends (not falling knives in downtrends).
-Skip HIGH vol regime. Exclude leveraged ETFs.
-Skip SHOCK vol, earnings, FOMC.
+Filters: skip SHOCK vol, skip HIGH vol, skip earnings/FOMC.
+Exclude leveraged ETFs. No max_stop_pct (proven to hurt via premature exits).
+Regime-adaptive: tighter targets in DOWN trend.
 """
 
 from __future__ import annotations
@@ -31,22 +29,17 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 50))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.min_bars = int(config.get("min_bars", 30))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
+        self.min_consec_down = int(config.get("min_consec_down", 3))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.down_target_scale = float(config.get("down_target_scale", 0.7))
+        self.down_stop_scale = float(config.get("down_stop_scale", 0.7))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _sma(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period:
-            return None
-        return sum(closes[-period:]) / period
 
     @staticmethod
     def _ibs(bar: Bar) -> Optional[float]:
@@ -116,19 +109,14 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(50)
-        sma = self._sma(closes, self.sma_period)
-        if sma is None or bar.close <= sma:
-            return None
-
-        # IBS oversold signal
+        # IBS deep oversold signal
         ibs = self._ibs(bar)
         if ibs is None or ibs >= self.ibs_threshold:
             return None
 
-        # Consecutive down day confirmation
+        # Extended consecutive down day confirmation
         consec = self._count_consecutive_down(closes)
-        if consec < 2:
+        if consec < self.min_consec_down:
             return None
 
         # ATR for stop and target
@@ -140,12 +128,16 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if atr / bar.close < 0.005:
             return None
 
-        # Stop: ATR-based but capped at max_stop_pct of price
-        atr_stop = bar.close - self.stop_atr_mult * atr
-        pct_stop = bar.close * (1.0 - self.max_stop_pct)
-        stop = max(atr_stop, pct_stop)
+        # Regime-adaptive stop and target
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        stop_mult = self.stop_atr_mult
+        target_mult = self.target_atr_mult
+        if regime_trend == "DOWN":
+            stop_mult *= self.down_stop_scale
+            target_mult *= self.down_target_scale
 
-        target = bar.close + self.target_atr_mult * atr
+        stop = bar.close - stop_mult * atr
+        target = bar.close + target_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -158,10 +150,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
             meta={
                 "ibs": round(ibs, 3),
                 "consec_down": consec,
-                "sma50": round(sma, 2),
                 "vol_regime": regime_vol,
+                "trend_regime": regime_trend,
                 "atr_pct": round(atr / bar.close, 4),
-                "stop_type": "pct" if pct_stop > atr_stop else "atr",
-                "seed": "ibs_trend_pullback",
+                "seed": "ibs_deep_oversold",
             },
         )
