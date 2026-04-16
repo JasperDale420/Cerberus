@@ -94,6 +94,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    @staticmethod
+    def _has_down_days(bars: list[Bar], n: int) -> bool:
+        if len(bars) < n + 1:
+            return False
+        for i in range(-n, 0):
+            if bars[i].close >= bars[i - 1].close:
+                return False
+        return True
+
     def on_bar(
         self,
         symbol: str,
@@ -157,17 +166,23 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         # Dual-gate entry logic per regime
         if regime_trend == "UP":
-            # More permissive: either KC or BB, but must be above SMA(50)
+            # Either KC or BB, must be above SMA(50), require 1 down day
             if bar.close < sma50:
+                return None
+            if not self._has_down_days(bars, 1):
                 return None
             if not (below_kc or below_bb):
                 return None
         elif regime_trend == "DOWN":
-            # Most selective: require BOTH KC and BB
+            # Most selective: require BOTH KC and BB, 2 down days
+            if not self._has_down_days(bars, 2):
+                return None
             if not (below_kc and below_bb):
                 return None
         else:
-            # FLAT: either KC or BB
+            # FLAT: either KC or BB, 1 down day
+            if not self._has_down_days(bars, 1):
+                return None
             if not (below_kc or below_bb):
                 return None
 
