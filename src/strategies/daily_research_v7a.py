@@ -86,7 +86,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         regime_vol = labels.get("regime_vol", "NORMAL")
         if regime_trend == "DOWN":
             return None
-        if regime_vol == "SHOCK":
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
         # --- Event filter: skip earnings, FOMC, and quad witch ---
