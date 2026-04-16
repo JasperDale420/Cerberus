@@ -123,9 +123,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK and HIGH volatility
+        # Skip SHOCK volatility only
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         bars = list(symbol_state.bars)
@@ -135,10 +135,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Get regime
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
-
-        # Skip DOWN trend entirely — data shows consistent losses
-        if trend == "DOWN":
-            return None
 
         # Core indicators
         atr = self._atr(bars, self.atr_period)

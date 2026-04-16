@@ -90,11 +90,15 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_stop_pct": 0.02,
     },
     "daily_research_v7b": {
-        "rsi_period": 2,
         "atr_period": 14,
-        "max_hold_days": 5,
-        "stop_atr_mult": 2.0,
-        "max_stop_pct": 0.03,
+        "rsi_period": 14,
+        "max_hold_days": 7,
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "ema_period": 21,
+        "sma_slow_period": 50,
+        "vol_avg_period": 20,
+        "vol_min_ratio": 0.6,
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
@@ -227,9 +231,10 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("vol_mult", "float", low=0.4, high=0.8, step=0.1, description="Volume filter multiplier"),
     ],
     "daily_research_v7b": [
-        ParamDef("consec_down_days", "int", low=2, high=3, step=1, description="Consecutive down days"),
-        ParamDef("rsi_max", "float", low=10.0, high=30.0, step=5.0, description="RSI(2) oversold threshold"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr_mult", "float", low=1.5, high=3.5, step=0.5, description="ATR target multiplier"),
+        ParamDef("ibs_entry_threshold", "float", low=0.2, high=0.5, step=0.05, description="IBS entry for pullback"),
+        ParamDef("rsi_max", "float", low=50.0, high=70.0, step=5.0, description="RSI max filter"),
     ],
     "daily_research_v7c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
