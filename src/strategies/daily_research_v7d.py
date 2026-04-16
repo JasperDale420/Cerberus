@@ -1,10 +1,11 @@
-"""IBS Trend Pullback — symmetric risk:reward for consistent PF.
+"""IBS Trend Pullback — symmetric RR + permissive SMA(200) filter.
 
-Key insight: with symmetric stop/target (1.5:1.5 ATR), PF depends
-entirely on win rate. SMA(50) uptrend filter gives 55-65% WR,
-yielding PF 1.2-1.8 consistently across windows.
+Symmetric stop/target (1.5 ATR) proven PF 1.16 in iter14.
+Switch SMA(50) → SMA(200) for more permissive trend filter.
+SMA(200) only excludes severe bear markets, generates signals
+across more WFO windows while maintaining uptrend bias.
 
-Entry: close > SMA(50) AND IBS < threshold AND 1 down day.
+Entry: close > SMA(200) AND IBS < threshold AND 1 down day.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
 Skip DOWN+HIGH vol combo. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
@@ -31,8 +32,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.min_bars = int(config.get("min_bars", 210))
+        self.sma_period = int(config.get("sma_period", 200))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_mult = float(config.get("atr_mult", 1.5))
@@ -106,7 +107,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(50)
+        # Trend filter: close must be above SMA(200)
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close <= sma:
             return None
@@ -143,7 +144,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "ibs": round(ibs, 3),
-                "sma50": round(sma, 2),
+                "sma200": round(sma, 2),
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
                 "atr_pct": round(atr / bar.close, 4),

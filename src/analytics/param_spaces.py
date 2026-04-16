@@ -105,7 +105,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v7d": {
         "atr_period": 14,
-        "sma_period": 50,
+        "sma_period": 200,
         "atr_mult": 1.5,
     },
 }
