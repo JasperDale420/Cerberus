@@ -1,8 +1,10 @@
-"""Seed: Trend-Following Pullback Entry.
+"""Regime-Adaptive Pullback + Mean Reversion.
 
-Buy pullbacks to EMA(20) in confirmed uptrends (price > SMA50, EMA20 > SMA50).
-Volume and RSI(14) filters. Skips SHOCK volatility regime.
-Long-only, daily bars, max_hold_days=10.
+Dual-mode strategy:
+- UP trend: buy ATR-normalized pullbacks to EMA(21) with IBS timing
+- FLAT/DOWN: buy Bollinger Band lower band touches with low IBS
+Skips SHOCK vol. Uses regime labels for mode switching.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -25,19 +27,25 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
+        # Trend mode params
+        self.ema_period = int(config.get("ema_period", 21))
         self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.ema_fast_period = int(config.get("ema_fast_period", 20))
-        self.pullback_min_pct = float(config.get("pullback_min_pct", 0.01))
-        self.pullback_max_pct = float(config.get("pullback_max_pct", 0.02))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_low = float(config.get("rsi_low", 40.0))
-        self.rsi_high = float(config.get("rsi_high", 55.0))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
+        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
+        self.pullback_atr_max = float(config.get("pullback_atr_max", 1.5))
+        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.4))
+        # Mean reversion mode params
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
+        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.3))
+        # Shared params
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.6))
+        self.rsi_period = int(config.get("rsi_period", 14))
+        self.rsi_max = float(config.get("rsi_max", 60.0))
 
     # --- Indicator helpers ---
 
@@ -86,6 +94,23 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        data = values[-period:]
+        mean = sum(data) / period
+        variance = sum((x - mean) ** 2 for x in data) / period
+        return variance**0.5
+
+    @staticmethod
+    def _ibs(bar: Bar) -> float:
+        """Internal Bar Strength: (close - low) / (high - low). 0=closed at low, 1=closed at high."""
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return 0.5
+        return (bar.close - bar.low) / rng
+
     def on_bar(
         self,
         symbol: str,
@@ -98,7 +123,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility regime
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
@@ -107,36 +132,63 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # Trend confirmation: price > SMA(50)
-        sma50 = self._sma(closes, self.sma_slow_period)
-        if sma50 is None or bar.close <= sma50:
+        # Core indicators
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
-        # Momentum alignment: EMA(20) > SMA(50)
-        ema20 = self._ema(closes, self.ema_fast_period)
-        if ema20 is None or ema20 <= sma50:
-            return None
-
-        # Pullback to EMA(20): close within 1-2% of EMA20
-        if ema20 < 1e-9:
-            return None
-        dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_max_pct or dist_pct > self.pullback_min_pct:
-            return None
-
-        # RSI(14) in sweet spot: not overbought, not oversold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
+        if rsi is None or rsi > self.rsi_max:
             return None
 
-        # Volume confirmation: above 0.8x 20-day average
+        # Volume filter
         avg_vol = self._sma(volumes, self.vol_avg_period)
         if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
-        # ATR for stop and target
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
+        ibs = self._ibs(bar)
+
+        # Get regime
+        labels = symbol_state.meta.get("regime_labels", {})
+        trend = labels.get("regime_trend", "FLAT")
+
+        # Mode 1: Trend pullback (UP regime)
+        if trend == "UP":
+            return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
+
+        # Mode 2: Mean reversion (FLAT or DOWN)
+        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
+
+    def _trend_pullback_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        closes: list[float],
+        atr: float,
+        ibs: float,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        ema = self._ema(closes, self.ema_period)
+        sma_slow = self._sma(closes, self.sma_slow_period)
+        if ema is None or sma_slow is None:
+            return None
+
+        # Trend confirmation: EMA > SMA(50)
+        if ema <= sma_slow:
+            return None
+
+        # Price must be above SMA(50) (still in uptrend)
+        if bar.close <= sma_slow:
+            return None
+
+        # ATR-normalized pullback: price pulled back 0.3-1.5 ATR from EMA
+        dist = ema - bar.close  # positive when price below EMA
+        dist_atr = dist / atr
+        if dist_atr < self.pullback_atr_min or dist_atr > self.pullback_atr_max:
+            return None
+
+        # IBS filter: closed near the low (weak close = mean reversion setup)
+        if ibs > self.ibs_entry_threshold:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -150,13 +202,43 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             market_state,
             stop_price=stop,
             target_price=target,
-            meta={
-                "ema20": round(ema20, 2),
-                "sma50": round(sma50, 2),
-                "pullback_pct": round(dist_pct, 4),
-                "rsi14": round(rsi, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
-                "atr": round(atr, 4),
-                "seed": "trend_pullback",
-            },
+            meta={"mode": "trend_pullback", "dist_atr": round(dist_atr, 2), "ibs": round(ibs, 2)},
+        )
+
+    def _mean_reversion_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        closes: list[float],
+        atr: float,
+        ibs: float,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        bb_mean = self._sma(closes, self.bb_period)
+        bb_std = self._std(closes, self.bb_period)
+        if bb_mean is None or bb_std is None or bb_std < 1e-9:
+            return None
+
+        lower_band = bb_mean - self.bb_std * bb_std
+
+        # Price at or below lower band
+        if bar.close > lower_band:
+            return None
+
+        # IBS filter: closed near the low
+        if ibs > self.mr_ibs_threshold:
+            return None
+
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bb_mean  # Target the mean
+
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={"mode": "mean_reversion", "ibs": round(ibs, 2), "z_score": round((bar.close - bb_mean) / bb_std, 2)},
         )
