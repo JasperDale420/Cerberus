@@ -42,10 +42,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         # Drop magnitude filter (in ATR units)
         self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
-        self.max_drop_atr = float(config.get("max_drop_atr", 2.5))
-        # Volume surge filter (skip institutional selling)
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.max_vol_surge = float(config.get("max_vol_surge", 2.0))
+        self.max_drop_atr = float(config.get("max_drop_atr", 3.0))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -115,7 +112,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         # ATR — needed for vol filter and exits
         atr = self._atr(bars, self.atr_period)
@@ -140,16 +136,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if rsi is None or rsi > self.rsi_max:
             return None
 
-        # Drop magnitude: filter out crash-level drops (>2.5 ATR) and trivial ones (<0.8 ATR)
+        # Drop magnitude: filter out crash-level drops (>3 ATR) and trivial ones (<0.8 ATR)
         pre_drop_close = closes[-(self.consec_down_days + 1)]
         drop = pre_drop_close - bar.close
         drop_atr = drop / atr
         if drop_atr < self.min_drop_atr or drop_atr > self.max_drop_atr:
-            return None
-
-        # Volume surge filter: if current volume is >2x average, it's institutional selling
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0 and bar.volume > self.max_vol_surge * avg_vol:
             return None
 
         # Stop and target
