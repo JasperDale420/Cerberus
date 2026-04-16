@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -80,7 +80,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Regime filter: skip DOWN trend and SHOCK vol ---
+        # --- Regime filter: skip all DOWN trend (45% WR) and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
@@ -88,14 +88,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
         if regime_vol == "SHOCK":
             return None
-
-        # --- Market-level regime filter: also check broad market trend ---
-        snapshot = market_state.regime_snapshot
-        if snapshot is not None:
-            if snapshot.trend == TrendRegime.DOWN:
-                return None
-            if snapshot.vol == VolRegime.SHOCK:
-                return None
 
         # --- Event filter: skip earnings and FOMC ---
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
