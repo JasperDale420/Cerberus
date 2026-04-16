@@ -27,9 +27,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         # Consecutive down days
-        self.min_down_days = int(config.get("min_down_days", 2))
+        self.min_down_days = int(config.get("min_down_days", 3))
         # IBS threshold
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         # Trend support — price must be above SMA(N)
         self.sma_period = int(config.get("sma_period", 50))
         # ATR params
@@ -115,11 +115,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # IBS — close near the low (potential exhaustion)
         ibs = self._ibs(bar)
         if ibs > self.ibs_threshold:
-            return None
-
-        # Trend support — price above SMA for long-term support
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma:
             return None
 
         # Stop and target with cap
