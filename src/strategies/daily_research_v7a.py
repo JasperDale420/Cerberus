@@ -1,8 +1,9 @@
-"""Iteration 6: IBS + Consecutive Down Days with vol confirmation.
+"""Iteration 11: IBS + Down Days + SMA slope filter.
 
 Buy after 2+ consecutive down closes when IBS is low.
-Skip HIGH/SHOCK vol. Skip Monday. Require above-average volume.
-Tighter drawdown filter (12%). ATR-based stops/targets.
+Skip HIGH/SHOCK vol. Skip Monday, near_earnings.
+SMA(20) must be rising (current > 5 bars ago) — ensures uptrend context.
+Volume confirmation. Drawdown 10%.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -27,20 +28,24 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # IBS threshold
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        # Consecutive down days required
         self.min_down_days = int(config.get("min_down_days", 2))
-        # Volume filter: require volume > vol_mult * 20-day avg
         self.vol_mult = float(config.get("vol_mult", 0.8))
-        # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
-        # Stop/target in ATR multiples
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.15))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        # SMA slope filter
+        self.sma_period = int(config.get("sma_period", 20))
+        self.sma_slope_lookback = int(config.get("sma_slope_lookback", 5))
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -77,10 +82,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if vol in ("HIGH", "SHOCK"):
             return None
 
-        # --- Skip near earnings and FOMC ---
+        # --- Skip near earnings ---
         if labels.get("near_earnings", False):
-            return None
-        if labels.get("near_fomc", False):
             return None
 
         # --- Day-of-week filter: skip Monday ---
@@ -88,6 +91,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if isinstance(bar_time, datetime):
             if bar_time.weekday() == 0:
                 return None
+
+        # --- SMA slope filter: SMA(20) must be rising ---
+        n = self.sma_period + self.sma_slope_lookback
+        if len(closes) >= n:
+            sma_now = self._sma(closes, self.sma_period)
+            sma_prev = self._sma(closes[: -self.sma_slope_lookback], self.sma_period)
+            if sma_now is not None and sma_prev is not None:
+                if sma_now < sma_prev:
+                    return None  # SMA declining — skip
 
         # --- IBS filter: close must be near the low of the day ---
         bar_range = bar.high - bar.low
@@ -104,13 +116,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if closes[-i] >= closes[-i - 1]:
                 return None
 
-        # --- Volume filter: current volume above threshold ---
+        # --- Volume filter ---
         if len(volumes) >= 20:
             avg_vol = sum(volumes[-20:]) / 20
             if avg_vol > 0 and bar.volume < self.vol_mult * avg_vol:
                 return None
 
-        # --- Drawdown filter: skip if in freefall ---
+        # --- Drawdown filter ---
         lookback_highs = highs[-self.drawdown_lookback :]
         peak = max(lookback_highs)
         dd = (peak - bar.close) / peak if peak > 0 else 0
