@@ -30,7 +30,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # IBS threshold
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         # Consecutive down days required
-        self.min_down_days = int(config.get("min_down_days", 2))
+        self.min_down_days = int(config.get("min_down_days", 3))
         # Volume filter: require volume > vol_mult * 20-day avg
         self.vol_mult = float(config.get("vol_mult", 0.8))
         # Drawdown filter

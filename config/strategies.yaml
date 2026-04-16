@@ -319,7 +319,7 @@ strategies:
     max_hold_days: 5
     cooldown_bars: 1
     ibs_threshold: 0.35
-    min_down_days: 2
+    min_down_days: 3
     vol_mult: 0.8
     atr_period: 14
     stop_atr_mult: 1.3
