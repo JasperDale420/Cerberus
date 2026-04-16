@@ -1,9 +1,8 @@
-"""Multi-Factor Mean Reversion with Regime Awareness.
+"""Multi-Factor Mean Reversion with Robust Vol Filtering.
 
-Unified approach: buy multi-day weakness (consecutive down closes + low IBS)
-near Bollinger Band lower zone. ATR-based risk management.
-Adapts stop/target tightness by regime. Skips SHOCK vol.
-Long-only, daily bars.
+Buy multi-day weakness (consecutive down closes + low IBS)
+near Bollinger Band lower zone. Triple vol filter (snapshot + labels + realized_vol).
+Drawdown guard skips deep selloffs. Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -27,16 +26,21 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         # Entry filters
-        self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.35))
+        self.consec_down_days = int(config.get("consec_down_days", 3))
+        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))  # how close to lower BB (0=at band, 1=at mean)
+        self.bb_proximity = float(config.get("bb_proximity", 0.5))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
+        # Volatility guard
+        self.max_realized_vol = float(config.get("max_realized_vol", 30.0))
+        # Drawdown guard
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 20))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
 
     # --- Indicator helpers ---
 
@@ -69,7 +73,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
     @staticmethod
     def _ibs(bar: Bar) -> float:
-        """Internal Bar Strength: (close - low) / (high - low)."""
         rng = bar.high - bar.low
         if rng < 1e-9:
             return 0.5
@@ -77,7 +80,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
     @staticmethod
     def _consec_down(closes: list[float], min_days: int) -> bool:
-        """Check if last N closes were each lower than the previous."""
         if len(closes) < min_days + 1:
             return False
         for i in range(-min_days, 0):
@@ -97,19 +99,37 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK and HIGH volatility — data shows consistent losses
+        # --- Triple vol filter ---
+        # 1. Regime snapshot
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
+        # 2. Per-bar regime labels
+        labels = symbol_state.meta.get("regime_labels", {})
+        vol_label = labels.get("regime_vol", "NORMAL")
+        if vol_label in ("HIGH", "SHOCK"):
+            return None
+
+        # 3. Realized vol from market_state
+        if hasattr(market_state, "realized_vol") and market_state.realized_vol is not None:
+            if market_state.realized_vol > self.max_realized_vol:
+                return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+
+        # --- Drawdown guard: skip if stock has dropped too much recently ---
+        if len(closes) >= self.drawdown_lookback:
+            recent_high = max(closes[-self.drawdown_lookback :])
+            if recent_high > 0 and (bar.close - recent_high) / recent_high < -self.max_drawdown_pct:
+                return None
 
         # --- Entry Condition 1: Consecutive down closes ---
         if not self._consec_down(closes, self.consec_down_days):
             return None
 
-        # --- Entry Condition 2: Low IBS (closed near the low) ---
+        # --- Entry Condition 2: Low IBS ---
         ibs = self._ibs(bar)
         if ibs > self.ibs_entry_threshold:
             return None
