@@ -8,7 +8,6 @@ Long-only, daily bars.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
@@ -127,11 +126,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Skip Thursday/Friday entries — data consistently shows losses
-        if isinstance(bar.time, datetime):
-            dow = bar.time.weekday()
-            if dow >= 3:  # Thursday=3, Friday=4
+        # Skip Friday entries (consistently lose across all iterations)
+        try:
+            t = bar.time
+            dow = t.weekday() if hasattr(t, "weekday") else None
+            if dow is not None and dow == 4:  # Friday=4
                 return None
+        except (AttributeError, TypeError):
+            pass
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -151,16 +153,24 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         ibs = self._ibs(bar)
 
+        # Stock-level trend check: SMA(10) vs SMA(40)
+        sma10 = self._sma(closes, 10)
+        sma40 = self._sma(closes, 40)
+        stock_uptrend = sma10 is not None and sma40 is not None and sma10 > sma40
+
         # Get regime
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
 
-        # Mode 1: Trend pullback (UP regime)
-        if trend == "UP":
+        # Mode 1: Trend pullback (UP regime OR stock uptrend)
+        if trend == "UP" or stock_uptrend:
             return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
 
-        # Mode 2: Mean reversion (FLAT or DOWN) — stricter filters
-        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
+        # Mode 2: Mean reversion — only if stock above SMA(40)
+        if sma40 is not None and bar.close > sma40:
+            return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
+
+        return None
 
     def _trend_pullback_signal(
         self,
