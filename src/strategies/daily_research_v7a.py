@@ -68,9 +68,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
 
-        # --- Regime filter: skip HIGH and SHOCK vol ---
+        # --- Regime filter: skip DOWN trend, skip HIGH/SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
+        trend = labels.get("regime_trend", "")
         vol = labels.get("regime_vol", "")
+        if trend == "DOWN":
+            return None
         if vol in ("HIGH", "SHOCK"):
             return None
 
