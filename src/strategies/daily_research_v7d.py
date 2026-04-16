@@ -1,11 +1,10 @@
-"""IBS Trend Pullback — symmetric RR + SMA(50) + skip DOWN + 2 down days.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
 
-Combining best elements:
-- Iter14: SMA(50) + symmetric 1.5 ATR → PF 1.16 (1 window)
-- Iter18: 2 down days + skip DOWN + SMA(20) → PF 0.88 (6 windows)
-SMA(50) is better trend filter than SMA(20) but needs min_bars=55.
+Iter17: min PF 0.66. Window 0 (FLAT, WR 39%) is the problem.
+Fix: require 2 consecutive down days (not just 1) for stronger oversold.
+Lock all params for CV stability. Tighter entry = higher WR.
 
-Entry: close > SMA(50) AND IBS < 0.25 AND 2 consecutive down days.
+Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
 Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
@@ -33,7 +32,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.sma_period = int(config.get("sma_period", 20))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
@@ -108,7 +107,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(50)
+        # Trend filter: close must be above SMA(20)
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close <= sma:
             return None
