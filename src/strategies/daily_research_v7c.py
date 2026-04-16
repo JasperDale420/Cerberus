@@ -29,10 +29,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.ema_slow_period = int(config.get("ema_slow_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         self.keltner_mult = float(config.get("keltner_mult", 2.0))
-        self.pullback_zone = float(config.get("pullback_zone", 0.6))
+        self.pullback_zone = float(config.get("pullback_zone", 0.75))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 10))
-        self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
 
     # --- Indicator helpers ---
 
@@ -87,13 +86,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             # Skip DOWN market trend
             if snapshot.trend == TrendRegime.DOWN:
                 return None
-            # Skip SHOCK and HIGH market volatility
-            if snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+            # Skip SHOCK market volatility only
+            if snapshot.vol == VolRegime.SHOCK:
                 return None
-
-        # Also check realized_vol as backup (skip when SPY vol > 25%)
-        if market_state.realized_vol is not None and market_state.realized_vol > self.max_realized_vol:
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
