@@ -1,12 +1,10 @@
-"""Consecutive-Down Pullback in Rising Trends with Drop-Size Filter.
+"""Consecutive-Down Trend Pullback — Simplified Core.
 
-Buy after N consecutive down closes when RSI(2) is oversold AND:
-- SMA(50) is rising (uptrend context)
-- Cumulative drop is 1-3x ATR (meaningful but not crash)
-- ATR/price ratio is sane (skip extreme volatility)
-- Skip SHOCK + near-earnings
+Buy after N consecutive down closes when RSI(2) is oversold and
+price is above SMA(50) (confirmed uptrend). Minimal filters for
+maximum robustness across different market windows.
 
-Long-only, daily bars, max 5-day hold.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -40,18 +38,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         # Trend
         self.sma_period = int(config.get("sma_slow_period", 50))
-        self.sma_slope_period = int(config.get("sma_slope_period", 10))
-        # Drop magnitude filter (in ATR units)
-        self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
-        self.max_drop_atr = float(config.get("max_drop_atr", 3.5))
-        # Max ATR/price ratio (skip extremely volatile names)
+        # Vol filter
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
-        # Max drawdown from recent high (skip crash scenarios)
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
-        # Volume
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.5))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -109,48 +97,31 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Event filter
+        # Skip near earnings
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # ATR computation (needed early for filters)
+        # ATR — needed for vol filter and exits
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Max ATR/price ratio filter — skip extreme volatility
-        atr_pct = atr / bar.close
-        if atr_pct > self.max_atr_pct:
+        # Skip extremely volatile names
+        if atr / bar.close > self.max_atr_pct:
             return None
 
-        # Drawdown filter: skip if stock is in crash (>X% below recent high)
-        lookback = min(self.drawdown_lookback, len(closes))
-        if lookback >= 5:
-            recent_high = max(closes[-lookback:])
-            drawdown = (recent_high - bar.close) / recent_high
-            if drawdown > self.max_drawdown_pct:
-                return None
-
-        # Trend: SMA(50) must be rising
+        # Trend: price > SMA(50) — simple uptrend confirmation
         sma50 = self._sma(closes, self.sma_period)
-        if sma50 is None:
-            return None
-        sma50_prev = (
-            self._sma(closes[: -self.sma_slope_period], self.sma_period)
-            if len(closes) > self.sma_period + self.sma_slope_period
-            else None
-        )
-        if sma50_prev is not None and sma50 <= sma50_prev:
+        if sma50 is None or bar.close <= sma50:
             return None
 
         # Consecutive down days
@@ -160,22 +131,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # RSI(2) oversold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
-            return None
-
-        # Green candle: entry day shows buying pressure (reversal confirmation)
-        if bar.close <= bar.open:
-            return None
-
-        # Drop magnitude: cumulative drop over consec_down_days in ATR units
-        pre_drop_close = closes[-(self.consec_down_days + 1)]
-        drop = pre_drop_close - bar.close
-        drop_atr = drop / atr
-        if drop_atr < self.min_drop_atr or drop_atr > self.max_drop_atr:
-            return None
-
-        # Volume: not dead
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
         # Stop and target
@@ -198,11 +153,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             meta={
                 "consec_down": self.consec_down_days,
                 "rsi2": round(rsi, 2),
-                "drop_atr": round(drop_atr, 2),
-                "atr_pct": round(atr_pct, 4),
-                "sma50_trend": "rising",
+                "sma50": round(sma50, 2),
                 "atr": round(atr, 4),
                 "regime": regime,
-                "seed": "consec_down_rising_trend",
+                "seed": "consec_down_simple",
             },
         )
