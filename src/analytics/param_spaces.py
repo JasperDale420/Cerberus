@@ -242,7 +242,6 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     "daily_research_v7d": [
         ParamDef("max_hold_days", "int", low=4, high=7, step=1, description="Max hold days"),
         ParamDef("base_stop_atr_mult", "float", low=1.0, high=2.0, step=0.25, description="ATR stop multiplier"),
-        ParamDef("base_target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
     ],
 }
 
