@@ -89,10 +89,20 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if regime_vol == "SHOCK":
             return None
 
+        # --- Event filter: skip earnings and FOMC ---
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
         # --- Entry: consecutive down days ---
         down_days = self._consecutive_down_days(bars)
         if down_days < self.min_down_days:
             return None
+
+        # --- Pullback magnitude: require meaningful drop (not just tiny red days) ---
+        if len(closes) > down_days:
+            roc = (closes[-1] - closes[-(down_days + 1)]) / closes[-(down_days + 1)]
+            if roc > -0.015:  # need at least 1.5% pullback
+                return None
 
         # --- IBS filter: close near day's low (selling exhaustion) ---
         bar_range = bar.high - bar.low
