@@ -1,11 +1,13 @@
-"""Connors RSI(2) Mean Reversion — volatility-capped for consistency.
+"""IBS Trend Pullback — buy oversold dips in confirmed uptrends.
 
-Entry: 2+ consecutive down closes AND RSI(2) < threshold.
-Skip HIGH vol regime entirely.
+Dual filter for higher-quality entries:
+  1. Close > SMA(50) — stock is in an uptrend
+  2. IBS < threshold — closed near day's low (oversold intraday)
+  3. 2+ consecutive down days — pullback confirmation
+
+Only trades pullbacks in uptrends (not falling knives in downtrends).
+Skip HIGH vol regime. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
-Max ATR/price filter caps stock-level volatility (avoids NFLX/COIN blow-ups).
-max_stop_pct (1.5%) caps per-trade loss tightly.
-Exclude leveraged/inverse ETFs.
 """
 
 from __future__ import annotations
@@ -30,34 +32,28 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_max = float(config.get("rsi_max", 15.0))
+        self.sma_period = int(config.get("sma_period", 50))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.015))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
+    def _sma(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period:
             return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
+        return sum(closes[-period:]) / period
+
+    @staticmethod
+    def _ibs(bar: Bar) -> Optional[float]:
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return None
+        return (bar.close - bar.low) / rng
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -120,29 +116,28 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
+        # Trend filter: close must be above SMA(50)
+        sma = self._sma(closes, self.sma_period)
+        if sma is None or bar.close <= sma:
+            return None
+
+        # IBS oversold signal
+        ibs = self._ibs(bar)
+        if ibs is None or ibs >= self.ibs_threshold:
+            return None
+
+        # Consecutive down day confirmation
+        consec = self._count_consecutive_down(closes)
+        if consec < 2:
+            return None
+
         # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        atr_pct = atr / bar.close
-
-        # Skip dead stocks (too low vol)
-        if atr_pct < 0.005:
-            return None
-
-        # Skip hyper-volatile stocks (outsized losses)
-        if atr_pct > self.max_atr_pct:
-            return None
-
-        # Core signal: consecutive down days
-        consec = self._count_consecutive_down(closes)
-        if consec < self.consec_down_days:
-            return None
-
-        # RSI(2) oversold confirmation
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > self.rsi_max:
+        # ATR/price filter: skip dead stocks
+        if atr / bar.close < 0.005:
             return None
 
         # Stop: ATR-based but capped at max_stop_pct of price
@@ -161,11 +156,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
+                "ibs": round(ibs, 3),
                 "consec_down": consec,
-                "rsi2": round(rsi, 2),
-                "atr_pct": round(atr_pct, 4),
+                "sma50": round(sma, 2),
                 "vol_regime": regime_vol,
+                "atr_pct": round(atr / bar.close, 4),
                 "stop_type": "pct" if pct_stop > atr_stop else "atr",
-                "seed": "rsi2_vol_capped",
+                "seed": "ibs_trend_pullback",
             },
         )
