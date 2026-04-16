@@ -1,9 +1,10 @@
 """Multi-Day Selloff Recovery — buy after N consecutive down days.
 
 Core logic: stocks that close lower for 2+ days with low IBS (near day's low)
-tend to bounce. Filter with SMA trend support and ATR vol gate.
+and a meaningful total drop tend to bounce. Filter with SMA trend support,
+volume exhaustion check, and ATR vol gate.
 Single unified entry across all regimes, no mode switching.
-Tighter filters in high realized vol. Long-only, daily bars.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -27,9 +28,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         # Consecutive down days
-        self.min_down_days = int(config.get("min_down_days", 3))
+        self.min_down_days = int(config.get("min_down_days", 2))
         # IBS threshold
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        # Minimum total drop over N days (as pct of price)
+        self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
         # Trend support — price must be above SMA(N)
         self.sma_period = int(config.get("sma_period", 50))
         # ATR params
@@ -112,10 +115,32 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._consecutive_down(closes, self.min_down_days):
             return None
 
+        # Minimum total drop — ensure this is a real selloff, not noise
+        n = self.min_down_days
+        if len(closes) >= n + 1:
+            start_price = closes[-(n + 1)]
+            if start_price > 0:
+                total_drop = (start_price - closes[-1]) / start_price
+                if total_drop < self.min_drop_pct:
+                    return None
+
         # IBS — close near the low (potential exhaustion)
         ibs = self._ibs(bar)
         if ibs > self.ibs_threshold:
             return None
+
+        # Trend support — price above SMA for long-term support
+        sma = self._sma(closes, self.sma_period)
+        if sma is not None and bar.close < sma:
+            return None
+
+        # Volume exhaustion — today's volume should not be spiking vs recent average
+        # (spiking volume on down days = panic selling, not exhaustion)
+        volumes = [b.volume for b in bars]
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume > avg_vol * 2.0:
+                return None
 
         # Stop and target with cap
         raw_stop_dist = self.stop_atr_mult * atr
