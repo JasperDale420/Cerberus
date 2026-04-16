@@ -119,8 +119,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
 
-        # Skip DOWN+HIGH/SHOCK
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        # Skip HIGH/SHOCK vol — too noisy for mean reversion
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
         # Skip earnings/FOMC
