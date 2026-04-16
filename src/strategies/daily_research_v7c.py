@@ -1,7 +1,8 @@
-"""Breakout-Pullback Strategy (evolved from vol_breakout seed).
+"""WRB Trend + Pullback Entry (evolved from vol_breakout seed).
 
-Buy pullbacks to support after recent breakout (new 20-day high within last 5 days).
-Better risk:reward than chasing breakouts. Regime-filtered for consistency.
+Uses yesterday's wide-range bar as a trend signal, then buys today's
+intraday pullback (low IBS). Combines expansion detection with
+mean-reversion timing for consistency across regimes.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
+        self.min_bars = int(config.get("min_bars", 25))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -61,12 +62,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
-        regime_vol = regime_labels.get("regime_vol", "")
-        regime_trend = regime_labels.get("regime_trend", "")
-        if regime_vol == "SHOCK":
-            return None
-        # Skip DOWN+HIGH — breakouts fail in volatile downtrends
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        if regime_labels.get("regime_vol") == "SHOCK":
             return None
 
         bars = list(symbol_state.bars)
@@ -79,28 +75,34 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if len(bars) < 25:
             return None
 
-        # Step 1: Recent breakout — a 20-day high was made within the last 5 bars
-        high_20d = max(b.high for b in bars[-21:-1])
-        recent_highs = [b.high for b in bars[-6:-1]]
-        had_breakout = any(h >= high_20d * 0.99 for h in recent_highs)
-        if not had_breakout:
+        # --- YESTERDAY: Wide-range up bar (trend signal) ---
+        prev = bars[-2]
+        prev_prev = bars[-3]
+        prev_range = prev.high - prev.low
+        # Yesterday's range > 1.2x ATR (vol expansion)
+        if prev_range < 1.2 * atr:
+            return None
+        # Yesterday was an up day
+        if prev.close <= prev_prev.close:
+            return None
+        # Yesterday closed in upper half of its range
+        if prev_range > 0 and (prev.close - prev.low) / prev_range < 0.6:
             return None
 
-        # Step 2: Pullback — today's close is below the recent high but not too far
-        recent_high = max(recent_highs)
-        pullback_pct = (recent_high - bar.close) / recent_high
-        if pullback_pct < 0.005 or pullback_pct > 0.05:
-            return None
-
-        # Step 3: Close strength — close in upper half of today's range (not weak)
+        # --- TODAY: Pullback (timing signal) ---
+        # Today's IBS < 0.5 — intraday weakness = better entry
         today_range = bar.high - bar.low
         if today_range < 1e-9:
             return None
-        close_position = (bar.close - bar.low) / today_range
-        if close_position < 0.5:
+        ibs = (bar.close - bar.low) / today_range
+        if ibs > 0.5:
             return None
 
-        # Step 4: Trend — above SMA(20)
+        # Today didn't gap down too much (still in yesterday's range)
+        if bar.close < prev.low:
+            return None
+
+        # --- TREND FILTER ---
         sma20 = self._sma(closes, 20)
         if sma20 is None or bar.close <= sma20:
             return None
@@ -118,8 +120,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "pullback_pct": round(pullback_pct * 100, 2),
-                "close_pos": round(close_position, 2),
+                "prev_range_mult": round(prev_range / atr, 2),
+                "ibs_today": round(ibs, 2),
                 "seed": "vol_breakout",
             },
         )
