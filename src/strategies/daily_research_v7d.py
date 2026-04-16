@@ -1,13 +1,11 @@
-"""IBS Mean Reversion v3 — d8d07c6 base + vol cap + ETF exclusion.
+"""IBS Mean Reversion v4 — volume-confirmed oversold with volatility cap.
 
-Core signal: IBS < threshold AND 2+ consecutive down days.
+Core signal: IBS < threshold AND 2+ consecutive down days AND above-average volume.
+Volume confirmation ensures we buy genuine selling exhaustion, not lazy drift.
+
 Long-only. Regime-adaptive stop/target in DOWN trend.
-
-Improvements over d8d07c6:
-- Exclude leveraged ETFs
-- Max ATR/price cap (0.035) to avoid hyper-volatile stocks with catastrophic losses
-- Skip DOWN+HIGH vol combo (from d8d07c6)
-- Skip SHOCK vol, earnings, FOMC
+Skip DOWN+HIGH vol combo. Max ATR/price cap. Exclude leveraged ETFs.
+Skip SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -40,6 +38,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.down_target_scale = float(config.get("down_target_scale", 0.7))
         self.down_stop_scale = float(config.get("down_stop_scale", 0.7))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.035))
+        self.vol_lookback = int(config.get("vol_lookback", 20))
 
     # --- Indicator helpers ---
 
@@ -61,6 +60,14 @@ class dailyresearchv7dStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _avg_volume(bars: list[Bar], period: int) -> Optional[float]:
+        if len(bars) < period:
+            return None
+        vols = [b.volume for b in bars[-period:]]
+        avg = sum(vols) / period
+        return avg if avg > 0 else None
 
     def _count_consecutive_down(self, closes: list[float]) -> int:
         count = 0
@@ -135,6 +142,11 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if consec < 2:
             return None
 
+        # Volume confirmation: current bar volume must exceed rolling average
+        avg_vol = self._avg_volume(bars, self.vol_lookback)
+        if avg_vol is not None and bar.volume < avg_vol:
+            return None
+
         # Regime-adaptive stop/target
         stop_mult = self.stop_atr_mult
         target_mult = self.target_atr_mult
@@ -160,6 +172,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
                 "atr_pct": round(atr_pct, 4),
-                "seed": "ibs_mr_v3",
+                "seed": "ibs_mr_v4",
             },
         )
