@@ -1,8 +1,8 @@
-"""Keltner Pullback + IBS + Regime-Adaptive Stops.
+"""Keltner Channel Pullback + Low-Volume Filter.
 
-Keltner Channel pullback with IBS timing confirmation.
-Stops adapt to volatility regime: tight in HIGH vol, wide in LOW vol.
-This limits damage in HIGH vol bear windows without filtering trades entirely.
+Buy dips to lower Keltner band in uptrends, but only on LOW volume days.
+High-volume pullbacks are often trend reversals (panic selling).
+Low-volume pullbacks are orderly retracements that tend to revert.
 """
 
 from __future__ import annotations
@@ -30,11 +30,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.keltner_mult = float(config.get("keltner_mult", 2.0))
         self.pullback_zone = float(config.get("pullback_zone", 0.5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
-        self.stop_atr_low = float(config.get("stop_atr_low", 2.0))
-        self.stop_atr_normal = float(config.get("stop_atr_normal", 1.5))
-        self.stop_atr_high = float(config.get("stop_atr_high", 0.75))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.max_vol_ratio = float(config.get("max_vol_ratio", 1.2))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 10))
 
     # --- Indicator helpers ---
 
@@ -47,6 +46,12 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         for v in values[1:]:
             ema = v * mult + ema * (1 - mult)
         return ema
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -87,16 +92,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_vol == "SHOCK":
             return None
 
-        # IBS timing filter — close near day's low
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs > self.ibs_threshold:
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
         # Compute indicators
         ema_fast = self._ema(closes, self.ema_period)
@@ -122,15 +120,15 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close < safety_floor:
             return None
 
-        # Regime-adaptive stop distance
-        if regime_vol == "HIGH":
-            stop_mult = self.stop_atr_high
-        elif regime_vol == "LOW":
-            stop_mult = self.stop_atr_low
-        else:
-            stop_mult = self.stop_atr_normal
+        # Low-volume filter: pullback on below-average volume
+        # High-volume pullbacks = panic selling = trend reversal risk
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0:
+            if bar.volume > self.max_vol_ratio * avg_vol:
+                return None
 
-        stop = bar.close - stop_mult * atr
+        # Stop below entry, target the EMA midline
+        stop = bar.close - self.stop_atr_mult * atr
         target = ema_fast  # mean reversion to EMA midline
 
         self.last_signal_time[symbol] = bar.time
@@ -142,13 +140,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ibs": round(ibs, 3),
                 "atr": round(atr, 4),
                 "ema_fast": round(ema_fast, 2),
                 "ema_slow": round(ema_slow, 2),
                 "pullback_depth": round((ema_fast - bar.close) / atr, 2),
-                "stop_mult": stop_mult,
-                "vol_regime": regime_vol,
+                "vol_ratio": round(bar.volume / avg_vol, 2) if avg_vol and avg_vol > 0 else 0,
                 "seed": "vol_breakout_evolved",
             },
         )
