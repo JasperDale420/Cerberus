@@ -33,7 +33,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.trend_period = int(config.get("trend_period", 50))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
 
