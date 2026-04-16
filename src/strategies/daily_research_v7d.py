@@ -149,11 +149,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if bar.close > lower_kc:
             return None
 
-        # Wide range bar: genuine selloff, not quiet drift
-        bar_range = bar.high - bar.low
-        if bar_range < atr * 0.8:
-            return None
-
         # Volume filter: skip if volume is spiking (panic selling, not exhaustion)
         if len(bars) >= self.vol_lookback:
             avg_vol = sum(b.volume for b in bars[-self.vol_lookback :]) / self.vol_lookback
@@ -161,6 +156,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
                 return None
 
         # IBS check — close should be in lower half of bar (not already recovering)
+        bar_range = bar.high - bar.low
         if bar_range > 1e-9:
             ibs = (bar.close - bar.low) / bar_range
             if ibs > 0.4:
