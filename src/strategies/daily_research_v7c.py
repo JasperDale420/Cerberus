@@ -1,8 +1,8 @@
-"""Keltner Pullback V2 — buy dips near lower Keltner with reversal confirmation.
+"""Keltner Channel Pullback — buy dips to lower Keltner band in uptrends.
 
-Entry: price dips into lower Keltner zone, still above EMA(50), and shows
-reversal (close > prior day low). Pure price-based filters, no regime labels.
-Target: EMA(20) midline. Stop: ATR-based below entry.
+Entry: price pulls back near lower Keltner Channel while EMA(20) > EMA(50).
+Filters: skip DOWN trend, skip HIGH/SHOCK vol, skip near-earnings.
+Target: EMA midline. Stop: ATR-based below entry.
 """
 
 from __future__ import annotations
@@ -74,11 +74,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_earnings"):
             return None
 
+        # Skip SHOCK and HIGH volatility
+        regime_vol = regime_labels.get("regime_vol", "NORMAL")
+        if regime_vol in ("SHOCK", "HIGH"):
+            return None
+
+        # Skip DOWN trend
+        regime_trend = regime_labels.get("regime_trend", "FLAT")
+        if regime_trend == "DOWN":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-
-        if len(bars) < 2:
-            return None
 
         # Compute indicators
         ema_fast = self._ema(closes, self.ema_period)
@@ -88,29 +95,25 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema_fast is None or ema_slow is None or atr is None or atr < 1e-9:
             return None
 
-        # Stock must be above longer-term trend (close > EMA50)
-        if bar.close < ema_slow:
+        # Trend confirmation: fast EMA above slow EMA
+        if ema_fast <= ema_slow:
             return None
 
-        # Keltner Channel pullback zone — price dipped into lower channel
+        # Keltner Channel pullback zone
         pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
+
+        # Entry: price pulled back near or below lower Keltner band
         if bar.close > pullback_threshold:
             return None
 
-        # Safety floor — don't buy crash
+        # Price must still be above a safety floor (not a crash)
         safety_floor = ema_fast - 3.0 * atr
         if bar.close < safety_floor:
             return None
 
-        # Reversal confirmation: close must be above prior bar's low
-        # (not still falling — shows some buying interest)
-        prev_bar = bars[-2]
-        if bar.close < prev_bar.low:
-            return None
-
         # Stop below entry, target the EMA midline
         stop = bar.close - self.stop_atr_mult * atr
-        target = ema_fast  # mean reversion to EMA
+        target = ema_fast  # mean reversion target
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
