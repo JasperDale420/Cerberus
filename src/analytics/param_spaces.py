@@ -105,15 +105,11 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v7d": {
         "atr_period": 14,
-        "ema_period": 20,
-        "sma_period": 50,
-        "kc_mult_up": 1.5,
-        "kc_mult_flat": 2.0,
-        "kc_mult_down": 2.5,
-        "vol_max_ratio": 1.2,
-        "min_down_days": 2,
-        "max_atr_pct": 0.04,
-        "max_stop_pct": 0.03,
+        "sma_fast": 20,
+        "sma_slow": 50,
+        "atr_mult": 1.5,
+        "ibs_threshold": 0.25,
+        "consec_down_days": 2,
     },
 }
 
@@ -240,8 +236,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
     "daily_research_v7d": [
-        ParamDef("max_hold_days", "int", low=4, high=7, step=1, description="Max hold days"),
-        ParamDef("base_stop_atr_mult", "float", low=1.0, high=2.0, step=0.25, description="ATR stop multiplier"),
+        ParamDef("max_hold_days", "int", low=4, high=6, step=1, description="Max hold days"),
     ],
 }
 
