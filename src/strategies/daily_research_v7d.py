@@ -1,13 +1,12 @@
-"""IBS Trend Pullback — symmetric RR + fast SMA(20) filter.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN regime.
 
-Symmetric stop/target (1.5 ATR) proven PF 1.16 in iter14.
-SMA(50) too restrictive — only 1 WFO window got trades.
-SMA(20) is fast enough to stay above in most windows while
-still filtering obvious downtrends.
+Iter16 showed SMA(20) gives 9 windows / 1012 trades (great coverage)
+but DOWN regime windows (PF 0.40, 0.77) destroy min PF.
+Fix: skip DOWN regime entirely. FLAT (56% WR) and UP are profitable.
 
 Entry: close > SMA(20) AND IBS < threshold AND 1 down day.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
-Skip DOWN+HIGH vol combo. Exclude leveraged ETFs.
+Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -91,10 +90,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip DOWN+HIGH vol combo
+        # Skip entire DOWN regime (iter16: DOWN windows PF 0.40-0.77)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        if regime_trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
@@ -144,7 +143,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "ibs": round(ibs, 3),
-                "sma200": round(sma, 2),
+                "sma20": round(sma, 2),
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
                 "atr_pct": round(atr / bar.close, 4),
