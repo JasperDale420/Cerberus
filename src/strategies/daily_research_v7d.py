@@ -1,11 +1,12 @@
 """IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
 
-Iter18: min PF 0.88 (0.02 below gate!). Window 4 WR=56% but PnL negative.
-Wider ATR mult (1.6) gives target slightly more room.
-Also raise min price to $10 to improve stock quality.
+Iter18: min PF 0.88 (best yet across multiple windows).
+Iter19: ATR 1.6 + min price $10 made it worse (0.60).
+Revert to iter18 params. Add asymmetric target (2.0 ATR) while
+keeping stop at 1.5 ATR — reward:risk 1.33:1 to boost PF.
 
 Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = target = 1.6 ATR (symmetric). Min price $10.
+Stop = 1.5 ATR, target = 2.0 ATR. Min price $5.
 Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
@@ -36,7 +37,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_mult = float(config.get("atr_mult", 1.6))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -104,7 +106,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
             return None
 
         # Min price filter
-        if bar.close < 10.0:
+        if bar.close < 5.0:
             return None
 
         # Trend filter: close must be above SMA(20)
@@ -136,9 +138,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if atr / bar.close < 0.005:
             return None
 
-        # Symmetric stop and target
-        stop = bar.close - self.atr_mult * atr
-        target = bar.close + self.atr_mult * atr
+        # Asymmetric: tight stop, wider target (1.33:1 RR)
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
