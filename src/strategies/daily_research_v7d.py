@@ -33,16 +33,16 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         # Keltner channel multipliers per regime
-        self.kc_mult_up = float(config.get("kc_mult_up", 1.5))
-        self.kc_mult_flat = float(config.get("kc_mult_flat", 2.0))
-        self.kc_mult_down = float(config.get("kc_mult_down", 2.5))
+        self.kc_mult_up = float(config.get("kc_mult_up", 1.3))
+        self.kc_mult_flat = float(config.get("kc_mult_flat", 1.7))
+        self.kc_mult_down = float(config.get("kc_mult_down", 2.0))
         # Stop/target
         self.base_stop_atr_mult = float(config.get("base_stop_atr_mult", 1.5))
         self.base_target_atr_mult = float(config.get("base_target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Volume filter
         self.vol_lookback = int(config.get("vol_lookback", 20))
-        self.vol_max_ratio = float(config.get("vol_max_ratio", 1.2))
+        self.vol_max_ratio = float(config.get("vol_max_ratio", 1.5))
         # Consecutive down days for DOWN regime
         self.min_down_days = int(config.get("min_down_days", 2))
         # Max ATR as pct of price (skip very volatile names)
@@ -119,8 +119,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
 
-        # Skip DOWN+HIGH/SHOCK
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        # Skip SHOCK vol only (DOWN+HIGH can work)
+        if regime_vol == "SHOCK":
             return None
 
         # Skip earnings/FOMC
@@ -132,9 +132,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Regime-dependent Keltner channel
         if regime_trend == "UP":
             kc_mult = self.kc_mult_up
-            # Must be above SMA(50) in uptrend
-            if bar.close < sma50:
-                return None
         elif regime_trend == "DOWN":
             kc_mult = self.kc_mult_down
             # Require consecutive down days in DOWN regime
@@ -159,7 +156,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         bar_range = bar.high - bar.low
         if bar_range > 1e-9:
             ibs = (bar.close - bar.low) / bar_range
-            if ibs > 0.4:
+            if ibs > 0.5:
                 return None
 
         # Stop and target
