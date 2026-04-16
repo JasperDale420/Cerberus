@@ -41,8 +41,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Vol filter
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         # Drop magnitude filter (in ATR units)
-        self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
+        self.min_drop_atr = float(config.get("min_drop_atr", 1.0))
         self.max_drop_atr = float(config.get("max_drop_atr", 3.0))
+        # Minimum trend strength: how far above SMA(50) price must be
+        self.min_trend_pct = float(config.get("min_trend_pct", 0.01))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -132,9 +134,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr / bar.close > self.max_atr_pct:
             return None
 
-        # Trend: price > SMA(50) — simple uptrend confirmation
+        # Trend: price > SMA(50) with minimum strength
         sma50 = self._sma(closes, self.sma_period)
-        if sma50 is None or bar.close <= sma50:
+        if sma50 is None or sma50 < 1e-9:
+            return None
+        trend_pct = (bar.close - sma50) / sma50
+        if trend_pct < self.min_trend_pct:
             return None
 
         # Fast trend: EMA(10) > EMA(20) — confirms trend hasn't reversed
