@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -121,20 +121,20 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # --- Regime gates ---
+        # --- Vol gate: skip when realized vol > 20% (catches HIGH+SHOCK) ---
+        if hasattr(market_state, "realized_vol") and market_state.realized_vol is not None:
+            if market_state.realized_vol > 20.0:
+                return None
+
+        # Fallback: skip SHOCK from snapshot
         snapshot = market_state.regime_snapshot
-        if snapshot:
-            # Always skip SHOCK
-            if snapshot.vol == VolRegime.SHOCK:
-                return None
-            # Skip DOWN+HIGH — data shows PF 0.39-0.89 across all iterations
-            if snapshot.trend == TrendRegime.DOWN and snapshot.vol == VolRegime.HIGH:
-                return None
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
+            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # ATR-based vol filter
+        # ATR-based vol filter on the stock itself
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
