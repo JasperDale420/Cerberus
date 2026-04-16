@@ -1,8 +1,8 @@
-"""Keltner Channel Pullback + Low-Volume Filter.
+"""Keltner Channel Pullback — buy dips to lower Keltner band in uptrends.
 
-Buy dips to lower Keltner band in uptrends, but only on LOW volume days.
-High-volume pullbacks are often trend reversals (panic selling).
-Low-volume pullbacks are orderly retracements that tend to revert.
+Entry: price pulls back near lower Keltner Channel while longer-term trend intact.
+Target: EMA midline. Stop: ATR-based below entry.
+Skips near-earnings, SHOCK vol, DOWN regime.
 """
 
 from __future__ import annotations
@@ -30,8 +30,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.keltner_mult = float(config.get("keltner_mult", 2.0))
         self.pullback_zone = float(config.get("pullback_zone", 0.5))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.max_vol_ratio = float(config.get("max_vol_ratio", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 10))
 
@@ -82,19 +80,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_earnings"):
             return None
 
-        # Skip DOWN trend
-        regime_trend = regime_labels.get("regime_trend", "FLAT")
-        if regime_trend == "DOWN":
-            return None
-
         # Skip SHOCK volatility
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_vol == "SHOCK":
             return None
 
+        # Skip DOWN trend — only buy in UP or FLAT
+        regime_trend = regime_labels.get("regime_trend", "FLAT")
+        if regime_trend == "DOWN":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         # Compute indicators
         ema_fast = self._ema(closes, self.ema_period)
@@ -108,28 +105,22 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema_fast <= ema_slow:
             return None
 
-        # Keltner Channel pullback zone
+        # Keltner Channel
+        lower_keltner = ema_fast - self.keltner_mult * atr
         pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
 
         # Entry: price pulled back near or below lower Keltner band
         if bar.close > pullback_threshold:
             return None
 
-        # Safety floor — don't buy crash
+        # Price must still be above a safety floor (not a crash)
         safety_floor = ema_fast - 3.0 * atr
         if bar.close < safety_floor:
             return None
 
-        # Low-volume filter: pullback on below-average volume
-        # High-volume pullbacks = panic selling = trend reversal risk
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0:
-            if bar.volume > self.max_vol_ratio * avg_vol:
-                return None
-
-        # Stop below entry, target the EMA midline
+        # Stop below the pullback low, target the EMA midline
         stop = bar.close - self.stop_atr_mult * atr
-        target = ema_fast  # mean reversion to EMA midline
+        target = ema_fast  # mean reversion target
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -143,8 +134,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "ema_fast": round(ema_fast, 2),
                 "ema_slow": round(ema_slow, 2),
+                "lower_keltner": round(lower_keltner, 2),
                 "pullback_depth": round((ema_fast - bar.close) / atr, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2) if avg_vol and avg_vol > 0 else 0,
                 "seed": "vol_breakout_evolved",
             },
         )
