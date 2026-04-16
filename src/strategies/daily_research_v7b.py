@@ -43,8 +43,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Drop magnitude filter (in ATR units)
         self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
         self.max_drop_atr = float(config.get("max_drop_atr", 3.0))
-        # Market volatility ceiling (SPY 30-day realized vol, annualized)
-        self.max_market_vol = float(config.get("max_market_vol", 0.25))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -134,11 +132,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr / bar.close > self.max_atr_pct:
             return None
 
-        # Market vol filter: skip when SPY realized vol is elevated
-        if market_state.realized_vol and market_state.realized_vol > self.max_market_vol:
-            return None
-
-        # Trend: price > SMA(50)
+        # Trend: price > SMA(50) — simple uptrend confirmation
         sma50 = self._sma(closes, self.sma_period)
         if sma50 is None or bar.close <= sma50:
             return None
