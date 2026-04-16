@@ -1,12 +1,14 @@
-"""Consecutive-Down Bounce with Tight Vol + Trend Filter.
+"""Dual-Mode Regime-Adaptive with Selective Filters.
 
-Buy after N consecutive down closes with low IBS.
-Tight ATR/price vol filter (2.5%) + rising SMA trend guard.
-BB mean as target for natural reversion. Long-only, daily bars.
+UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
+FLAT/DOWN regime: buy only extreme BB lower band touches with very low IBS.
+ATR/price vol filter to avoid high-vol disaster. Skip Friday entries.
+Long-only, daily bars.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
@@ -25,20 +27,25 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Entry filters
-        self.consec_down_days = int(config.get("consec_down_days", 3))
-        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
-        # ATR-based volatility filter
-        self.atr_period = int(config.get("atr_period", 14))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.025))
-        # BB for target calculation
+        # Trend mode params
+        self.ema_period = int(config.get("ema_period", 21))
+        self.sma_slow_period = int(config.get("sma_slow_period", 50))
+        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
+        self.pullback_atr_max = float(config.get("pullback_atr_max", 1.5))
+        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.35))
+        # Mean reversion mode params
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
-        # Risk management
+        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
+        # Shared params
+        self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 7))
-        # SMA trend filter
-        self.sma_period = int(config.get("sma_period", 50))
+        self.rsi_period = int(config.get("rsi_period", 14))
+        self.rsi_max = float(config.get("rsi_max", 65.0))
+        # Vol filter
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -47,6 +54,33 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
+
+    @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = (v - ema) * mult + ema
+        return ema
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -61,22 +95,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _ibs(bar: Bar) -> float:
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return 0.5
-        return (bar.close - bar.low) / rng
-
-    @staticmethod
-    def _consec_down(closes: list[float], min_days: int) -> bool:
-        if len(closes) < min_days + 1:
-            return False
-        for i in range(-min_days, 0):
-            if closes[i] >= closes[i - 1]:
-                return False
-        return True
-
-    @staticmethod
     def _std(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
@@ -84,6 +102,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         mean = sum(data) / period
         variance = sum((x - mean) ** 2 for x in data) / period
         return variance**0.5
+
+    @staticmethod
+    def _ibs(bar: Bar) -> float:
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return 0.5
+        return (bar.close - bar.low) / rng
 
     def on_bar(
         self,
@@ -97,15 +122,21 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # SHOCK regime — always skip
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
+        # Skip Thursday/Friday entries — data consistently shows losses
+        if isinstance(bar.time, datetime):
+            dow = bar.time.weekday()
+            if dow >= 3:  # Thursday=3, Friday=4
+                return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Tight ATR-based vol filter ---
+        # ATR-based vol filter
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
@@ -113,38 +144,96 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
-        # --- SMA trend filter: price not too far below SMA ---
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma * 0.93:
+        # RSI filter — not overbought
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi > self.rsi_max:
             return None
 
-        # --- Also check SMA is not in steep decline ---
-        if sma is not None and len(closes) >= self.sma_period + 5:
-            sma_5ago = self._sma(closes[:-5], self.sma_period)
-            if sma_5ago is not None and sma < sma_5ago * 0.98:
-                return None  # SMA declining > 2% over 5 bars — bearish
-
-        # --- Entry Condition 1: Consecutive down closes ---
-        if not self._consec_down(closes, self.consec_down_days):
-            return None
-
-        # --- Entry Condition 2: Low IBS ---
         ibs = self._ibs(bar)
+
+        # Get regime
+        labels = symbol_state.meta.get("regime_labels", {})
+        trend = labels.get("regime_trend", "FLAT")
+
+        # Mode 1: Trend pullback (UP regime)
+        if trend == "UP":
+            return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
+
+        # Mode 2: Mean reversion (FLAT or DOWN) — stricter filters
+        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
+
+    def _trend_pullback_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        closes: list[float],
+        atr: float,
+        ibs: float,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        ema = self._ema(closes, self.ema_period)
+        sma_slow = self._sma(closes, self.sma_slow_period)
+        if ema is None or sma_slow is None:
+            return None
+
+        # Trend confirmation: EMA > SMA(50) and price > SMA(50)
+        if ema <= sma_slow or bar.close <= sma_slow:
+            return None
+
+        # ATR-normalized pullback
+        dist = ema - bar.close
+        dist_atr = dist / atr
+        if dist_atr < self.pullback_atr_min or dist_atr > self.pullback_atr_max:
+            return None
+
+        # IBS filter
         if ibs > self.ibs_entry_threshold:
             return None
 
-        # --- Target: BB mean (natural reversion target) ---
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
+
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={"mode": "trend_pullback", "dist_atr": round(dist_atr, 2), "ibs": round(ibs, 2)},
+        )
+
+    def _mean_reversion_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        closes: list[float],
+        atr: float,
+        ibs: float,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
         bb_mean = self._sma(closes, self.bb_period)
-        if bb_mean is None:
+        bb_std = self._std(closes, self.bb_period)
+        if bb_mean is None or bb_std is None or bb_std < 1e-9:
             return None
 
-        # Only take trade if there's enough upside to BB mean
-        upside = bb_mean - bar.close
-        if upside < atr * 0.5:
-            return None  # Not enough upside to mean
+        lower_band = bb_mean - self.bb_std * bb_std
+
+        # Price at or below lower band
+        if bar.close > lower_band:
+            return None
+
+        # Very strict IBS filter for non-UP regimes
+        if ibs > self.mr_ibs_threshold:
+            return None
+
+        # Must have at least 2 consecutive down days
+        if len(closes) >= 3 and not (closes[-1] < closes[-2] < closes[-3]):
+            return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        target = bb_mean  # Revert to mean
+        target = bb_mean  # Target the mean
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -155,10 +244,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "consec_down_to_mean",
+                "mode": "mean_reversion",
                 "ibs": round(ibs, 2),
-                "consec_down": self.consec_down_days,
-                "atr_pct": round(atr_pct, 4),
-                "upside_atr": round(upside / atr, 2),
+                "z_score": round((bar.close - bb_mean) / bb_std, 2),
             },
         )
