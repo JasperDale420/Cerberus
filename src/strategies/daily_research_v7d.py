@@ -119,8 +119,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
 
-        # Skip DOWN+HIGH/SHOCK
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        # Skip SHOCK vol entirely
+        if regime_vol == "SHOCK":
             return None
 
         # Skip earnings/FOMC
@@ -142,6 +142,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
                 return None
         else:
             kc_mult = self.kc_mult_flat
+
+        # Vol-adjust: wider bands in HIGH vol (require deeper pullback)
+        if regime_vol == "HIGH":
+            kc_mult *= 1.3
+        elif regime_vol == "LOW":
+            kc_mult *= 0.85
 
         lower_kc = ema - kc_mult * atr
 
