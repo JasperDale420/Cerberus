@@ -68,6 +68,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = (v - ema) * mult + ema
+        return ema
+
+    @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
         if len(bars) < period + 1:
             return None
@@ -125,6 +135,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Trend: price > SMA(50) — simple uptrend confirmation
         sma50 = self._sma(closes, self.sma_period)
         if sma50 is None or bar.close <= sma50:
+            return None
+
+        # Fast trend: EMA(10) > EMA(20) — confirms trend hasn't reversed
+        ema10 = self._ema(closes, 10)
+        ema20 = self._ema(closes, 20)
+        if ema10 is None or ema20 is None or ema10 <= ema20:
             return None
 
         # Consecutive down days
