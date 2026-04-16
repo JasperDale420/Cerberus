@@ -93,15 +93,23 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # --- Entry: consecutive down days ---
+        # --- Entry: consecutive down days with pullback magnitude gate ---
+        # Path A: 2+ consecutive down with >= 1.5% drop
+        # Path B: 1 big down day with >= 2.5% drop (single-day crash bounce)
         down_days = self._consecutive_down_days(bars)
-        if down_days < self.min_down_days:
+        if down_days < 1:
             return None
 
-        # --- Pullback magnitude: require meaningful drop (not just tiny red days) ---
         if len(closes) > down_days:
             roc = (closes[-1] - closes[-(down_days + 1)]) / closes[-(down_days + 1)]
-            if roc > -0.015:  # need at least 1.5% pullback
+        else:
+            return None
+
+        if down_days >= 2:
+            if roc > -0.015:  # 2+ down days need at least 1.5% drop
+                return None
+        else:
+            if roc > -0.025:  # 1 down day needs at least 2.5% drop
                 return None
 
         # --- IBS filter: close near day's low (selling exhaustion) ---
