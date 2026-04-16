@@ -1,8 +1,7 @@
-"""WRB Trend + Pullback Entry (evolved from vol_breakout seed).
+"""Wide-Range Bar with Regime-Adaptive Stops (evolved from vol_breakout seed).
 
-Uses yesterday's wide-range bar as a trend signal, then buys today's
-intraday pullback (low IBS). Combines expansion detection with
-mean-reversion timing for consistency across regimes.
+Buy wide-range up bars above SMA(20). Use regime-dependent stop widths —
+tighter in DOWN/HIGH regimes to limit losses, wider in UP for more room.
 """
 
 from __future__ import annotations
@@ -72,42 +71,38 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        if len(bars) < 25:
-            return None
-
-        # --- YESTERDAY: Wide-range up bar (trend signal) ---
-        prev = bars[-2]
-        prev_prev = bars[-3]
-        prev_range = prev.high - prev.low
-        # Yesterday's range > 1.2x ATR (vol expansion)
-        if prev_range < 1.2 * atr:
-            return None
-        # Yesterday was an up day
-        if prev.close <= prev_prev.close:
-            return None
-        # Yesterday closed in upper half of its range
-        if prev_range > 0 and (prev.close - prev.low) / prev_range < 0.6:
-            return None
-
-        # --- TODAY: Pullback (timing signal) ---
-        # Today's IBS < 0.5 — intraday weakness = better entry
+        # Wide range bar: today's range > 1.3x ATR
         today_range = bar.high - bar.low
-        if today_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / today_range
-        if ibs > 0.5:
+        if today_range < 1e-9 or today_range < 1.3 * atr:
             return None
 
-        # Today didn't gap down too much (still in yesterday's range)
-        if bar.close < prev.low:
+        # Close strength: close in upper 30% of today's range
+        close_position = (bar.close - bar.low) / today_range
+        if close_position < 0.7:
             return None
 
-        # --- TREND FILTER ---
+        # Up day: close above previous close
+        if bar.close <= bars[-2].close:
+            return None
+
+        # Trend: close above SMA(20)
         sma20 = self._sma(closes, 20)
         if sma20 is None or bar.close <= sma20:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # Anti-exhaustion: don't buy if close > 2.5 ATR above SMA(20)
+        if bar.close > sma20 + 2.5 * atr:
+            return None
+
+        # Regime-adaptive stops: tighter in non-UP regimes
+        regime_trend = regime_labels.get("regime_trend", "UP")
+        regime_vol = regime_labels.get("regime_vol", "NORMAL")
+        if regime_trend == "DOWN" or regime_vol == "HIGH":
+            stop_mult = self.stop_atr_mult * 0.6  # tighter stop
+        else:
+            stop_mult = self.stop_atr_mult
+
+        stop = bar.close - stop_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -120,8 +115,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "prev_range_mult": round(prev_range / atr, 2),
-                "ibs_today": round(ibs, 2),
+                "range_mult": round(today_range / atr, 2),
+                "close_pos": round(close_position, 2),
+                "stop_mode": "tight" if regime_trend == "DOWN" or regime_vol == "HIGH" else "normal",
                 "seed": "vol_breakout",
             },
         )
