@@ -85,7 +85,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "breakout_lookback": 10,
         "atr_period": 14,
         "vol_avg_period": 20,
-        "trend_period": 20,
         "max_drawdown_pct": 0.12,
         "drawdown_lookback": 30,
         "max_hold_days": 5,
@@ -229,8 +228,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     # v7 seed archetypes
     "daily_research_v7a": [
-        ParamDef("atr_expansion_mult", "float", low=1.0, high=1.4, step=0.1, description="ATR expansion threshold"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target multiplier"),
+        ParamDef("atr_expansion_mult", "float", low=1.0, high=1.5, step=0.1, description="ATR expansion threshold"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target multiplier"),
     ],
     "daily_research_v7b": [
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),

@@ -1,10 +1,10 @@
-"""Research v7a: Volatility Breakout — ATR expansion + N-day high + volume.
+"""Research v7a: Volatility Breakout — ATR expansion + N-day high breakout.
 
 Entry: price closes above highest high of lookback period,
        current ATR > expansion_mult * avg ATR (volatility expanding),
-       volume above average, price above SMA (trend confirmation).
-Filters: regime (skip SHOCK, DOWN), earnings/FOMC, drawdown, ATR/price.
-Exit: ATR-based stop/target, max hold days.
+       volume above average (confirmation).
+Filters: regime (skip SHOCK), earnings/FOMC, drawdown.
+Exit: ATR-based trailing stop, max hold days.
 Long-only, daily bars.
 """
 
@@ -33,8 +33,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.trend_period = int(config.get("trend_period", 20))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -79,24 +78,16 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
 
-        # --- Regime filter: skip SHOCK vol and DOWN trend ---
+        # --- Regime filter: skip SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
         if regime_vol == "SHOCK":
             return None
-        if regime_trend == "DOWN":
-            return None
 
         # --- Event filter: skip near earnings and FOMC ---
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
-            return None
-
-        # --- Trend confirmation: price above SMA ---
-        sma = self._sma(closes, self.trend_period)
-        if sma is None or bar.close < sma:
             return None
 
         # --- ATR ---
@@ -145,7 +136,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        max_stop_loss = bar.close * 0.02
+        # Cap stop loss at 3% of price for breakout trades
+        max_stop_loss = bar.close * 0.03
         if bar.close - stop > max_stop_loss:
             stop = bar.close - max_stop_loss
         target = bar.close + self.target_atr_mult * atr
