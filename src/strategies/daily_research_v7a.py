@@ -117,6 +117,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if sma50 is None or bar.close < sma50:
             return None
 
+        # --- Data-driven vol filter: skip when recent vol is elevated ---
+        # ATR(10) / ATR(40) > 1.5 means volatility is expanding
+        atr_short = self._atr(bars, 10)
+        atr_long = self._atr(bars, 40)
+        if atr_short is not None and atr_long is not None and atr_long > 1e-9:
+            vol_ratio = atr_short / atr_long
+            if vol_ratio > 1.5:
+                return None
+
         # --- Volume filter: today's vol >= vol_mult * avg vol ---
         volumes = [b.volume for b in bars]
         avg_vol = self._sma(volumes[-20:], min(20, len(volumes[-20:])))
