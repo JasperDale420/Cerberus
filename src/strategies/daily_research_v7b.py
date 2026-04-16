@@ -2,13 +2,12 @@
 
 UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
 FLAT/DOWN regime: buy only extreme BB lower band touches with very low IBS.
-ATR/price vol filter to avoid high-vol disaster. Skip Friday entries.
-Long-only, daily bars.
+ATR/price vol filter + realized vol gate to avoid high-vol disaster.
+Skip Thu/Fri entries. Long-only, daily bars.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
@@ -46,6 +45,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.rsi_max = float(config.get("rsi_max", 65.0))
         # Vol filter
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        # Realized vol hard gate (SPY 30d realized vol)
+        self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
 
     # --- Indicator helpers ---
 
@@ -127,9 +128,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
+        # Realized vol hard gate — avoid entering during high-vol periods
+        if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
+            return None
+
         # Skip Thursday/Friday entries — data consistently shows losses
-        if isinstance(bar.time, datetime):
-            dow = bar.time.weekday()
+        t = bar.time
+        if hasattr(t, "weekday"):
+            dow = t.weekday()
             if dow >= 3:  # Thursday=3, Friday=4
                 return None
 

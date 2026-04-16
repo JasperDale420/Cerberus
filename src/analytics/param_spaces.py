@@ -100,10 +100,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "sma_slow_period": 50,
         "pullback_atr_min": 0.3,
         "pullback_atr_max": 1.5,
-        "mr_ibs_threshold": 0.2,
-        "stop_atr_mult": 1.5,
-        "target_atr_mult": 2.5,
-        "ibs_entry_threshold": 0.33,
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
@@ -237,6 +233,11 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     "daily_research_v7b": [
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
         ParamDef("target_atr_mult", "float", low=2.0, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef(
+            "ibs_entry_threshold", "float", low=0.25, high=0.40, step=0.05, description="IBS threshold for trend mode"
+        ),
+        ParamDef("mr_ibs_threshold", "float", low=0.15, high=0.30, step=0.05, description="IBS threshold for MR mode"),
+        ParamDef("max_realized_vol", "float", low=0.20, high=0.30, step=0.05, description="Max SPY realized vol gate"),
     ],
     "daily_research_v7c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
