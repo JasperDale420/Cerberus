@@ -1,8 +1,8 @@
 """Keltner Channel Pullback — buy dips to lower Keltner band in uptrends.
 
 Entry: price pulls back near lower Keltner Channel while longer-term trend intact.
+Uses dual trend filter (regime labels + price vs SMA50) and vol gate.
 Target: EMA midline. Stop: ATR-based below entry.
-Skips near-earnings, SHOCK vol, DOWN regime.
 """
 
 from __future__ import annotations
@@ -75,17 +75,19 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip near-earnings
+        # Skip near-earnings and FOMC
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
-
-        # Skip SHOCK volatility
-        regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
+        if regime_labels.get("near_fomc"):
             return None
 
-        # Skip DOWN trend — only buy in UP or FLAT
+        # Skip SHOCK and HIGH volatility
+        regime_vol = regime_labels.get("regime_vol", "NORMAL")
+        if regime_vol in ("SHOCK", "HIGH"):
+            return None
+
+        # Skip DOWN trend via regime labels
         regime_trend = regime_labels.get("regime_trend", "FLAT")
         if regime_trend == "DOWN":
             return None
@@ -105,8 +107,16 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema_fast <= ema_slow:
             return None
 
+        # Additional trend check: price above SMA(50) — catches lagging regime labels
+        sma50 = self._sma(closes, self.ema_slow_period)
+        if sma50 is None or bar.close < sma50:
+            return None
+
+        # ATR/price sanity — skip very volatile stocks (ATR > 4% of price)
+        if atr / bar.close > 0.04:
+            return None
+
         # Keltner Channel
-        lower_keltner = ema_fast - self.keltner_mult * atr
         pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
 
         # Entry: price pulled back near or below lower Keltner band
@@ -134,7 +144,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "ema_fast": round(ema_fast, 2),
                 "ema_slow": round(ema_slow, 2),
-                "lower_keltner": round(lower_keltner, 2),
                 "pullback_depth": round((ema_fast - bar.close) / atr, 2),
                 "seed": "vol_breakout_evolved",
             },
