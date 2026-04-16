@@ -132,9 +132,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Regime-dependent Keltner channel
         if regime_trend == "UP":
             kc_mult = self.kc_mult_up
-            # Must be above SMA(50) in uptrend
-            if bar.close < sma50:
-                return None
         elif regime_trend == "DOWN":
             kc_mult = self.kc_mult_down
             # Require consecutive down days in DOWN regime
