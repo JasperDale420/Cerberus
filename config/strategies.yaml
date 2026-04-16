@@ -318,7 +318,7 @@ strategies:
     allow_overnight: true
     max_hold_days: 7
     cooldown_bars: 1
-    ibs_threshold: 0.35
+    ibs_threshold: 0.45
     min_down_days: 2
     vol_mult: 0.8
     atr_period: 14

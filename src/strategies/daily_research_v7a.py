@@ -101,7 +101,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # --- Pullback magnitude: require meaningful drop (not just tiny red days) ---
         if len(closes) > down_days:
             roc = (closes[-1] - closes[-(down_days + 1)]) / closes[-(down_days + 1)]
-            if roc > -0.015:  # need at least 1.5% pullback
+            if roc > -0.012:  # need at least 1.2% pullback
                 return None
 
         # --- IBS filter: close near day's low (selling exhaustion) ---
@@ -116,13 +116,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         sma50 = self._sma(closes, 50)
         if sma50 is None or bar.close < sma50:
             return None
-
-        # --- Volume filter: today's vol >= vol_mult * avg vol ---
-        volumes = [b.volume for b in bars]
-        avg_vol = self._sma(volumes[-20:], min(20, len(volumes[-20:])))
-        if avg_vol is not None and avg_vol > 0:
-            if bar.volume < self.vol_mult * avg_vol:
-                return None
 
         # --- Drawdown filter: skip if too far from peak ---
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
