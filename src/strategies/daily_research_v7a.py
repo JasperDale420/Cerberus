@@ -27,7 +27,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.min_down_days = int(config.get("min_down_days", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.vol_mult = float(config.get("vol_mult", 0.8))
+        self.vol_mult = float(config.get("vol_mult", 0.6))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -35,6 +35,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         self.trend_period = int(config.get("trend_period", 50))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -123,7 +124,16 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # ATR/price volatility filter: skip extremely volatile entries
+        if bar.close > 0 and atr / bar.close > self.max_atr_pct:
+            return None
+
+        # Tighter stop in HIGH vol regime
+        stop_mult = self.stop_atr_mult
+        if regime_vol == "HIGH":
+            stop_mult = min(self.stop_atr_mult, 1.0)
+
+        stop = bar.close - stop_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
