@@ -77,11 +77,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
 
-        # --- Regime filter: skip SHOCK and HIGH vol ---
+        # --- Regime filter: skip SHOCK/HIGH vol and DOWN trend ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
         if regime_vol in ("SHOCK", "HIGH"):
+            return None
+        if regime_trend == "DOWN":
             return None
 
         # --- Event filter: skip near earnings and FOMC ---
