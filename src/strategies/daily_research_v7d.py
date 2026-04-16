@@ -1,12 +1,19 @@
-"""Regime-Adaptive Keltner Channel Reversion.
+"""Regime-Adaptive Keltner + BB Dual-Gate Reversion.
 
-Long-only mean reversion using Keltner Channel (EMA ± ATR*mult):
-  UP   — buy at lower Keltner band with volume exhaustion, above SMA(50)
-  FLAT — buy at lower Keltner, target mid-channel (EMA)
-  DOWN — buy only extreme lower Keltner (wider mult), require 2+ down days
+Long-only mean reversion with dual entry gates:
+  Primary: Keltner Channel (EMA ± ATR*mult) per regime
+  Secondary: Bollinger Band %B < 0 (below lower BB)
+  Confirmation: IBS < 0.4 (close near low of bar)
 
-No shorts. Regime skips: DOWN+HIGH/SHOCK.
-Stops/targets ATR-based. Daily bars.
+Regime logic:
+  UP   — Keltner OR BB entry, above SMA(50)
+  FLAT — Keltner OR BB entry
+  DOWN — require BOTH Keltner AND BB (tighter filter)
+
+The dual-gate allows more trades in favorable regimes (UP/FLAT)
+while maintaining selectivity in DOWN.
+
+Skip: SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.ema_period = int(config.get("ema_period", 20))
         self.sma_period = int(config.get("sma_period", 50))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
         self.atr_period = int(config.get("atr_period", 14))
         # Keltner channel multipliers per regime
         self.kc_mult_up = float(config.get("kc_mult_up", 1.5))
@@ -43,8 +52,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Volume filter
         self.vol_lookback = int(config.get("vol_lookback", 20))
         self.vol_max_ratio = float(config.get("vol_max_ratio", 1.2))
-        # Consecutive down days for DOWN regime
-        self.min_down_days = int(config.get("min_down_days", 2))
         # Max ATR as pct of price (skip very volatile names)
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         # Max stop as pct of price
@@ -67,6 +74,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         return ema
 
     @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        subset = values[-period:]
+        mean = sum(subset) / period
+        variance = sum((v - mean) ** 2 for v in subset) / period
+        return variance**0.5
+
+    @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
         if len(bars) < period + 1:
             return None
@@ -77,15 +93,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _consecutive_down_days(bars: list[Bar], n: int) -> bool:
-        if len(bars) < n + 1:
-            return False
-        for i in range(-n, 0):
-            if bars[i].close >= bars[i - 1].close:
-                return False
-        return True
 
     def on_bar(
         self,
@@ -114,13 +121,21 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if atr / bar.close > self.max_atr_pct:
             return None
 
+        # Bollinger Band
+        bb_sma = self._sma(closes, self.bb_period)
+        bb_std = self._std(closes, self.bb_period)
+        if bb_sma is None or bb_std is None or bb_std < 1e-9:
+            return None
+        lower_bb = bb_sma - self.bb_std * bb_std
+        below_bb = bar.close < lower_bb
+
         # Read regime
         regime_labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
 
-        # Skip DOWN+HIGH/SHOCK
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        # Skip SHOCK vol
+        if regime_vol == "SHOCK":
             return None
 
         # Skip earnings/FOMC
@@ -132,22 +147,29 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Regime-dependent Keltner channel
         if regime_trend == "UP":
             kc_mult = self.kc_mult_up
-            # Must be above SMA(50) in uptrend
-            if bar.close < sma50:
-                return None
         elif regime_trend == "DOWN":
             kc_mult = self.kc_mult_down
-            # Require consecutive down days in DOWN regime
-            if not self._consecutive_down_days(bars, self.min_down_days):
-                return None
         else:
             kc_mult = self.kc_mult_flat
 
         lower_kc = ema - kc_mult * atr
+        below_kc = bar.close <= lower_kc
 
-        # Entry: price at or below lower Keltner band
-        if bar.close > lower_kc:
-            return None
+        # Dual-gate entry logic per regime
+        if regime_trend == "UP":
+            # More permissive: either KC or BB, but must be above SMA(50)
+            if bar.close < sma50:
+                return None
+            if not (below_kc or below_bb):
+                return None
+        elif regime_trend == "DOWN":
+            # Most selective: require BOTH KC and BB
+            if not (below_kc and below_bb):
+                return None
+        else:
+            # FLAT: either KC or BB
+            if not (below_kc or below_bb):
+                return None
 
         # Volume filter: skip if volume is spiking (panic selling, not exhaustion)
         if len(bars) >= self.vol_lookback:
@@ -183,8 +205,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             meta={
                 "regime": regime_trend,
                 "regime_vol": regime_vol,
-                "kc_mult": kc_mult,
-                "lower_kc": round(lower_kc, 2),
+                "below_kc": below_kc,
+                "below_bb": below_bb,
                 "ema": round(ema, 2),
                 "sma50": round(sma50, 2),
                 "seed": "regime_switch",
