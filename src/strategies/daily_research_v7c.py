@@ -1,9 +1,9 @@
-"""Vol-Adaptive IBS Mean Reversion — buy oversold closes with ATR confirmation.
+"""Keltner Pullback + IBS — buy oversold dips in uptrend Keltner channels.
 
-IBS (Internal Bar Strength) = (close - low) / (high - low).
-Low IBS means close near day's low (oversold). Buy and target mean reversion.
-ATR filter prevents buying into expanding volatility crashes.
-Evolved from vol_breakout seed — uses ATR as vol-awareness layer.
+Combines Keltner Channel pullback (structural) with IBS (timing).
+Entry: price in lower Keltner zone + IBS confirms close near low.
+The IBS filter times entries to days where selling pressure peaked.
+Target: EMA midline. Stop: ATR-based below entry.
 """
 
 from __future__ import annotations
@@ -26,15 +26,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 25))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
-        self.atr_period = int(config.get("atr_period", 14))
-        self.atr_avg_period = int(config.get("atr_avg_period", 20))
-        self.max_atr_expansion = float(config.get("max_atr_expansion", 1.8))
         self.ema_period = int(config.get("ema_period", 20))
         self.ema_slow_period = int(config.get("ema_slow_period", 50))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 0.5))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.atr_period = int(config.get("atr_period", 14))
+        self.keltner_mult = float(config.get("keltner_mult", 2.0))
+        self.pullback_zone = float(config.get("pullback_zone", 0.6))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
 
     # --- Indicator helpers ---
 
@@ -59,18 +58,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
-        result = []
-        for i in range(count):
-            end_idx = len(bars) - count + i + 1
-            if end_idx < period + 1:
-                continue
-            sub = bars[:end_idx]
-            val = self._atr(sub, period)
-            if val is not None:
-                result.append(val)
-        return result
 
     def on_bar(
         self,
@@ -99,44 +86,44 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_vol == "SHOCK":
             return None
 
-        # IBS calculation
+        # IBS timing filter — close must be near day's low
         bar_range = bar.high - bar.low
         if bar_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / bar_range
-
-        # Entry: IBS below threshold (close near day's low = oversold)
         if ibs > self.ibs_threshold:
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # ATR current
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        # Vol filter: ATR should NOT be expanding rapidly (avoid crashes)
-        atr_values = self._atr_series(bars, self.atr_period, self.atr_avg_period)
-        if len(atr_values) >= self.atr_avg_period:
-            atr_avg = sum(atr_values) / len(atr_values)
-            if atr_avg > 1e-9 and atr > self.max_atr_expansion * atr_avg:
-                return None  # Vol expanding too fast — likely a crash
-
-        # Trend filter: EMA(20) > EMA(50) or close > EMA(50)
+        # Compute indicators
         ema_fast = self._ema(closes, self.ema_period)
         ema_slow = self._ema(closes, self.ema_slow_period)
-        if ema_fast is None or ema_slow is None:
+        atr = self._atr(bars, self.atr_period)
+
+        if ema_fast is None or ema_slow is None or atr is None or atr < 1e-9:
             return None
 
-        # Require EMA alignment (uptrend) — strict filter
+        # Trend confirmation: fast EMA above slow EMA
         if ema_fast <= ema_slow:
             return None
 
-        # Stop and target
+        # Keltner Channel pullback zone
+        pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
+
+        # Entry: price pulled back into lower Keltner zone
+        if bar.close > pullback_threshold:
+            return None
+
+        # Safety floor — don't buy crash
+        safety_floor = ema_fast - 3.0 * atr
+        if bar.close < safety_floor:
+            return None
+
+        # Stop below entry, target the EMA midline
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        target = ema_fast  # mean reversion to EMA midline
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -151,6 +138,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "ema_fast": round(ema_fast, 2),
                 "ema_slow": round(ema_slow, 2),
+                "pullback_depth": round((ema_fast - bar.close) / atr, 2),
                 "seed": "vol_breakout_evolved",
             },
         )
