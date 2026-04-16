@@ -80,11 +80,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Regime filter: skip DOWN+HIGH and DOWN+SHOCK ---
+        # --- Regime filter: skip all DOWN trend (45% WR) and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        if regime_trend == "DOWN":
+            return None
+        if regime_vol == "SHOCK":
             return None
 
         # --- Entry: consecutive down days ---
