@@ -1,7 +1,7 @@
-"""Daily Research v7a: Trend Pullback Strategy.
+"""Daily Research v7a: Multi-Factor Mean Reversion.
 
-Buy dips in confirmed uptrends: SMA(20) > SMA(50), price pulls back
-near SMA(20), with RSI(14) confirmation. Long-only, daily bars.
+Consecutive down days + SMA trend filter + IBS + volume confirmation.
+Long-only, daily bars. Structurally different from RSI(2) oscillator approach.
 """
 
 from __future__ import annotations
@@ -24,15 +24,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
+        self.min_down_days = int(config.get("min_down_days", 2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.vol_mult = float(config.get("vol_mult", 0.8))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.pullback_atr_mult = float(config.get("pullback_atr_mult", 1.0))
-        self.rsi_low = float(config.get("rsi_low", 30.0))
-        self.rsi_high = float(config.get("rsi_high", 55.0))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -41,33 +41,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = values[0]
-        for v in values[1:]:
-            ema = v * mult + ema * (1 - mult)
-        return ema
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -80,6 +53,17 @@ class SeedMeanReversionStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _consecutive_down_days(bars: list[Bar]) -> int:
+        """Count consecutive days where close < prior close, from most recent."""
+        count = 0
+        for i in range(len(bars) - 1, 0, -1):
+            if bars[i].close < bars[i - 1].close:
+                count += 1
+            else:
+                break
+        return count
 
     def on_bar(
         self,
@@ -96,7 +80,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Regime filter: skip DOWN trend and SHOCK vol ---
+        # --- Regime filter: skip all DOWN trend (45% WR) and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
@@ -109,42 +93,47 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # --- Trend confirmation: EMA(20) > SMA(50) ---
-        ema20 = self._ema(closes, 20)
+        # --- Entry: consecutive down days ---
+        down_days = self._consecutive_down_days(bars)
+        if down_days < self.min_down_days:
+            return None
+
+        # --- Pullback magnitude: require meaningful drop (not just tiny red days) ---
+        if len(closes) > down_days:
+            roc = (closes[-1] - closes[-(down_days + 1)]) / closes[-(down_days + 1)]
+            if roc > -0.015:  # need at least 1.5% pullback
+                return None
+
+        # --- IBS filter: close near day's low (selling exhaustion) ---
+        bar_range = bar.high - bar.low
+        if bar_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+        if ibs >= self.ibs_threshold:
+            return None
+
+        # --- Trend filter: price above SMA(50) ---
         sma50 = self._sma(closes, 50)
-        if ema20 is None or sma50 is None:
-            return None
-        if ema20 <= sma50:
+        if sma50 is None or bar.close < sma50:
             return None
 
-        # --- Pullback: price near or below EMA(20) ---
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
+        # --- Volume filter: today's vol >= vol_mult * avg vol ---
+        volumes = [b.volume for b in bars]
+        avg_vol = self._sma(volumes[-20:], min(20, len(volumes[-20:])))
+        if avg_vol is not None and avg_vol > 0:
+            if bar.volume < self.vol_mult * avg_vol:
+                return None
 
-        distance_to_ema = bar.close - ema20
-        if distance_to_ema > self.pullback_atr_mult * atr:
-            return None  # too far above EMA — not a pullback
-        if distance_to_ema < -2.0 * atr:
-            return None  # too far below — trend might be broken
-
-        # --- RSI(14) confirmation: moderate oversold (not extreme) ---
-        rsi = self._rsi(closes, 14)
-        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
-            return None
-
-        # --- Drawdown filter ---
+        # --- Drawdown filter: skip if too far from peak ---
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # --- Volume filter: today's vol >= 0.8x avg ---
-        volumes = [b.volume for b in bars]
-        avg_vol = self._sma(volumes[-20:], min(20, len(volumes[-20:])))
-        if avg_vol is not None and avg_vol > 0:
-            if bar.volume < 0.8 * avg_vol:
-                return None
+        # --- ATR for exits ---
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
@@ -158,10 +147,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema20": round(ema20, 2),
+                "down_days": down_days,
+                "ibs": round(ibs, 3),
                 "sma50": round(sma50, 2),
-                "rsi14": round(rsi, 2),
-                "pullback_atr": round(distance_to_ema / atr, 2),
                 "atr": round(atr, 4),
                 "regime": f"{regime_trend}+{regime_vol}",
             },
