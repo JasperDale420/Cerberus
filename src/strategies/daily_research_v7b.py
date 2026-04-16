@@ -37,9 +37,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 7))
-        # Volatility scaling
-        self.high_vol_stop_scale = float(config.get("high_vol_stop_scale", 0.8))
-        self.high_vol_target_scale = float(config.get("high_vol_target_scale", 0.7))
 
     # --- Indicator helpers ---
 
@@ -100,9 +97,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip SHOCK and HIGH volatility — data shows consistent losses
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
         bars = list(symbol_state.bars)
@@ -124,8 +121,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
 
         lower_band = bb_mean - self.bb_std * bb_std
-        # bb_proximity: 0.0 = at lower band, 1.0 = at mean
-        # Price must be below: lower_band + proximity * (mean - lower_band)
         threshold = lower_band + self.bb_proximity * (bb_mean - lower_band)
         if bar.close > threshold:
             return None
@@ -135,16 +130,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Scale stops/targets in high vol regime
-        labels = symbol_state.meta.get("regime_labels", {})
-        vol_regime = labels.get("regime_vol", "NORMAL")
-        is_high_vol = vol_regime in ("HIGH", "SHOCK")
-
-        stop_mult = self.stop_atr_mult * (self.high_vol_stop_scale if is_high_vol else 1.0)
-        target_mult = self.target_atr_mult * (self.high_vol_target_scale if is_high_vol else 1.0)
-
-        stop = bar.close - stop_mult * atr
-        target = bar.close + target_mult * atr
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -159,6 +146,5 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 "ibs": round(ibs, 2),
                 "consec_down": self.consec_down_days,
                 "bb_zone": round((bar.close - lower_band) / (bb_mean - lower_band), 2) if bb_mean > lower_band else 0,
-                "vol_regime": vol_regime,
             },
         )

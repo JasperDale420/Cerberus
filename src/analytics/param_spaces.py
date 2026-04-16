@@ -94,8 +94,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_hold_days": 7,
         "bb_period": 20,
         "bb_std": 2.0,
-        "high_vol_stop_scale": 0.8,
-        "high_vol_target_scale": 0.7,
+        "stop_atr_mult": 1.5,
+        "target_atr_mult": 3.0,
     },
     "daily_research_v7c": {
         "breakout_lookback": 10,
@@ -229,11 +229,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     "daily_research_v7b": [
         ParamDef("consec_down_days", "int", low=2, high=3, step=1, description="Consecutive down days required"),
-        ParamDef("ibs_entry_threshold", "float", low=0.2, high=0.5, step=0.05, description="IBS entry threshold"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.5, step=0.5, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=1.5, high=3.5, step=0.5, description="ATR target multiplier"),
+        ParamDef("ibs_entry_threshold", "float", low=0.2, high=0.45, step=0.05, description="IBS entry threshold"),
         ParamDef(
-            "bb_proximity", "float", low=0.3, high=0.8, step=0.1, description="BB proximity zone (0=band, 1=mean)"
+            "bb_proximity", "float", low=0.3, high=0.7, step=0.1, description="BB proximity zone (0=band, 1=mean)"
         ),
     ],
     "daily_research_v7c": [
