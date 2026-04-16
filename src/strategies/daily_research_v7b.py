@@ -1,9 +1,12 @@
-"""Dual-Mode Regime-Adaptive with DOWN+HIGH Gate.
+"""Pure Selective Mean Reversion — Extreme Oversold Bounce.
 
-UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
-FLAT/DOWN regime: buy extreme BB lower band touches with very low IBS.
-Targeted gate: skip DOWN+HIGH regime (where all losses concentrate).
-Long-only, daily bars.
+Buy only when multiple extreme conditions align:
+1. Price at/below BB lower band
+2. 2-3 consecutive down closes
+3. Very low IBS (closed near the low)
+4. ATR/price not too extreme
+No regime filtering — these conditions are self-selecting for oversold environments.
+Target: BB mean. Stop: 1.5 ATR. Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -26,25 +29,19 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Trend mode params
-        self.ema_period = int(config.get("ema_period", 21))
-        self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
-        self.pullback_atr_max = float(config.get("pullback_atr_max", 1.5))
-        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.35))
-        # Mean reversion mode params
+        # Entry filters
+        self.consec_down_days = int(config.get("consec_down_days", 2))
+        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
         self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
-        # Shared params
+        self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
+        # Risk management
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_max = float(config.get("rsi_max", 65.0))
-        # Vol filter
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        # Volume
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.5))
 
     # --- Indicator helpers ---
 
@@ -53,33 +50,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -109,6 +79,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return 0.5
         return (bar.close - bar.low) / rng
 
+    @staticmethod
+    def _consec_down(closes: list[float], min_days: int) -> bool:
+        if len(closes) < min_days + 1:
+            return False
+        for i in range(-min_days, 0):
+            if closes[i] >= closes[i - 1]:
+                return False
+        return True
+
     def on_bar(
         self,
         symbol: str,
@@ -121,20 +100,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # --- Vol gate: skip when realized vol > 20% (catches HIGH+SHOCK) ---
-        if hasattr(market_state, "realized_vol") and market_state.realized_vol is not None:
-            if market_state.realized_vol > 20.0:
-                return None
-
-        # Fallback: skip SHOCK from snapshot
+        # Only skip SHOCK — let strategy logic self-select in all other regimes
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
-        # ATR-based vol filter on the stock itself
+        # --- ATR filter ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
@@ -142,96 +117,39 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
-        # RSI filter — not overbought
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > self.rsi_max:
+        # --- Condition 1: Consecutive down closes ---
+        if not self._consec_down(closes, self.consec_down_days):
             return None
 
+        # --- Condition 2: Low IBS (closed near the low) ---
         ibs = self._ibs(bar)
-
-        # Get regime from labels
-        labels = symbol_state.meta.get("regime_labels", {})
-        trend = labels.get("regime_trend", "FLAT")
-
-        # Mode 1: Trend pullback (UP regime)
-        if trend == "UP":
-            return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
-
-        # Mode 2: Mean reversion (FLAT or DOWN)
-        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
-
-    def _trend_pullback_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        closes: list[float],
-        atr: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        ema = self._ema(closes, self.ema_period)
-        sma_slow = self._sma(closes, self.sma_slow_period)
-        if ema is None or sma_slow is None:
-            return None
-
-        # Trend confirmation: EMA > SMA(50) and price > SMA(50)
-        if ema <= sma_slow or bar.close <= sma_slow:
-            return None
-
-        # ATR-normalized pullback
-        dist = ema - bar.close
-        dist_atr = dist / atr
-        if dist_atr < self.pullback_atr_min or dist_atr > self.pullback_atr_max:
-            return None
-
-        # IBS filter
         if ibs > self.ibs_entry_threshold:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={"mode": "trend_pullback", "dist_atr": round(dist_atr, 2), "ibs": round(ibs, 2)},
-        )
-
-    def _mean_reversion_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        closes: list[float],
-        atr: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
+        # --- Condition 3: Price at/below BB lower band ---
         bb_mean = self._sma(closes, self.bb_period)
         bb_std = self._std(closes, self.bb_period)
         if bb_mean is None or bb_std is None or bb_std < 1e-9:
             return None
 
-        lower_band = bb_mean - self.bb_std * bb_std
-
-        # Price at or below lower band
+        lower_band = bb_mean - self.bb_std_mult * bb_std
         if bar.close > lower_band:
             return None
 
-        # Very strict IBS filter for non-UP regimes
-        if ibs > self.mr_ibs_threshold:
+        # --- Volume confirmation ---
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
-        # Must have at least 2 consecutive down days
-        if len(closes) >= 3 and not (closes[-1] < closes[-2] < closes[-3]):
-            return None
-
+        # --- Target: BB mean, Stop: ATR-based ---
         stop = bar.close - self.stop_atr_mult * atr
-        target = bb_mean  # Target the mean
+        target = bb_mean
+
+        # Minimum reward:risk of 1.0
+        upside = target - bar.close
+        downside = bar.close - stop
+        if downside > 0 and upside / downside < 1.0:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -242,8 +160,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "mean_reversion",
+                "mode": "extreme_mr",
                 "ibs": round(ibs, 2),
+                "consec_down": self.consec_down_days,
                 "z_score": round((bar.close - bb_mean) / bb_std, 2),
+                "rr_ratio": round(upside / downside, 2) if downside > 0 else 0,
             },
         )
