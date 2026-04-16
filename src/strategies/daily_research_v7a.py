@@ -101,7 +101,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # --- Pullback magnitude: require meaningful drop (not just tiny red days) ---
         if len(closes) > down_days:
             roc = (closes[-1] - closes[-(down_days + 1)]) / closes[-(down_days + 1)]
-            if roc > -0.015:  # need at least 1.5% pullback
+            if roc > -0.01:  # need at least 1.0% pullback
                 return None
 
         # --- IBS filter: close near day's low (selling exhaustion) ---
