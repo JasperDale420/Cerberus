@@ -92,7 +92,9 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     "daily_research_v7b": {
         "atr_period": 14,
         "rsi_period": 14,
+        "rsi_max": 65.0,
         "max_hold_days": 7,
+        "max_atr_pct": 0.03,
         "bb_period": 20,
         "bb_std": 2.0,
         "ema_period": 21,
@@ -232,10 +234,8 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     "daily_research_v7b": [
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target multiplier"),
-        ParamDef("ibs_entry_threshold", "float", low=0.25, high=0.45, step=0.05, description="IBS entry for pullback"),
-        ParamDef("max_atr_pct", "float", low=0.02, high=0.04, step=0.005, description="Max ATR/price vol filter"),
-        ParamDef("rsi_max", "float", low=55.0, high=70.0, step=5.0, description="RSI max filter"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("ibs_entry_threshold", "float", low=0.25, high=0.40, step=0.05, description="IBS entry for pullback"),
     ],
     "daily_research_v7c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
