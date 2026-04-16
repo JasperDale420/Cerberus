@@ -1,7 +1,7 @@
 """Keltner Channel Pullback — buy dips to lower Keltner band in uptrends.
 
 Entry: price pulls back near lower Keltner Channel while longer-term trend intact.
-Uses dual trend filter (regime labels + price vs SMA50) and vol gate.
+Dual trend filter: regime labels + price vs SMA50.
 Target: EMA midline. Stop: ATR-based below entry.
 """
 
@@ -75,16 +75,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip near-earnings and FOMC
+        # Skip near-earnings
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
-        if regime_labels.get("near_fomc"):
-            return None
 
-        # Skip SHOCK and HIGH volatility
+        # Skip SHOCK volatility
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_vol in ("SHOCK", "HIGH"):
+        if regime_vol == "SHOCK":
             return None
 
         # Skip DOWN trend via regime labels
@@ -112,11 +110,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if sma50 is None or bar.close < sma50:
             return None
 
-        # ATR/price sanity — skip very volatile stocks (ATR > 4% of price)
-        if atr / bar.close > 0.04:
-            return None
-
-        # Keltner Channel
+        # Keltner Channel pullback zone
         pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
 
         # Entry: price pulled back near or below lower Keltner band
