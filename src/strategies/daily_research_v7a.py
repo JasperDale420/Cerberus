@@ -89,8 +89,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if regime_vol == "SHOCK":
             return None
 
-        # --- Event filter: skip earnings and FOMC ---
+        # --- Event filter: skip earnings, FOMC, and quad witch ---
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+        if labels.get("quad_witch_week", False):
             return None
 
         # --- Entry: consecutive down days ---
