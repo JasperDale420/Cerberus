@@ -35,11 +35,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.vol_mult = float(config.get("vol_mult", 0.8))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         # Stop/target in ATR multiples
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     @staticmethod
@@ -75,6 +75,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         vol = labels.get("regime_vol", "")
         if vol in ("HIGH", "SHOCK"):
+            return None
+
+        # --- Skip near earnings ---
+        if labels.get("near_earnings", False):
             return None
 
         # --- Day-of-week filter: skip Monday ---
