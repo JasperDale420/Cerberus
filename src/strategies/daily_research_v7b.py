@@ -40,6 +40,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_slow_period", 50))
         # Vol filter
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        # Drop magnitude filter (in ATR units)
+        self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
+        self.max_drop_atr = float(config.get("max_drop_atr", 3.0))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -131,6 +134,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # RSI(2) oversold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
+            return None
+
+        # Drop magnitude: filter out crash-level drops (>3 ATR) and trivial ones (<0.8 ATR)
+        pre_drop_close = closes[-(self.consec_down_days + 1)]
+        drop = pre_drop_close - bar.close
+        drop_atr = drop / atr
+        if drop_atr < self.min_drop_atr or drop_atr > self.max_drop_atr:
             return None
 
         # Stop and target
