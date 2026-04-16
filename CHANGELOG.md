@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Experiment registry for autoresearch pipeline**: New `ResearchExperiment` and `ResearchLearning` tables in `schema.py` track strategy discovery → refinement → graduation lifecycle. Registry API (`experiment_registry.py`) provides `register_discovery()`, `get_holdout_survivors()`, `record_learning()`, `get_genealogy()`. Standalone CLI tool (`autoresearch/frozen/registry_cli.py`) with `status`, `survivors`, `learnings`, `register-discovery`, `promote`, `backfill` commands. Backfilled with v7a-d campaign results (3 holdout survivors: v7b +$39.7K, v7d +$10.8K, v7c +$4.2K).
+
+### Fixed
+
+- **SQLite database locking errors**: Enabled WAL journal mode, 5s busy timeout, and `synchronous=NORMAL` pragma for the SQLite database. This eliminates "database is locked" errors caused by concurrent writes from the WebSocket stream handler and the periodic scanner.
+- **Duplicate scanner snapshot inserts**: Scanner snapshot writes now create a fresh ORM object on each retry attempt instead of reusing a stale instance, preventing "UNIQUE constraint failed: scanner_snapshots.id" errors when buffered writes are flushed.
+- **Regime history buffer captures stale state on retry**: Regime history writes now eagerly capture values at write time instead of re-reading mutable `self.state` at flush time, ensuring buffered retries persist the original data.
+
 ### Fixed
 
 - **StrategyEngine crash from external debug wrapper**: Added `strategies` property alias on `StrategyEngine` pointing to `strategies_by_name`. A dynamically-injected `debug_run_strategies` wrapper accessed `.strategies` (which only exists on `ExecutionEngine`), causing `AttributeError` and triggering the safety shutdown after 5 consecutive errors.

@@ -1,15 +1,11 @@
-"""IBS + RSI(2) Dual Confirmation Mean Reversion.
+"""Connors RSI(2) Mean Reversion — tight params + regime filter.
 
-Two independent oversold signals for higher quality entries:
-  1. IBS < threshold (closed near day's low)
-  2. RSI(2) < rsi_max (short-term momentum oversold)
-
-Both must agree. This dual confirmation filters noise.
-Fixed max_stop_pct caps per-trade losses regardless of volatility.
+Entry: 2+ consecutive down closes AND RSI(2) < threshold.
 Skip DOWN+HIGH vol combo (proven loser for long-only).
-Exclude leveraged/inverse ETFs.
-
 Skip SHOCK vol, earnings, FOMC.
+max_stop_pct caps per-trade loss.
+Exclude leveraged/inverse ETFs.
+Tight target (1.5 ATR), tight stop (1.5 ATR), short hold (max 3 days).
 """
 
 from __future__ import annotations
@@ -33,35 +29,17 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.min_bars = int(config.get("min_bars", 55))
+        self.consec_down_days = int(config.get("consec_down_days", 2))
+        self.rsi_period = int(config.get("rsi_period", 2))
         self.rsi_max = float(config.get("rsi_max", 15.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.02))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _atr(bars: list[Bar], period: int) -> Optional[float]:
-        if len(bars) < period + 1:
-            return None
-        trs = []
-        for i in range(-period, 0):
-            b = bars[i]
-            prev_close = bars[i - 1].close
-            tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
-            trs.append(tr)
-        return sum(trs) / period
-
-    @staticmethod
-    def _ibs(bar: Bar) -> Optional[float]:
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return None
-        return (bar.close - bar.low) / rng
 
     @staticmethod
     def _rsi(closes: list[float], period: int) -> Optional[float]:
@@ -79,6 +57,18 @@ class dailyresearchv7dStrategy(BaseStrategy):
             return 100.0
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
+
+    @staticmethod
+    def _atr(bars: list[Bar], period: int) -> Optional[float]:
+        if len(bars) < period + 1:
+            return None
+        trs = []
+        for i in range(-period, 0):
+            b = bars[i]
+            prev_close = bars[i - 1].close
+            tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
+            trs.append(tr)
+        return sum(trs) / period
 
     def _count_consecutive_down(self, closes: list[float]) -> int:
         count = 0
@@ -114,9 +104,11 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip DOWN+HIGH vol combo
+        # Regime context
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
+
+        # Skip DOWN+HIGH vol combo
         if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
@@ -126,39 +118,33 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # ATR
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
         # Min price filter
         if bar.close < 5.0:
             return None
 
-        # ATR/price filter
+        # Core signal: consecutive down days
+        consec = self._count_consecutive_down(closes)
+        if consec < self.consec_down_days:
+            return None
+
+        # RSI(2) oversold confirmation
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi > self.rsi_max:
+            return None
+
+        # ATR for stop and target
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        # ATR/price filter: skip dead stocks
         if atr / bar.close < 0.005:
             return None
 
-        # --- Dual confirmation ---
-        # 1. IBS oversold
-        ibs = self._ibs(bar)
-        if ibs is None or ibs >= self.ibs_threshold:
-            return None
-
-        # 2. RSI(2) oversold
-        rsi = self._rsi(closes, 2)
-        if rsi is None or rsi >= self.rsi_max:
-            return None
-
-        # 3. At least 1 consecutive down day
-        consec = self._count_consecutive_down(closes)
-        if consec < 1:
-            return None
-
-        # Stop with max_stop_pct cap
-        stop_atr = bar.close - self.stop_atr_mult * atr
-        max_stop = bar.close * (1.0 - self.max_stop_pct)
-        stop = max(stop_atr, max_stop)
+        # Stop: ATR-based but capped at max_stop_pct of price
+        atr_stop = bar.close - self.stop_atr_mult * atr
+        pct_stop = bar.close * (1.0 - self.max_stop_pct)
+        stop = max(atr_stop, pct_stop)
 
         target = bar.close + self.target_atr_mult * atr
 
@@ -171,11 +157,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ibs": round(ibs, 3),
-                "rsi2": round(rsi, 1),
                 "consec_down": consec,
+                "rsi2": round(rsi, 2),
+                "atr_pct": round(atr / bar.close, 4),
                 "regime": regime_trend,
-                "atr": round(atr, 4),
-                "seed": "ibs_rsi2_dual",
+                "vol_regime": regime_vol,
+                "stop_type": "pct" if pct_stop > atr_stop else "atr",
+                "seed": "rsi2_regime_filter",
             },
         )

@@ -189,17 +189,26 @@ class MarketStateManager:
 
         # Persist regime updates (skip in backtest mode)
         if self.db and self.persist_to_db:
+            # Capture values eagerly so buffered retries use the original data,
+            # not whatever self.state holds at flush time.
+            _ts = self.state.time
+            _regime = self.state.regime.value
+            _index_symbol = self.state.index_symbol
+            _index_price = float(getattr(bar, "close", 0.0) or 0.0)
+            _cum_ret = getattr(self.market_context, "last_cum_ret", None)
+            _trend_score = getattr(self.market_context, "last_trend_score", None)
+            _vol = getattr(self.market_context, "last_vol", None)
             ok = self.db.write(
                 "regime_history",
                 lambda session: session.add(
                     RegimeHistory(
-                        timestamp=self.state.time,
-                        regime=self.state.regime.value,
-                        index_symbol=self.state.index_symbol,
-                        index_price=float(getattr(bar, "close", 0.0) or 0.0),
-                        cum_ret=getattr(self.market_context, "last_cum_ret", None),
-                        trend_score=getattr(self.market_context, "last_trend_score", None),
-                        vol=getattr(self.market_context, "last_vol", None),
+                        timestamp=_ts,
+                        regime=_regime,
+                        index_symbol=_index_symbol,
+                        index_price=_index_price,
+                        cum_ret=_cum_ret,
+                        trend_score=_trend_score,
+                        vol=_vol,
                     )
                 ),
             )

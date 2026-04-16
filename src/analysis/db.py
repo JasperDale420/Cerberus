@@ -74,9 +74,36 @@ class DatabaseDatabase:
                 # For now, just leave it as CWD relative or handle it
                 pass
 
-        self.engine = create_engine(db_url, echo=self.config.get("db_echo", False), pool_pre_ping=True)
+        # SQLite-specific configuration for concurrency
+        engine_kwargs: Dict[str, Any] = {
+            "echo": self.config.get("db_echo", False),
+            "pool_pre_ping": True,
+        }
+        if db_url.startswith("sqlite"):
+            engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+
+        self.engine = create_engine(db_url, **engine_kwargs)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+
+        # Enable WAL mode and busy timeout for SQLite to reduce lock contention
+        if db_url.startswith("sqlite") and ":memory:" not in db_url:
+            self._configure_sqlite_pragmas()
+
         self.logger.info("Database engine initialized", url=db_url)
+
+    def _configure_sqlite_pragmas(self) -> None:
+        """Set SQLite pragmas for better concurrency and durability."""
+        from sqlalchemy import event
+
+        @event.listens_for(self.engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn: Any, connection_record: Any) -> None:
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+
+        self.logger.info("SQLite pragmas configured", journal_mode="WAL", busy_timeout=5000)
 
     def init_db(self):
         """

@@ -265,3 +265,76 @@ class PortfolioRiskSnapshot(Base):
     correlation_matrix_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     concentration_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     gross_exposure: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ResearchExperiment(Base):
+    __tablename__ = "research_experiments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Identity
+    strategy_name: Mapped[str] = mapped_column(String(128), index=True)
+    campaign_id: Mapped[str] = mapped_column(String(64), index=True)  # e.g. "v7b"
+    parent_campaign_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    archetype: Mapped[str] = mapped_column(String(64))  # "mean_reversion", "keltner_breakout", etc.
+    seed_template: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    # Source control
+    commit_hash: Mapped[str] = mapped_column(String(40))
+    strategy_file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Phase & Status
+    phase: Mapped[str] = mapped_column(String(32))  # discovery, refinement, graduation
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    # Statuses: discovery_running, holdout_pass, holdout_fail,
+    #           refining, refined_pass, refined_fail,
+    #           paper_trading, ready_for_promotion, live, retired
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # In-sample metrics
+    is_composite_score: Mapped[float] = mapped_column(Float, default=0.0)
+    is_min_pf: Mapped[float] = mapped_column(Float, default=0.0)
+    is_avg_pf: Mapped[float] = mapped_column(Float, default=0.0)
+    is_sharpe: Mapped[float] = mapped_column(Float, default=0.0)
+    is_net_pnl: Mapped[float] = mapped_column(Float, default=0.0)
+    is_total_trades: Mapped[int] = mapped_column(Integer, default=0)
+    is_max_param_cv: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Holdout metrics
+    holdout_pf: Mapped[float] = mapped_column(Float, default=0.0)
+    holdout_sharpe: Mapped[float] = mapped_column(Float, default=0.0)
+    holdout_net_pnl: Mapped[float] = mapped_column(Float, default=0.0)
+    holdout_total_trades: Mapped[int] = mapped_column(Integer, default=0)
+    holdout_start: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    holdout_end: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+
+    # Paper trading metrics
+    paper_days: Mapped[int] = mapped_column(Integer, default=0)
+    paper_pf: Mapped[float] = mapped_column(Float, default=0.0)
+    paper_sharpe: Mapped[float] = mapped_column(Float, default=0.0)
+    paper_net_pnl: Mapped[float] = mapped_column(Float, default=0.0)
+    paper_total_trades: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Details (JSON blobs)
+    regime_breakdown_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    best_regime: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    worst_regime: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    config_snapshot_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    param_stability_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Notes
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ResearchLearning(Base):
+    __tablename__ = "research_learnings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[str] = mapped_column(String(64), index=True)
+    archetype: Mapped[str] = mapped_column(String(64), index=True)
+    category: Mapped[str] = mapped_column(String(32))  # what_worked, what_failed, insight
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

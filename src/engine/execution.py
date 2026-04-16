@@ -1748,24 +1748,37 @@ class ExecutionEngine:
             scan_ts = results.generated_at
             scan_regime = results.regime.value
 
-            def make_snapshot_writer(snapshot: ScannerSnapshot):
+            def make_snapshot_writer(ts: datetime, regime: str, sym: str, score: float, strats: dict, feats: dict):
+                """Create a fresh ORM object on each call to avoid stale-ID issues on retry."""
+
                 def _write(session: Session) -> None:
-                    session.add(snapshot)
+                    session.add(
+                        ScannerSnapshot(
+                            timestamp=ts,
+                            regime=regime,
+                            symbol=sym,
+                            scanner_score=score,
+                            strategies_json=strats,
+                            features_json=feats,
+                        )
+                    )
 
                 return _write
 
             for w in results.watchlist:
                 # JSON columns should be serializable; convert datetimes via str().
                 features_json = self._sanitize_features_snapshot(asdict(w.features))
-                snapshot = ScannerSnapshot(
-                    timestamp=scan_ts,
-                    regime=scan_regime,
-                    symbol=w.symbol,
-                    scanner_score=float(w.score),
-                    strategies_json={"strategies": list(w.strategies)},
-                    features_json=features_json,
+                self.db.write(
+                    "scanner_snapshot",
+                    make_snapshot_writer(
+                        scan_ts,
+                        scan_regime,
+                        w.symbol,
+                        float(w.score),
+                        {"strategies": list(w.strategies)},
+                        features_json,
+                    ),
                 )
-                self.db.write("scanner_snapshot", make_snapshot_writer(snapshot))
 
     def apply_scan_result(self, scan_result: ScanResult | List[WatchlistSymbol]):
         """
