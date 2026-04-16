@@ -39,7 +39,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Trend
         self.sma_period = int(config.get("sma_slow_period", 50))
         # Vol filter
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.035))
         # Drop magnitude filter (in ATR units)
         self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
         self.max_drop_atr = float(config.get("max_drop_atr", 3.0))
