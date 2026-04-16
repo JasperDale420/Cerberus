@@ -33,7 +33,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         # Keltner channel multipliers per regime
-        self.kc_mult_up = float(config.get("kc_mult_up", 1.5))
+        self.kc_mult_up = float(config.get("kc_mult_up", 1.3))
         self.kc_mult_flat = float(config.get("kc_mult_flat", 2.0))
         self.kc_mult_down = float(config.get("kc_mult_down", 2.5))
         # Stop/target
@@ -42,7 +42,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Volume filter
         self.vol_lookback = int(config.get("vol_lookback", 20))
-        self.vol_max_ratio = float(config.get("vol_max_ratio", 1.2))
+        self.vol_max_ratio = float(config.get("vol_max_ratio", 1.3))
         # Consecutive down days for DOWN regime
         self.min_down_days = int(config.get("min_down_days", 2))
         # Max ATR as pct of price (skip very volatile names)
