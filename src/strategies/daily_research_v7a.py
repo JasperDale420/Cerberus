@@ -112,9 +112,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ibs >= self.ibs_threshold:
             return None
 
-        # --- Trend filter: price above SMA(50) ---
-        sma50 = self._sma(closes, 50)
-        if sma50 is None or bar.close < sma50:
+        # --- Trend filter: price above SMA(20) ---
+        sma20 = self._sma(closes, 20)
+        if sma20 is None or bar.close < sma20:
             return None
 
         # --- Volume filter: today's vol >= vol_mult * avg vol ---
@@ -149,7 +149,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             meta={
                 "down_days": down_days,
                 "ibs": round(ibs, 3),
-                "sma50": round(sma50, 2),
+                "sma20": round(sma20, 2),
                 "atr": round(atr, 4),
                 "regime": f"{regime_trend}+{regime_vol}",
             },
