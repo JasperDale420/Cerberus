@@ -318,6 +318,9 @@ strategies:
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
+    ema_fast: 20
+    ema_slow: 50
+    pullback_pct: 0.02
     ibs_threshold: 0.35
     min_down_days: 2
     atr_period: 14
