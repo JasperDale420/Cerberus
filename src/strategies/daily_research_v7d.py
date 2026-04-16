@@ -38,8 +38,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.kc_mult_down = float(config.get("kc_mult_down", 2.5))
         # Stop/target
         self.base_stop_atr_mult = float(config.get("base_stop_atr_mult", 1.5))
-        self.base_target_atr_mult = float(config.get("base_target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.base_target_atr_mult = float(config.get("base_target_atr_mult", 2.5))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
         # Volume filter
         self.vol_lookback = int(config.get("vol_lookback", 20))
         self.vol_max_ratio = float(config.get("vol_max_ratio", 1.2))
