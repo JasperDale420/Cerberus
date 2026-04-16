@@ -1,27 +1,23 @@
-"""IBS Trend Pullback — symmetric RR + dual SMA + 2 down days.
+"""Seed: Regime-Adaptive Strategy.
 
-Regime labels don't reliably prevent DOWN+HIGH window trades.
-Switch to pure price-based trend: close > SMA(20) AND SMA(20) > SMA(50).
-Dual SMA ensures we're in a real uptrend, not a bear market rally.
+Different logic per regime:
+  UP   — buy pullbacks below EMA(20) but above SMA(50)
+  DOWN — short rallies above EMA(20) but below SMA(50)
+  FLAT — mean reversion at Bollinger Band extremes
 
-Entry: close > SMA(20) AND SMA(20) > SMA(50) AND IBS < 0.25
-       AND 2 consecutive down days.
-Stop = target = 1.5 ATR (symmetric).
-Exclude leveraged ETFs. Skip SHOCK vol, earnings, FOMC.
+Stops scaled by realized volatility. Daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
-_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD"}
 
-
-class dailyresearchv7dStrategy(BaseStrategy):
+class SeedRegimeSwitchStrategy(BaseStrategy):
     name = "daily_research_v7d"
     allow_overnight: bool = True
 
@@ -32,28 +28,62 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_fast = int(config.get("sma_fast", 20))
-        self.sma_slow = int(config.get("sma_slow", 50))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
-        self.consec_down_days = int(config.get("consec_down_days", 2))
+        self.ema_period = int(config.get("ema_period", 20))
+        self.sma_period = int(config.get("sma_period", 50))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
+        self.rsi_period = int(config.get("rsi_period", 14))
+        self.rsi_up_threshold = float(config.get("rsi_up_threshold", 45.0))
+        self.rsi_down_threshold = float(config.get("rsi_down_threshold", 60.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_mult = float(config.get("atr_mult", 1.5))
+        self.base_stop_atr_mult = float(config.get("base_stop_atr_mult", 1.5))
+        self.base_target_atr_mult = float(config.get("base_target_atr_mult", 3.0))
+        self.vol_stop_scale_factor = float(config.get("vol_stop_scale_factor", 5.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _sma(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period:
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
             return None
-        return sum(closes[-period:]) / period
+        return sum(values[-period:]) / period
 
     @staticmethod
-    def _ibs(bar: Bar) -> Optional[float]:
-        rng = bar.high - bar.low
-        if rng < 1e-9:
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
             return None
-        return (bar.close - bar.low) / rng
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = (v - ema) * mult + ema
+        return ema
+
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        subset = values[-period:]
+        mean = sum(subset) / period
+        variance = sum((v - mean) ** 2 for v in subset) / period
+        return variance ** 0.5
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -67,6 +97,15 @@ class dailyresearchv7dStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    def _vol_adjusted_stop_mult(self, market_state: MarketState) -> float:
+        """Scale stop multiplier by realized vol: wider stops when vol is high."""
+        realized_vol = market_state.realized_vol
+        if realized_vol <= 0:
+            return self.base_stop_atr_mult
+        # Scale: base * (1 + vol * scale_factor)
+        # e.g. realized_vol=0.02 (2%), scale_factor=5 -> mult * 1.10
+        return self.base_stop_atr_mult * (1.0 + realized_vol * self.vol_stop_scale_factor)
+
     def on_bar(
         self,
         symbol: str,
@@ -74,83 +113,149 @@ class dailyresearchv7dStrategy(BaseStrategy):
         symbol_state: SymbolState,
         market_state: MarketState,
     ) -> Optional[Signal]:
-        if symbol in _EXCLUDED:
-            return None
-
         if not self._check_cooldown(symbol, bar.time):
             return None
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
-        snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
-            return None
-
-        # Skip earnings and FOMC
-        labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < self.min_bars:
-            return None
-
-        # Min price filter
-        if bar.close < 5.0:
-            return None
-
-        # Dual SMA trend filter: close > SMA(20) AND SMA(20) > SMA(50)
-        sma_fast = self._sma(closes, self.sma_fast)
-        sma_slow = self._sma(closes, self.sma_slow)
-        if sma_fast is None or sma_slow is None:
-            return None
-        if bar.close <= sma_fast or sma_fast <= sma_slow:
-            return None
-
-        # IBS oversold signal
-        ibs = self._ibs(bar)
-        if ibs is None or ibs >= self.ibs_threshold:
-            return None
-
-        # Consecutive down days filter
-        consec = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                consec += 1
-            else:
-                break
-        if consec < self.consec_down_days:
-            return None
-
-        # ATR for symmetric stop and target
+        # Core indicators
+        ema20 = self._ema(closes, self.ema_period)
+        sma50 = self._sma(closes, self.sma_period)
+        rsi = self._rsi(closes, self.rsi_period)
         atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
+
+        if any(v is None for v in (ema20, sma50, rsi, atr)) or atr < 1e-9:
             return None
 
-        # ATR/price filter: skip dead stocks
-        if atr / bar.close < 0.005:
-            return None
+        # BB for FLAT regime
+        bb_sma = self._sma(closes, self.bb_period)
+        bb_std = self._std(closes, self.bb_period)
 
-        # Symmetric stop and target
-        stop = bar.close - self.atr_mult * atr
-        target = bar.close + self.atr_mult * atr
+        # Read regime from symbol_state meta
+        regime_labels = symbol_state.meta.get("regime_labels", {})
+        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={
-                "ibs": round(ibs, 3),
-                "sma_fast": round(sma_fast, 2),
-                "sma_slow": round(sma_slow, 2),
-                "atr_pct": round(atr / bar.close, 4),
-                "seed": "ibs_dual_sma_symmetric",
-            },
-        )
+        stop_mult = self._vol_adjusted_stop_mult(market_state)
+
+        if regime_trend == "UP":
+            # Buy pullbacks: price dips below EMA(20) but stays above SMA(50)
+            if bar.close >= ema20 or bar.close <= sma50:
+                return None
+            if rsi >= self.rsi_up_threshold:
+                return None
+
+            stop = bar.close - stop_mult * atr
+            target = bar.close + self.base_target_atr_mult * atr
+
+            self.last_signal_time[symbol] = bar.time
+            return self._create_signal(
+                symbol,
+                OrderSide.BUY,
+                bar,
+                market_state,
+                stop_price=stop,
+                target_price=target,
+                meta={
+                    "regime": "UP",
+                    "ema20": round(ema20, 2),
+                    "sma50": round(sma50, 2),
+                    "rsi14": round(rsi, 2),
+                    "stop_mult": round(stop_mult, 3),
+                    "seed": "regime_switch",
+                },
+            )
+
+        elif regime_trend == "DOWN":
+            # Short rallies: price rallies above EMA(20) but stays below SMA(50)
+            if bar.close <= ema20 or bar.close >= sma50:
+                return None
+            if rsi <= self.rsi_down_threshold:
+                return None
+
+            stop = bar.close + stop_mult * atr
+            target = bar.close - self.base_target_atr_mult * atr
+
+            self.last_signal_time[symbol] = bar.time
+            return self._create_signal(
+                symbol,
+                OrderSide.SELL,
+                bar,
+                market_state,
+                stop_price=stop,
+                target_price=target,
+                meta={
+                    "regime": "DOWN",
+                    "ema20": round(ema20, 2),
+                    "sma50": round(sma50, 2),
+                    "rsi14": round(rsi, 2),
+                    "stop_mult": round(stop_mult, 3),
+                    "seed": "regime_switch",
+                },
+            )
+
+        else:
+            # FLAT regime: mean reversion at BB extremes
+            if bb_sma is None or bb_std is None or bb_std < 1e-9:
+                return None
+
+            lower_bb = bb_sma - self.bb_std * bb_std
+            upper_bb = bb_sma + self.bb_std * bb_std
+
+            if bar.close < lower_bb:
+                # Long at lower BB
+                stop = bar.close - stop_mult * atr
+                target = bb_sma
+
+                if target <= bar.close:
+                    return None
+
+                self.last_signal_time[symbol] = bar.time
+                return self._create_signal(
+                    symbol,
+                    OrderSide.BUY,
+                    bar,
+                    market_state,
+                    stop_price=stop,
+                    target_price=target,
+                    meta={
+                        "regime": "FLAT",
+                        "side": "long_bb",
+                        "lower_bb": round(lower_bb, 2),
+                        "bb_mid": round(bb_sma, 2),
+                        "rsi14": round(rsi, 2),
+                        "stop_mult": round(stop_mult, 3),
+                        "seed": "regime_switch",
+                    },
+                )
+
+            elif bar.close > upper_bb:
+                # Short at upper BB
+                stop = bar.close + stop_mult * atr
+                target = bb_sma
+
+                if target >= bar.close:
+                    return None
+
+                self.last_signal_time[symbol] = bar.time
+                return self._create_signal(
+                    symbol,
+                    OrderSide.SELL,
+                    bar,
+                    market_state,
+                    stop_price=stop,
+                    target_price=target,
+                    meta={
+                        "regime": "FLAT",
+                        "side": "short_bb",
+                        "upper_bb": round(upper_bb, 2),
+                        "bb_mid": round(bb_sma, 2),
+                        "rsi14": round(rsi, 2),
+                        "stop_mult": round(stop_mult, 3),
+                        "seed": "regime_switch",
+                    },
+                )
+
+        return None
