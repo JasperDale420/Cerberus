@@ -90,6 +90,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
             return None
 
+        # --- Event filter: skip near earnings and FOMC ---
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
         # --- Trend context: price must be above long-term SMA ---
         sma_long = self._sma(closes, self.trend_period)
         if sma_long is None or bar.close < sma_long:
@@ -134,6 +138,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_mult = min(self.stop_atr_mult, 1.0)
 
         stop = bar.close - stop_mult * atr
+        # Cap stop loss at 2% of price to limit outsized losses
+        max_stop_loss = bar.close * 0.02
+        if bar.close - stop > max_stop_loss:
+            stop = bar.close - max_stop_loss
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
