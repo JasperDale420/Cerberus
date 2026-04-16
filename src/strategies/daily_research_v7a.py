@@ -1,13 +1,14 @@
-"""Iteration 2: IBS + Consecutive Down Days dip-buying.
+"""Iteration 3: IBS + Consecutive Down Days with vol/day filters.
 
-Buy after 2+ consecutive down closes when IBS is low (close near day low).
-No conflicting filters. Simple regime gating (skip SHOCK).
-ATR-based symmetric stops/targets.
+Buy after 2+ consecutive down closes when IBS is low.
+Skip HIGH/SHOCK vol regimes. Skip Monday entries.
+ATR-based stops/targets with wider target (asymmetric R:R).
 Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
@@ -35,8 +36,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
         # Stop/target in ATR multiples
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     @staticmethod
@@ -67,11 +68,17 @@ class SeedMeanReversionStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
 
-        # --- Regime filter: skip SHOCK vol only ---
+        # --- Regime filter: skip HIGH and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
         vol = labels.get("regime_vol", "")
-        if vol == "SHOCK":
+        if vol in ("HIGH", "SHOCK"):
             return None
+
+        # --- Day-of-week filter: skip Monday ---
+        bar_time = bar.time
+        if isinstance(bar_time, datetime):
+            if bar_time.weekday() == 0:  # Monday
+                return None
 
         # --- IBS filter: close must be near the low of the day ---
         bar_range = bar.high - bar.low

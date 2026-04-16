@@ -321,8 +321,8 @@ strategies:
     ibs_threshold: 0.35
     min_down_days: 2
     atr_period: 14
-    stop_atr_mult: 2.0
-    target_atr_mult: 2.0
+    stop_atr_mult: 1.5
+    target_atr_mult: 2.5
     drawdown_lookback: 40
     max_drawdown_pct: 0.15
     activation:
