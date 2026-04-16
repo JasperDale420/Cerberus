@@ -130,21 +130,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # --- Exits: fixed % stop + SMA(20) target ---
-        sma20 = self._sma(closes, 20)
-        if sma20 is None:
-            return None
-
-        # Fixed percentage stop (not ATR-based — reduces param instability)
-        stop = bar.close * 0.97  # 3% stop loss
-
-        # Target: SMA(20) midline (mean reversion target)
-        # If SMA(20) is below entry, use ATR-based fallback
+        # --- ATR for exits ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        target = max(sma20, bar.close + self.target_atr_mult * atr)
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -158,7 +150,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
                 "down_days": down_days,
                 "ibs": round(ibs, 3),
                 "sma50": round(sma50, 2),
-                "sma20_target": round(sma20, 2),
                 "atr": round(atr, 4),
                 "regime": f"{regime_trend}+{regime_vol}",
             },
