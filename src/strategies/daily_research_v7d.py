@@ -32,7 +32,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 210))
+        self.min_bars = int(config.get("min_bars", 55))
         self.sma_period = int(config.get("sma_period", 200))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.atr_period = int(config.get("atr_period", 14))
