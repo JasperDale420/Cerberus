@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Learnings extraction for autoresearch pipeline**: New `autoresearch/frozen/extract_learnings.py` script reads WFO artifacts and holdout logs, extracts structured learnings (what_worked, what_failed, insight), and records them in the experiment registry. Detects regime performance, param stability, trade count patterns, and IS-to-OOS degradation. Idempotent — skips duplicate learnings on re-runs.
+- **Registry integration in discovery loop**: The v7 autoresearch loop now automatically registers experiments and extracts learnings after each holdout evaluation. Accumulated learnings are injected into the agent prompt at campaign start, enabling knowledge transfer across campaigns.
 - **Experiment registry for autoresearch pipeline**: New `ResearchExperiment` and `ResearchLearning` tables in `schema.py` track strategy discovery → refinement → graduation lifecycle. Registry API (`experiment_registry.py`) provides `register_discovery()`, `get_holdout_survivors()`, `record_learning()`, `get_genealogy()`. Standalone CLI tool (`autoresearch/frozen/registry_cli.py`) with `status`, `survivors`, `learnings`, `register-discovery`, `promote`, `backfill` commands. Backfilled with v7a-d campaign results (3 holdout survivors: v7b +$39.7K, v7d +$10.8K, v7c +$4.2K).
 
 ### Fixed

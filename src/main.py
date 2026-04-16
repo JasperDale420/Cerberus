@@ -89,7 +89,7 @@ def _build_strategy_registry() -> dict[str, type]:
     from src.strategies.vwap_reversion import VWAPReversionStrategy
     from src.strategies.vwap_trend_rider import VWAPTrendRiderStrategy
 
-    return {
+    registry = {
         # V2 consolidated strategies (enabled by default)
         "daily_momentum": DailyMomentumStrategy,
         "regime_adaptive": RegimeAdaptiveStrategy,
@@ -127,6 +127,40 @@ def _build_strategy_registry() -> dict[str, type]:
         "order_flow_imbalance": OrderFlowImbalanceStrategy,
         "intraday_momentum": IntradayMomentumStrategy,
     }
+
+    # --- Dynamic loader for graduated strategies from research pipeline ---
+    import importlib.util as _ilu
+    from pathlib import Path as _Path
+
+    from src.strategies.base import BaseStrategy
+
+    graduated_dir = _Path("src/strategies/graduated")
+    if graduated_dir.exists():
+        for py_file in sorted(graduated_dir.glob("*.py")):
+            if py_file.name.startswith("_"):
+                continue
+            strat_name = py_file.stem
+            if strat_name in registry:
+                continue  # Already registered via hardcoded import
+            try:
+                spec = _ilu.spec_from_file_location(f"src.strategies.graduated.{strat_name}", py_file)
+                if spec and spec.loader:
+                    mod = _ilu.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    for attr_name in dir(mod):
+                        attr = getattr(mod, attr_name)
+                        if (
+                            isinstance(attr, type)
+                            and issubclass(attr, BaseStrategy)
+                            and attr is not BaseStrategy
+                            and getattr(attr, "name", None) == strat_name
+                        ):
+                            registry[strat_name] = attr
+                            break
+            except Exception:
+                pass  # Skip broken graduated strategies silently
+
+    return registry
 
 
 async def async_main():
