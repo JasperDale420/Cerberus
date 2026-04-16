@@ -1,13 +1,13 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN/HIGH + 2 down days.
+"""IBS Trend Pullback — symmetric RR + dual SMA + 2 down days.
 
-Iter18/24: DOWN+HIGH windows always PF<0.5 regardless of strategy.
-Fix: skip both DOWN trend AND HIGH vol at bar level.
-This eliminates signals during bear markets AND volatile selloffs.
+Regime labels don't reliably prevent DOWN+HIGH window trades.
+Switch to pure price-based trend: close > SMA(20) AND SMA(20) > SMA(50).
+Dual SMA ensures we're in a real uptrend, not a bear market rally.
 
-Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
-Skip DOWN regime AND HIGH vol. Exclude leveraged ETFs.
-Skip SHOCK vol, earnings, FOMC.
+Entry: close > SMA(20) AND SMA(20) > SMA(50) AND IBS < 0.25
+       AND 2 consecutive down days.
+Stop = target = 1.5 ATR (symmetric).
+Exclude leveraged ETFs. Skip SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -32,7 +32,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.sma_fast = int(config.get("sma_fast", 20))
+        self.sma_slow = int(config.get("sma_slow", 50))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
@@ -91,12 +92,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip DOWN regime AND HIGH vol (DOWN+HIGH windows always PF<0.5)
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
-        regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN" or regime_vol == "HIGH":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -107,9 +102,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(20)
-        sma = self._sma(closes, self.sma_period)
-        if sma is None or bar.close <= sma:
+        # Dual SMA trend filter: close > SMA(20) AND SMA(20) > SMA(50)
+        sma_fast = self._sma(closes, self.sma_fast)
+        sma_slow = self._sma(closes, self.sma_slow)
+        if sma_fast is None or sma_slow is None:
+            return None
+        if bar.close <= sma_fast or sma_fast <= sma_slow:
             return None
 
         # IBS oversold signal
@@ -150,10 +148,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "ibs": round(ibs, 3),
-                "sma20": round(sma, 2),
-                "regime": regime_trend,
-                "vol_regime": regime_vol,
+                "sma_fast": round(sma_fast, 2),
+                "sma_slow": round(sma_slow, 2),
                 "atr_pct": round(atr / bar.close, 4),
-                "seed": "ibs_symmetric_rr",
+                "seed": "ibs_dual_sma_symmetric",
             },
         )
