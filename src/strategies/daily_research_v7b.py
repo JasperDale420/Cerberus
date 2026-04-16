@@ -1,8 +1,8 @@
-"""Dual-Mode Regime-Adaptive with Selective Filters.
+"""Dual-Mode Regime-Adaptive with DOWN+HIGH Gate.
 
 UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
-FLAT/DOWN regime: buy only extreme BB lower band touches with very low IBS.
-ATR/price vol filter to avoid high-vol disaster. Skip Friday entries.
+FLAT/DOWN regime: buy extreme BB lower band touches with very low IBS.
+Targeted gate: skip DOWN+HIGH regime (where all losses concentrate).
 Long-only, daily bars.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -121,19 +121,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # --- Regime gates ---
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
-            return None
-
-        # Skip Friday entries (consistently lose across all iterations)
-        try:
-            t = bar.time
-            dow = t.weekday() if hasattr(t, "weekday") else None
-            if dow is not None and dow == 4:  # Friday=4
+        if snapshot:
+            # Always skip SHOCK
+            if snapshot.vol == VolRegime.SHOCK:
                 return None
-        except (AttributeError, TypeError):
-            pass
+            # Skip DOWN+HIGH — data shows PF 0.39-0.89 across all iterations
+            if snapshot.trend == TrendRegime.DOWN and snapshot.vol == VolRegime.HIGH:
+                return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -153,24 +149,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         ibs = self._ibs(bar)
 
-        # Stock-level trend check: SMA(10) vs SMA(40)
-        sma10 = self._sma(closes, 10)
-        sma40 = self._sma(closes, 40)
-        stock_uptrend = sma10 is not None and sma40 is not None and sma10 > sma40
-
-        # Get regime
+        # Get regime from labels
         labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
 
-        # Mode 1: Trend pullback (UP regime OR stock uptrend)
-        if trend == "UP" or stock_uptrend:
+        # Mode 1: Trend pullback (UP regime)
+        if trend == "UP":
             return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
 
-        # Mode 2: Mean reversion — only if stock above SMA(40)
-        if sma40 is not None and bar.close > sma40:
-            return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
-
-        return None
+        # Mode 2: Mean reversion (FLAT or DOWN)
+        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
 
     def _trend_pullback_signal(
         self,
