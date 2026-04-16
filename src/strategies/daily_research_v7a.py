@@ -1,9 +1,8 @@
-"""Iteration 5: Dual-Mode Regime-Adaptive strategy.
+"""Iteration 6: IBS + Consecutive Down Days with vol confirmation.
 
-UP trend: buy pullbacks to EMA(20) when EMA(20) > EMA(50).
-FLAT trend: buy low-IBS dips after 2 down days (mean reversion).
-DOWN trend: skip entirely.
-Skip HIGH/SHOCK vol. Skip Monday.
+Buy after 2+ consecutive down closes when IBS is low.
+Skip HIGH/SHOCK vol. Skip Monday. Require above-average volume.
+Tighter drawdown filter (12%). ATR-based stops/targets.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -28,39 +27,20 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # EMA periods for trend detection
-        self.ema_fast = int(config.get("ema_fast", 20))
-        self.ema_slow = int(config.get("ema_slow", 50))
-        # Pullback threshold (% below fast EMA to buy)
-        self.pullback_pct = float(config.get("pullback_pct", 0.02))
-        # IBS threshold for mean reversion mode
+        # IBS threshold
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        # Consecutive down days for mean reversion mode
+        # Consecutive down days required
         self.min_down_days = int(config.get("min_down_days", 2))
+        # Volume filter: require volume > vol_mult * 20-day avg
+        self.vol_mult = float(config.get("vol_mult", 0.8))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         # Stop/target in ATR multiples
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        result = values[0]
-        for v in values[1:]:
-            result = v * mult + result * (1 - mult)
-        return result
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -89,15 +69,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
+        volumes = [b.volume for b in bars]
 
-        # --- Regime filter ---
+        # --- Regime filter: skip HIGH and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
-        trend = labels.get("regime_trend", "")
         vol = labels.get("regime_vol", "")
-
-        # Skip DOWN trend and HIGH/SHOCK vol
-        if trend == "DOWN":
-            return None
         if vol in ("HIGH", "SHOCK"):
             return None
 
@@ -107,7 +83,28 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if bar_time.weekday() == 0:
                 return None
 
-        # --- Drawdown filter ---
+        # --- IBS filter: close must be near the low of the day ---
+        bar_range = bar.high - bar.low
+        if bar_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+        if ibs >= self.ibs_threshold:
+            return None
+
+        # --- Consecutive down days ---
+        if len(closes) < self.min_down_days + 1:
+            return None
+        for i in range(1, self.min_down_days + 1):
+            if closes[-i] >= closes[-i - 1]:
+                return None
+
+        # --- Volume filter: current volume above threshold ---
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume < self.vol_mult * avg_vol:
+                return None
+
+        # --- Drawdown filter: skip if in freefall ---
         lookback_highs = highs[-self.drawdown_lookback :]
         peak = max(lookback_highs)
         dd = (peak - bar.close) / peak if peak > 0 else 0
@@ -117,38 +114,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # --- ATR for stop/target ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
-            return None
-
-        # --- Compute EMAs ---
-        ema_f = self._ema(closes, self.ema_fast)
-        ema_s = self._ema(closes, self.ema_slow)
-
-        mode = None
-
-        # --- Mode 1: Trend Pullback (UP trend with EMA alignment) ---
-        if ema_f is not None and ema_s is not None and ema_f > ema_s:
-            # Price has pulled back to near or below fast EMA
-            pct_from_ema = (bar.close - ema_f) / ema_f
-            if -self.pullback_pct <= pct_from_ema <= 0.005:
-                mode = "TREND_PULLBACK"
-
-        # --- Mode 2: Mean Reversion (FLAT trend, IBS + down days) ---
-        if mode is None and trend == "FLAT":
-            bar_range = bar.high - bar.low
-            if bar_range > 1e-9:
-                ibs = (bar.close - bar.low) / bar_range
-                if ibs < self.ibs_threshold:
-                    # Check consecutive down days
-                    if len(closes) >= self.min_down_days + 1:
-                        all_down = True
-                        for i in range(1, self.min_down_days + 1):
-                            if closes[-i] >= closes[-i - 1]:
-                                all_down = False
-                                break
-                        if all_down:
-                            mode = "MEAN_REVERSION"
-
-        if mode is None:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -163,10 +128,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": mode,
+                "ibs": round(ibs, 3),
+                "down_days": self.min_down_days,
                 "atr": round(atr, 4),
-                "trend": trend,
-                "vol": vol,
+                "vol_regime": vol,
                 "dd": round(dd, 4),
             },
         )
