@@ -1,9 +1,9 @@
-"""Iteration 11: IBS + Down Days + SMA slope filter.
+"""Iteration 12: IBS + Down Days, wide target for better R:R.
 
 Buy after 2+ consecutive down closes when IBS is low.
 Skip HIGH/SHOCK vol. Skip Monday, near_earnings.
-SMA(20) must be rising (current > 5 bars ago) — ensures uptrend context.
 Volume confirmation. Drawdown 10%.
+Wide target (3.0 ATR) for favorable R:R even at lower win rates.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -35,17 +35,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        # SMA slope filter
-        self.sma_period = int(config.get("sma_period", 20))
-        self.sma_slope_lookback = int(config.get("sma_slope_lookback", 5))
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -91,15 +82,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if isinstance(bar_time, datetime):
             if bar_time.weekday() == 0:
                 return None
-
-        # --- SMA slope filter: SMA(20) must be rising ---
-        n = self.sma_period + self.sma_slope_lookback
-        if len(closes) >= n:
-            sma_now = self._sma(closes, self.sma_period)
-            sma_prev = self._sma(closes[: -self.sma_slope_lookback], self.sma_period)
-            if sma_now is not None and sma_prev is not None:
-                if sma_now < sma_prev:
-                    return None  # SMA declining — skip
 
         # --- IBS filter: close must be near the low of the day ---
         bar_range = bar.high - bar.low
