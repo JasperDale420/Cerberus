@@ -1,7 +1,7 @@
-"""Range Expansion Strategy (evolved from vol_breakout seed).
+"""Range Expansion with regime-adaptive filters (evolved from vol_breakout seed).
 
-Buy when daily range expands significantly AND close is strong (near high).
-Uses trend filter and regime awareness for consistency.
+Buy wide-range bars with strong closes. Skip DOWN trend entirely.
+Tighter risk management for consistency.
 """
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
+        self.min_bars = int(config.get("min_bars", 25))
         self.atr_period = int(config.get("atr_period", 14))
-        self.range_expansion_mult = float(config.get("range_expansion_mult", 1.3))
-        self.close_strength_min = float(config.get("close_strength_min", 0.7))
-        self.sma_period = int(config.get("sma_period", 20))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.range_expansion_mult = float(config.get("range_expansion_mult", 1.2))
+        self.close_strength_min = float(config.get("close_strength_min", 0.65))
+        self.momentum_lookback = int(config.get("momentum_lookback", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -43,12 +43,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     def on_bar(
         self,
@@ -67,15 +61,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         if regime_labels.get("regime_vol") == "SHOCK":
             return None
+        # Skip DOWN trend — breakout strategies lose in downtrends
+        if regime_labels.get("regime_trend") == "DOWN":
+            return None
 
         bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
 
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Range expansion: today's range > 1.3x ATR
+        # Range expansion: today's range > 1.2x ATR
         today_range = bar.high - bar.low
         if today_range < 1e-9 or today_range < self.range_expansion_mult * atr:
             return None
@@ -85,9 +81,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if close_position < self.close_strength_min:
             return None
 
-        # Trend filter: close above SMA
-        sma = self._sma(closes, self.sma_period)
-        if sma is None or bar.close <= sma:
+        # Momentum: close above N days ago (short-term upward movement)
+        if len(bars) < self.momentum_lookback + 1:
+            return None
+        past_close = bars[-(self.momentum_lookback + 1)].close
+        if bar.close <= past_close:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -105,7 +103,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "range_expansion": round(today_range / atr, 2),
                 "close_strength": round(close_position, 2),
-                "sma": round(sma, 2),
+                "momentum": round((bar.close - past_close) / past_close * 100, 2),
                 "seed": "vol_breakout",
             },
         )
