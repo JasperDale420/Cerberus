@@ -116,6 +116,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False):
             return None
 
+        # Skip DOWN regime — this strategy buys pullbacks in uptrends
+        regime_trend = labels.get("regime_trend", "")
+        if regime_trend == "DOWN":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
@@ -130,9 +135,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
-        # Trend: SMA(50) must be rising
+        # Trend: price > SMA(50) AND SMA(50) must be rising
         sma50 = self._sma(closes, self.sma_period)
-        if sma50 is None:
+        if sma50 is None or bar.close <= sma50:
             return None
         sma50_prev = (
             self._sma(closes[: -self.sma_slope_period], self.sma_period)
