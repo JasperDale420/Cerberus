@@ -1,10 +1,10 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN regime.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
 
-Iter16 showed SMA(20) gives 9 windows / 1012 trades (great coverage)
-but DOWN regime windows (PF 0.40, 0.77) destroy min PF.
-Fix: skip DOWN regime entirely. FLAT (56% WR) and UP are profitable.
+Iter17: min PF 0.66. Window 0 (FLAT, WR 39%) is the problem.
+Fix: require 2 consecutive down days (not just 1) for stronger oversold.
+Lock all params for CV stability. Tighter entry = higher WR.
 
-Entry: close > SMA(20) AND IBS < threshold AND 1 down day.
+Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
 Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
@@ -33,7 +33,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.sma_period = int(config.get("sma_period", 20))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_mult = float(config.get("atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -116,8 +117,14 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if ibs is None or ibs >= self.ibs_threshold:
             return None
 
-        # At least 1 down day
-        if len(closes) >= 2 and closes[-1] >= closes[-2]:
+        # Consecutive down days filter
+        consec = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                consec += 1
+            else:
+                break
+        if consec < self.consec_down_days:
             return None
 
         # ATR for symmetric stop and target
