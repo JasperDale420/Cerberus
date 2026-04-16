@@ -45,7 +45,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_drop_atr = float(config.get("min_drop_atr", 0.8))
         self.max_drop_atr = float(config.get("max_drop_atr", 3.5))
         # Max ATR/price ratio (skip extremely volatile names)
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.035))
+        # Recent high check: stock must be within X% of 20-day high
+        self.max_dist_from_high_pct = float(config.get("max_dist_from_high_pct", 0.10))
         # Volume
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.5))
@@ -106,14 +108,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK
+        # Skip SHOCK and HIGH volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
         # Event filter
         labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False):
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
@@ -149,6 +151,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # RSI(2) oversold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
+            return None
+
+        # Recent high check — stock was near 20-day high recently (confirms uptrend)
+        recent_high = max(closes[-20:]) if len(closes) >= 20 else max(closes)
+        dist_from_high = (recent_high - bar.close) / recent_high
+        if dist_from_high > self.max_dist_from_high_pct:
             return None
 
         # Drop magnitude: cumulative drop over consec_down_days in ATR units
