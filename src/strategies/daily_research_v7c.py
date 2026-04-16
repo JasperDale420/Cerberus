@@ -1,7 +1,7 @@
-"""Wide-Range Bar Continuation (evolved from vol_breakout seed).
+"""Contraction-Expansion Breakout (evolved from vol_breakout seed).
 
-Buy after wide-range up bars (volatility expansion with bullish close).
-Zero tunable params — structural edge must work across all regimes.
+Buy when volatility contracts (narrow range days) then expands with a strong close.
+Classic squeeze setup — captures the start of new moves.
 """
 
 from __future__ import annotations
@@ -67,33 +67,44 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # ATR(14) for volatility reference
         atr = self._atr(bars, 14)
         if atr is None or atr < 1e-9:
             return None
 
-        # Wide range bar: today's range > 1.3x ATR
-        today_range = bar.high - bar.low
-        if today_range < 1e-9 or today_range < 1.3 * atr:
+        # --- Contraction check: at least 2 of last 3 bars had narrow range (<0.8x ATR) ---
+        if len(bars) < 5:
+            return None
+        narrow_count = 0
+        for i in range(-4, -1):
+            b = bars[i]
+            prev_c = bars[i - 1].close
+            tr = max(b.high - b.low, abs(b.high - prev_c), abs(b.low - prev_c))
+            if tr < 0.8 * atr:
+                narrow_count += 1
+        if narrow_count < 2:
             return None
 
-        # Close strength: close in top 30% of today's range
+        # --- Expansion: today's range > 1.2x ATR ---
+        today_range = bar.high - bar.low
+        if today_range < 1e-9 or today_range < 1.2 * atr:
+            return None
+
+        # Close strength: close in upper 30% of range
         close_position = (bar.close - bar.low) / today_range
         if close_position < 0.7:
             return None
 
-        # Up day: close above previous close
-        prev_close = bars[-2].close
-        if bar.close <= prev_close:
+        # Up day
+        if bar.close <= bars[-2].close:
             return None
 
-        # Trend: close above SMA(20)
+        # Trend: above SMA(20)
         sma20 = self._sma(closes, 20)
         if sma20 is None or bar.close <= sma20:
             return None
 
-        # Anti-exhaustion: don't buy if close > 3 ATR above SMA(20)
-        if bar.close > sma20 + 3.0 * atr:
+        # Anti-exhaustion
+        if bar.close > sma20 + 2.5 * atr:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -111,6 +122,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "range_mult": round(today_range / atr, 2),
                 "close_pos": round(close_position, 2),
+                "narrow_days": narrow_count,
                 "seed": "vol_breakout",
             },
         )
