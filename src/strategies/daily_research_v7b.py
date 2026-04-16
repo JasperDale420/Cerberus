@@ -2,8 +2,8 @@
 
 UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
 FLAT/DOWN regime: buy only extreme BB lower band touches with very low IBS.
-ATR/price vol filter + realized vol gate. Skip earnings/FOMC events.
-Long-only, daily bars.
+ATR/price vol filter + realized vol gate to avoid high-vol disaster.
+Skip Thu/Fri entries. Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -47,8 +47,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
         # Realized vol hard gate (SPY 30d realized vol)
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
-        # Max stop as pct of price — cap outsized losses
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -134,12 +132,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
             return None
 
-        # Skip earnings and FOMC events
-        labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False):
-            return None
-        if labels.get("near_fomc", False):
-            return None
+        # Skip Thursday/Friday entries — data consistently shows losses
+        t = bar.time
+        if hasattr(t, "weekday"):
+            dow = t.weekday()
+            if dow >= 3:  # Thursday=3, Friday=4
+                return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -160,6 +158,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         ibs = self._ibs(bar)
 
         # Get regime
+        labels = symbol_state.meta.get("regime_labels", {})
         trend = labels.get("regime_trend", "FLAT")
 
         # Mode 1: Trend pullback (UP regime)
@@ -168,12 +167,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         # Mode 2: Mean reversion (FLAT or DOWN) — stricter filters
         return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state)
-
-    def _capped_stop(self, price: float, atr: float) -> float:
-        raw_stop_dist = self.stop_atr_mult * atr
-        max_stop_dist = price * self.max_stop_pct
-        stop_dist = min(raw_stop_dist, max_stop_dist)
-        return price - stop_dist
 
     def _trend_pullback_signal(
         self,
@@ -203,7 +196,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if ibs > self.ibs_entry_threshold:
             return None
 
-        stop = self._capped_stop(bar.close, atr)
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -245,7 +238,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if len(closes) >= 3 and not (closes[-1] < closes[-2] < closes[-3]):
             return None
 
-        stop = self._capped_stop(bar.close, atr)
+        stop = bar.close - self.stop_atr_mult * atr
         target = bb_mean  # Target the mean
 
         self.last_signal_time[symbol] = bar.time
