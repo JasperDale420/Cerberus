@@ -25,6 +25,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 25))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -94,9 +96,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close > sma20 + 3.0 * atr:
             return None
 
-        # Fixed R:R — stop 1 ATR, target 2 ATR
-        stop = bar.close - 1.0 * atr
-        target = bar.close + 2.0 * atr
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
