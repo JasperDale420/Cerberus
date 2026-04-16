@@ -1,9 +1,8 @@
-"""Consecutive-Down Bounce with ATR Volatility Filter.
+"""Consecutive-Down Bounce with Tight Vol + Trend Filter.
 
-Simple, robust entry: buy after N consecutive down closes with low IBS.
-Direct ATR/price vol filter replaces unreliable regime labels.
-Skips DOWN trend. Tight stop, wide target for positive asymmetry.
-Long-only, daily bars.
+Buy after N consecutive down closes with low IBS.
+Tight ATR/price vol filter (2.5%) + rising SMA trend guard.
+BB mean as target for natural reversion. Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -29,12 +28,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Entry filters
         self.consec_down_days = int(config.get("consec_down_days", 3))
         self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
-        # ATR-based volatility filter (skip high-vol environments)
+        # ATR-based volatility filter
         self.atr_period = int(config.get("atr_period", 14))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.035))  # max ATR/price ratio
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.025))
+        # BB for target calculation
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
         # Risk management
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
         # SMA trend filter
         self.sma_period = int(config.get("sma_period", 50))
@@ -75,6 +76,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 return False
         return True
 
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        data = values[-period:]
+        mean = sum(data) / period
+        variance = sum((x - mean) ** 2 for x in data) / period
+        return variance**0.5
+
     def on_bar(
         self,
         symbol: str,
@@ -95,7 +105,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- ATR-based vol filter (direct, doesn't rely on regime labels) ---
+        # --- Tight ATR-based vol filter ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
@@ -103,10 +113,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
-        # --- Trend filter: price above SMA (skip deep downtrends) ---
+        # --- SMA trend filter: price not too far below SMA ---
         sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma * 0.95:
-            return None  # More than 5% below SMA — deep downtrend, skip
+        if sma is not None and bar.close < sma * 0.93:
+            return None
+
+        # --- Also check SMA is not in steep decline ---
+        if sma is not None and len(closes) >= self.sma_period + 5:
+            sma_5ago = self._sma(closes[:-5], self.sma_period)
+            if sma_5ago is not None and sma < sma_5ago * 0.98:
+                return None  # SMA declining > 2% over 5 bars — bearish
 
         # --- Entry Condition 1: Consecutive down closes ---
         if not self._consec_down(closes, self.consec_down_days):
@@ -117,9 +133,18 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if ibs > self.ibs_entry_threshold:
             return None
 
-        # --- Risk Management ---
+        # --- Target: BB mean (natural reversion target) ---
+        bb_mean = self._sma(closes, self.bb_period)
+        if bb_mean is None:
+            return None
+
+        # Only take trade if there's enough upside to BB mean
+        upside = bb_mean - bar.close
+        if upside < atr * 0.5:
+            return None  # Not enough upside to mean
+
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        target = bb_mean  # Revert to mean
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -130,9 +155,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "consec_down_bounce",
+                "mode": "consec_down_to_mean",
                 "ibs": round(ibs, 2),
                 "consec_down": self.consec_down_days,
                 "atr_pct": round(atr_pct, 4),
+                "upside_atr": round(upside / atr, 2),
             },
         )
