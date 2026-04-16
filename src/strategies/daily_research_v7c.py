@@ -26,15 +26,15 @@ class SeedVolBreakoutStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 25))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.15))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_avg_period = int(config.get("atr_avg_period", 20))
-        self.max_atr_expansion = float(config.get("max_atr_expansion", 2.0))
+        self.max_atr_expansion = float(config.get("max_atr_expansion", 1.8))
         self.ema_period = int(config.get("ema_period", 20))
         self.ema_slow_period = int(config.get("ema_slow_period", 50))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 0.75))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
 
     # --- Indicator helpers ---
 
@@ -130,8 +130,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema_fast is None or ema_slow is None:
             return None
 
-        # Require either uptrend (EMA alignment) or price above slow EMA
-        if ema_fast < ema_slow and bar.close < ema_slow:
+        # Require EMA alignment (uptrend) — strict filter
+        if ema_fast <= ema_slow:
             return None
 
         # Stop and target
