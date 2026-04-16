@@ -61,7 +61,12 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
-        if regime_labels.get("regime_vol") == "SHOCK":
+        regime_vol = regime_labels.get("regime_vol", "")
+        regime_trend = regime_labels.get("regime_trend", "")
+        if regime_vol == "SHOCK":
+            return None
+        # Skip DOWN+HIGH — breakouts fail in volatile downtrends
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
