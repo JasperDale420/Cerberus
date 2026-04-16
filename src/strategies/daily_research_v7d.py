@@ -1,13 +1,12 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN/HIGH.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
 
-Iter18: min PF 0.88 with symmetric 1.5 ATR (best multi-window).
-Iter19/20: wider ATR and asymmetric both worse.
-Back to symmetric 1.5 ATR. Add: skip HIGH vol entirely +
-max_stop_pct 3% cap to prevent wide stops in volatile periods.
+Iter18 base (min PF 0.88). Add: cap ATR/price at 5% to exclude
+extremely volatile stocks (COIN, SOFI) that create outsized losses.
+Also exclude known high-vol single stocks.
 
 Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = target = 1.5 ATR (capped at 3% of price). Min price $5.
-Skip DOWN regime AND HIGH vol. Exclude leveraged ETFs.
+Stop = target = 1.5 ATR (symmetric). ATR/price 0.5%-5%.
+Skip DOWN regime entirely. Exclude leveraged ETFs + high-vol stocks.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -19,7 +18,7 @@ from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, Vo
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
-_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD"}
+_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD", "COIN", "SOFI"}
 
 
 class dailyresearchv7dStrategy(BaseStrategy):
@@ -38,7 +37,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_mult = float(config.get("atr_mult", 1.5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -93,12 +91,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip DOWN regime and HIGH vol
+        # Skip entire DOWN regime (iter16: DOWN windows PF 0.40-0.77)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
         if regime_trend == "DOWN":
-            return None
-        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
@@ -136,16 +132,14 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR/price filter: skip dead stocks
-        if atr / bar.close < 0.005:
+        # ATR/price filter: skip dead stocks AND ultra-volatile ones
+        atr_pct = atr / bar.close
+        if atr_pct < 0.005 or atr_pct > 0.05:
             return None
 
-        # Symmetric stop and target (capped at max_stop_pct)
-        atr_dist = self.atr_mult * atr
-        max_dist = bar.close * self.max_stop_pct
-        dist = min(atr_dist, max_dist)
-        stop = bar.close - dist
-        target = bar.close + dist
+        # Symmetric stop and target
+        stop = bar.close - self.atr_mult * atr
+        target = bar.close + self.atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -160,7 +154,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
                 "sma20": round(sma, 2),
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
-                "atr_pct": round(atr / bar.close, 4),
+                "atr_pct": round(atr_pct, 4),
                 "seed": "ibs_symmetric_rr",
             },
         )

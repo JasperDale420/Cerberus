@@ -107,7 +107,6 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "atr_period": 14,
         "sma_period": 20,
         "atr_mult": 1.5,
-        "max_stop_pct": 0.03,
         "ibs_threshold": 0.25,
         "consec_down_days": 2,
     },
