@@ -1,8 +1,9 @@
-"""Iteration 13: IBS + Down Days, no volume filter, more trades.
+"""Iteration 14: IBS + Down Days — iter7 base with stop at optimizer optimal.
 
 Buy after 2+ consecutive down closes when IBS is low.
 Skip HIGH/SHOCK vol. Skip Monday, near_earnings.
-Drawdown 10%. No volume filter (maximize trade count for stable PFs).
+Volume filter. Drawdown 10%.
+Stop at 1.0 ATR (optimizer's consistent choice), target 2.0 ATR.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -29,10 +30,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.min_down_days = int(config.get("min_down_days", 2))
+        self.vol_mult = float(config.get("vol_mult", 0.8))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.3))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -63,6 +65,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
+        volumes = [b.volume for b in bars]
 
         # --- Regime filter: skip HIGH and SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
@@ -93,6 +96,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
         for i in range(1, self.min_down_days + 1):
             if closes[-i] >= closes[-i - 1]:
+                return None
+
+        # --- Volume filter ---
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume < self.vol_mult * avg_vol:
                 return None
 
         # --- Drawdown filter ---
