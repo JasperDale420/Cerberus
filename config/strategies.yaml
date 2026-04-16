@@ -318,11 +318,7 @@ strategies:
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
-    kc_ema_period: 20
-    kc_atr_period: 14
-    kc_atr_mult: 2.0
-    ibs_threshold: 0.3
-    trend_sma_period: 50
+    ibs_threshold: 0.35
     min_down_days: 2
     atr_period: 14
     stop_atr_mult: 2.0
