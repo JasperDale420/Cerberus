@@ -1,7 +1,7 @@
 """Keltner Channel Pullback — buy dips to lower Keltner band in uptrends.
 
 Entry: price pulls back near lower Keltner Channel while longer-term trend intact.
-Dual trend filter: regime labels + price vs SMA50.
+Market-level filter via regime_snapshot (SPY trend/vol). Stock-level EMA alignment.
 Target: EMA midline. Stop: ATR-based below entry.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -29,9 +29,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.ema_slow_period = int(config.get("ema_slow_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         self.keltner_mult = float(config.get("keltner_mult", 2.0))
-        self.pullback_zone = float(config.get("pullback_zone", 0.5))
+        self.pullback_zone = float(config.get("pullback_zone", 0.6))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
 
     # --- Indicator helpers ---
 
@@ -80,14 +81,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_earnings"):
             return None
 
-        # Skip SHOCK volatility
-        regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
-            return None
+        # Market-level regime filter via regime_snapshot (aligns with WFO window classification)
+        snapshot = market_state.regime_snapshot
+        if snapshot is not None:
+            # Skip DOWN market trend
+            if snapshot.trend == TrendRegime.DOWN:
+                return None
+            # Skip SHOCK and HIGH market volatility
+            if snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+                return None
 
-        # Skip DOWN trend via regime labels
-        regime_trend = regime_labels.get("regime_trend", "FLAT")
-        if regime_trend == "DOWN":
+        # Also check realized_vol as backup (skip when SPY vol > 25%)
+        if market_state.realized_vol is not None and market_state.realized_vol > self.max_realized_vol:
             return None
 
         bars = list(symbol_state.bars)
@@ -101,19 +106,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ema_fast is None or ema_slow is None or atr is None or atr < 1e-9:
             return None
 
-        # Trend confirmation: fast EMA above slow EMA
+        # Stock-level trend confirmation: fast EMA above slow EMA
         if ema_fast <= ema_slow:
-            return None
-
-        # Additional trend check: price above SMA(50) — catches lagging regime labels
-        sma50 = self._sma(closes, self.ema_slow_period)
-        if sma50 is None or bar.close < sma50:
             return None
 
         # Keltner Channel pullback zone
         pullback_threshold = ema_fast - self.pullback_zone * self.keltner_mult * atr
 
-        # Entry: price pulled back near or below lower Keltner band
+        # Entry: price pulled back into lower portion of Keltner channel
         if bar.close > pullback_threshold:
             return None
 
@@ -122,7 +122,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close < safety_floor:
             return None
 
-        # Stop below the pullback low, target the EMA midline
+        # Stop below entry, target the EMA midline
         stop = bar.close - self.stop_atr_mult * atr
         target = ema_fast  # mean reversion target
 
