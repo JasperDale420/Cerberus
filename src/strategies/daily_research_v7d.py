@@ -1,12 +1,13 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
+"""IBS Trend Pullback — symmetric RR + SMA(50) + skip DOWN + 2 down days.
 
-Iter18 base (min PF 0.88). Add: cap ATR/price at 5% to exclude
-extremely volatile stocks (COIN, SOFI) that create outsized losses.
-Also exclude known high-vol single stocks.
+Combining best elements:
+- Iter14: SMA(50) + symmetric 1.5 ATR → PF 1.16 (1 window)
+- Iter18: 2 down days + skip DOWN + SMA(20) → PF 0.88 (6 windows)
+SMA(50) is better trend filter than SMA(20) but needs min_bars=55.
 
-Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = target = 1.5 ATR (symmetric). ATR/price 0.5%-5%.
-Skip DOWN regime entirely. Exclude leveraged ETFs + high-vol stocks.
+Entry: close > SMA(50) AND IBS < 0.25 AND 2 consecutive down days.
+Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
+Skip DOWN regime entirely. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -18,7 +19,7 @@ from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, Vo
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
-_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD", "COIN", "SOFI"}
+_EXCLUDED = {"VXX", "UVXY", "SQQQ", "TQQQ", "SPXU", "SPXS", "SDOW", "LABU", "LABD"}
 
 
 class dailyresearchv7dStrategy(BaseStrategy):
@@ -32,7 +33,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.sma_period = int(config.get("sma_period", 50))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
@@ -107,7 +108,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(20)
+        # Trend filter: close must be above SMA(50)
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close <= sma:
             return None
@@ -132,9 +133,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR/price filter: skip dead stocks AND ultra-volatile ones
-        atr_pct = atr / bar.close
-        if atr_pct < 0.005 or atr_pct > 0.05:
+        # ATR/price filter: skip dead stocks
+        if atr / bar.close < 0.005:
             return None
 
         # Symmetric stop and target
@@ -154,7 +154,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
                 "sma20": round(sma, 2),
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
-                "atr_pct": round(atr_pct, 4),
+                "atr_pct": round(atr / bar.close, 4),
                 "seed": "ibs_symmetric_rr",
             },
         )
