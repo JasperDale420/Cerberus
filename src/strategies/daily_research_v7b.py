@@ -46,6 +46,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.max_drop_atr = float(config.get("max_drop_atr", 3.5))
         # Max ATR/price ratio (skip extremely volatile names)
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        # Max drawdown from recent high (skip crash scenarios)
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         # Volume
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.5))
@@ -116,11 +119,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False):
             return None
 
-        # Skip DOWN regime — this strategy buys pullbacks in uptrends
-        regime_trend = labels.get("regime_trend", "")
-        if regime_trend == "DOWN":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
@@ -135,9 +133,17 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr_pct > self.max_atr_pct:
             return None
 
-        # Trend: price > SMA(50) AND SMA(50) must be rising
+        # Drawdown filter: skip if stock is in crash (>X% below recent high)
+        lookback = min(self.drawdown_lookback, len(closes))
+        if lookback >= 5:
+            recent_high = max(closes[-lookback:])
+            drawdown = (recent_high - bar.close) / recent_high
+            if drawdown > self.max_drawdown_pct:
+                return None
+
+        # Trend: SMA(50) must be rising
         sma50 = self._sma(closes, self.sma_period)
-        if sma50 is None or bar.close <= sma50:
+        if sma50 is None:
             return None
         sma50_prev = (
             self._sma(closes[: -self.sma_slope_period], self.sma_period)
@@ -154,6 +160,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # RSI(2) oversold
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
+            return None
+
+        # Green candle: entry day shows buying pressure (reversal confirmation)
+        if bar.close <= bar.open:
             return None
 
         # Drop magnitude: cumulative drop over consec_down_days in ATR units
