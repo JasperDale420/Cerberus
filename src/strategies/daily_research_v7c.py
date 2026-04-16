@@ -32,8 +32,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.max_atr_expansion = float(config.get("max_atr_expansion", 1.8))
         self.ema_period = int(config.get("ema_period", 20))
         self.ema_slow_period = int(config.get("ema_slow_period", 50))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 0.75))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 0.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
 
     # --- Indicator helpers ---
