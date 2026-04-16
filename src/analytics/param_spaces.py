@@ -107,7 +107,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "rsi_period": 2,
         "atr_period": 14,
         "stop_atr_mult": 1.5,
-        "max_stop_pct": 0.02,
+        "max_stop_pct": 0.015,
     },
 }
 
@@ -237,7 +237,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("consec_down_days", "int", low=2, high=3, step=1, description="Consecutive down days"),
         ParamDef("rsi_max", "float", low=10.0, high=20.0, step=2.0, description="RSI(2) oversold threshold"),
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
-        ParamDef("max_hold_days", "int", low=3, high=7, step=1, description="Max hold days"),
+        ParamDef("max_atr_pct", "float", low=0.02, high=0.04, step=0.005, description="Max ATR/price ratio"),
     ],
 }
 
