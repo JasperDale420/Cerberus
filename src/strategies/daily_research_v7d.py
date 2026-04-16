@@ -1,11 +1,11 @@
-"""IBS Trend Pullback — symmetric RR + permissive SMA(200) filter.
+"""IBS Trend Pullback — symmetric RR + fast SMA(20) filter.
 
 Symmetric stop/target (1.5 ATR) proven PF 1.16 in iter14.
-Switch SMA(50) → SMA(200) for more permissive trend filter.
-SMA(200) only excludes severe bear markets, generates signals
-across more WFO windows while maintaining uptrend bias.
+SMA(50) too restrictive — only 1 WFO window got trades.
+SMA(20) is fast enough to stay above in most windows while
+still filtering obvious downtrends.
 
-Entry: close > SMA(200) AND IBS < threshold AND 1 down day.
+Entry: close > SMA(20) AND IBS < threshold AND 1 down day.
 Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
 Skip DOWN+HIGH vol combo. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
@@ -33,7 +33,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_period = int(config.get("sma_period", 200))
+        self.sma_period = int(config.get("sma_period", 20))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_mult = float(config.get("atr_mult", 1.5))
@@ -107,7 +107,7 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if bar.close < 5.0:
             return None
 
-        # Trend filter: close must be above SMA(200)
+        # Trend filter: close must be above SMA(20)
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close <= sma:
             return None
