@@ -1,18 +1,16 @@
-"""Dual-Mode Regime-Adaptive with SPY-Level Gating.
+"""Multi-Day Selloff Recovery — buy after N consecutive down days.
 
-Uses market_state.regime_snapshot (SPY-level) for regime decisions, not stock-level labels.
-UP regime: buy ATR-normalized pullbacks to EMA(21) with low IBS timing.
-FLAT regime: buy extreme BB lower band touches with very low IBS.
-DOWN regime: skip most trades, only take extreme mean reversion with very strict filters.
-ATR/price vol filter + realized vol gate. Skip Friday entries.
-Long-only, daily bars.
+Core logic: stocks that close lower for 2+ days with low IBS (near day's low)
+tend to bounce. Filter with SMA trend support and ATR vol gate.
+Single unified entry across all regimes, no mode switching.
+Tighter filters in high realized vol. Long-only, daily bars.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -28,64 +26,28 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Trend mode params
-        self.ema_period = int(config.get("ema_period", 21))
-        self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
-        self.pullback_atr_max = float(config.get("pullback_atr_max", 1.5))
-        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.35))
-        # Mean reversion mode params
-        self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
-        # Shared params
+        # Consecutive down days
+        self.min_down_days = int(config.get("min_down_days", 2))
+        # IBS threshold
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        # Trend support — price must be above SMA(N)
+        self.sma_period = int(config.get("sma_period", 50))
+        # ATR params
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_max = float(config.get("rsi_max", 65.0))
-        # Vol filter
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Vol filters
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        # Realized vol hard gate (SPY 30d realized vol)
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
-        # Consecutive down days required for DOWN regime mean reversion
-        self.min_down_days_extreme = int(config.get("min_down_days_extreme", 3))
-
-    # --- Indicator helpers ---
+        # Max stop as pct of price
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -100,29 +62,20 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        data = values[-period:]
-        mean = sum(data) / period
-        variance = sum((x - mean) ** 2 for x in data) / period
-        return variance**0.5
-
-    @staticmethod
     def _ibs(bar: Bar) -> float:
         rng = bar.high - bar.low
         if rng < 1e-9:
             return 0.5
         return (bar.close - bar.low) / rng
 
-    def _get_spy_trend(self, market_state: MarketState) -> str:
-        snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.trend:
-            if snapshot.trend == TrendRegime.UP:
-                return "UP"
-            elif snapshot.trend == TrendRegime.DOWN:
-                return "DOWN"
-        return "FLAT"
+    @staticmethod
+    def _consecutive_down(closes: list[float], n: int) -> bool:
+        if len(closes) < n + 1:
+            return False
+        for i in range(1, n + 1):
+            if closes[-i] >= closes[-i - 1]:
+                return False
+        return True
 
     def on_bar(
         self,
@@ -145,11 +98,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
             return None
 
-        # Skip Friday entries — data shows consistent losses
-        t = bar.time
-        if hasattr(t, "weekday") and t.weekday() == 4:
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -157,60 +105,28 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
-        atr_pct = atr / bar.close
-        if atr_pct > self.max_atr_pct:
+        if atr / bar.close > self.max_atr_pct:
             return None
 
-        # RSI filter — not overbought
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > self.rsi_max:
+        # Core signal: consecutive down days
+        if not self._consecutive_down(closes, self.min_down_days):
             return None
 
+        # IBS — close near the low (potential exhaustion)
         ibs = self._ibs(bar)
-
-        # Use SPY-level trend for regime decisions (matches harness window assignment)
-        spy_trend = self._get_spy_trend(market_state)
-
-        # Mode 1: Trend pullback (SPY UP)
-        if spy_trend == "UP":
-            return self._trend_pullback_signal(symbol, bar, closes, atr, ibs, market_state)
-
-        # Mode 2: Mean reversion (SPY FLAT) — normal strictness
-        if spy_trend == "FLAT":
-            return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state, strict=False)
-
-        # Mode 3: Extreme mean reversion (SPY DOWN) — very strict
-        return self._mean_reversion_signal(symbol, bar, closes, atr, ibs, market_state, strict=True)
-
-    def _trend_pullback_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        closes: list[float],
-        atr: float,
-        ibs: float,
-        market_state: MarketState,
-    ) -> Optional[Signal]:
-        ema = self._ema(closes, self.ema_period)
-        sma_slow = self._sma(closes, self.sma_slow_period)
-        if ema is None or sma_slow is None:
+        if ibs > self.ibs_threshold:
             return None
 
-        # Trend confirmation: EMA > SMA(50) and price > SMA(50)
-        if ema <= sma_slow or bar.close <= sma_slow:
+        # Trend support — price above SMA for long-term support
+        sma = self._sma(closes, self.sma_period)
+        if sma is not None and bar.close < sma:
             return None
 
-        # ATR-normalized pullback
-        dist = ema - bar.close
-        dist_atr = dist / atr
-        if dist_atr < self.pullback_atr_min or dist_atr > self.pullback_atr_max:
-            return None
-
-        # IBS filter
-        if ibs > self.ibs_entry_threshold:
-            return None
-
-        stop = bar.close - self.stop_atr_mult * atr
+        # Stop and target with cap
+        raw_stop_dist = self.stop_atr_mult * atr
+        max_stop_dist = bar.close * self.max_stop_pct
+        stop_dist = min(raw_stop_dist, max_stop_dist)
+        stop = bar.close - stop_dist
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -221,61 +137,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             market_state,
             stop_price=stop,
             target_price=target,
-            meta={"mode": "trend_pullback", "dist_atr": round(dist_atr, 2), "ibs": round(ibs, 2)},
-        )
-
-    def _mean_reversion_signal(
-        self,
-        symbol: str,
-        bar: Bar,
-        closes: list[float],
-        atr: float,
-        ibs: float,
-        market_state: MarketState,
-        strict: bool = False,
-    ) -> Optional[Signal]:
-        bb_mean = self._sma(closes, self.bb_period)
-        bb_std = self._std(closes, self.bb_period)
-        if bb_mean is None or bb_std is None or bb_std < 1e-9:
-            return None
-
-        lower_band = bb_mean - self.bb_std * bb_std
-
-        # Price at or below lower band
-        if bar.close > lower_band:
-            return None
-
-        # IBS filter
-        if ibs > self.mr_ibs_threshold:
-            return None
-
-        # Consecutive down days requirement
-        min_down = self.min_down_days_extreme if strict else 2
-        if len(closes) >= min_down + 1:
-            for i in range(1, min_down + 1):
-                if closes[-i] >= closes[-i - 1]:
-                    return None
-
-        # In strict mode (DOWN), require deeper oversold — price must be below lower band by at least 0.5 ATR
-        if strict:
-            depth = (lower_band - bar.close) / atr
-            if depth < 0.3:
-                return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bb_mean  # Target the mean
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
             meta={
-                "mode": "mean_reversion_strict" if strict else "mean_reversion",
+                "mode": "selloff_recovery",
+                "down_days": self.min_down_days,
                 "ibs": round(ibs, 2),
-                "z_score": round((bar.close - bb_mean) / bb_std, 2),
             },
         )
