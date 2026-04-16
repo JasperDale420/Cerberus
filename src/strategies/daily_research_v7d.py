@@ -1,13 +1,13 @@
-"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN + 2 down days.
+"""IBS Trend Pullback — symmetric RR + SMA(20) + skip DOWN/HIGH.
 
-Iter18: min PF 0.88 (best yet across multiple windows).
-Iter19: ATR 1.6 + min price $10 made it worse (0.60).
-Revert to iter18 params. Add asymmetric target (2.0 ATR) while
-keeping stop at 1.5 ATR — reward:risk 1.33:1 to boost PF.
+Iter18: min PF 0.88 with symmetric 1.5 ATR (best multi-window).
+Iter19/20: wider ATR and asymmetric both worse.
+Back to symmetric 1.5 ATR. Add: skip HIGH vol entirely +
+max_stop_pct 3% cap to prevent wide stops in volatile periods.
 
 Entry: close > SMA(20) AND IBS < 0.25 AND 2 consecutive down days.
-Stop = 1.5 ATR, target = 2.0 ATR. Min price $5.
-Skip DOWN regime entirely. Exclude leveraged ETFs.
+Stop = target = 1.5 ATR (capped at 3% of price). Min price $5.
+Skip DOWN regime AND HIGH vol. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -37,8 +37,8 @@ class dailyresearchv7dStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.consec_down_days = int(config.get("consec_down_days", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.atr_mult = float(config.get("atr_mult", 1.5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -93,10 +93,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip entire DOWN regime (iter16: DOWN windows PF 0.40-0.77)
+        # Skip DOWN regime and HIGH vol
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
         if regime_trend == "DOWN":
+            return None
+        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
@@ -138,9 +140,12 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if atr / bar.close < 0.005:
             return None
 
-        # Asymmetric: tight stop, wider target (1.33:1 RR)
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Symmetric stop and target (capped at max_stop_pct)
+        atr_dist = self.atr_mult * atr
+        max_dist = bar.close * self.max_stop_pct
+        dist = min(atr_dist, max_dist)
+        stop = bar.close - dist
+        target = bar.close + dist
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
