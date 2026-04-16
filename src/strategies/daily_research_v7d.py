@@ -159,7 +159,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         bar_range = bar.high - bar.low
         if bar_range > 1e-9:
             ibs = (bar.close - bar.low) / bar_range
-            if ibs > 0.45:
+            if ibs > 0.4:
                 return None
 
         # Stop and target
