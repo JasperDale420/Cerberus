@@ -31,9 +31,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # IBS threshold
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         # Trend support — price must be above SMA(N)
-        self.sma_period = int(config.get("sma_period", 40))
-        # SMA slope lookback — SMA must not be falling
-        self.sma_slope_lookback = int(config.get("sma_slope_lookback", 5))
+        self.sma_period = int(config.get("sma_period", 50))
         # ATR params
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -119,16 +117,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if ibs > self.ibs_threshold:
             return None
 
-        # Trend support — price above SMA
+        # Trend support — price above SMA for long-term support
         sma = self._sma(closes, self.sma_period)
         if sma is not None and bar.close < sma:
             return None
-
-        # SMA slope filter — SMA must be flat or rising (not in freefall)
-        if sma is not None and len(closes) >= self.sma_period + self.sma_slope_lookback:
-            sma_prev = self._sma(closes[: -self.sma_slope_lookback], self.sma_period)
-            if sma_prev is not None and sma < sma_prev * 0.99:
-                return None
 
         # Stop and target with cap
         raw_stop_dist = self.stop_atr_mult * atr
