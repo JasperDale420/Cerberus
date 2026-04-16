@@ -82,14 +82,13 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     # v7 seed archetypes
     "daily_research_v7a": {
-        "min_down_days": 2,
-        "trend_period": 50,
-        "max_drawdown_pct": 0.12,
-        "drawdown_lookback": 40,
-        "max_hold_days": 5,
+        "breakout_lookback": 10,
         "atr_period": 14,
-        "max_atr_pct": 0.03,
-        "target_atr_mult": 2.0,
+        "vol_avg_period": 20,
+        "max_drawdown_pct": 0.12,
+        "drawdown_lookback": 30,
+        "max_hold_days": 5,
+        "max_atr_pct": 0.04,
     },
     "daily_research_v7b": {
         "atr_period": 14,
@@ -228,8 +227,9 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     # v7 seed archetypes
     "daily_research_v7a": [
-        ParamDef("ibs_threshold", "float", low=0.30, high=0.40, step=0.05, description="IBS entry threshold"),
-        ParamDef("stop_atr_mult", "float", low=1.0, high=1.5, step=0.5, description="ATR stop multiplier"),
+        ParamDef("atr_expansion_mult", "float", low=1.0, high=1.5, step=0.1, description="ATR expansion threshold"),
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target multiplier"),
     ],
     "daily_research_v7b": [
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),

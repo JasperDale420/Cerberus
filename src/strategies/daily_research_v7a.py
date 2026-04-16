@@ -1,8 +1,10 @@
-"""Research v7a: Multi-Factor Mean Reversion — Consecutive Down + IBS.
+"""Research v7a: Volatility Breakout — ATR expansion + N-day high breakout.
 
-Entry: consecutive down closes + low IBS + uptrend context (SMA30).
-Filters: regime, earnings/FOMC, ATR/price, drawdown.
-Exit: ATR-based stop/target, max hold 5 days.
+Entry: price closes above highest high of lookback period,
+       current ATR > expansion_mult * avg ATR (volatility expanding),
+       volume above average (confirmation).
+Filters: regime (skip SHOCK), earnings/FOMC, drawdown.
+Exit: ATR-based trailing stop, max hold days.
 Long-only, daily bars.
 """
 
@@ -26,16 +28,16 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 40))
-        self.min_down_days = int(config.get("min_down_days", 2))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.breakout_lookback = int(config.get("breakout_lookback", 10))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.trend_period = int(config.get("trend_period", 30))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
 
     # --- Indicator helpers ---
 
@@ -58,14 +60,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _consecutive_down(closes: list[float], min_days: int) -> bool:
-        """Check if the last min_days closes were each lower than the prior."""
-        if len(closes) < min_days + 1:
-            return False
-        for i in range(-min_days, 0):
-            if closes[i] >= closes[i - 1]:
-                return False
-        return True
+    def _highest_high(bars: list[Bar], lookback: int) -> Optional[float]:
+        if len(bars) < lookback + 1:
+            return None
+        return max(b.high for b in bars[-(lookback + 1) : -1])
 
     def on_bar(
         self,
@@ -80,7 +78,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
 
         # --- Regime filter: skip SHOCK vol ---
         labels = symbol_state.meta.get("regime_labels", {})
@@ -93,21 +90,43 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # --- Trend context: price must be above SMA ---
-        sma = self._sma(closes, self.trend_period)
-        if sma is None or bar.close < sma:
+        # --- ATR ---
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
-        # --- Consecutive down days ---
-        if not self._consecutive_down(closes, self.min_down_days):
+        # ATR/price filter — skip overly volatile stocks
+        if bar.close > 0 and atr / bar.close > self.max_atr_pct:
             return None
 
-        # --- IBS (Internal Bar Strength): must be low ---
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
+        # --- Volatility expansion: current ATR must be above avg ATR ---
+        avg_atr_bars_needed = self.atr_period + self.vol_avg_period + 1
+        if len(bars) < avg_atr_bars_needed:
             return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_threshold:
+        recent_atrs = []
+        for offset in range(self.vol_avg_period):
+            idx = len(bars) - 1 - offset
+            if idx < self.atr_period + 1:
+                break
+            sub_bars = bars[: idx + 1]
+            a = self._atr(sub_bars, self.atr_period)
+            if a is not None:
+                recent_atrs.append(a)
+        if len(recent_atrs) < self.vol_avg_period:
+            return None
+        avg_atr = sum(recent_atrs) / len(recent_atrs)
+        if avg_atr < 1e-9 or atr < avg_atr * self.atr_expansion_mult:
+            return None
+
+        # --- Price breakout: close above highest high of lookback period ---
+        prev_high = self._highest_high(bars, self.breakout_lookback)
+        if prev_high is None or bar.close <= prev_high:
+            return None
+
+        # --- Volume confirmation: today's volume above 20-day average ---
+        volumes = [b.volume for b in bars]
+        vol_avg = self._sma(volumes, 20)
+        if vol_avg is None or vol_avg < 1 or bar.volume < vol_avg:
             return None
 
         # --- Drawdown filter ---
@@ -116,18 +135,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # --- ATR for stop/target ---
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        # ATR/price volatility filter
-        if bar.close > 0 and atr / bar.close > self.max_atr_pct:
-            return None
-
         stop = bar.close - self.stop_atr_mult * atr
-        # Cap stop loss at 2% of price
-        max_stop_loss = bar.close * 0.02
+        # Cap stop loss at 3% of price for breakout trades
+        max_stop_loss = bar.close * 0.03
         if bar.close - stop > max_stop_loss:
             stop = bar.close - max_stop_loss
         target = bar.close + self.target_atr_mult * atr
@@ -141,10 +151,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ibs": round(ibs, 3),
-                "down_days": self.min_down_days,
                 "atr": round(atr, 4),
+                "atr_expansion": round(atr / avg_atr, 3),
+                "breakout_high": round(prev_high, 2),
+                "vol_ratio": round(bar.volume / vol_avg, 2) if vol_avg else 0,
                 "regime": f"{regime_trend}+{regime_vol}",
-                "seed": "mean_reversion",
+                "seed": "vol_breakout",
             },
         )
