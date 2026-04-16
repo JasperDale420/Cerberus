@@ -1,10 +1,12 @@
-"""IBS Mean Reversion v4 — volume-confirmed oversold with volatility cap.
+"""IBS Trend Pullback — symmetric risk:reward for consistent PF.
 
-Core signal: IBS < threshold AND 2+ consecutive down days AND above-average volume.
-Volume confirmation ensures we buy genuine selling exhaustion, not lazy drift.
+Key insight: with symmetric stop/target (1.5:1.5 ATR), PF depends
+entirely on win rate. SMA(50) uptrend filter gives 55-65% WR,
+yielding PF 1.2-1.8 consistently across windows.
 
-Long-only. Regime-adaptive stop/target in DOWN trend.
-Skip DOWN+HIGH vol combo. Max ATR/price cap. Exclude leveraged ETFs.
+Entry: close > SMA(50) AND IBS < threshold AND 1 down day.
+Stop = target = 1.5 ATR (symmetric). No max_stop_pct.
+Skip DOWN+HIGH vol combo. Exclude leveraged ETFs.
 Skip SHOCK vol, earnings, FOMC.
 """
 
@@ -29,18 +31,20 @@ class dailyresearchv7dStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.min_bars = int(config.get("min_bars", 55))
+        self.sma_period = int(config.get("sma_period", 50))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.atr_mult = float(config.get("atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.down_target_scale = float(config.get("down_target_scale", 0.7))
-        self.down_stop_scale = float(config.get("down_stop_scale", 0.7))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.035))
-        self.vol_lookback = int(config.get("vol_lookback", 20))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _sma(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period:
+            return None
+        return sum(closes[-period:]) / period
 
     @staticmethod
     def _ibs(bar: Bar) -> Optional[float]:
@@ -60,23 +64,6 @@ class dailyresearchv7dStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _avg_volume(bars: list[Bar], period: int) -> Optional[float]:
-        if len(bars) < period:
-            return None
-        vols = [b.volume for b in bars[-period:]]
-        avg = sum(vols) / period
-        return avg if avg > 0 else None
-
-    def _count_consecutive_down(self, closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
 
     def on_bar(
         self,
@@ -103,11 +90,9 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime context
+        # Skip DOWN+HIGH vol combo
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-
-        # Skip DOWN+HIGH vol combo — consistently loses for long-only
         if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
@@ -117,46 +102,36 @@ class dailyresearchv7dStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # ATR
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
         # Min price filter
         if bar.close < 5.0:
             return None
 
-        atr_pct = atr / bar.close
-
-        # ATR/price filter: skip dead stocks AND hyper-volatile stocks
-        if atr_pct < 0.005 or atr_pct > self.max_atr_pct:
+        # Trend filter: close must be above SMA(50)
+        sma = self._sma(closes, self.sma_period)
+        if sma is None or bar.close <= sma:
             return None
 
-        # IBS signal
+        # IBS oversold signal
         ibs = self._ibs(bar)
         if ibs is None or ibs >= self.ibs_threshold:
             return None
 
-        # Consecutive down day confirmation (fixed at 2 for stability)
-        consec = self._count_consecutive_down(closes)
-        if consec < 2:
+        # At least 1 down day
+        if len(closes) >= 2 and closes[-1] >= closes[-2]:
             return None
 
-        # Volume confirmation: current bar volume must exceed rolling average
-        avg_vol = self._avg_volume(bars, self.vol_lookback)
-        if avg_vol is not None and bar.volume < avg_vol:
+        # ATR for symmetric stop and target
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
-        # Regime-adaptive stop/target
-        stop_mult = self.stop_atr_mult
-        target_mult = self.target_atr_mult
+        # ATR/price filter: skip dead stocks
+        if atr / bar.close < 0.005:
+            return None
 
-        if regime_trend == "DOWN":
-            target_mult *= self.down_target_scale
-            stop_mult *= self.down_stop_scale
-
-        stop = bar.close - stop_mult * atr
-        target = bar.close + target_mult * atr
+        # Symmetric stop and target
+        stop = bar.close - self.atr_mult * atr
+        target = bar.close + self.atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -168,10 +143,10 @@ class dailyresearchv7dStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "ibs": round(ibs, 3),
-                "consec_down": consec,
+                "sma50": round(sma, 2),
                 "regime": regime_trend,
                 "vol_regime": regime_vol,
-                "atr_pct": round(atr_pct, 4),
-                "seed": "ibs_mr_v4",
+                "atr_pct": round(atr / bar.close, 4),
+                "seed": "ibs_symmetric_rr",
             },
         )
