@@ -158,6 +158,75 @@ Multiple sizers available, selected per-trade: Kelly Criterion (with Wasserstein
 
 All market data flows through Data-Gateway (port 8080) — no direct API calls to Alpaca/providers. `UnifiedDataClient` handles both REST (historical) and WebSocket (real-time bars/quotes/trades). Heber parquet reads available for historical backtesting via `heber_read_client.py`.
 
+### Autoresearch Pipeline
+
+Autonomous strategy discovery, refinement, and graduation system. Runs LLM agents that iterate on trading strategies, evaluate via walk-forward optimization (WFO), and accumulate knowledge across campaigns.
+
+**Three-phase lifecycle:**
+
+1. **Discovery** — 4 seed archetypes (mean reversion, trend pullback, vol breakout, regime-switch) are each iterated 15 times by an autonomous agent. Each iteration: edit strategy → run WFO eval (20 Optuna trials, randomized splits) → read results → keep or revert. After 15 iterations, true OOS holdout (2025-2026, never seen during iteration). Results registered in experiment registry.
+
+2. **Refinement** — Holdout survivors get 10 more focused iterations: wider WFO window (2020-2026), anchored mode, 30 trials, stricter gate (min PF ≥ 1.0). Agent is constrained to tuning exits/stops/filters, not changing core entry logic.
+
+3. **Graduation** — Refined strategies are copied to `src/strategies/graduated/`, auto-discovered by the strategy registry dynamic loader, and run in paper mode for 30+ days before manual promotion to live.
+
+**Commands:**
+
+```bash
+# Pipeline orchestrator
+./autoresearch/frozen/run_pipeline.sh status        # Show experiments, survivors, wiki
+./autoresearch/frozen/run_pipeline.sh discovery      # Launch Phase 1 campaigns
+./autoresearch/frozen/run_pipeline.sh refinement     # Refine holdout survivors
+./autoresearch/frozen/run_pipeline.sh graduate       # Promote to paper trading
+
+# Direct campaign control
+./autoresearch/frozen/autoresearch_loop_v7.sh [tag]  # Run discovery loop
+./autoresearch/frozen/autoresearch_loop_v7.sh --kill # Stop everything
+./autoresearch/frozen/autoresearch_refinement.sh     # Run refinement loop
+
+# Experiment registry
+uv run python autoresearch/frozen/registry_cli.py status     # All experiments
+uv run python autoresearch/frozen/registry_cli.py survivors  # Holdout survivors
+uv run python autoresearch/frozen/registry_cli.py learnings  # Accumulated knowledge
+
+# Research wiki
+uv run python autoresearch/frozen/update_wiki.py backfill                          # Initialize wiki
+uv run python autoresearch/frozen/update_wiki.py get-context --archetype X         # Prompt-ready context
+uv run python autoresearch/frozen/update_wiki.py full-update --strategy X          # Full page update
+
+# Pre-aggregated daily bars (137x smaller, 37x faster than 1-min loading)
+uv run python scripts/precompute_daily_bars.py --with-regime --with-indicators
+```
+
+**Key files (all in `autoresearch/frozen/`, gitignored):**
+
+| File | Purpose |
+|------|---------|
+| `autoresearch_loop_v7.sh` | Discovery loop — seed rotation, hard iter cap, midpoint holdout |
+| `autoresearch_refinement.sh` | Refinement loop — focused optimization of survivors |
+| `cerberus_autoresearch.py` | WFO eval runner — worst-window PF scoring, anti-overfit |
+| `run_eval_with_logging.sh` | Eval wrapper — timeout, exit codes, wiki update trigger |
+| `program_cerberus_v7.md` | Agent instructions — data docs, archetype menu, anti-convergence |
+| `registry_cli.py` | Experiment registry CLI |
+| `update_wiki.py` | Knowledge wiki auto-updater |
+| `graduate_strategy.py` | Phase 3 graduation script |
+| `seed_*.py` | 4 seed strategy templates (mean_reversion, trend_pullback, vol_breakout, regime_switch) |
+
+**Knowledge system:**
+
+- **Experiment registry** (`autoresearch/registry.db`) — SQLite DB tracking all campaigns with phase, status, metrics. Tables: `research_experiments`, `research_learnings`.
+- **Research wiki** (`autoresearch/wiki/`) — Interlinked markdown pages auto-updated after every eval. Strategy pages, archetype pages, regime pages, synthesis, index. Agent prompts get wiki context injected automatically.
+- **Pre-aggregated daily bars** (`data/bars_2023_2025/*_1Day.parquet`) — 20 symbols with regime labels and common indicators (SMA, EMA, RSI, ATR, BB, IBS). 15 MB vs 3 GB for 1-min bars.
+
+**Current results (v7 campaigns):**
+
+| Strategy | Archetype | Holdout PnL | Holdout PF | Status |
+|----------|-----------|-------------|------------|--------|
+| v7b | Connors RSI consecutive-down | +$39,761 | 1.46 | paper_trading |
+| v7d | IBS regime-adaptive | +$10,837 | 1.15 | holdout_pass |
+| v7c | Keltner Channel breakout | +$4,198 | 1.07 | holdout_pass |
+| v7a | Mean reversion | -$2,713 | 0.98 | holdout_fail |
+
 ## Safety-Critical Code
 
 Extra caution required when modifying:

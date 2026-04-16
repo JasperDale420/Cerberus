@@ -6,40 +6,35 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **Learnings extraction for autoresearch pipeline**: New `autoresearch/frozen/extract_learnings.py` script reads WFO artifacts and holdout logs, extracts structured learnings (what_worked, what_failed, insight), and records them in the experiment registry. Detects regime performance, param stability, trade count patterns, and IS-to-OOS degradation. Idempotent — skips duplicate learnings on re-runs.
-- **Registry integration in discovery loop**: The v7 autoresearch loop now automatically registers experiments and extracts learnings after each holdout evaluation. Accumulated learnings are injected into the agent prompt at campaign start, enabling knowledge transfer across campaigns.
-- **Experiment registry for autoresearch pipeline**: New `ResearchExperiment` and `ResearchLearning` tables in `schema.py` track strategy discovery → refinement → graduation lifecycle. Registry API (`experiment_registry.py`) provides `register_discovery()`, `get_holdout_survivors()`, `record_learning()`, `get_genealogy()`. Standalone CLI tool (`autoresearch/frozen/registry_cli.py`) with `status`, `survivors`, `learnings`, `register-discovery`, `promote`, `backfill` commands. Backfilled with v7a-d campaign results (3 holdout survivors: v7b +$39.7K, v7d +$10.8K, v7c +$4.2K).
+- **Autoresearch v7 — multi-phase strategy discovery pipeline**: Complete overhaul of the autonomous strategy research system. Three-phase lifecycle: Discovery → Refinement → Graduation. Key components:
+  - 4 structurally different seed templates (mean reversion, trend pullback, vol breakout, regime-switch)
+  - Walk-forward optimization with worst-window PF scoring, randomized splits, param stability penalty
+  - Richer eval feedback: hold time distribution, PnL by weekday, win rate by regime, exit types, top trades
+  - Default Optuna trials increased from 8 to 20; v7 program doc with anti-convergence rules
+  - 3 of 4 v7 strategies survived true OOS holdout: v7b +$39.7K, v7d +$10.8K, v7c +$4.2K
+
+- **Experiment registry**: `ResearchExperiment` and `ResearchLearning` tables track strategy lifecycle. Registry API (`experiment_registry.py`) and CLI (`registry_cli.py`) for querying experiments, survivors, learnings, genealogy.
+
+- **Research knowledge wiki**: Auto-updating interlinked markdown wiki (`autoresearch/wiki/`) with strategy pages, archetype pages, regime pages, and synthesis. Updates automatically after every WFO evaluation and holdout. Wiki context injected into agent prompts for cross-campaign knowledge transfer.
+
+- **Refinement phase**: `--refinement-mode` in eval script uses wider WFO (2020-2026), anchored windows, 30 trials, stricter gate (min PF ≥ 1.0). Refinement loop script takes holdout survivors for focused optimization.
+
+- **Graduation pipeline**: `graduate_strategy.py` copies strategies to `src/strategies/graduated/`, auto-discovered by dynamic loader in `_build_strategy_registry()`. Config generation for paper trading mode.
+
+- **Pipeline orchestrator**: `run_pipeline.sh` with status/discovery/refinement/graduate subcommands.
+
+- **Pre-aggregated daily bars**: `scripts/precompute_daily_bars.py` generates `{SYMBOL}_1Day.parquet` files with regime labels and common indicators (SMA, EMA, RSI, ATR, BB, IBS). Bar loader uses daily files automatically when `bar_resolution_minutes=1440`, reducing worker memory from ~1.9 GB to ~100 MB.
 
 ### Fixed
 
-- **SQLite database locking errors**: Enabled WAL journal mode, 5s busy timeout, and `synchronous=NORMAL` pragma for the SQLite database. This eliminates "database is locked" errors caused by concurrent writes from the WebSocket stream handler and the periodic scanner.
-- **Duplicate scanner snapshot inserts**: Scanner snapshot writes now create a fresh ORM object on each retry attempt instead of reusing a stale instance, preventing "UNIQUE constraint failed: scanner_snapshots.id" errors when buffered writes are flushed.
-- **Regime history buffer captures stale state on retry**: Regime history writes now eagerly capture values at write time instead of re-reading mutable `self.state` at flush time, ensuring buffered retries persist the original data.
-
-### Fixed
-
-- **StrategyEngine crash from external debug wrapper**: Added `strategies` property alias on `StrategyEngine` pointing to `strategies_by_name`. A dynamically-injected `debug_run_strategies` wrapper accessed `.strategies` (which only exists on `ExecutionEngine`), causing `AttributeError` and triggering the safety shutdown after 5 consecutive errors.
-
-### Added
-
-- **Autoresearch v7 overhaul**: Complete system redesign to fix strategy convergence (all v6 campaigns converged on RSI(2) mean-reversion and failed OOS holdout). Includes:
-  - 4 structurally different seed templates (mean reversion, trend pullback, vol breakout, regime-switch) replacing blank template
-  - Richer eval feedback in `.last_eval.md` — hold time distribution, PnL by weekday, win rate by regime, top winners/losers
-  - Trade summary extraction from backtest report card for diagnostics
-  - Dynamic strategy import fallback in backtest runner (loads strategies not in hardcoded registry)
-  - v7 param spaces for all seed archetypes + fixed v6d empty param space
-  - Default Optuna trials increased from 8 to 20
-  - v7 agent program doc with accurate data documentation and anti-convergence rules
-  - v7 loop script with seed rotation, hard iteration cap, midpoint holdout abort
-
-### Fixed
-
-- **Holdout eval bug**: WFO configured with train+test period exceeding holdout window produced 0 windows. Fixed by injecting exact train/test window via lambda override.
+- **Memory leaks in WFO evaluation**: Bar DataFrame cache now has LRU eviction (max 4 entries) and explicit clearing between windows. Optuna study objects deleted after result extraction with gc.collect(). Worker join timeout (10 min) prevents hangs. Analytics dict stripped from metrics after save_report.
+- **Holdout eval produced 0 windows**: WFO configured with train+test period exceeding holdout window. Fixed by injecting exact train/test window via lambda override.
 - **v6d empty param space**: `PARAM_SPACES["daily_research_v6d"]` was `[]` — Optuna had nothing to optimize.
-
-### Fixed
-
-- **Import sort in `src/main.py`**: Corrected unsorted import block in `_build_strategy_registry()` to satisfy ruff I001 rule (auto-fixed by ruff).
+- **SQLite database locking**: WAL journal mode, 5s busy timeout, and `synchronous=NORMAL` pragma.
+- **Duplicate scanner snapshot inserts**: Fresh ORM object on each retry to prevent UNIQUE constraint errors.
+- **Regime history stale state on retry**: Eager value capture at write time for buffered retries.
+- **StrategyEngine crash from debug wrapper**: Added `strategies` property alias pointing to `strategies_by_name`.
+- **Import sort in `src/main.py`**: Corrected unsorted import block to satisfy ruff I001 rule.
 
 
 ### Added
