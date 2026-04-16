@@ -1,8 +1,8 @@
-"""Connors RSI(2) Mean Reversion — with max stop pct cap.
+"""Seed: Trend-Following Pullback Entry.
 
-Entry: 2+ consecutive down closes AND RSI(2) < threshold.
-Regime-neutral. Skips SHOCK vol, earnings, FOMC.
-Max stop pct caps losses in HIGH vol periods.
+Buy pullbacks to EMA(20) in confirmed uptrends (price > SMA50, EMA20 > SMA50).
+Volume and RSI(14) filters. Skips SHOCK volatility regime.
+Long-only, daily bars, max_hold_days=10.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
 
-class dailyresearchv7bStrategy(BaseStrategy):
+class SeedTrendPullbackStrategy(BaseStrategy):
     name = "daily_research_v7b"
     allow_overnight: bool = True
 
@@ -25,16 +25,37 @@ class dailyresearchv7bStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_days = int(config.get("consec_down_days", 2))
-        self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_max = float(config.get("rsi_max", 20.0))
+        self.sma_slow_period = int(config.get("sma_slow_period", 50))
+        self.ema_fast_period = int(config.get("ema_fast_period", 20))
+        self.pullback_min_pct = float(config.get("pullback_min_pct", 0.01))
+        self.pullback_max_pct = float(config.get("pullback_max_pct", 0.02))
+        self.rsi_period = int(config.get("rsi_period", 14))
+        self.rsi_low = float(config.get("rsi_low", 40.0))
+        self.rsi_high = float(config.get("rsi_high", 55.0))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
+        self.max_hold_days = int(config.get("max_hold_days", 10))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
+
+    @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = (v - ema) * mult + ema
+        return ema
 
     @staticmethod
     def _rsi(closes: list[float], period: int) -> Optional[float]:
@@ -65,15 +86,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
-    def _count_consecutive_down(self, closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
-
     def on_bar(
         self,
         symbol: str,
@@ -86,30 +98,40 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip SHOCK volatility regime
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Skip earnings and FOMC
-        labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
-        if len(closes) < self.min_bars:
+        # Trend confirmation: price > SMA(50)
+        sma50 = self._sma(closes, self.sma_slow_period)
+        if sma50 is None or bar.close <= sma50:
             return None
 
-        # Core signal: consecutive down days
-        consec = self._count_consecutive_down(closes)
-        if consec < self.consec_down_days:
+        # Momentum alignment: EMA(20) > SMA(50)
+        ema20 = self._ema(closes, self.ema_fast_period)
+        if ema20 is None or ema20 <= sma50:
             return None
 
-        # RSI(2) oversold confirmation
+        # Pullback to EMA(20): close within 1-2% of EMA20
+        if ema20 < 1e-9:
+            return None
+        dist_pct = (bar.close - ema20) / ema20
+        if dist_pct < -self.pullback_max_pct or dist_pct > self.pullback_min_pct:
+            return None
+
+        # RSI(14) in sweet spot: not overbought, not oversold
         rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi > self.rsi_max:
+        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
+            return None
+
+        # Volume confirmation: above 0.8x 20-day average
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
         # ATR for stop and target
@@ -117,11 +139,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Stop: ATR-based but capped at max_stop_pct of price
-        atr_stop = bar.close - self.stop_atr_mult * atr
-        pct_stop = bar.close * (1.0 - self.max_stop_pct)
-        stop = max(atr_stop, pct_stop)  # Use the TIGHTER stop
-
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -133,10 +151,12 @@ class dailyresearchv7bStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "consec_down": consec,
-                "rsi2": round(rsi, 2),
-                "atr_pct": round(atr / bar.close, 4),
-                "stop_type": "pct" if pct_stop > atr_stop else "atr",
-                "seed": "connors_rsi2_capped_stop",
+                "ema20": round(ema20, 2),
+                "sma50": round(sma50, 2),
+                "pullback_pct": round(dist_pct, 4),
+                "rsi14": round(rsi, 2),
+                "vol_ratio": round(bar.volume / avg_vol, 2),
+                "atr": round(atr, 4),
+                "seed": "trend_pullback",
             },
         )
