@@ -1,7 +1,7 @@
-"""Wide-Range Bar with Regime-Adaptive Stops (evolved from vol_breakout seed).
+"""Range Expansion Continuation (evolved from vol_breakout seed).
 
-Buy wide-range up bars above SMA(20). Use regime-dependent stop widths —
-tighter in DOWN/HIGH regimes to limit losses, wider in UP for more room.
+Buy above-average range up bars above short-term trend. Loosened
+thresholds for more trades + regime-adaptive stops for consistency.
 """
 
 from __future__ import annotations
@@ -71,34 +71,30 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Wide range bar: today's range > 1.3x ATR
+        # Range expansion: today's range > 1.1x ATR (loosened for more trades)
         today_range = bar.high - bar.low
-        if today_range < 1e-9 or today_range < 1.3 * atr:
+        if today_range < 1e-9 or today_range < 1.1 * atr:
             return None
 
-        # Close strength: close in upper 30% of today's range
+        # Close strength: close in upper 40% of range
         close_position = (bar.close - bar.low) / today_range
-        if close_position < 0.7:
+        if close_position < 0.6:
             return None
 
         # Up day: close above previous close
         if bar.close <= bars[-2].close:
             return None
 
-        # Trend: close above SMA(20)
-        sma20 = self._sma(closes, 20)
-        if sma20 is None or bar.close <= sma20:
+        # Short-term trend: close above SMA(10)
+        sma10 = self._sma(closes, 10)
+        if sma10 is None or bar.close <= sma10:
             return None
 
-        # Anti-exhaustion: don't buy if close > 2.5 ATR above SMA(20)
-        if bar.close > sma20 + 2.5 * atr:
-            return None
-
-        # Regime-adaptive stops: tighter in non-UP regimes
+        # Regime-adaptive stops
         regime_trend = regime_labels.get("regime_trend", "UP")
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_trend == "DOWN" or regime_vol == "HIGH":
-            stop_mult = self.stop_atr_mult * 0.6  # tighter stop
+            stop_mult = self.stop_atr_mult * 0.6
         else:
             stop_mult = self.stop_atr_mult
 
@@ -117,7 +113,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "range_mult": round(today_range / atr, 2),
                 "close_pos": round(close_position, 2),
-                "stop_mode": "tight" if regime_trend == "DOWN" or regime_vol == "HIGH" else "normal",
                 "seed": "vol_breakout",
             },
         )
