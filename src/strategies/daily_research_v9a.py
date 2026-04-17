@@ -89,9 +89,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Skip earnings and FOMC
+        # Skip earnings, FOMC, and HIGH vol regime
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+        regime_vol = labels.get("regime_vol", "NORMAL").upper()
+        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
