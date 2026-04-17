@@ -1,8 +1,9 @@
-"""Consecutive-down mean reversion with regime gating.
+"""Regime-adaptive multi-factor mean reversion with stock trend filter.
 
-Entry: 2+ consecutive lower closes + BB proximity for mean reversion.
-Uses multi-factor scoring: consecutive downs, BB position, volume, IBS.
-Long-only for consistency. Event and regime filters.
+Entry: 2+ consecutive lower closes + BB/IBS/volume factors.
+Regime switch: UP/FLAT trade normally, HIGH vol requires tighter IBS, DOWN skipped.
+Stock-level filter: only buy when close > SMA(50) to avoid falling knives.
+Long-only. Event filters. Adaptive factor thresholds by regime.
 """
 
 from __future__ import annotations
@@ -29,11 +30,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
+        self.sma_trend_period = int(config.get("sma_trend_period", 50))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -64,7 +66,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
     @staticmethod
     def _consecutive_downs(closes: list[float]) -> int:
-        """Count consecutive lower closes from the most recent bar backwards."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -75,7 +76,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
     @staticmethod
     def _ibs(bar: Bar) -> float:
-        """Internal Bar Strength: (close - low) / (high - low)."""
         rng = bar.high - bar.low
         if rng < 1e-9:
             return 0.5
@@ -103,14 +103,17 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK vol and DOWN+HIGH (consistently weak)
+        # Regime filter: skip SHOCK and entire DOWN regime
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
         if regime_vol == "SHOCK":
             return None
-
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+        if regime_trend == "DOWN":
+            return None
 
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        # Stock-level trend filter: close must be above SMA(50)
+        sma50 = self._sma(closes, self.sma_trend_period)
+        if sma50 is not None and bar.close < sma50:
             return None
 
         # Indicators
@@ -135,19 +138,20 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if consec >= self.consec_down_min + 1:
             score += 1
 
-        # Factor 2: BB proximity (close near or below lower BB)
+        # Factor 2: BB proximity
         bb_distance = (bar.close - lower_bb) / bb_std_val if bb_std_val > 0 else 999
         if bb_distance < self.bb_proximity:
             score += 1
-        if bb_distance < 0:  # Below lower BB
+        if bb_distance < 0:
             score += 1
 
-        # Factor 3: IBS (low IBS = closed near low = oversold)
+        # Factor 3: IBS — regime-adaptive threshold
         ibs = self._ibs(bar)
-        if ibs < self.ibs_threshold:
+        ibs_thresh = 0.2 if regime_vol == "HIGH" else self.ibs_threshold
+        if ibs < ibs_thresh:
             score += 1
 
-        # Factor 4: Volume spike (high vol on pullback = institutional)
+        # Factor 4: Volume spike
         volumes = [b.volume for b in bars]
         if len(volumes) >= 20:
             avg_vol = sum(volumes[-20:]) / 20
@@ -158,19 +162,19 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if score < 3:
             return None
 
-        # In DOWN regime, require stronger signal (4+ factors)
-        if regime_trend == "DOWN" and score < 4:
+        # In HIGH vol, require 4+ factors (extra caution)
+        if regime_vol == "HIGH" and score < 4:
             return None
 
-        # Target: min of BB midline or ATR-based target
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
-
-        if target <= bar.close:
-            return None
-
+        # Target: ATR-based (more consistent than BB midline)
+        target = bar.close + self.target_atr_mult * atr
         stop = bar.close - self.stop_atr_mult * atr
+
+        # Minimum R:R check
+        reward = target - bar.close
+        risk = bar.close - stop
+        if risk <= 0 or reward / risk < 0.5:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
