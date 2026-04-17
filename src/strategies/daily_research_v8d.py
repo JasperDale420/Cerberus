@@ -1,12 +1,12 @@
-"""Regime-Adaptive Keltner + IBS Strategy (long-only).
+"""Regime-Filtered Keltner + IBS Dip Buy (long-only).
 
-Different entry logic per regime, unified Keltner Channel framework + IBS filter:
-  UP   — buy dips below lower KC + IBS < threshold + 1+ consecutive down days
-  DOWN — buy extreme dips below KC + high volume (capitulation) + low IBS
-  FLAT — buy at lower KC + 2+ consecutive downs + very low IBS
+Unified entry logic across all regimes:
+  1. Price at or below lower Keltner Channel (EMA - mult*ATR)
+  2. Low IBS (closed near day's low — seller exhaustion)
+  3. At least N consecutive down closes (momentum exhaustion)
 
-All entries are long-only. Stops scaled by ATR, targets regime-dependent.
-Skips SHOCK vol, earnings, FOMC. Skips HIGH vol in UP regime.
+Regime used as FILTER only — skip bad regime combos (DOWN+HIGH).
+Skips SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -29,28 +29,16 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Keltner Channel params
+        # Keltner Channel
         self.kc_ema_period = int(config.get("kc_ema_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
         self.kc_mult = float(config.get("kc_mult", 2.0))
-        # IBS thresholds per regime
-        self.up_ibs_max = float(config.get("up_ibs_max", 0.35))
-        self.down_ibs_max = float(config.get("down_ibs_max", 0.30))
-        self.flat_ibs_max = float(config.get("flat_ibs_max", 0.30))
-        # Entry depth per regime (ATR units below lower KC)
-        self.up_depth = float(config.get("up_depth", 0.0))
-        self.down_depth = float(config.get("down_depth", 0.3))
-        self.flat_depth = float(config.get("flat_depth", 0.0))
-        # Consecutive down requirements
-        self.up_consec_min = int(config.get("up_consec_min", 1))
-        self.flat_consec_min = int(config.get("flat_consec_min", 2))
-        # Volume filter for DOWN regime
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.down_vol_min = float(config.get("down_vol_min", 1.2))
-        # Stop/target
+        # Entry filters
+        self.ibs_max = float(config.get("ibs_max", 0.35))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
+        # Stop/target in ATR multiples
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.up_target_atr_mult = float(config.get("up_target_atr_mult", 2.0))
-        self.down_target_atr_mult = float(config.get("down_target_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -116,9 +104,14 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
+        # Regime filter: skip DOWN+HIGH (historically bad)
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        regime_vol = labels.get("regime_vol", "NORMAL").upper()
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         # Core indicators
         ema = self._ema(closes, self.kc_ema_period)
@@ -126,120 +119,40 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if ema is None or atr is None or atr < 1e-9:
             return None
 
-        # Keltner Channel
+        # Keltner Channel lower band
         lower_kc = ema - self.kc_mult * atr
 
-        # IBS
+        # Entry condition 1: price at or below lower KC
+        if bar.close > lower_kc:
+            return None
+
+        # Entry condition 2: low IBS (closed near day's low)
         ibs = self._ibs(bar)
+        if ibs > self.ibs_max:
+            return None
 
-        # Regime from labels
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
-        regime_vol = labels.get("regime_vol", "NORMAL").upper()
-
-        # Distance below lower KC in ATR units
-        kc_distance = (lower_kc - bar.close) / atr if atr > 0 else 0
-
-        # Consecutive down days
+        # Entry condition 3: consecutive down closes
         consec = self._consecutive_downs(closes)
+        if consec < self.consec_down_min:
+            return None
 
-        if regime_trend == "UP":
-            # Skip HIGH vol in UP — inconsistent
-            if regime_vol == "HIGH":
-                return None
-            # Buy dips: below lower KC + low IBS + at least 1 consec down
-            if kc_distance < self.up_depth:
-                return None
-            if ibs > self.up_ibs_max:
-                return None
-            if consec < self.up_consec_min:
-                return None
+        # Stop and target
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
-            stop = bar.close - self.stop_atr_mult * atr
-            target = bar.close + self.up_target_atr_mult * atr
-
-            self.last_signal_time[symbol] = bar.time
-            return self._create_signal(
-                symbol,
-                OrderSide.BUY,
-                bar,
-                market_state,
-                stop_price=stop,
-                target_price=target,
-                meta={
-                    "regime": "UP",
-                    "kc_dist": round(kc_distance, 2),
-                    "ibs": round(ibs, 3),
-                    "consec": consec,
-                    "seed": "keltner_regime_switch",
-                },
-            )
-
-        elif regime_trend == "DOWN":
-            # Buy extreme dips: deeper below KC + capitulation volume + low IBS
-            if kc_distance < self.down_depth:
-                return None
-            if ibs > self.down_ibs_max:
-                return None
-
-            # Volume ratio check
-            if len(volumes) >= self.vol_avg_period:
-                avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
-            else:
-                avg_vol = 0
-            vol_ratio = bar.volume / avg_vol if avg_vol > 0 else 1.0
-            if vol_ratio < self.down_vol_min:
-                return None
-
-            stop = bar.close - self.stop_atr_mult * atr
-            target = bar.close + self.down_target_atr_mult * atr
-
-            self.last_signal_time[symbol] = bar.time
-            return self._create_signal(
-                symbol,
-                OrderSide.BUY,
-                bar,
-                market_state,
-                stop_price=stop,
-                target_price=target,
-                meta={
-                    "regime": "DOWN",
-                    "kc_dist": round(kc_distance, 2),
-                    "ibs": round(ibs, 3),
-                    "vol_ratio": round(vol_ratio, 2),
-                    "seed": "keltner_regime_switch",
-                },
-            )
-
-        else:
-            # FLAT: mean reversion — at lower KC + consecutive downs + low IBS
-            if kc_distance < self.flat_depth:
-                return None
-            if ibs > self.flat_ibs_max:
-                return None
-            if consec < self.flat_consec_min:
-                return None
-
-            stop = bar.close - self.stop_atr_mult * atr
-            target = ema  # Target the EMA (midline)
-
-            if target <= bar.close:
-                return None
-
-            self.last_signal_time[symbol] = bar.time
-            return self._create_signal(
-                symbol,
-                OrderSide.BUY,
-                bar,
-                market_state,
-                stop_price=stop,
-                target_price=target,
-                meta={
-                    "regime": "FLAT",
-                    "kc_dist": round(kc_distance, 2),
-                    "ibs": round(ibs, 3),
-                    "consec": consec,
-                    "seed": "keltner_regime_switch",
-                },
-            )
-
-        return None
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={
+                "regime": f"{regime_trend}+{regime_vol}",
+                "kc_dist": round((lower_kc - bar.close) / atr, 2),
+                "ibs": round(ibs, 3),
+                "consec": consec,
+                "seed": "keltner_ibs_regime_filter",
+            },
+        )
