@@ -29,7 +29,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
@@ -142,6 +142,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Factor 3: IBS (low IBS = closed near low = oversold)
         ibs = self._ibs(bar)
         if ibs < self.ibs_threshold:
+            score += 1
+
+        # Factor 4: Price above SMA(50) — longer-term support
+        sma50 = self._sma(closes, 50)
+        if sma50 is not None and bar.close > sma50:
             score += 1
 
         # Require at least 3 factors
