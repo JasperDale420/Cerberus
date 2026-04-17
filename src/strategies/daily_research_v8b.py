@@ -142,8 +142,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        # Target: BB midline (natural mean reversion target)
-        target = bb_sma
+        # Target: min of BB midline and ATR-based target (take profit sooner when ATR is tight)
+        atr_target = bar.close + self.target_atr_mult * atr
+        target = min(bb_sma, atr_target)
 
         if target <= bar.close:
             return None
