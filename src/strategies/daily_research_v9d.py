@@ -36,9 +36,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
         # Regime-adaptive IBS thresholds
-        self.ibs_up = float(config.get("ibs_up", 0.35))
+        self.ibs_up = float(config.get("ibs_up", 0.25))
         self.ibs_flat = float(config.get("ibs_flat", 0.25))
-        self.ibs_down = float(config.get("ibs_down", 0.20))
+        self.ibs_down = float(config.get("ibs_down", 0.15))
         # Consecutive down day requirements
         self.consec_down_up = int(config.get("consec_down_up", 2))
         self.consec_down_flat = int(config.get("consec_down_flat", 2))
@@ -46,10 +46,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Stop/target
         self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         # Filters
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
-        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.02))
+        self.min_price = float(config.get("min_price", 15.0))
 
     # --- Indicator helpers ---
 
@@ -114,6 +115,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if len(closes) < self.kc_period + 1:
             return None
 
+        # Min price filter
+        if bar.close < self.min_price:
+            return None
+
         # ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
@@ -149,6 +154,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             if consec_down < self.consec_down_up:
                 return None
             if ibs > self.ibs_up:
+                return None
+            # In UP regime, confirm uptrend intact: price should be above SMA(50)
+            sma50 = self._sma(closes, 50)
+            if sma50 is not None and bar.close < sma50:
                 return None
         elif regime_trend == "DOWN":
             if consec_down < self.consec_down_down:
