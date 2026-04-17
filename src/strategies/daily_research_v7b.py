@@ -32,7 +32,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # IBS threshold
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         # Minimum total drop over N days (as pct of price)
-        self.min_drop_pct = float(config.get("min_drop_pct", 0.025))
+        self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
         # Trend support — price must be above SMA(N)
         self.sma_period = int(config.get("sma_period", 50))
         # ATR params
