@@ -30,15 +30,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        self.sma_fast = int(config.get("sma_fast", 20))
-        self.sma_slow = int(config.get("sma_slow", 50))
+        self.min_bars = int(config.get("min_bars", 50))
+        self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_drop_mult = float(config.get("atr_drop_mult", 1.2))
+        self.atr_drop_mult = float(config.get("atr_drop_mult", 1.5))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 1.0))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -87,14 +86,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # SMA fast (mean reversion anchor) and slow (trend filter)
-        sma_fast = self._sma(closes, self.sma_fast)
-        sma_slow = self._sma(closes, self.sma_slow)
-        if sma_fast is None or sma_slow is None or sma_fast < 1e-9:
-            return None
-
-        # Uptrend filter: price must be above SMA(50) to avoid falling knives
-        if bar.close < sma_slow:
+        # SMA
+        sma = self._sma(closes, self.sma_period)
+        if sma is None or sma < 1e-9:
             return None
 
         # ATR
@@ -109,18 +103,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             if ibs > self.ibs_threshold:
                 return None
 
-        # Entry: price pulled back below SMA(20) by at least atr_drop_mult * ATR
-        dip = sma_fast - bar.close
+        # Entry: price dropped significantly below SMA (ATR-scaled dip)
+        dip = sma - bar.close
         if dip < self.atr_drop_mult * atr:
             return None
 
-        # Volume confirmation: above-average volume (selling exhaustion)
+        # Volume confirmation: selling exhaustion (above-average volume)
         avg_vol = self._sma(volumes, self.vol_avg_period)
         if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
-        # Target: SMA fast (mean reversion)
-        target = sma_fast
+        # Target: SMA (mean reversion)
+        target = sma
         if target <= bar.close:
             return None
 
@@ -136,11 +130,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "sma_fast": round(sma_fast, 2),
-                "sma_slow": round(sma_slow, 2),
+                "sma": round(sma, 2),
                 "dip_atr": round(dip / atr, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2) if avg_vol else 0,
-                "ibs": round((bar.close - bar.low) / bar_range, 3) if bar_range > 1e-9 else 0.5,
+                "vol_ratio": round(bar.volume / avg_vol, 2),
                 "seed": "vol_mean_reversion",
             },
         )
