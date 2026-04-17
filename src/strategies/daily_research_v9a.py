@@ -105,12 +105,17 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK vol
+        # Regime filter: skip HIGH and SHOCK vol
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol == "SHOCK":
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+
+        # Day-of-week filter: skip Thu/Fri (negative expectancy)
+        dow = bar.time.weekday() if hasattr(bar.time, "weekday") else None
+        if dow is not None and dow >= 3:  # Thu=3, Fri=4
+            return None
 
         # Drawdown filter: skip if price crashed too far from recent high
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
@@ -157,8 +162,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if score < 3:
             return None
 
-        # In DOWN regime, require stronger signal
-        if regime_trend == "DOWN" and score < 4:
+        # In DOWN or FLAT regime, require stronger signal
+        if regime_trend in ("DOWN", "FLAT") and score < 4:
             return None
 
         # Target: min of BB midline or ATR-based target
