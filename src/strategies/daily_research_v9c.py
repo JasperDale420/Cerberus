@@ -34,7 +34,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
         self.kc_period = int(config.get("kc_period", 20))
-        self.kc_mult = float(config.get("kc_mult", 2.0))
+        self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.min_consec_down = int(config.get("min_consec_down", 2))
@@ -42,6 +42,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 4))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.03))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -139,9 +140,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if daily_range > 2.0 * atr:
             return None
 
-        # Stop just below bar low, target 1.5 ATR above entry
+        # Stop just below bar low, target Keltner midline
         stop = bar.low - self.stop_atr_mult * atr
-        target = bar.close + 1.5 * atr
+        target = kc_mid
+
+        # Cap risk per trade
+        risk = (bar.close - stop) / bar.close if bar.close > 0 else 1.0
+        if risk > self.max_risk_pct:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
