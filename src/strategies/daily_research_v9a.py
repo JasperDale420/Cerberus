@@ -1,8 +1,8 @@
 """Trend-pullback strategy: buy dips in confirmed uptrends.
 
-Entry: EMA(20) > EMA(50) (uptrend) + price pulls back near EMA(20) + volume OK.
-Naturally avoids DOWN regime windows since EMA alignment won't be bullish.
-Asymmetric R:R: stop 1.5 ATR, target 3.0 ATR (2:1 payoff).
+Entry: EMA(20) > EMA(50) (uptrend) + price at/below EMA(20) (true pullback).
+Requires close below yesterday's close (confirming the dip).
+Asymmetric R:R: stop 1.0 ATR, target 3.0 ATR (3:1 payoff).
 Skip SHOCK vol + earnings/FOMC.
 Long-only, daily bars, max_hold_days=7.
 """
@@ -85,7 +85,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         # EMA crossover: fast > slow = uptrend
         ema_f = self._ema(closes, self.ema_fast)
@@ -95,16 +94,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ema_f <= ema_s:
             return None  # No uptrend — don't trade
 
-        # Price must have pulled back near or below the fast EMA
-        distance = (bar.close - ema_f) / ema_f
-        if distance > self.pullback_pct:
-            return None  # Too extended above EMA — not a pullback
+        # Price must be AT or BELOW the fast EMA (true pullback, not extended)
+        if bar.close > ema_f:
+            return None
 
-        # Volume check: at least vol_avg_mult of 20-day average
-        if len(volumes) >= self.vol_avg_period:
-            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_avg_mult:
-                return None
+        # Today must be a down day (confirming the dip)
+        if len(closes) >= 2 and bar.close >= closes[-2]:
+            return None
 
         # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
@@ -125,7 +121,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             meta={
                 "ema_fast": round(ema_f, 2),
                 "ema_slow": round(ema_s, 2),
-                "pullback_pct": round(distance, 4),
+                "pullback_pct": round((bar.close - ema_f) / ema_f, 4),
                 "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
