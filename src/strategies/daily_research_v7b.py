@@ -6,9 +6,10 @@ Skips HIGH/SHOCK vol and high realized vol environments.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -95,17 +96,15 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility regimes
-        snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
-            return None
+        # Use regime labels (always populated in daily backtest)
+        labels = symbol_state.meta.get("regime_labels", {})
 
-        # Skip high realized vol environments
-        if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
+        # Skip HIGH and SHOCK vol regimes via labels
+        vol_regime = labels.get("regime_vol", "NORMAL")
+        if vol_regime in ("HIGH", "SHOCK"):
             return None
 
         # Skip earnings and FOMC
-        labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
@@ -115,6 +114,19 @@ class dailyresearchv7bStrategy(BaseStrategy):
         # Need enough history
         if len(closes) < self.min_bars:
             return None
+
+        # Realized vol filter: compute 30-day annualized vol from closes
+        if len(closes) >= 31:
+            log_returns = []
+            for i in range(-30, 0):
+                if closes[i - 1] > 0:
+                    log_returns.append((closes[i] / closes[i - 1]) - 1.0)
+            if log_returns:
+                rv_mean = sum(log_returns) / len(log_returns)
+                rv_var = sum((r - rv_mean) ** 2 for r in log_returns) / len(log_returns)
+                realized_vol = math.sqrt(rv_var * 252)
+                if realized_vol > self.max_realized_vol:
+                    return None
 
         # Trend context
         sma = self._sma(closes, self.sma_period)
