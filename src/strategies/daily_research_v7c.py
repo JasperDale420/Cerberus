@@ -87,22 +87,15 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         prev_bar = bars[-2]
         prev_prev = bars[-3]
 
-        # Contraction detection: inside day OR NR4 (narrowest range in 4 days)
-        prev_range = prev_bar.high - prev_bar.low
-        outer_range = prev_prev.high - prev_prev.low
+        # Inside day detection: previous bar had range inside the bar before it
         was_inside = prev_bar.high <= prev_prev.high and prev_bar.low >= prev_prev.low
-
-        # NR4: previous bar range is the smallest of last 4 bars
-        is_nr4 = False
-        if len(bars) >= 6:
-            recent_ranges = [bars[i].high - bars[i].low for i in range(-5, -1)]
-            is_nr4 = prev_range <= min(recent_ranges)
-
-        if not (was_inside or is_nr4):
+        if not was_inside:
             return None
 
-        # Quality: contraction range should be at most 85% of context
-        if outer_range < 1e-9 or prev_range / outer_range > 0.85:
+        # Quality: inside day range should be at most 85% of outer day range
+        inner_range = prev_bar.high - prev_bar.low
+        outer_range = prev_prev.high - prev_prev.low
+        if outer_range < 1e-9 or inner_range / outer_range > 0.85:
             return None
 
         # Breakout: current bar closes above the inside day's high
@@ -118,7 +111,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         # Expansion: breakout day range should exceed inside day range
-        if today_range <= prev_range:
+        if today_range <= inner_range:
             return None
 
         # Volume confirmation: above 60% of 20-day average (relaxed)
