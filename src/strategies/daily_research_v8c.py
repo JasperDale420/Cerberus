@@ -94,6 +94,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
+        if labels.get("opex_week", False):
+            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -129,8 +131,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if dip < self.atr_dip_min * atr:
             return None
 
-        # Target: SMA (mean reversion)
-        target = sma
+        # Target: SMA in UP/FLAT, partial (60%) in DOWN — downtrends revert less
+        if trend == "DOWN":
+            target = bar.close + 0.6 * dip
+        else:
+            target = sma
         stop = bar.close - self.stop_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
