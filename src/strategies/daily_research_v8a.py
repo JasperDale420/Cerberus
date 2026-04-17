@@ -26,12 +26,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = int(config.get("consec_down_min", 3))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
-        self.zscore_threshold = float(config.get("zscore_threshold", -0.5))
+        self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
         # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.12))
@@ -149,8 +149,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        # Target = SMA midline (mean reversion to the mean)
-        target = sma if sma > bar.close else bar.close + self.target_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
