@@ -36,9 +36,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.bb_proximity = 1.0  # Fixed
+        self.target_pct = float(config.get("target_pct", 0.7))  # % of distance to BB mid
 
     # --- Indicator helpers ---
 
@@ -141,9 +141,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
-        # Target: BB midline (natural mean reversion target)
-        target = bb_sma
+        # Widen stop in HIGH vol to avoid premature stopouts
+        stop_mult = self.stop_atr_mult
+        if regime_vol == "HIGH":
+            stop_mult *= 1.3
+        stop = bar.close - stop_mult * atr
+        # Target: partial distance to BB midline (take profit sooner)
+        target = bar.close + self.target_pct * (bb_sma - bar.close)
 
         if target <= bar.close:
             return None
