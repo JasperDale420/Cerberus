@@ -38,7 +38,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.bb_proximity = 0.5  # Tighter: only enter very close to/below lower BB
+        self.bb_proximity = 1.0  # Fixed
 
     # --- Indicator helpers ---
 
