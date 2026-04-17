@@ -27,7 +27,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.atr_expansion = float(config.get("atr_expansion", 1.0))
@@ -68,8 +68,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("regime_vol") == "SHOCK":
             return None
 
-        # Skip Fridays
-        if hasattr(bar.time, "weekday") and bar.time.weekday() == 4:
+        # Skip Fridays and Tuesdays (historically negative)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (1, 4):
             return None
 
         bars = list(symbol_state.bars)
