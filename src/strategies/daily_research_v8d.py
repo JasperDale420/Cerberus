@@ -37,9 +37,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.ibs_max = float(config.get("ibs_max", 0.30))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         # Stop/target in ATR multiples
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -104,10 +104,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip DOWN+HIGH (historically inconsistent)
+        # Regime filter: skip HIGH vol (noisy, inconsistent for mean reversion)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
