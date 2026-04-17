@@ -456,10 +456,20 @@ strategies:
 
   daily_research_v9a:
     enabled: true
-    min_bars: 50
+    min_bars: 55
     allow_overnight: true
-    max_hold_days: 5
+    max_hold_days: 3
     cooldown_bars: 1
+    bb_period: 20
+    bb_std: 2.0
+    bb_proximity: 0.5
+    consec_down_min: 2
+    atr_period: 14
+    stop_atr_mult: 1.5
+    target_atr_mult: 2.0
+    ibs_threshold: 0.3
+    drawdown_lookback: 40
+    drawdown_max: 0.15
     activation:
       session: [premarket, opening, midday, power_hour, close]
       trend: [up, down, flat]
