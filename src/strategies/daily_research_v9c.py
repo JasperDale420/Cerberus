@@ -1,16 +1,17 @@
-"""Volatility Squeeze Breakout — Buy after vol compression resolves upward.
+"""Volatility Fade — Buy after high-vol selloff days.
 
-Evolved from seed_vol_breakout. The key insight: vol compression (Bollinger Bands
-inside Keltner Channel) followed by expansion creates reliable breakouts.
+Evolved from seed_vol_breakout (volatility family). Instead of buying breakouts,
+we fade volatility spikes: when ATR expands AND price drops significantly,
+capitulation selling creates bounce opportunities.
 
 Entry:
-1. Squeeze detected: BB width < Keltner width (vol compressed)
-2. Squeeze releases: BB expands back outside Keltner
-3. Momentum positive: close > close[N] (price moving up during release)
-4. Trend filter: close > SMA(20)
-5. Skip earnings, FOMC, SHOCK vol
+1. ATR expanding (vol spike) — current ATR > atr_expansion_mult * avg ATR
+2. Price dropped: close < close[lookback] AND close near daily low
+3. Close-to-low ratio (IBS-like): (close - low) / (high - low) < ibs_threshold
+4. Trend not fighting: regime not DOWN or price above longer SMA
+5. Skip earnings, FOMC, SHOCK
 
-Exit: ATR-based stop and target. Max hold 7 days.
+Exit: ATR-based stop/target, max hold days.
 """
 
 from __future__ import annotations
@@ -29,22 +30,20 @@ class SeedVolBreakoutStrategy(BaseStrategy):
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
         self.allow_overnight = True
-        self._squeeze_count: dict[str, int] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
-        self.bb_period = int(config.get("bb_period", 20))
-        self.bb_mult = float(config.get("bb_mult", 2.0))
-        self.kc_period = int(config.get("kc_period", 20))
-        self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
-        self.mom_lookback = int(config.get("mom_lookback", 8))
-        self.sma_period = int(config.get("sma_period", 20))
-        self.min_squeeze_bars = int(config.get("min_squeeze_bars", 2))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.atr_avg_period = int(config.get("atr_avg_period", 20))
+        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
+        self.drop_lookback = int(config.get("drop_lookback", 3))
+        self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.sma_period = int(config.get("sma_period", 50))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -64,14 +63,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         return sum(values[-period:]) / period
 
-    @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        data = values[-period:]
-        mean = sum(data) / len(data)
-        variance = sum((x - mean) ** 2 for x in data) / len(data)
-        return variance**0.5
+    def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
+        result = []
+        for i in range(count):
+            end_idx = len(bars) - count + i + 1
+            if end_idx < period + 1:
+                continue
+            sub = bars[:end_idx]
+            val = self._atr(sub, period)
+            if val is not None:
+                result.append(val)
+        return result
 
     def on_bar(
         self,
@@ -95,67 +97,46 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_vol == "SHOCK":
             return None
 
-        # Skip DOWN trend — breakouts fail against macro downtrend
-        regime_trend = regime_labels.get("regime_trend", "FLAT")
-        if regime_trend == "DOWN":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < max(self.bb_period, self.kc_period, self.mom_lookback) + 1:
+        if len(closes) < max(self.sma_period, self.atr_avg_period + self.atr_period) + 1:
             return None
 
-        # ATR for Keltner Channel
+        # ATR and expansion check
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Bollinger Bands
-        bb_mid = self._sma(closes, self.bb_period)
-        bb_std = self._std(closes, self.bb_period)
-        if bb_mid is None or bb_std is None or bb_std < 1e-9:
+        atr_values = self._atr_series(bars, self.atr_period, self.atr_avg_period)
+        if len(atr_values) < self.atr_avg_period:
+            return None
+        atr_avg = sum(atr_values) / len(atr_values)
+        if atr_avg < 1e-9 or atr < self.atr_expansion_mult * atr_avg:
             return None
 
-        bb_upper = bb_mid + self.bb_mult * bb_std
-        bb_lower = bb_mid - self.bb_mult * bb_std
-        bb_width = bb_upper - bb_lower
-
-        # Keltner Channel
-        kc_mid = self._sma(closes, self.kc_period)
-        if kc_mid is None:
+        # Price has dropped over lookback period
+        if len(closes) < self.drop_lookback + 1:
             return None
-        kc_upper = kc_mid + self.kc_mult * atr
-        kc_lower = kc_mid - self.kc_mult * atr
-        kc_width = kc_upper - kc_lower
-
-        # Squeeze detection: BB inside Keltner
-        in_squeeze = bb_width < kc_width
-
-        if symbol not in self._squeeze_count:
-            self._squeeze_count[symbol] = 0
-
-        if in_squeeze:
-            self._squeeze_count[symbol] += 1
-            return None  # Still in squeeze - wait
-
-        # Squeeze just released (was in squeeze, now not)
-        squeeze_bars = self._squeeze_count[symbol]
-        self._squeeze_count[symbol] = 0
-
-        if squeeze_bars < self.min_squeeze_bars:
-            return None  # Not enough compression
-
-        # Momentum: close > close[N bars ago] (upward resolution)
-        if len(closes) < self.mom_lookback + 1:
+        ref_close = closes[-(self.drop_lookback + 1)]
+        if ref_close < 1e-9:
             return None
-        if bar.close <= closes[-self.mom_lookback - 1]:
+        drop_pct = (ref_close - bar.close) / ref_close
+        if drop_pct < self.min_drop_pct:
             return None
 
-        # Trend filter: price above SMA
+        # IBS-like: close near daily low (capitulation)
+        daily_range = bar.high - bar.low
+        if daily_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / daily_range
+        if ibs > self.ibs_threshold:
+            return None
+
+        # Trend filter: price above long-term SMA (not fighting major downtrend)
         sma = self._sma(closes, self.sma_period)
-        if sma is None or bar.close <= sma:
-            return None
+        if sma is not None and bar.close < sma * 0.95:
+            return None  # Too far below SMA — real downtrend, not a dip
 
         # Stop and target
         stop = bar.close - self.stop_atr_mult * atr
@@ -171,11 +152,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "squeeze_bars": squeeze_bars,
-                "bb_width": round(bb_width, 4),
-                "kc_width": round(kc_width, 4),
-                "momentum": round(bar.close - closes[-self.mom_lookback - 1], 2),
+                "atr_expansion": round(atr / atr_avg, 2),
+                "drop_pct": round(drop_pct * 100, 2),
+                "ibs": round(ibs, 3),
                 "regime_vol": regime_vol,
-                "seed": "vol_squeeze_v1",
+                "seed": "vol_fade_v1",
             },
         )
