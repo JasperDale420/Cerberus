@@ -35,7 +35,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = 2
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.ibs_threshold = 0.3  # hardcoded — was unstable (CV=0.308), mean was 0.294
         self.atr_dip_min = 0.5  # hardcoded — was unstable (CV=0.445), mean was 0.55
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
         self.max_hold_days = int(config.get("max_hold_days", 3))
@@ -98,9 +98,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # 2+ consecutive down closes
+        # 2+ consecutive down closes (3+ required in DOWN trend — more selective)
         consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
+        trend = labels.get("regime_trend", "FLAT")
+        min_consec = 3 if trend == "DOWN" else self.consec_down_min
+        if consec < min_consec:
             return None
 
         # IBS filter: close near day's low
