@@ -214,7 +214,7 @@ strategies:
     ema_slow: 50
     pullback_pct: 0.03
     rsi_period: 2
-    rsi_threshold: 20.0
+    rsi_threshold: 15.0
     atr_period: 14
     stop_atr_mult: 1.5
     target_atr_mult: 3.0
