@@ -37,6 +37,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -71,9 +72,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH and SHOCK volatility (HIGH vol windows consistently lose)
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
         # Event filters
@@ -94,6 +95,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
+
+        # IBS filter: close near day's low (better mean reversion timing)
+        bar_range = bar.high - bar.low
+        if bar_range > 1e-9:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_threshold:
+                return None
 
         # Entry: price dropped significantly below SMA (ATR-scaled dip)
         dip = sma - bar.close
