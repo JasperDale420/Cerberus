@@ -36,7 +36,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = 2
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.atr_dip_min = float(config.get("atr_dip_min", 0.8))
+        self.atr_dip_min = 0.5  # hardcoded — was unstable (CV=0.445), mean was 0.55
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -78,6 +78,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
         if not self._require_min_bars(symbol_state, self.min_bars):
+            return None
+
+        # Day-of-week filter: skip Wed(2), Thu(3), Sat(5) — historically negative
+        dow = bar.time.weekday()
+        if dow in (2, 3, 5):
             return None
 
         # Skip HIGH and SHOCK volatility
