@@ -211,9 +211,9 @@ strategies:
     max_hold_days: 3
     cooldown_bars: 1
     consec_down_min: 2
-    ibs_threshold: 0.3
-    sma_fast: 20
-    sma_slow: 50
+    ibs_threshold: 0.35
+    sma_period: 20
+    max_pullback_pct: 0.08
     atr_period: 14
     stop_atr_mult: 1.5
     target_atr_mult: 1.5

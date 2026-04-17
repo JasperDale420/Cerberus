@@ -1,8 +1,8 @@
-"""Trend-pullback mean reversion — buy dips in confirmed uptrends.
+"""Consecutive-down + IBS mean reversion with pullback depth cap.
 
-Entry: SMA(20) > SMA(50) [uptrend] + close < SMA(20) [pullback] +
-       2+ consecutive down closes + IBS < threshold [oversold timing].
-Naturally filters downtrends. Symmetric ATR stop/target.
+Entry: 2+ consecutive down closes + low IBS + close below SMA(20) but not
+too far below (max 8% gap). Prevents buying into freefall crashes.
+Symmetric ATR stop/target. Trades all regimes except SHOCK.
 Long-only, daily bars, max_hold_days=3.
 """
 
@@ -27,9 +27,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.sma_fast = int(config.get("sma_fast", 20))
-        self.sma_slow = int(config.get("sma_slow", 50))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.sma_period = int(config.get("sma_period", 20))
+        self.max_pullback_pct = float(config.get("max_pullback_pct", 0.08))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
@@ -97,18 +97,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Uptrend structure: SMA(fast) > SMA(slow)
-        sma_f = self._sma(closes, self.sma_fast)
-        sma_s = self._sma(closes, self.sma_slow)
-        if sma_f is None or sma_s is None:
-            return None
-        if sma_f <= sma_s:
-            return None  # Not in uptrend
-
-        # Pullback: close below fast SMA
-        if bar.close >= sma_f:
-            return None
-
         # Consecutive down days (hard gate)
         consec = self._consecutive_downs(closes)
         if consec < self.consec_down_min:
@@ -117,6 +105,18 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # IBS — close near the low of the day
         ibs = self._ibs(bar)
         if ibs >= self.ibs_threshold:
+            return None
+
+        # Close below SMA — mean reversion setup
+        sma = self._sma(closes, self.sma_period)
+        if sma is None or sma < 1e-9:
+            return None
+        if bar.close >= sma:
+            return None
+
+        # Pullback depth cap: don't buy if too far below SMA (freefall)
+        pullback_pct = (sma - bar.close) / sma
+        if pullback_pct > self.max_pullback_pct:
             return None
 
         # ATR for stop and target
@@ -138,8 +138,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
-                "sma_spread": round((sma_f - sma_s) / sma_s, 4),
-                "pullback_pct": round((bar.close - sma_f) / sma_f, 4),
+                "pullback_pct": round(pullback_pct, 4),
                 "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
