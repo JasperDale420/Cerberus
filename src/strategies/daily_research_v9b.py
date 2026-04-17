@@ -1,7 +1,10 @@
-"""Confluence Mean Reversion: Consecutive Down Days + BB Position + Volume.
+"""Confluence: Consec Down + BB + IBS + Trend Health.
 
-Buy after 2+ consecutive down closes when price is in lower half of Bollinger Band
-and volume is above average. Uses ATR-based stops. Skips SHOCK vol and earnings.
+Buy after 2+ consecutive down closes when:
+- Price below BB(20) midline (short-term oversold)
+- Price above SMA(50) (long-term trend intact)
+- IBS < 0.35 (closed near low = selling exhaustion)
+Skips SHOCK vol and earnings. ATR-based stops.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -27,14 +30,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
         self.sma_long_period = int(config.get("sma_long_period", 50))
+        self.ibs_max = float(config.get("ibs_max", 0.35))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
 
     # --- Indicator helpers ---
 
@@ -76,6 +77,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 break
         return count
 
+    @staticmethod
+    def _ibs(bar: Bar) -> Optional[float]:
+        """Internal Bar Strength: (close - low) / (high - low)."""
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return None
+        return (bar.close - bar.low) / rng
+
     def on_bar(
         self,
         symbol: str,
@@ -100,38 +109,35 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # Condition 1: Consecutive down closes
+        # Condition 1: 2+ consecutive down closes
         consec = self._consecutive_down(closes)
         if consec < self.consec_down_min:
             return None
 
-        # Condition 2: Price in lower half of Bollinger Band
+        # Condition 2: IBS < 0.35 (closed near low = selling exhaustion)
+        ibs = self._ibs(bar)
+        if ibs is None or ibs > self.ibs_max:
+            return None
+
+        # Condition 3: Price below BB(20) midline (short-term oversold)
         bb_mean = self._sma(closes, self.bb_period)
         bb_std = self._std(closes, self.bb_period)
         if bb_mean is None or bb_std is None or bb_std < 0.01:
             return None
-
-        # Price should be below BB midline (oversold area)
         if bar.close > bb_mean:
             return None
 
-        # Condition 3: Not in total freefall — price above SMA(50) - 2*ATR
+        # Condition 4: Price above SMA(50) (long-term trend intact)
+        sma_long = self._sma(closes, self.sma_long_period)
+        if sma_long is not None and bar.close < sma_long:
+            return None
+
+        # ATR for stops
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        sma_long = self._sma(closes, self.sma_long_period)
-        if sma_long is not None and bar.close < sma_long - 2.0 * atr:
-            return None  # Too far below long-term trend
-
-        # Condition 4: Volume above average (selling pressure = buyers stepping in)
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
-            return None
-
-        # Calculate BB z-score for position sizing signal
         z_score = (bar.close - bb_mean) / bb_std if bb_std > 0 else 0.0
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -146,10 +152,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "consec_down_bb",
+                "mode": "consec_ibs_bb_trend",
                 "consec_down": consec,
+                "ibs": round(ibs, 3),
                 "z_score": round(z_score, 2),
-                "bb_mean": round(bb_mean, 2),
                 "atr": round(atr, 4),
             },
         )
