@@ -36,7 +36,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.kc_period = int(config.get("kc_period", 20))
         self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.min_consec_down = int(config.get("min_consec_down", 1))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
@@ -95,6 +96,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         if len(closes) < self.kc_period + 1:
             return None
+
+        # Consecutive down days filter
+        if len(closes) >= self.min_consec_down + 1:
+            consec_down = 0
+            for i in range(1, min(len(closes), 10)):
+                if closes[-i] < closes[-i - 1]:
+                    consec_down += 1
+                else:
+                    break
+            if consec_down < self.min_consec_down:
+                return None
 
         # ATR for Keltner Channel width
         atr = self._atr(bars, self.atr_period)
