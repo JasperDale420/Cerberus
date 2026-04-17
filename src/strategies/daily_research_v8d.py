@@ -34,7 +34,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.kc_mult = float(config.get("kc_mult", 2.0))
         # Entry filters
-        self.ibs_max = float(config.get("ibs_max", 0.35))
+        self.ibs_max = float(config.get("ibs_max", 0.30))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         # Stop/target in ATR multiples
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -138,7 +138,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         # Stop and target
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # In FLAT regime, target the EMA (mean reversion); otherwise fixed ATR target
+        if regime_trend == "FLAT" and ema > bar.close:
+            target = ema
+        else:
+            target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
