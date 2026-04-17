@@ -128,7 +128,20 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_hold_days": 5,
         "max_stop_pct": 0.02,
     },
+    "daily_research_v9a": {
+        "rsi_period": 2,
+        "trend_period": 50,
+        "max_drawdown_pct": 0.10,
+        "drawdown_lookback": 40,
+        "max_hold_days": 5,
+        "max_stop_pct": 0.02,
+    },
     "daily_research_v8b": {
+        "atr_period": 14,
+        "bb_period": 20,
+        "bb_std": 2.0,
+    },
+    "daily_research_v9b": {
         "atr_period": 14,
         "bb_period": 20,
         "bb_std": 2.0,
@@ -139,7 +152,21 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "max_hold_days": 5,
         "stop_atr_mult": 1.5,
     },
+    "daily_research_v9c": {
+        "atr_period": 14,
+        "sma_period": 20,
+        "max_hold_days": 5,
+        "stop_atr_mult": 1.5,
+    },
     "daily_research_v8d": {
+        "atr_period": 14,
+        "sma_fast": 20,
+        "sma_slow": 50,
+        "atr_mult": 1.5,
+        "ibs_threshold": 0.25,
+        "consec_down_days": 2,
+    },
+    "daily_research_v9d": {
         "atr_period": 14,
         "sma_fast": 20,
         "sma_slow": 50,
@@ -290,6 +317,23 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("atr_dip_min", "float", low=0.3, high=1.0, step=0.1, description="Min ATR dip below SMA"),
     ],
     "daily_research_v8d": [
+        ParamDef("max_hold_days", "int", low=4, high=6, step=1, description="Max hold days"),
+    ],
+    # v9 campaign — same spaces as v8 (identical seeds)
+    "daily_research_v9a": [
+        ParamDef("atr_expansion_mult", "float", low=1.0, high=1.5, step=0.1, description="ATR expansion threshold"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target multiplier"),
+    ],
+    "daily_research_v9b": [
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("ibs_threshold", "float", low=0.20, high=0.35, step=0.05, description="IBS threshold"),
+    ],
+    "daily_research_v9c": [
+        ParamDef("ibs_threshold", "float", low=0.25, high=0.50, step=0.05, description="IBS threshold"),
+        ParamDef("atr_dip_min", "float", low=0.3, high=1.0, step=0.1, description="Min ATR dip below SMA"),
+    ],
+    "daily_research_v9d": [
         ParamDef("max_hold_days", "int", low=4, high=6, step=1, description="Max hold days"),
     ],
 }

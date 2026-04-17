@@ -453,3 +453,59 @@ strategies:
       liquidity: [good, thin]
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
+
+  daily_research_v9a:
+    enabled: true
+    min_bars: 50
+    allow_overnight: true
+    max_hold_days: 5
+    cooldown_bars: 1
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
+  daily_research_v9b:
+    enabled: true
+    min_bars: 50
+    allow_overnight: true
+    max_hold_days: 7
+    cooldown_bars: 1
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
+  daily_research_v9c:
+    enabled: true
+    min_bars: 50
+    allow_overnight: true
+    max_hold_days: 5
+    cooldown_bars: 1
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
+  daily_research_v9d:
+    enabled: true
+    min_bars: 50
+    allow_overnight: true
+    max_hold_days: 5
+    cooldown_bars: 1
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
