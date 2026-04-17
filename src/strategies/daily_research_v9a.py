@@ -113,6 +113,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
+        # Skip DOWN regime entirely — negative expectancy consistently
+        if regime_trend == "DOWN":
+            return None
+
         # Drawdown filter
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
@@ -156,10 +160,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         # Require at least 3 factors
         if score < 3:
-            return None
-
-        # In DOWN regime, require 4+ factors
-        if regime_trend == "DOWN" and score < 4:
             return None
 
         # Target: min of BB midline or ATR-based
