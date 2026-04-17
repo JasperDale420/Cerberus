@@ -152,7 +152,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Minimum reward-to-risk filter: skip poor R:R setups
         reward = target - bar.close
         risk = bar.close - stop
-        if risk <= 0 or reward / risk < 1.3:
+        if risk <= 0 or reward / risk < 1.5:
             return None
 
         self.last_signal_time[symbol] = bar.time
