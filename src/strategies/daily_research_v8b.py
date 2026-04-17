@@ -108,8 +108,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
-        # Event filters
-        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+        # Event filters — skip volatile event windows
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False) or labels.get("opex_week", False):
             return None
 
         bars = list(symbol_state.bars)
