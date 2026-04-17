@@ -1,10 +1,7 @@
-"""Multi-Day Selloff Recovery — buy after N consecutive down days.
+"""Connors RSI consecutive-down mean reversion with vol/IBS filters.
 
-Core logic: stocks that close lower for 2+ days with low IBS (near day's low)
-and a meaningful total drop tend to bounce. Filter with SMA trend support,
-volume exhaustion check, and ATR vol gate.
-Single unified entry across all regimes, no mode switching.
-Long-only, daily bars.
+Entry: 2+ consecutive down closes AND RSI < threshold AND IBS < threshold.
+Skips HIGH/SHOCK vol and high realized vol environments.
 """
 
 from __future__ import annotations
@@ -16,7 +13,7 @@ from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
 
-class SeedTrendPullbackStrategy(BaseStrategy):
+class dailyresearchv7bStrategy(BaseStrategy):
     name = "daily_research_v7b"
     allow_overnight: bool = True
 
@@ -27,30 +24,42 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Consecutive down days
-        self.min_down_days = int(config.get("min_down_days", 2))
-        # IBS threshold
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        # Minimum total drop over N days (as pct of price)
-        self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
-        # Trend support — price must be above SMA(N)
-        self.sma_period = int(config.get("sma_period", 50))
-        # ATR params
+        self.consec_down_days = int(config.get("consec_down_days", 2))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_max = float(config.get("rsi_max", 10.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        # Vol filters
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.sma_period = int(config.get("sma_period", 50))
+        self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
+        self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
-        # Max stop as pct of price
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+
+    # --- Indicator helpers ---
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -64,21 +73,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
-    @staticmethod
-    def _ibs(bar: Bar) -> float:
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return 0.5
-        return (bar.close - bar.low) / rng
-
-    @staticmethod
-    def _consecutive_down(closes: list[float], n: int) -> bool:
-        if len(closes) < n + 1:
-            return False
-        for i in range(1, n + 1):
-            if closes[-i] >= closes[-i - 1]:
-                return False
-        return True
+    def _count_consecutive_down(self, closes: list[float]) -> int:
+        """Count consecutive down closes ending at the most recent bar."""
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
 
     def on_bar(
         self,
@@ -92,61 +95,57 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH and SHOCK volatility regimes
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
-        # Realized vol hard gate
+        # Skip high realized vol environments
         if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
+            return None
+
+        # Skip earnings and FOMC
+        labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # ATR-based vol filter
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
+        # Need enough history
+        if len(closes) < self.min_bars:
             return None
-        if atr / bar.close > self.max_atr_pct:
+
+        # Trend context
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
             return None
 
         # Core signal: consecutive down days
-        if not self._consecutive_down(closes, self.min_down_days):
+        consec = self._count_consecutive_down(closes)
+        if consec < self.consec_down_days:
             return None
 
-        # Minimum total drop — ensure this is a real selloff, not noise
-        n = self.min_down_days
-        if len(closes) >= n + 1:
-            start_price = closes[-(n + 1)]
-            if start_price > 0:
-                total_drop = (start_price - closes[-1]) / start_price
-                if total_drop < self.min_drop_pct:
-                    return None
-
-        # IBS — close near the low (potential exhaustion)
-        ibs = self._ibs(bar)
-        if ibs > self.ibs_threshold:
+        # RSI oversold confirmation
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi > self.rsi_max:
             return None
 
-        # Trend support — price above SMA for long-term support
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma:
-            return None
-
-        # Volume exhaustion — today's volume should not be spiking vs recent average
-        # (spiking volume on down days = panic selling, not exhaustion)
-        volumes = [b.volume for b in bars]
-        if len(volumes) >= 20:
-            avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume > avg_vol * 2.0:
+        # IBS filter: bar should close near its low (confirms selling pressure)
+        bar_range = bar.high - bar.low
+        if bar_range > 1e-9:
+            ibs = (bar.close - bar.low) / bar_range
+            # Use stricter threshold if below SMA (mean reversion mode)
+            ibs_thresh = self.mr_ibs_threshold if bar.close < sma else self.ibs_entry_threshold
+            if ibs > ibs_thresh:
                 return None
 
-        # Stop and target with cap
-        raw_stop_dist = self.stop_atr_mult * atr
-        max_stop_dist = bar.close * self.max_stop_pct
-        stop_dist = min(raw_stop_dist, max_stop_dist)
-        stop = bar.close - stop_dist
+        # ATR for stop and target
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -158,8 +157,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "selloff_recovery",
-                "down_days": self.min_down_days,
-                "ibs": round(ibs, 2),
+                "consec_down": consec,
+                "rsi": round(rsi, 2),
+                "above_sma": bar.close > sma,
+                "atr": round(atr, 4),
+                "seed": "connors_rsi2_mr",
             },
         )
