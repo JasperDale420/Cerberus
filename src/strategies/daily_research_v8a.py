@@ -26,7 +26,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 3))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
         self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
@@ -96,6 +96,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
+        # --- Event filter (avoid unpredictable volatility) ---
+        regime_labels = symbol_state.meta.get("regime_labels", {})
+        if regime_labels.get("near_earnings", False):
+            return None
+        if regime_labels.get("near_fomc", False):
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -128,9 +135,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         # --- Filter 5: Regime filter (skip DOWN trend entirely) ---
-        labels = symbol_state.meta.get("regime_labels", {})
-        regime_trend = labels.get("regime_trend", "FLAT")
-        regime_vol = labels.get("regime_vol", "NORMAL")
+        regime_trend = regime_labels.get("regime_trend", "FLAT")
+        regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_trend == "DOWN":
             return None
         if regime_vol in ("HIGH", "SHOCK"):
@@ -149,7 +155,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Target: SMA midline for mean reversion; fallback to ATR if SMA below entry
+        target = sma if sma > bar.close else bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
