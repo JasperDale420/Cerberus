@@ -1,7 +1,10 @@
-"""Consecutive-down mean reversion with regime gating.
+"""Regime-switch strategy: different entry logic per market regime.
 
-Entry: 2+ consecutive lower closes + BB proximity for mean reversion.
-Uses multi-factor scoring: consecutive downs, BB position, volume, IBS.
+UP regime: Buy pullbacks to SMA(20) in established uptrends (EMA20 > EMA50).
+FLAT regime: Mean reversion via Bollinger Band fade + IBS confirmation.
+DOWN regime: Skip entirely — no consistent edge found.
+
+True regime-adaptive: the ENTRY LOGIC changes, not just thresholds.
 Long-only for consistency. Event and regime filters.
 """
 
@@ -25,15 +28,20 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        # Shared
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        # UP regime: trend pullback
+        self.sma_fast = int(config.get("sma_fast", 20))
+        self.sma_slow = int(config.get("sma_slow", 50))
+        self.pullback_pct = float(config.get("pullback_pct", 0.02))
+        self.target_atr_up = float(config.get("target_atr_up", 2.5))
+        # FLAT regime: BB mean reversion
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))
+        self.target_atr_flat = float(config.get("target_atr_flat", 2.0))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -63,8 +71,14 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
+    def _ibs(bar: Bar) -> float:
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return 0.5
+        return (bar.close - bar.low) / rng
+
+    @staticmethod
     def _consecutive_downs(closes: list[float]) -> int:
-        """Count consecutive lower closes from the most recent bar backwards."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -72,14 +86,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             else:
                 break
         return count
-
-    @staticmethod
-    def _ibs(bar: Bar) -> float:
-        """Internal Bar Strength: (close - low) / (high - low)."""
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return 0.5
-        return (bar.close - bar.low) / rng
 
     def on_bar(
         self,
@@ -103,72 +109,123 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK vol and DOWN+HIGH (consistently weak)
+        # Regime filter: skip SHOCK vol entirely
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
         if regime_vol == "SHOCK":
             return None
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        # DOWN regime: skip entirely — no consistent edge
+        if regime_trend == "DOWN":
             return None
 
-        # Indicators
+        # Common indicators
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        # Route to regime-specific logic
+        if regime_trend == "UP":
+            return self._up_regime_signal(symbol, bar, bars, closes, atr, regime_vol, market_state)
+        else:
+            return self._flat_regime_signal(symbol, bar, bars, closes, atr, regime_vol, market_state)
+
+    def _up_regime_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        bars: list[Bar],
+        closes: list[float],
+        atr: float,
+        regime_vol: str,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        """UP regime: buy pullbacks to SMA(20) in established uptrends."""
+        sma_fast = self._sma(closes, self.sma_fast)
+        sma_slow = self._sma(closes, self.sma_slow)
+        if sma_fast is None or sma_slow is None:
+            return None
+
+        # Require established uptrend: fast > slow
+        if sma_fast <= sma_slow:
+            return None
+
+        # Price must have pulled back near or below fast SMA
+        distance_pct = (bar.close - sma_fast) / sma_fast
+        if distance_pct > self.pullback_pct:
+            return None  # Too far above — chasing
+
+        # Price must be above slow SMA (still in trend)
+        if bar.close < sma_slow:
+            return None
+
+        # Require at least 1 down day (actual pullback, not just hovering)
+        if len(closes) >= 2 and closes[-1] >= closes[-2]:
+            return None
+
+        # In HIGH vol, require deeper pullback (more margin of safety)
+        if regime_vol == "HIGH" and distance_pct > 0.0:
+            return None
+
+        stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_up * atr
+
+        self.last_signal_time[symbol] = bar.time
+        return self._create_signal(
+            symbol,
+            OrderSide.BUY,
+            bar,
+            market_state,
+            stop_price=stop,
+            target_price=target,
+            meta={
+                "mode": "UP_PULLBACK",
+                "regime_vol": regime_vol,
+                "distance_pct": round(distance_pct, 4),
+                "sma_spread": round((sma_fast - sma_slow) / sma_slow, 4),
+            },
+        )
+
+    def _flat_regime_signal(
+        self,
+        symbol: str,
+        bar: Bar,
+        bars: list[Bar],
+        closes: list[float],
+        atr: float,
+        regime_vol: str,
+        market_state: MarketState,
+    ) -> Optional[Signal]:
+        """FLAT regime: Bollinger Band mean reversion with IBS confirmation."""
         bb_sma = self._sma(closes, self.bb_period)
         bb_std_val = self._std(closes, self.bb_period)
-        atr = self._atr(bars, self.atr_period)
-
         if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
-            return None
-        if atr is None or atr < 1e-9:
             return None
 
         lower_bb = bb_sma - self.bb_std * bb_std_val
 
-        # Multi-factor entry scoring
-        score = 0
+        # Price must be near or below lower BB
+        if bar.close > lower_bb:
+            return None
 
-        # Factor 1: Consecutive down closes
-        consec = self._consecutive_downs(closes)
-        if consec >= self.consec_down_min:
-            score += 1
-        if consec >= self.consec_down_min + 1:
-            score += 1
-
-        # Factor 2: BB proximity (close near or below lower BB)
-        bb_distance = (bar.close - lower_bb) / bb_std_val if bb_std_val > 0 else 999
-        if bb_distance < self.bb_proximity:
-            score += 1
-        if bb_distance < 0:  # Below lower BB
-            score += 1
-
-        # Factor 3: IBS (low IBS = closed near low = oversold)
+        # IBS confirmation: closed near the low
         ibs = self._ibs(bar)
-        if ibs < self.ibs_threshold:
-            score += 1
-
-        # Factor 4: Volume spike (high vol on pullback = institutional)
-        volumes = [b.volume for b in bars]
-        if len(volumes) >= 20:
-            avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume > avg_vol * 1.2:
-                score += 1
-
-        # Require at least 3 factors
-        if score < 3:
+        if ibs > self.ibs_threshold:
             return None
 
-        # In DOWN regime, require stronger signal (4+ factors)
-        if regime_trend == "DOWN" and score < 4:
+        # Require at least 2 consecutive down days
+        consec = self._consecutive_downs(closes)
+        if consec < 2:
             return None
 
-        # Target: min of BB midline or ATR-based target
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
-
+        # Target: BB midline (mean reversion)
+        target = bb_sma
         if target <= bar.close:
             return None
+
+        # Cap target at ATR-based level
+        target = min(target, bar.close + self.target_atr_flat * atr)
 
         stop = bar.close - self.stop_atr_mult * atr
 
@@ -181,11 +238,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "regime_trend": regime_trend,
+                "mode": "FLAT_REVERSION",
                 "regime_vol": regime_vol,
-                "consec_down": consec,
-                "bb_distance": round(bb_distance, 2),
                 "ibs": round(ibs, 3),
-                "score": score,
+                "consec_down": consec,
+                "bb_distance": round((bar.close - lower_bb) / bb_std_val, 2),
             },
         )
