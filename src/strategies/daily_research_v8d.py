@@ -149,8 +149,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if consec < min_consec:
             return None
 
-        # Stop and target
-        stop = bar.close - self.stop_atr_mult * atr
+        # Stop: use the tighter of ATR-based or bar.low-based stop
+        # bar.low is where selling exhausted; going further means thesis is wrong
+        atr_stop = bar.close - self.stop_atr_mult * atr
+        low_stop = bar.low - 0.5 * atr
+        stop = max(atr_stop, low_stop)
         # In FLAT regime, target the EMA (mean reversion); otherwise fixed ATR target
         if regime_trend == "FLAT" and ema > bar.close:
             target = ema
