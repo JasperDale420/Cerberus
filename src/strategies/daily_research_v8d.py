@@ -102,10 +102,14 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip DOWN+HIGH
+        # Regime filter: skip all DOWN regimes (worst WFO windows)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        if regime_trend == "DOWN":
+            return None
+
+        # Day-of-week filter: skip Thursday (historically worst day)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() == 3:
             return None
 
         bars = list(symbol_state.bars)
