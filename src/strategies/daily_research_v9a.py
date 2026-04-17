@@ -35,7 +35,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.drawdown_max = float(config.get("drawdown_max", 0.15))
+        self.drawdown_max = float(config.get("drawdown_max", 0.10))
+        self.atr_vol_cap = float(config.get("atr_vol_cap", 0.06))
 
     # --- Indicator helpers ---
 
@@ -112,9 +113,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
-        # Day-of-week filter: skip Thu/Fri (negative expectancy)
+        # Day-of-week filter: skip Friday (worst negative expectancy)
         dow = bar.time.weekday() if hasattr(bar.time, "weekday") else None
-        if dow is not None and dow >= 3:  # Thu=3, Fri=4
+        if dow is not None and dow == 4:  # Fri=4
+            return None
+
+        # Opex week filter: skip monthly options expiration week
+        if regime_labels.get("opex_week", False):
             return None
 
         # Drawdown filter: skip if price crashed too far from recent high
@@ -131,6 +136,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
             return None
         if atr is None or atr < 1e-9:
+            return None
+
+        # Internal vol check: ATR/price ratio caps out high-vol names
+        atr_pct = atr / bar.close if bar.close > 0 else 0
+        if atr_pct > self.atr_vol_cap:
             return None
 
         lower_bb = bb_sma - self.bb_std * bb_std_val
