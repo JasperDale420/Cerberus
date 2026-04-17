@@ -33,9 +33,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.atr_pct_cap = float(config.get("atr_pct_cap", 0.03))
+        self.atr_pct_cap = float(config.get("atr_pct_cap", 0.025))
         self.roc_period = int(config.get("roc_period", 20))
-        self.roc_floor = float(config.get("roc_floor", -0.10))
+        self.roc_floor = float(config.get("roc_floor", -0.03))
 
     # --- Indicator helpers ---
 
