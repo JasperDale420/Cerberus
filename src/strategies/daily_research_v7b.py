@@ -37,6 +37,8 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
 
     # --- Indicator helpers ---
 
@@ -113,6 +115,13 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if sma is None:
             return None
         if bar.close < sma:
+            return None
+
+        # Max drawdown filter: skip if stock has dropped too much from recent high
+        lookback = min(self.drawdown_lookback, len(closes))
+        recent_high = max(closes[-lookback:])
+        drawdown = (recent_high - bar.close) / recent_high
+        if drawdown > self.max_drawdown_pct:
             return None
 
         # ATR for volatility filter and stops
