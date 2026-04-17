@@ -142,11 +142,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             if avg_vol > 0 and bar.volume > avg_vol * 2.0:
                 return None
 
-        # Stop and target with cap
-        raw_stop_dist = self.stop_atr_mult * atr
-        max_stop_dist = bar.close * self.max_stop_pct
-        stop_dist = min(raw_stop_dist, max_stop_dist)
-        stop = bar.close - stop_dist
+        # Stop and target — ATR-proportional
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
