@@ -32,10 +32,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Keltner Channel
         self.kc_ema_period = int(config.get("kc_ema_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        self.kc_mult = float(config.get("kc_mult", 1.75))
+        self.kc_mult = float(config.get("kc_mult", 1.5))
         # Entry filters
-        self.ibs_max = float(config.get("ibs_max", 0.30))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.ibs_max = float(config.get("ibs_max", 0.35))
+        self.consec_down_min = int(config.get("consec_down_min", 1))
         # Stop/target in ATR multiples
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -104,11 +104,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip DOWN+HIGH (historically inconsistent)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
