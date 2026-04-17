@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -31,11 +31,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.bb_period = int(config.get("bb_period", 20))
         self.sma_long_period = int(config.get("sma_long_period", 50))
-        self.ibs_max = float(config.get("ibs_max", 0.25))
+        self.ibs_max = float(config.get("ibs_max", 0.30))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -97,13 +97,20 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
-        snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        # Regime labels (string-based, more reliable in backtest)
+        labels = symbol_state.meta.get("regime_labels", {})
+
+        # Skip HIGH and SHOCK volatility
+        vol_regime = str(labels.get("regime_vol", "NORMAL")).upper()
+        if vol_regime in ("HIGH", "SHOCK"):
+            return None
+
+        # Skip DOWN trend (long-only mean reversion doesn't work in broad downtrends)
+        trend_regime = str(labels.get("regime_trend", "FLAT")).upper()
+        if trend_regime == "DOWN":
             return None
 
         # Skip near earnings
-        labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False):
             return None
 
