@@ -37,9 +37,9 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.05))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.04))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
-        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
+        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.5))
         self.sma_fast_period = int(config.get("sma_fast_period", 20))
 
     # --- Indicator helpers ---
