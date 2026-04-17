@@ -1,10 +1,10 @@
-"""Consecutive-down + IBS mean reversion with asymmetric R:R.
+"""Trend-pullback strategy: buy dips in confirmed uptrends.
 
-Entry: 2+ consecutive down closes + low IBS + close below SMA(20).
-Asymmetric risk: tight stop (0.75 ATR), wide target (2.5 ATR).
-Winners pay 3.3x losers — positive expectancy even with 30% WR in bad windows.
-Simple filters: SHOCK vol + earnings/FOMC only.
-Long-only, daily bars, max_hold_days=5.
+Entry: EMA(20) > EMA(50) (uptrend) + price pulls back near EMA(20) + volume OK.
+Naturally avoids DOWN regime windows since EMA alignment won't be bullish.
+Asymmetric R:R: stop 1.5 ATR, target 3.0 ATR (2:1 payoff).
+Skip SHOCK vol + earnings/FOMC.
+Long-only, daily bars, max_hold_days=7.
 """
 
 from __future__ import annotations
@@ -27,21 +27,27 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
-        self.sma_period = int(config.get("sma_period", 20))
+        self.ema_fast = int(config.get("ema_fast", 20))
+        self.ema_slow = int(config.get("ema_slow", 50))
+        self.pullback_pct = float(config.get("pullback_pct", 0.02))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 0.75))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_avg_mult = float(config.get("vol_avg_mult", 0.8))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
+    def _ema(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
-        return sum(values[-period:]) / period
+        mult = 2.0 / (period + 1)
+        ema = values[0]
+        for v in values[1:]:
+            ema = v * mult + ema * (1 - mult)
+        return ema
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -54,23 +60,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _consecutive_downs(closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
-
-    @staticmethod
-    def _ibs(bar: Bar) -> float:
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return 0.5
-        return (bar.close - bar.low) / rng
 
     def on_bar(
         self,
@@ -96,21 +85,26 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
-        # Consecutive down days (hard gate)
-        consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
+        # EMA crossover: fast > slow = uptrend
+        ema_f = self._ema(closes, self.ema_fast)
+        ema_s = self._ema(closes, self.ema_slow)
+        if ema_f is None or ema_s is None:
             return None
+        if ema_f <= ema_s:
+            return None  # No uptrend — don't trade
 
-        # IBS — close near the low of the day
-        ibs = self._ibs(bar)
-        if ibs >= self.ibs_threshold:
-            return None
+        # Price must have pulled back near or below the fast EMA
+        distance = (bar.close - ema_f) / ema_f
+        if distance > self.pullback_pct:
+            return None  # Too extended above EMA — not a pullback
 
-        # Close below SMA — mean reversion setup
-        sma = self._sma(closes, self.sma_period)
-        if sma is None or bar.close >= sma:
-            return None
+        # Volume check: at least vol_avg_mult of 20-day average
+        if len(volumes) >= self.vol_avg_period:
+            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
+            if avg_vol > 0 and bar.volume < avg_vol * self.vol_avg_mult:
+                return None
 
         # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
@@ -129,8 +123,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "consec_down": consec,
-                "ibs": round(ibs, 3),
+                "ema_fast": round(ema_f, 2),
+                "ema_slow": round(ema_s, 2),
+                "pullback_pct": round(distance, 4),
                 "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
