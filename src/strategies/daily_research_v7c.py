@@ -92,10 +92,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip Monday entries (historically negative edge)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() == 0:
-            return None
-
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
@@ -105,7 +101,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         trend = regime_labels.get("regime_trend", "FLAT")
-        if trend in ("DOWN", "FLAT"):
+        if trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
