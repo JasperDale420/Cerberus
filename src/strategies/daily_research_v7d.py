@@ -119,6 +119,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
+        # Skip UP trend: mean reversion is weaker in uptrends
+        if regime_trend == "UP":
+            return None
+
         # Indicators
         bb_sma = self._sma(closes, self.bb_period)
         bb_std_val = self._std(closes, self.bb_period)
