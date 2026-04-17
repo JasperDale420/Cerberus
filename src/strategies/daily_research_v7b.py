@@ -37,7 +37,6 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        self.ema_period = int(config.get("ema_period", 21))
 
     # --- Indicator helpers ---
 
@@ -116,23 +115,12 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if bar.close < sma:
             return None
 
-        # SMA must be rising (uptrend momentum)
-        if len(closes) >= self.sma_period + 10:
-            sma_prev = self._sma(closes[:-10], self.sma_period)
-            if sma_prev is not None and sma <= sma_prev:
-                return None
-
-        # EMA(21) > SMA(50): short-term trend confirms long-term
-        ema = self._sma(closes, self.ema_period)
-        if ema is not None and ema < sma:
-            return None
-
         # ATR for volatility filter and stops
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Vol filter: skip excessively volatile stocks
+        # Vol filter: skip excessively volatile stocks (ATR/price too high)
         atr_pct = atr / bar.close
         if atr_pct > self.max_atr_pct:
             return None
@@ -146,6 +134,13 @@ class dailyresearchv7bStrategy(BaseStrategy):
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
             return None
+
+        # IBS filter: bar should close near its low
+        bar_range = bar.high - bar.low
+        if bar_range > 1e-9:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_entry_threshold:
+                return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
