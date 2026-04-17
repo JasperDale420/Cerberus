@@ -115,11 +115,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ema_f <= ema_s:
             return None  # No uptrend — don't trade
 
-        # Price must be within pullback zone of fast EMA
-        distance = (bar.close - ema_f) / ema_f
-        if distance > self.pullback_pct:
-            return None  # Too extended — not a pullback
-
         # RSI(2) must be oversold — extreme short-term selling pressure
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_threshold:
