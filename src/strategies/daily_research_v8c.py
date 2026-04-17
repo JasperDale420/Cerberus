@@ -80,9 +80,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility
+        # Skip SHOCK volatility only (HIGH vol still has edge with selective entries)
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         # Event filters
