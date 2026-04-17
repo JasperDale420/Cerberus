@@ -134,12 +134,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if sma is not None and bar.close < sma:
             return None
 
-        # Max drawdown from 50-day high — extra safety against freefall
-        if len(closes) >= 50:
-            recent_high = max(closes[-50:])
-            if recent_high > 0 and (recent_high - bar.close) / recent_high > 0.20:
-                return None
-
         # Volume exhaustion — today's volume should not be spiking vs recent average
         # (spiking volume on down days = panic selling, not exhaustion)
         volumes = [b.volume for b in bars]
