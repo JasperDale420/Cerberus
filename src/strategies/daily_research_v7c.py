@@ -1,11 +1,10 @@
-"""Vol-Filtered Oversold Bounce (vol_breakout archetype).
+"""Inside Day Breakout (vol_breakout archetype).
 
-Buy after consecutive down days when ATR is elevated (vol expansion).
-The idea: volatility expansion creates oversold bounces that are more
-reliable than in calm markets. Uses IBS (close position) and consecutive
-down-day count as entry, ATR ratio as vol filter.
-
-NOT a pure RSI strategy — entry is structural (down days + IBS).
+Buy after inside day (range contraction) resolves upward with volume.
+Inside day = today's high < yesterday's high AND today's low > yesterday's low.
+Next day breakout above inside day's high = entry signal.
+Vol filter: require above-average ATR for context.
+Skip DOWN regime, skip Fridays.
 """
 
 from __future__ import annotations
@@ -31,8 +30,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.min_consec_down = int(config.get("min_consec_down", 2))
-        self.atr_expansion = float(config.get("atr_expansion", 1.1))
+        self.atr_expansion = float(config.get("atr_expansion", 1.0))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -70,6 +68,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("regime_vol") == "SHOCK":
             return None
 
+        # Skip Fridays
+        if hasattr(bar.time, "weekday") and bar.time.weekday() == 4:
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -80,43 +82,52 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Consecutive down days (close < prior close)
-        consec_down = 0
-        for i in range(len(bars) - 1, 0, -1):
-            if bars[i].close < bars[i - 1].close:
-                consec_down += 1
-            else:
-                break
-        if consec_down < self.min_consec_down:
+        prev_bar = bars[-2]
+        prev_prev = bars[-3]
+
+        # Inside day detection: previous bar had range inside the bar before it
+        was_inside = prev_bar.high <= prev_prev.high and prev_bar.low >= prev_prev.low
+        if not was_inside:
             return None
 
-        # IBS: close near the low of the day (oversold signal)
+        # Breakout: current bar closes above the inside day's high
+        if bar.close <= prev_bar.high:
+            return None
+
+        # Close in upper half of today's range (strong breakout)
         today_range = bar.high - bar.low
         if today_range < 1e-9:
             return None
-        ibs = (bar.close - bar.low) / today_range
-        if ibs > 0.35:
+        close_pos = (bar.close - bar.low) / today_range
+        if close_pos < 0.5:
             return None
 
-        # ATR expansion filter: current ATR vs longer-term ATR
-        atr_long = self._atr(bars[:-5], 20)
-        if atr_long is None or atr_long < 1e-9:
+        # Volume confirmation: above 80% of 20-day average
+        volumes = [b.volume for b in bars]
+        if len(volumes) < 20:
             return None
-        atr_ratio = atr / atr_long
-        if atr_ratio < self.atr_expansion:
+        avg_vol = sum(volumes[-20:]) / 20
+        if avg_vol <= 0 or bar.volume < avg_vol * 0.8:
             return None
 
-        # Must be above SMA(50) — not in deep downtrend
-        sma50 = self._sma(closes, 50)
-        if sma50 is not None and bar.close < sma50 * 0.95:
+        # Trend context: above SMA(20) or close to it
+        sma20 = self._sma(closes, 20)
+        if sma20 is not None and bar.close < sma20 * 0.97:
             return None
 
         # Regime-adaptive stops
         regime_trend = regime_labels.get("regime_trend", "UP")
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_trend == "DOWN" or regime_vol == "HIGH":
+
+        # More selective in DOWN: require stronger breakout
+        if regime_trend == "DOWN":
+            if close_pos < 0.7:
+                return None
             stop_mult = self.stop_atr_mult * 0.8
             target_mult = self.target_atr_mult * 0.7
+        elif regime_vol == "HIGH":
+            stop_mult = self.stop_atr_mult * 0.9
+            target_mult = self.target_atr_mult * 0.8
         else:
             stop_mult = self.stop_atr_mult
             target_mult = self.target_atr_mult
@@ -134,9 +145,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "atr_ratio": round(atr_ratio, 2),
-                "consec_down": consec_down,
-                "ibs": round(ibs, 2),
+                "close_pos": round(close_pos, 2),
+                "inside_day": True,
                 "seed": "vol_breakout",
             },
         )
