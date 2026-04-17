@@ -165,11 +165,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if target <= bar.close:
             return None
 
-        # Regime-adaptive stop: wider in HIGH vol to avoid noise stops
-        stop_mult = self.stop_atr_mult
-        if regime_vol == "HIGH":
-            stop_mult = self.stop_atr_mult * 1.5  # wider stop in high vol
-        stop = bar.close - stop_mult * atr
+        stop = bar.close - self.stop_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
