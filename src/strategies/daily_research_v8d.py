@@ -1,12 +1,12 @@
-"""Regime-Filtered Keltner + IBS Dip Buy (long-only).
+"""Regime-Adaptive Keltner + IBS Dip Buy (long-only).
 
-Unified entry logic across all regimes:
-  1. Price at or below lower Keltner Channel (EMA - mult*ATR)
-  2. Low IBS (closed near day's low — seller exhaustion)
-  3. At least N consecutive down closes (momentum exhaustion)
+Entry: price below lower Keltner + low IBS + consecutive down closes.
+Regime-adaptive parameters:
+  UP   — tighter KC entry (1.5 ATR), stricter IBS (0.20), bigger target (EMA)
+  DOWN — standard KC (2.0 ATR), IBS 0.30, tight target (1.5 ATR)
+  FLAT — standard KC (2.0 ATR), IBS 0.30, EMA target
 
-Regime used as FILTER only — skip bad regime combos (DOWN+HIGH).
-Skips SHOCK vol, earnings, FOMC.
+Skips SHOCK vol, earnings, FOMC. Skip DOWN+HIGH.
 """
 
 from __future__ import annotations
@@ -29,16 +29,19 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        # Keltner Channel
         self.kc_ema_period = int(config.get("kc_ema_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        self.kc_mult = float(config.get("kc_mult", 2.0))
-        # Entry filters
-        self.ibs_max = float(config.get("ibs_max", 0.30))
+        # Regime-adaptive KC multipliers
+        self.kc_mult_up = float(config.get("kc_mult_up", 1.5))
+        self.kc_mult_default = float(config.get("kc_mult_default", 2.0))
+        # Regime-adaptive IBS thresholds
+        self.ibs_max_up = float(config.get("ibs_max_up", 0.20))
+        self.ibs_max_default = float(config.get("ibs_max_default", 0.30))
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        # Stop/target in ATR multiples
+        # Stop/target
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.down_target_atr_mult = float(config.get("down_target_atr_mult", 1.5))
+        self.default_target_atr_mult = float(config.get("default_target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -104,9 +107,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip DOWN+HIGH (historically inconsistent)
+        # Regime
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
+
+        # Skip DOWN+HIGH
         if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
@@ -119,16 +124,24 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if ema is None or atr is None or atr < 1e-9:
             return None
 
+        # Regime-adaptive parameters
+        if regime_trend == "UP":
+            kc_mult = self.kc_mult_up
+            ibs_max = self.ibs_max_up
+        else:
+            kc_mult = self.kc_mult_default
+            ibs_max = self.ibs_max_default
+
         # Keltner Channel lower band
-        lower_kc = ema - self.kc_mult * atr
+        lower_kc = ema - kc_mult * atr
 
         # Entry condition 1: price at or below lower KC
         if bar.close > lower_kc:
             return None
 
-        # Entry condition 2: low IBS (closed near day's low)
+        # Entry condition 2: low IBS
         ibs = self._ibs(bar)
-        if ibs > self.ibs_max:
+        if ibs > ibs_max:
             return None
 
         # Entry condition 3: consecutive down closes
@@ -136,13 +149,20 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if consec < self.consec_down_min:
             return None
 
-        # Stop and target
+        # Stop and target (regime-adaptive)
         stop = bar.close - self.stop_atr_mult * atr
-        # In FLAT regime, target the EMA (mean reversion); otherwise fixed ATR target
-        if regime_trend == "FLAT" and ema > bar.close:
+
+        if regime_trend == "UP" and ema > bar.close:
+            # UP: target EMA (the trend should pull price back to the mean)
             target = ema
+        elif regime_trend == "FLAT" and ema > bar.close:
+            # FLAT: target EMA (mean reversion)
+            target = ema
+        elif regime_trend == "DOWN":
+            # DOWN: tight target (quick bounce, don't overstay)
+            target = bar.close + self.down_target_atr_mult * atr
         else:
-            target = bar.close + self.target_atr_mult * atr
+            target = bar.close + self.default_target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -157,6 +177,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
                 "kc_dist": round((lower_kc - bar.close) / atr, 2),
                 "ibs": round(ibs, 3),
                 "consec": consec,
-                "seed": "keltner_ibs_regime_filter",
+                "seed": "keltner_regime_adaptive",
             },
         )
