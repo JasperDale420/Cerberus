@@ -132,10 +132,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         # Entry condition 3: consecutive down closes
-        # FLAT regime requires stronger signal (3+ downs) for consistency
         consec = self._consecutive_downs(closes)
-        min_consec = self.consec_down_min + 1 if regime_trend == "FLAT" else self.consec_down_min
-        if consec < min_consec:
+        if consec < self.consec_down_min:
             return None
 
         # Stop and target
