@@ -120,19 +120,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if ibs > ibs_thresh:
             return None
 
-        # Condition 3: Meaningful pullback — 5-day return must be negative
-        if len(closes) >= 6:
-            five_day_return = (bar.close - closes[-6]) / closes[-6]
-            if five_day_return >= 0:
-                return None
-
-        # Condition 4: Volume confirmation — above 50% of 20-day avg
-        volumes = [b.volume for b in bars]
-        if len(volumes) >= 20:
-            avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume < avg_vol * 0.5:
-                return None
-
         # ATR for stops/targets
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
