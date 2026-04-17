@@ -37,9 +37,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -85,6 +86,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_vol in ("SHOCK", "HIGH"):
             return None
 
+        regime_trend = regime_labels.get("regime_trend", "FLAT")
+        if regime_trend == "DOWN":
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
@@ -94,6 +99,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # ATR for Keltner Channel width
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
+            return None
+
+        # Skip very volatile stocks (ATR > max_atr_pct of price)
+        if bar.close > 0 and atr / bar.close > self.max_atr_pct:
             return None
 
         # Keltner Channel
@@ -115,7 +124,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         # Filter out extremely wide bars (news-driven, unreliable)
-        if daily_range > 3.0 * atr:
+        if daily_range > 2.0 * atr:
             return None
 
         # Stop and target
