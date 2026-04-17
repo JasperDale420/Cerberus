@@ -103,12 +103,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK vol
+        # Regime filter: skip SHOCK vol and DOWN+HIGH (consistently weak)
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
         if regime_vol == "SHOCK":
             return None
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
+            return None
 
         # Indicators
         bb_sma = self._sma(closes, self.bb_period)
