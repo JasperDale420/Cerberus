@@ -1,10 +1,9 @@
-"""Keltner Channel Rejection — buy rejection candles at lower Keltner band.
+"""Consecutive Down + BB Proximity + Volume Surge mean reversion.
 
-Entry: Bar's low pierces below lower Keltner channel, but close is inside/above.
-This signals a volatility-driven selloff that was rejected (buyers stepped in).
-Requires low IBS < 0.35 (closed in lower part of range) for extra confirmation.
-Skips HIGH/SHOCK vol, DOWN trend, earnings, FOMC.
-Short hold, tight R:R — target is Keltner midline (EMA).
+Entry: 2+ consecutive lower closes + price near lower Bollinger Band +
+volume surge (above average). Uses Williams %R for oversold confirmation.
+Regime-adaptive: skip DOWN+HIGH, require stronger signal in DOWN.
+Short hold, target = BB midline.
 """
 
 from __future__ import annotations
@@ -27,31 +26,35 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.willr_period = int(config.get("willr_period", 14))
+        self.willr_oversold = float(config.get("willr_oversold", -75.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.keltner_period = int(config.get("keltner_period", 20))
-        self.keltner_mult = float(config.get("keltner_mult", 2.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.ibs_max = float(config.get("ibs_max", 0.35))
-        self.sma_period = int(config.get("sma_period", 50))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
+        self.bb_proximity = float(config.get("bb_proximity", 0.5))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
+
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        subset = values[-period:]
+        mean = sum(subset) / period
+        variance = sum((v - mean) ** 2 for v in subset) / period
+        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -64,6 +67,26 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _williams_r(highs: list[float], lows: list[float], close: float, period: int) -> Optional[float]:
+        if len(highs) < period or len(lows) < period:
+            return None
+        highest = max(highs[-period:])
+        lowest = min(lows[-period:])
+        if highest - lowest < 1e-9:
+            return -50.0
+        return -100.0 * (highest - close) / (highest - lowest)
+
+    @staticmethod
+    def _consecutive_downs(closes: list[float]) -> int:
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
 
     @staticmethod
     def _ibs(bar: Bar) -> float:
@@ -84,9 +107,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         # Event filters
@@ -94,42 +117,78 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip DOWN trend
         regime_trend = labels.get("regime_trend", "FLAT").upper()
-        if regime_trend == "DOWN":
+        regime_vol = labels.get("regime_vol", "NORMAL").upper()
+
+        # Skip DOWN + HIGH combo
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
+        lows = [b.low for b in bars]
+        volumes = [b.volume for b in bars]
 
-        # Keltner channel
-        keltner_ma = self._ema(closes, self.keltner_period)
-        atr = self._atr(bars, self.atr_period)
-        if keltner_ma is None or atr is None or atr < 1e-9:
+        # --- Core entry: multi-factor scoring ---
+        score = 0
+
+        # Factor 1: Consecutive down closes (required)
+        consec = self._consecutive_downs(closes)
+        if consec < self.consec_down_min:
+            return None
+        score += 1
+        if consec >= 3:
+            score += 1
+
+        # Factor 2: BB proximity (close near or below lower BB)
+        bb_sma = self._sma(closes, self.bb_period)
+        bb_std_val = self._std(closes, self.bb_period)
+        if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
             return None
 
-        lower_keltner = keltner_ma - self.keltner_mult * atr
+        lower_bb = bb_sma - self.bb_std * bb_std_val
+        bb_distance = (bar.close - lower_bb) / bb_std_val
+        if bb_distance < self.bb_proximity:
+            score += 1
+        if bb_distance < 0:
+            score += 1
 
-        # Core signal: bar's low went below lower Keltner, but close is above it
-        # This is a "rejection candle" — sellers pushed below but buyers reclaimed
-        if bar.low >= lower_keltner:
-            return None  # Low didn't touch the band
-        if bar.close < lower_keltner:
-            return None  # Closed below = genuine breakdown, not rejection
+        # Factor 3: Williams %R oversold
+        willr = self._williams_r(highs, lows, bar.close, self.willr_period)
+        if willr is not None and willr < self.willr_oversold:
+            score += 1
 
-        # IBS filter: close should be in lower portion of range (not too recovered)
-        # This catches the "just barely recovered" candles which bounce next day
+        # Factor 4: Low IBS
         ibs = self._ibs(bar)
-        if ibs > self.ibs_max:
+        if ibs < 0.3:
+            score += 1
+
+        # Factor 5: Volume above average
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0 and bar.volume >= self.vol_min_ratio * avg_vol:
+            score += 1
+
+        # Regime-adaptive threshold
+        if regime_trend == "DOWN":
+            required = 4
+        elif regime_trend == "FLAT":
+            required = 3
+        else:  # UP
+            required = 3
+
+        if score < required:
             return None
 
-        # Trend safety: don't buy if too far below SMA(50) — deep decline
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma * 0.92:
+        # ATR for stops
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
-        # Target: Keltner midline (EMA), or a minimum of 1 ATR
-        target = max(keltner_ma, bar.close + atr)
+        # Target: min of BB midline or ATR-based target
+        target_bb = bb_sma
+        target_atr = bar.close + self.target_atr_mult * atr
+        target = min(target_bb, target_atr)
         stop = bar.close - self.stop_atr_mult * atr
 
         if target <= bar.close:
@@ -145,10 +204,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "regime_trend": regime_trend,
-                "keltner_ma": round(keltner_ma, 2),
-                "lower_keltner": round(lower_keltner, 2),
+                "regime_vol": regime_vol,
+                "consec_down": consec,
+                "bb_distance": round(bb_distance, 2),
+                "willr": round(willr, 2) if willr else None,
                 "ibs": round(ibs, 3),
+                "score": score,
                 "atr": round(atr, 4),
-                "seed": "keltner_rejection",
+                "seed": "consec_bb_willr",
             },
         )
