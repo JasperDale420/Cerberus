@@ -1,7 +1,13 @@
-"""Seed: Volatility Breakout.
+"""Volatility Expansion + Trend Confirmation.
 
-Buy when ATR expands, price breaks 10-day high, and volume confirms.
-Skips near-earnings symbols. Long-only, daily bars, max_hold_days=7.
+Evolved from seed_vol_breakout. Buy when:
+1. ATR is expanding (current > average) - volatility expansion
+2. Price is trending (close > EMA) - trend confirmation
+3. Close above recent high channel - breakout confirmed
+4. Volume above average - participation
+5. Regime filter: skip SHOCK vol, skip earnings
+
+Long-only, daily bars. Adaptive stop/target based on ATR.
 """
 
 from __future__ import annotations
@@ -23,17 +29,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 30))
         self.atr_period = int(config.get("atr_period", 14))
         self.atr_avg_period = int(config.get("atr_avg_period", 20))
-        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.5))
-        self.breakout_lookback = int(config.get("breakout_lookback", 10))
+        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
+        self.breakout_lookback = int(config.get("breakout_lookback", 5))
+        self.ema_period = int(config.get("ema_period", 10))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 1.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 7))
-
-    # --- Indicator helpers ---
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -53,8 +59,17 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         return sum(values[-period:]) / period
 
+    @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = values[-period]
+        for v in values[-period + 1 :]:
+            ema = v * mult + ema * (1 - mult)
+        return ema
+
     def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
-        """Compute a series of ATR values for the last `count` bars."""
         result = []
         for i in range(count):
             end_idx = len(bars) - count + i + 1
@@ -78,9 +93,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip near-earnings symbols
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
+            return None
+
+        # Skip SHOCK vol regime
+        regime_vol = regime_labels.get("regime_vol", "NORMAL")
+        if regime_vol == "SHOCK":
             return None
 
         bars = list(symbol_state.bars)
@@ -92,7 +111,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR expansion: current ATR > 1.5x its 20-day average
+        # ATR expansion: current ATR > mult * its average
         atr_values = self._atr_series(bars, self.atr_period, self.atr_avg_period)
         if len(atr_values) < self.atr_avg_period:
             return None
@@ -100,21 +119,26 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr_avg < 1e-9 or atr < self.atr_expansion_mult * atr_avg:
             return None
 
-        # Breakout: close above 10-day high (excluding current bar)
+        # EMA trend filter: close must be above EMA
+        ema = self._ema(closes, self.ema_period)
+        if ema is None or bar.close <= ema:
+            return None
+
+        # Breakout: close above N-day high (excluding current bar)
         if len(bars) < self.breakout_lookback + 1:
             return None
         lookback_highs = [b.high for b in bars[-(self.breakout_lookback + 1) : -1]]
-        high_10d = max(lookback_highs)
-        if bar.close <= high_10d:
+        high_nd = max(lookback_highs)
+        if bar.close <= high_nd:
             return None
 
-        # Volume confirmation: > 1.5x 20-day average
+        # Volume confirmation
         avg_vol = self._sma(volumes, self.vol_avg_period)
         if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
-        # Stop below breakout bar's low, target 2x ATR above entry
-        stop = bar.low
+        # Stop and target
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -129,8 +153,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
                 "atr": round(atr, 4),
                 "atr_avg": round(atr_avg, 4),
                 "atr_expansion": round(atr / atr_avg, 2),
-                "high_10d": round(high_10d, 2),
+                "high_nd": round(high_nd, 2),
+                "ema": round(ema, 2),
                 "vol_ratio": round(bar.volume / avg_vol, 2),
-                "seed": "vol_breakout",
+                "regime_vol": regime_vol,
+                "seed": "vol_breakout_v2",
             },
         )
