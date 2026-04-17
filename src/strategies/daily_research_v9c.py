@@ -34,9 +34,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
         self.kc_period = int(config.get("kc_period", 20))
-        self.kc_mult = float(config.get("kc_mult", 1.5))
+        self.kc_mult = float(config.get("kc_mult", 2.0))
         self.atr_period = int(config.get("atr_period", 14))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
         self.min_consec_down = int(config.get("min_consec_down", 2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -139,9 +139,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if daily_range > 2.0 * atr:
             return None
 
-        # Stop below bar low (with small ATR buffer), target Keltner midline
+        # Stop just below bar low, target 1.5 ATR above entry
         stop = bar.low - self.stop_atr_mult * atr
-        target = kc_mid
+        target = bar.close + 1.5 * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
