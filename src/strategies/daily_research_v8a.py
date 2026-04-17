@@ -26,7 +26,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 3))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
         self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
