@@ -212,12 +212,11 @@ strategies:
     cooldown_bars: 1
     ema_fast: 20
     ema_slow: 50
-    pullback_pct: 0.02
+    pullback_pct: 0.05
+    min_ema_spread: 0.005
     atr_period: 14
     stop_atr_mult: 1.5
     target_atr_mult: 3.0
-    vol_avg_period: 20
-    vol_avg_mult: 0.8
     activation:
       session: [premarket, opening, midday, power_hour, close]
       trend: [up, down, flat]
