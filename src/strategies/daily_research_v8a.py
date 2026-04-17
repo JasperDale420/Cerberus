@@ -1,7 +1,13 @@
-"""V8a: Consecutive-Down + Z-Score + IBS Mean Reversion.
+"""V8a: Multi-Factor Oversold Confluence.
 
-Multi-factor mean reversion using consecutive down closes, distance from
-moving average (z-score), and Internal Bar Strength. No RSI dependency.
+Scores oversold conditions across 3 independent factors:
+  1. Consecutive down closes (momentum exhaustion)
+  2. Z-score from SMA (statistical oversold)
+  3. IBS (intraday selling exhaustion)
+
+Entry requires any 2 of 3 factors confirming. This avoids over-filtering
+while maintaining signal quality through confluence.
+Target: SMA midline (mean reversion to the mean).
 Long-only, daily bars.
 """
 
@@ -24,29 +30,22 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        # Consecutive down days
+        self.min_bars = int(config.get("min_bars", 50))
+        # Factor thresholds
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
-        self.zscore_threshold = float(config.get("zscore_threshold", -0.5))
-        # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        # Trend filter — stock must be above SMA(50)
-        self.trend_sma_period = int(config.get("trend_sma_period", 50))
+        self.zscore_threshold = float(config.get("zscore_threshold", -0.8))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        # Require N of 3 factors
+        self.min_factors = int(config.get("min_factors", 2))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.12))
-        # Volume filter
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_mult = float(config.get("vol_min_mult", 0.5))
-        # ATR for stop/target
+        # ATR for stop
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        # Min reward/risk ratio
-        self.min_rr = float(config.get("min_rr", 0.5))
 
     # --- Indicator helpers ---
 
@@ -79,7 +78,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     @staticmethod
     def _consecutive_down(closes: list[float]) -> int:
-        """Count consecutive down closes from the most recent bar."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -103,66 +101,54 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Filter 1: Consecutive down days ---
-        consec = self._consecutive_down(closes)
-        if consec < self.consec_down_min:
-            return None
-
-        # --- Filter 2: Z-score below threshold ---
+        # --- Compute indicators ---
         sma = self._sma(closes, self.sma_period)
         std = self._std(closes, self.sma_period)
         if sma is None or std is None or std < 1e-9:
             return None
-        zscore = (bar.close - sma) / std
-        if zscore > self.zscore_threshold:
-            return None
 
-        # --- Filter 3: IBS (close near low = selling exhaustion) ---
+        zscore = (bar.close - sma) / std
+        consec = self._consecutive_down(closes)
+
         bar_range = bar.high - bar.low
         if bar_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_threshold:
+
+        # --- Confluence scoring: count confirming factors ---
+        factors = 0
+        if consec >= self.consec_down_min:
+            factors += 1
+        if zscore <= self.zscore_threshold:
+            factors += 1
+        if ibs <= self.ibs_threshold:
+            factors += 1
+
+        if factors < self.min_factors:
             return None
 
-        # --- Filter 4: Drawdown guard (don't buy into crashes) ---
+        # --- Drawdown guard ---
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # --- Filter 5: Stock-level trend filter (above SMA50 = uptrend) ---
-        trend_sma = self._sma(closes, self.trend_sma_period)
-        if trend_sma is None or bar.close < trend_sma:
-            return None
-
-        # --- Filter 6: Regime vol filter (skip SHOCK only) ---
+        # --- Regime filter (skip DOWN trend and HIGH/SHOCK vol) ---
         labels = symbol_state.meta.get("regime_labels", {})
+        regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
+        if regime_trend == "DOWN":
+            return None
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
-        # --- Filter 7: Volume filter (minimum participation) ---
-        volumes = [b.volume for b in bars]
-        if len(volumes) >= self.vol_avg_period:
-            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_min_mult:
-                return None
-
-        # --- ATR for stop/target ---
+        # --- ATR + SMA target ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        # Target: SMA midline (mean reversion). If SMA is below entry, use ATR multiple.
         target = sma if sma > bar.close else bar.close + self.target_atr_mult * atr
-
-        # --- Check reward/risk ratio ---
-        risk = bar.close - stop
-        reward = target - bar.close
-        if risk <= 0 or reward / risk < self.min_rr:
-            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -173,12 +159,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
+                "factors": factors,
                 "consec_down": consec,
                 "zscore": round(zscore, 2),
                 "ibs": round(ibs, 3),
                 "atr": round(atr, 4),
-                "above_sma50": True,
-                "rr_ratio": round(reward / risk, 2),
-                "drawdown_from_peak": round((peak - bar.close) / peak, 4),
+                "regime": f"{regime_trend}+{regime_vol}",
             },
         )
