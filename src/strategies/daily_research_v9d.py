@@ -46,10 +46,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Stop/target
         self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 4))
         # Filters
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
+        self.min_price = float(config.get("min_price", 10.0))
+        self.min_rr_ratio = float(config.get("min_rr_ratio", 1.5))
 
     # --- Indicator helpers ---
 
@@ -114,6 +116,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if len(closes) < self.kc_period + 1:
             return None
 
+        # Min price
+        if bar.close < self.min_price:
+            return None
+
         # ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
@@ -173,8 +179,16 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         # Cap risk per trade
-        risk = (bar.close - stop) / bar.close if bar.close > 0 else 1.0
-        if risk > self.max_risk_pct:
+        risk_dollar = bar.close - stop
+        if risk_dollar <= 0:
+            return None
+        risk_pct = risk_dollar / bar.close if bar.close > 0 else 1.0
+        if risk_pct > self.max_risk_pct:
+            return None
+
+        # Min reward:risk ratio
+        reward = target - bar.close
+        if reward / risk_dollar < self.min_rr_ratio:
             return None
 
         self.last_signal_time[symbol] = bar.time
