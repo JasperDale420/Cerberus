@@ -30,7 +30,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Consecutive down days
         self.min_down_days = int(config.get("min_down_days", 2))
         # IBS threshold
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.28))
         # Minimum total drop over N days (as pct of price)
         self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
         # Trend support — price must be above SMA(N)
@@ -139,7 +139,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         volumes = [b.volume for b in bars]
         if len(volumes) >= 20:
             avg_vol = sum(volumes[-20:]) / 20
-            if avg_vol > 0 and bar.volume > avg_vol * 2.0:
+            if avg_vol > 0 and bar.volume > avg_vol * 1.5:
                 return None
 
         # Stop and target with cap
