@@ -31,7 +31,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.sma_trend_period = int(config.get("sma_trend_period", 50))
 
