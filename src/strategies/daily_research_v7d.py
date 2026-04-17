@@ -27,7 +27,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_min = int(config.get("consec_down_min", 3))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
