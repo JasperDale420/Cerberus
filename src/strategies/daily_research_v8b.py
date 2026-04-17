@@ -1,8 +1,9 @@
-"""Seed: Trend-Following Pullback Entry.
+"""Multi-factor pullback with regime adaptation.
 
-Buy pullbacks to EMA(20) in confirmed uptrends (price > SMA50, EMA20 > SMA50).
-Volume and RSI(14) filters. Skips SHOCK volatility regime.
-Long-only, daily bars, max_hold_days=10.
+Entry: Short-term oversold (Williams %R + ROC reversal) near Keltner lower channel.
+Regime-adaptive: UP requires 2 factors, FLAT requires 3, DOWN requires 4.
+Long-only, daily bars, tight R:R for consistency.
+Event filters (earnings, FOMC). Skips SHOCK vol.
 """
 
 from __future__ import annotations
@@ -25,19 +26,26 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.ema_fast_period = int(config.get("ema_fast_period", 20))
-        self.pullback_min_pct = float(config.get("pullback_min_pct", 0.01))
-        self.pullback_max_pct = float(config.get("pullback_max_pct", 0.02))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_low = float(config.get("rsi_low", 40.0))
-        self.rsi_high = float(config.get("rsi_high", 55.0))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Williams %R
+        self.willr_period = int(config.get("willr_period", 14))
+        self.willr_oversold = float(config.get("willr_oversold", -80.0))
+        # Rate of change
+        self.roc_period = int(config.get("roc_period", 5))
+        self.roc_threshold = float(config.get("roc_threshold", -3.0))
+        # Keltner channel
+        self.keltner_period = int(config.get("keltner_period", 20))
+        self.keltner_mult = float(config.get("keltner_mult", 2.0))
+        # Volume
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
+        # Scoring thresholds per regime
+        self.score_up = int(config.get("score_up", 2))
+        self.score_flat = int(config.get("score_flat", 3))
+        self.score_down = int(config.get("score_down", 4))
 
     # --- Indicator helpers ---
 
@@ -58,23 +66,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return ema
 
     @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
         if len(bars) < period + 1:
             return None
@@ -85,6 +76,32 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _williams_r(highs: list[float], lows: list[float], close: float, period: int) -> Optional[float]:
+        if len(highs) < period or len(lows) < period:
+            return None
+        highest = max(highs[-period:])
+        lowest = min(lows[-period:])
+        if highest - lowest < 1e-9:
+            return -50.0
+        return -100.0 * (highest - close) / (highest - lowest)
+
+    @staticmethod
+    def _roc(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        prev = closes[-(period + 1)]
+        if prev < 1e-9:
+            return None
+        return ((closes[-1] - prev) / prev) * 100.0
+
+    @staticmethod
+    def _ibs(bar: Bar) -> float:
+        rng = bar.high - bar.low
+        if rng < 1e-9:
+            return 0.5
+        return (bar.close - bar.low) / rng
 
     def on_bar(
         self,
@@ -98,49 +115,77 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility regime
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
+        # Event filters
+        labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        highs = [b.high for b in bars]
+        lows = [b.low for b in bars]
         volumes = [b.volume for b in bars]
 
-        # Trend confirmation: price > SMA(50)
-        sma50 = self._sma(closes, self.sma_slow_period)
-        if sma50 is None or bar.close <= sma50:
-            return None
-
-        # Momentum alignment: EMA(20) > SMA(50)
-        ema20 = self._ema(closes, self.ema_fast_period)
-        if ema20 is None or ema20 <= sma50:
-            return None
-
-        # Pullback to EMA(20): close within 1-2% of EMA20
-        if ema20 < 1e-9:
-            return None
-        dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_max_pct or dist_pct > self.pullback_min_pct:
-            return None
-
-        # RSI(14) in sweet spot: not overbought, not oversold
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
-            return None
-
-        # Volume confirmation: above 0.8x 20-day average
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
-            return None
-
-        # ATR for stop and target
+        # ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
+        # --- Multi-factor scoring ---
+        score = 0
+
+        # Factor 1: Williams %R oversold
+        willr = self._williams_r(highs, lows, bar.close, self.willr_period)
+        if willr is not None and willr < self.willr_oversold:
+            score += 1
+
+        # Factor 2: Negative rate of change (recent decline)
+        roc = self._roc(closes, self.roc_period)
+        if roc is not None and roc < self.roc_threshold:
+            score += 1
+
+        # Factor 3: Price near or below Keltner lower channel
+        keltner_ma = self._ema(closes, self.keltner_period)
+        if keltner_ma is not None:
+            lower_keltner = keltner_ma - self.keltner_mult * atr
+            if bar.close <= lower_keltner:
+                score += 2  # Strong signal: below channel
+            elif bar.close <= lower_keltner + 0.5 * atr:
+                score += 1  # Near channel
+
+        # Factor 4: Low IBS (closed near day's low)
+        ibs = self._ibs(bar)
+        if ibs < 0.3:
+            score += 1
+
+        # Factor 5: Volume above average (participation)
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0 and bar.volume >= self.vol_min_ratio * avg_vol:
+            score += 1
+
+        # Regime-adaptive threshold
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        if regime_trend == "UP":
+            required = self.score_up
+        elif regime_trend == "DOWN":
+            required = self.score_down
+        else:
+            required = self.score_flat
+
+        if score < required:
+            return None
+
+        # Stop and target
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
+
+        if target <= bar.close:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -151,12 +196,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema20": round(ema20, 2),
-                "sma50": round(sma50, 2),
-                "pullback_pct": round(dist_pct, 4),
-                "rsi14": round(rsi, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
+                "score": score,
+                "required": required,
+                "regime_trend": regime_trend,
+                "willr": round(willr, 2) if willr else None,
+                "roc": round(roc, 2) if roc else None,
+                "ibs": round(ibs, 3),
                 "atr": round(atr, 4),
-                "seed": "trend_pullback",
+                "seed": "multi_factor_pullback",
             },
         )
