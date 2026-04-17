@@ -26,8 +26,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_min = int(config.get("consec_down_min", 3))
-        self.ibs_max = float(config.get("ibs_max", 0.20))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.ibs_max = float(config.get("ibs_max", 0.30))
         self.sma_long_period = int(config.get("sma_long_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -88,7 +88,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Regime label filtering
         labels = symbol_state.meta.get("regime_labels", {})
         vol_regime = str(labels.get("regime_vol", "NORMAL")).upper()
-        if vol_regime == "SHOCK":
+        if vol_regime in ("HIGH", "SHOCK"):
+            return None
+
+        # Only trade when SPY trend is UP (SMA10/40 crossover)
+        trend_regime = str(labels.get("regime_trend", "FLAT")).upper()
+        if trend_regime != "UP":
             return None
 
         # Skip near earnings
