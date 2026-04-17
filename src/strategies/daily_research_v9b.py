@@ -36,6 +36,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.min_daily_drop = float(config.get("min_daily_drop", 0.01))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
 
     # --- Indicator helpers ---
 
@@ -110,17 +113,25 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
+        volumes = [b.volume for b in bars]
+
         # Condition 1: 2+ consecutive down closes
         consec = self._consecutive_down(closes)
         if consec < self.consec_down_min:
             return None
 
-        # Condition 2: IBS < 0.35 (closed near low = selling exhaustion)
+        # Condition 2: Today's drop is meaningful (at least -1%)
+        if len(closes) >= 2:
+            daily_return = (closes[-1] - closes[-2]) / closes[-2]
+            if daily_return > -self.min_daily_drop:
+                return None
+
+        # Condition 3: IBS < 0.35 (closed near low = selling exhaustion)
         ibs = self._ibs(bar)
         if ibs is None or ibs > self.ibs_max:
             return None
 
-        # Condition 3: Price below BB(20) midline (short-term oversold)
+        # Condition 4: Price below BB(20) midline (short-term oversold)
         bb_mean = self._sma(closes, self.bb_period)
         bb_std = self._std(closes, self.bb_period)
         if bb_mean is None or bb_std is None or bb_std < 0.01:
@@ -128,9 +139,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if bar.close > bb_mean:
             return None
 
-        # Condition 4: Price above SMA(50) (long-term trend intact)
+        # Condition 5: Price above SMA(50) (long-term trend intact)
         sma_long = self._sma(closes, self.sma_long_period)
         if sma_long is not None and bar.close < sma_long:
+            return None
+
+        # Condition 6: Volume above average (real selling, not thin markets)
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
         # ATR for stops
