@@ -1,17 +1,16 @@
-"""Volatility Fade — Buy after high-vol selloff days.
+"""Keltner Dip Buy — Buy oversold dips at lower Keltner Channel band.
 
-Evolved from seed_vol_breakout (volatility family). Instead of buying breakouts,
-we fade volatility spikes: when ATR expands AND price drops significantly,
-capitulation selling creates bounce opportunities.
+Evolved from seed_vol_breakout (volatility family). Uses ATR-based Keltner
+Channels to identify when price is stretched below its normal range, combined
+with IBS (Internal Bar Strength) to confirm capitulation selling.
 
 Entry:
-1. ATR expanding (vol spike) — current ATR > atr_expansion_mult * avg ATR
-2. Price dropped: close < close[lookback] AND close near daily low
-3. Close-to-low ratio (IBS-like): (close - low) / (high - low) < ibs_threshold
-4. Trend not fighting: regime not DOWN or price above longer SMA
-5. Skip earnings, FOMC, SHOCK
+1. Price < lower Keltner band (oversold relative to ATR-defined range)
+2. IBS < threshold (close near daily low — selling exhaustion)
+3. Regime filter: skip SHOCK vol, skip earnings/FOMC
+4. Calendar: skip opex week, quad witch week
 
-Exit: ATR-based stop/target, max hold days.
+Exit: ATR-based stop and target (reversion to Keltner midline).
 """
 
 from __future__ import annotations
@@ -34,14 +33,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
+        self.kc_period = int(config.get("kc_period", 20))
+        self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_avg_period = int(config.get("atr_avg_period", 20))
-        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
-        self.drop_lookback = int(config.get("drop_lookback", 3))
-        self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.sma_period = int(config.get("sma_period", 50))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -63,18 +59,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         return sum(values[-period:]) / period
 
-    def _atr_series(self, bars: list[Bar], period: int, count: int) -> list[float]:
-        result = []
-        for i in range(count):
-            end_idx = len(bars) - count + i + 1
-            if end_idx < period + 1:
-                continue
-            sub = bars[:end_idx]
-            val = self._atr(sub, period)
-            if val is not None:
-                result.append(val)
-        return result
-
     def on_bar(
         self,
         symbol: str,
@@ -92,40 +76,37 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         if regime_labels.get("near_fomc"):
             return None
+        if regime_labels.get("opex_week"):
+            return None
+        if regime_labels.get("quad_witch_week"):
+            return None
 
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
+        if regime_vol in ("SHOCK", "HIGH"):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(closes) < max(self.sma_period, self.atr_avg_period + self.atr_period) + 1:
+        if len(closes) < self.kc_period + 1:
             return None
 
-        # ATR and expansion check
+        # ATR for Keltner Channel width
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        atr_values = self._atr_series(bars, self.atr_period, self.atr_avg_period)
-        if len(atr_values) < self.atr_avg_period:
+        # Keltner Channel
+        kc_mid = self._sma(closes, self.kc_period)
+        if kc_mid is None:
             return None
-        atr_avg = sum(atr_values) / len(atr_values)
-        if atr_avg < 1e-9 or atr < self.atr_expansion_mult * atr_avg:
+        kc_lower = kc_mid - self.kc_mult * atr
+
+        # Price below lower Keltner band
+        if bar.close >= kc_lower:
             return None
 
-        # Price has dropped over lookback period
-        if len(closes) < self.drop_lookback + 1:
-            return None
-        ref_close = closes[-(self.drop_lookback + 1)]
-        if ref_close < 1e-9:
-            return None
-        drop_pct = (ref_close - bar.close) / ref_close
-        if drop_pct < self.min_drop_pct:
-            return None
-
-        # IBS-like: close near daily low (capitulation)
+        # IBS: close near daily low (capitulation)
         daily_range = bar.high - bar.low
         if daily_range < 1e-9:
             return None
@@ -133,14 +114,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if ibs > self.ibs_threshold:
             return None
 
-        # Trend filter: price above long-term SMA (not fighting major downtrend)
-        sma = self._sma(closes, self.sma_period)
-        if sma is not None and bar.close < sma * 0.95:
-            return None  # Too far below SMA — real downtrend, not a dip
+        # Filter out extremely wide bars (news-driven, unreliable)
+        if daily_range > 3.0 * atr:
+            return None
 
         # Stop and target
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        target = kc_mid  # Target reversion to Keltner midline
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -152,10 +132,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "atr_expansion": round(atr / atr_avg, 2),
-                "drop_pct": round(drop_pct * 100, 2),
+                "kc_mid": round(kc_mid, 2),
+                "kc_lower": round(kc_lower, 2),
                 "ibs": round(ibs, 3),
+                "daily_range_atr": round(daily_range / atr, 2),
                 "regime_vol": regime_vol,
-                "seed": "vol_fade_v1",
+                "seed": "keltner_dip_v1",
             },
         )
