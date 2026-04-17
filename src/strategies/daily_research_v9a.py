@@ -1,16 +1,15 @@
-"""Multi-factor consecutive-down mean reversion with regime gating.
+"""Consecutive-down + IBS mean reversion — simplified for consistency.
 
-Entry: 2+ consecutive lower closes + IBS + BB proximity scoring.
-Multi-factor scoring: consecutive downs, BB position, IBS.
-Long-only. Event and regime filters. ATR-based stops and targets.
-Tighter stops (1.0 ATR) to limit loss per trade.
+Entry: 2+ consecutive down closes + low IBS + close below SMA(20).
+Simple and robust. Symmetric ATR stop/target. Trades all regimes except SHOCK.
+Long-only, daily bars, max_hold_days=3.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -26,17 +25,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.drawdown_max = float(config.get("drawdown_max", 0.12))
+        self.sma_period = int(config.get("sma_period", 20))
+        self.atr_period = int(config.get("atr_period", 14))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
 
     # --- Indicator helpers ---
 
@@ -45,15 +40,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        subset = values[-period:]
-        mean = sum(subset) / period
-        variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -96,81 +82,41 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
+        # Skip SHOCK volatility
+        snapshot = market_state.regime_snapshot
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
+            return None
+
+        # Skip earnings and FOMC
+        labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Event filters
-        regime_labels = symbol_state.meta.get("regime_labels", {})
-        if regime_labels.get("near_earnings", False):
-            return None
-        if regime_labels.get("near_fomc", False):
-            return None
-
-        # Regime filter: skip HIGH and SHOCK vol
-        regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol in ("HIGH", "SHOCK"):
-            return None
-
-        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
-
-        # Skip DOWN regime entirely — negative expectancy consistently
-        if regime_trend == "DOWN":
-            return None
-
-        # Drawdown filter
-        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
-        peak = max(lookback_highs)
-        if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
-            return None
-
-        # Indicators
-        bb_sma = self._sma(closes, self.bb_period)
-        bb_std_val = self._std(closes, self.bb_period)
-        atr = self._atr(bars, self.atr_period)
-
-        if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
-            return None
-        if atr is None or atr < 1e-9:
-            return None
-
-        lower_bb = bb_sma - self.bb_std * bb_std_val
-
-        # Multi-factor entry scoring
-        score = 0
-
-        # Factor 1: Consecutive down closes (hard gate)
+        # Consecutive down days (hard gate)
         consec = self._consecutive_downs(closes)
         if consec < self.consec_down_min:
             return None
-        score += 1
-        if consec >= self.consec_down_min + 1:
-            score += 1
 
-        # Factor 2: BB proximity
-        bb_distance = (bar.close - lower_bb) / bb_std_val if bb_std_val > 0 else 999
-        if bb_distance < self.bb_proximity:
-            score += 1
-        if bb_distance < 0:
-            score += 1
-
-        # Factor 3: IBS
+        # IBS — close near the low of the day (oversold confirmation)
         ibs = self._ibs(bar)
-        if ibs < self.ibs_threshold:
-            score += 1
-
-        # Require at least 3 factors
-        if score < 3:
+        if ibs >= self.ibs_threshold:
             return None
 
-        # Target: min of BB midline or ATR-based
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
+        # Close below SMA — mean reversion setup
+        sma = self._sma(closes, self.sma_period)
+        if sma is None or bar.close >= sma:
+            return None
 
-        if target <= bar.close:
+        # ATR for stop and target
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -181,12 +127,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "regime_trend": regime_trend,
-                "regime_vol": regime_vol,
                 "consec_down": consec,
-                "bb_distance": round(bb_distance, 2),
                 "ibs": round(ibs, 3),
-                "score": score,
+                "close_vs_sma": round((bar.close - sma) / sma, 4),
+                "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
         )
