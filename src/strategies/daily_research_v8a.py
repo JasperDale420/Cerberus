@@ -24,7 +24,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 55))
         # Consecutive down days
         self.consec_down_min = int(config.get("consec_down_min", 2))
         # Z-score (distance from SMA)
@@ -32,6 +32,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
         # IBS filter
         self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        # Trend filter — stock must be above SMA(50)
+        self.trend_sma_period = int(config.get("trend_sma_period", 50))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.12))
@@ -43,6 +45,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Min reward/risk ratio
+        self.min_rr = float(config.get("min_rr", 1.0))
 
     # --- Indicator helpers ---
 
@@ -127,16 +131,18 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # --- Filter 5: Regime filter (skip DOWN trend entirely) ---
-        labels = symbol_state.meta.get("regime_labels", {})
-        regime_trend = labels.get("regime_trend", "FLAT")
-        regime_vol = labels.get("regime_vol", "NORMAL")
-        if regime_trend == "DOWN":
-            return None
-        if regime_vol in ("HIGH", "SHOCK"):
+        # --- Filter 5: Stock-level trend filter (above SMA50 = uptrend) ---
+        trend_sma = self._sma(closes, self.trend_sma_period)
+        if trend_sma is None or bar.close < trend_sma:
             return None
 
-        # --- Filter 6: Volume filter (minimum participation) ---
+        # --- Filter 6: Regime vol filter (skip SHOCK only) ---
+        labels = symbol_state.meta.get("regime_labels", {})
+        regime_vol = labels.get("regime_vol", "NORMAL")
+        if regime_vol == "SHOCK":
+            return None
+
+        # --- Filter 7: Volume filter (minimum participation) ---
         volumes = [b.volume for b in bars]
         if len(volumes) >= self.vol_avg_period:
             avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
@@ -152,6 +158,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # Target: SMA midline (mean reversion). If SMA is below entry, use ATR multiple.
         target = sma if sma > bar.close else bar.close + self.target_atr_mult * atr
 
+        # --- Check reward/risk ratio ---
+        risk = bar.close - stop
+        reward = target - bar.close
+        if risk <= 0 or reward / risk < self.min_rr:
+            return None
+
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
             symbol,
@@ -165,7 +177,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
                 "zscore": round(zscore, 2),
                 "ibs": round(ibs, 3),
                 "atr": round(atr, 4),
-                "regime": f"{regime_trend}+{regime_vol}",
+                "above_sma50": True,
+                "rr_ratio": round(reward / risk, 2),
                 "drawdown_from_peak": round((peak - bar.close) / peak, 4),
             },
         )
