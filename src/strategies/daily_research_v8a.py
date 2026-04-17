@@ -29,9 +29,9 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
-        self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
+        self.zscore_threshold = float(config.get("zscore_threshold", -0.5))
         # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         # Trend filter — stock must be above SMA(50)
         self.trend_sma_period = int(config.get("trend_sma_period", 50))
         # Drawdown filter
@@ -46,7 +46,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Min reward/risk ratio
-        self.min_rr = float(config.get("min_rr", 1.0))
+        self.min_rr = float(config.get("min_rr", 0.5))
 
     # --- Indicator helpers ---
 
