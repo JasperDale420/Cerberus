@@ -5,8 +5,7 @@ Entry requires ALL of:
   2. Low IBS (closed near day's low, optimized 0.20-0.35)
   3. Close near lower BB (within bb_proximity std devs, optimized 0.5-1.5)
 
-Skip SHOCK vol, earnings, FOMC, opex week.
-In DOWN regime, require consec >= 3 regardless of consec_down_min.
+Skip SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -106,21 +105,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
-        if labels.get("opex_week", False):
-            return None
-
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
         # Required: consecutive down closes
         consec = self._consecutive_downs(closes)
-        required_consec = self.consec_down_min
-        # In DOWN regime, require at least 3 consecutive downs
-        if regime_trend == "DOWN":
-            required_consec = max(required_consec, 3)
-        if consec < required_consec:
+        if consec < self.consec_down_min:
             return None
 
         # Required: Low IBS (closed near day's low)
@@ -165,7 +156,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
                 "bb_distance": round(bb_distance, 2),
-                "regime_trend": regime_trend,
                 "atr": round(atr, 4),
                 "seed": "consec_ibs_bb",
             },
