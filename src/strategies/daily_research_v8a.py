@@ -26,20 +26,23 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = int(config.get("consec_down_min", 3))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
         self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
         # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
-        self.drawdown_max = float(config.get("drawdown_max", 0.15))
+        self.drawdown_max = float(config.get("drawdown_max", 0.12))
+        # Volume filter
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_mult = float(config.get("vol_min_mult", 0.5))
         # ATR for stop/target
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 7))
 
     # --- Indicator helpers ---
 
@@ -124,12 +127,21 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # --- Filter 5: Regime filter (skip DOWN trend) ---
+        # --- Filter 5: Regime filter (skip DOWN trend entirely) ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
-        if regime_trend == "DOWN" and regime_vol in ("HIGH", "SHOCK"):
+        if regime_trend == "DOWN":
             return None
+        if regime_vol in ("HIGH", "SHOCK"):
+            return None
+
+        # --- Filter 6: Volume filter (minimum participation) ---
+        volumes = [b.volume for b in bars]
+        if len(volumes) >= self.vol_avg_period:
+            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
+            if avg_vol > 0 and bar.volume < avg_vol * self.vol_min_mult:
+                return None
 
         # --- ATR for stop/target ---
         atr = self._atr(bars, self.atr_period)
