@@ -31,7 +31,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.max_hold_days = int(config.get("max_hold_days", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
 
@@ -108,8 +108,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if dow in (2, 3, 5):  # Wed, Thu, Sat
             return None
 
-        # Skip quad witch weeks (extra volatility from options expiration)
+        # Skip opex and quad witch weeks (extra volatility from options expiration)
         if regime_labels.get("quad_witch_week", False):
+            return None
+        if regime_labels.get("opex_week", False):
             return None
 
         # Regime filter: skip SHOCK vol
