@@ -26,12 +26,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = int(config.get("consec_down_min", 3))
         # Z-score (distance from SMA)
         self.sma_period = int(config.get("sma_period", 20))
         self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
         # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.12))
@@ -127,13 +127,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # --- Filter 5: Regime filter (skip DOWN+HIGH/SHOCK, skip any SHOCK) ---
+        # --- Filter 5: Regime filter (skip DOWN trend entirely) ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
+        if regime_trend == "DOWN":
             return None
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
+        if regime_vol in ("HIGH", "SHOCK"):
             return None
 
         # --- Filter 6: Volume filter (minimum participation) ---
