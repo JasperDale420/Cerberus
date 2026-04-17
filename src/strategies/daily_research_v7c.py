@@ -1,10 +1,15 @@
-"""Inside Day Breakout (vol_breakout archetype).
+"""Keltner Channel Breakout Strategy.
 
-Buy after inside day (range contraction) resolves upward with volume.
-Inside day = today's high < yesterday's high AND today's low > yesterday's low.
-Next day breakout above inside day's high = entry signal.
-Vol filter: require above-average ATR for context.
-Skip DOWN regime, skip Fridays.
+Keltner Channel = EMA(20) ± ATR(14) * multiplier.
+Upper channel break = volatility breakout + trend confirmation in ONE signal.
+This naturally combines: price > trend (EMA), ATR expansion, and breakout.
+
+Entry: close > upper Keltner AND close > yesterday's close (momentum confirm)
+       AND price > SMA(50) (broader trend confirmation)
+Stop: EMA or ATR-based (whichever is higher = tighter), capped at max_stop_pct
+Target: 2-3x ATR above entry
+
+Long-only, daily bars. Skips DOWN regime and SHOCK vol.
 """
 
 from __future__ import annotations
@@ -26,11 +31,26 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 30))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.min_bars = int(config.get("min_bars", 50))
+        self.atr_period = int(config.get("atr_period", 14))
+        self.ema_period = int(config.get("ema_period", 20))
+
+        # Optimizable
+        self.atr_expansion = float(config.get("atr_expansion", 1.5))
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.atr_expansion = float(config.get("atr_expansion", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+
+        # Keltner channel width (ATR multiplier for upper/lower bands)
+        self.keltner_mult = float(config.get("keltner_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.breakout_lookback = int(config.get("breakout_lookback", 10))
+
+        # Max stop distance as % of price — caps overnight gap risk
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+
+        # Broader trend filter period
+        self.trend_sma_period = int(config.get("trend_sma_period", 50))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -43,6 +63,16 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _ema(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        mult = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for v in values[period:]:
+            ema = v * mult + ema * (1 - mult)
+        return ema
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -65,87 +95,62 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
             return None
-        if regime_labels.get("regime_vol") == "SHOCK":
-            return None
-        if regime_labels.get("near_fomc"):
+
+        vol_regime = regime_labels.get("regime_vol", "NORMAL")
+        if vol_regime == "SHOCK":
             return None
 
-        # Skip Tuesdays, Thursdays, Fridays (historically negative)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() in (1, 3, 4):
+        trend = regime_labels.get("regime_trend", "FLAT")
+        if trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        if len(bars) < 25:
-            return None
-
-        atr = self._atr(bars, 14)
+        atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        prev_bar = bars[-2]
-        prev_prev = bars[-3]
-
-        # Inside day detection: previous bar had range inside the bar before it
-        was_inside = prev_bar.high <= prev_prev.high and prev_bar.low >= prev_prev.low
-        if not was_inside:
+        ema = self._ema(closes, self.ema_period)
+        if ema is None:
             return None
 
-        # Quality: inside day range should be at most 85% of outer day range
-        inner_range = prev_bar.high - prev_bar.low
-        outer_range = prev_prev.high - prev_prev.low
-        if outer_range < 1e-9 or inner_range / outer_range > 0.85:
+        # Broader trend filter: price must be above SMA(50)
+        sma50 = self._sma(closes, self.trend_sma_period)
+        if sma50 is not None and bar.close < sma50:
             return None
 
-        # Breakout: current bar closes above the inside day's high
-        if bar.close <= prev_bar.high:
+        # Keltner Channels
+        upper_keltner = ema + self.keltner_mult * atr
+        price = bar.close
+
+        # Entry: close above upper Keltner channel
+        if price <= upper_keltner:
             return None
 
-        # Close in upper half of today's range (strong breakout)
-        today_range = bar.high - bar.low
-        if today_range < 1e-9:
-            return None
-        close_pos = (bar.close - bar.low) / today_range
-        if close_pos < 0.5:
+        # Momentum confirmation: close > yesterday's close
+        if len(closes) >= 2 and price <= closes[-2]:
             return None
 
-        # Expansion: breakout day range should exceed inside day range
-        if today_range <= inner_range:
-            return None
-
-        # Volume confirmation: above 60% of 20-day average (relaxed)
+        # Volume confirmation (optional — use softer filter)
         volumes = [b.volume for b in bars]
-        if len(volumes) < 20:
-            return None
-        avg_vol = sum(volumes[-20:]) / 20
-        if avg_vol <= 0 or bar.volume < avg_vol * 0.8:
-            return None
-
-        # Trend context: above SMA(20) or close to it
-        sma20 = self._sma(closes, 20)
-        if sma20 is not None and bar.close < sma20 * 0.95:
-            return None
-
-        # Regime-adaptive stops
-        regime_trend = regime_labels.get("regime_trend", "UP")
-        regime_vol = regime_labels.get("regime_vol", "NORMAL")
-
-        # More selective in DOWN: require stronger breakout
-        if regime_trend == "DOWN":
-            if close_pos < 0.7:
+        avg_vol = self._sma(volumes, 20)
+        if avg_vol is not None and avg_vol > 1e-9:
+            vol_ratio = bar.volume / avg_vol
+            if vol_ratio < self.vol_surge_mult:
                 return None
-            stop_mult = self.stop_atr_mult * 0.8
-            target_mult = self.target_atr_mult * 0.7
-        elif regime_vol == "HIGH":
-            stop_mult = self.stop_atr_mult * 0.9
-            target_mult = self.target_atr_mult * 0.8
-        else:
-            stop_mult = self.stop_atr_mult
-            target_mult = self.target_atr_mult
 
-        stop = bar.close - stop_mult * atr
-        target = bar.close + target_mult * atr
+        # Stop: EMA or ATR-based (whichever is higher = tighter)
+        stop_ema = ema
+        stop_atr = price - self.stop_atr_mult * atr
+        stop = max(stop_ema, stop_atr)
+
+        # Cap stop distance at max_stop_pct of price
+        max_stop_price = price * (1.0 - self.max_stop_pct)
+        stop = max(stop, max_stop_price)
+
+        # Target
+        target = price + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -156,9 +161,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "atr": round(atr, 4),
-                "close_pos": round(close_pos, 2),
-                "inside_day": True,
-                "seed": "vol_breakout",
+                "mode": "KELTNER",
+                "keltner_dist": round((price - upper_keltner) / atr, 2),
+                "trend": trend,
             },
         )
