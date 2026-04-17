@@ -85,10 +85,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         prev_bar = bars[-2]
         prev_prev = bars[-3]
 
-        # Inside/narrow day detection: previous bar had range inside or near-inside
-        prev_range = prev_bar.high - prev_bar.low
-        outer_range = prev_prev.high - prev_prev.low
-        was_inside = prev_range <= outer_range * 1.05 and prev_bar.low >= prev_prev.low * 0.998
+        # Inside day detection: previous bar had range inside the bar before it
+        was_inside = prev_bar.high <= prev_prev.high and prev_bar.low >= prev_prev.low
         if not was_inside:
             return None
 
@@ -121,17 +119,12 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         regime_trend = regime_labels.get("regime_trend", "UP")
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
 
-        # More selective in DOWN and FLAT: require stronger breakout
+        # More selective in DOWN: require stronger breakout
         if regime_trend == "DOWN":
             if close_pos < 0.7:
                 return None
             stop_mult = self.stop_atr_mult * 0.8
             target_mult = self.target_atr_mult * 0.7
-        elif regime_trend == "FLAT":
-            if close_pos < 0.65:
-                return None
-            stop_mult = self.stop_atr_mult * 0.9
-            target_mult = self.target_atr_mult * 0.9
         elif regime_vol == "HIGH":
             stop_mult = self.stop_atr_mult * 0.9
             target_mult = self.target_atr_mult * 0.8
