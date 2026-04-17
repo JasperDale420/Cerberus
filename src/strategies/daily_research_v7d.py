@@ -91,8 +91,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
         if regime_labels.get("near_fomc", False):
             return None
-        if regime_labels.get("quad_witch_week", False):
-            return None
 
         # Regime filter: only skip SHOCK vol
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
