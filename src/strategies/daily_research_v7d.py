@@ -1,9 +1,9 @@
 """Regime-adaptive oversold bounce with minimal parameters.
 
-Entry: consecutive lower closes (2+) AND low IBS (closed near low of day).
-Simple, robust two-condition filter — fewer params = less overfitting.
-Regime switch: skip DOWN and HIGH vol. In FLAT, lower IBS threshold for selectivity.
-Stock-level SMA(50) trend filter avoids falling knives.
+Entry: 3+ consecutive lower closes AND low IBS (closed near low of day).
+Simple two-condition filter — fewer params = less overfitting.
+Regime switch: only skip SHOCK vol. Stock-level SMA(50) trend filter.
+In DOWN regime, require deeper oversold (stricter IBS).
 Long-only. Event filters.
 """
 
@@ -27,12 +27,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = int(config.get("consec_down_min", 3))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.sma_trend_period = int(config.get("sma_trend_period", 50))
 
     @staticmethod
@@ -92,13 +92,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK, HIGH, and DOWN
+        # Regime filter: only skip SHOCK vol
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol in ("SHOCK", "HIGH"):
+        if regime_vol == "SHOCK":
             return None
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
-        if regime_trend == "DOWN":
-            return None
 
         # Stock-level trend: close > SMA(50)
         sma50 = self._sma(closes, self.sma_trend_period)
@@ -112,8 +110,13 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         # Condition 2: Low IBS (closed near low)
         ibs = self._ibs(bar)
-        # In FLAT regime, be more selective (lower threshold)
-        ibs_thresh = 0.2 if regime_trend == "FLAT" else self.ibs_threshold
+        # In DOWN regime, require deeper oversold for safety
+        if regime_trend == "DOWN":
+            ibs_thresh = 0.15
+        elif regime_vol == "HIGH":
+            ibs_thresh = 0.2
+        else:
+            ibs_thresh = self.ibs_threshold
         if ibs > ibs_thresh:
             return None
 
