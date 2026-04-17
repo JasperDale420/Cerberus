@@ -31,8 +31,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.ema_slow = int(config.get("ema_slow", 50))
         self.pullback_pct = float(config.get("pullback_pct", 0.03))
         self.rsi_period = int(config.get("rsi_period", 2))
-        self.rsi_threshold = float(config.get("rsi_threshold", 10.0))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.rsi_threshold = float(config.get("rsi_threshold", 20.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
@@ -70,16 +69,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return 100.0
         rs = avg_gain / avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
-
-    @staticmethod
-    def _consecutive_downs(closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -131,12 +120,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if distance > self.pullback_pct:
             return None  # Too extended — not a pullback
 
-        # Consecutive down days — confirms real pullback
-        consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
-            return None
-
-        # RSI(2) must be extremely oversold
+        # RSI(2) must be oversold — extreme short-term selling pressure
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi >= self.rsi_threshold:
             return None
