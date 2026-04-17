@@ -1,14 +1,14 @@
-"""ATR-scaled mean reversion — buy dips below SMA with vol exhaustion.
+"""Consecutive-down ATR mean reversion — buy after 2+ down days below SMA.
 
 Entry requires ALL of:
-  1. Price below SMA(20) by at least atr_drop_mult * ATR
-  2. IBS < threshold (closed near day's low — selling exhaustion)
-  3. Not in HIGH/SHOCK vol regime
+  1. 2+ consecutive lower closes
+  2. Price below SMA(20)
+  3. Not in SHOCK vol regime
   4. Not near earnings or FOMC
 
 Target: SMA(20) — natural mean reversion level.
 Stop: entry - stop_atr_mult * ATR.
-Evolved from seed_vol_breakout — uses ATR/volume DNA for mean reversion.
+Evolved from seed_vol_breakout — ATR-scaled risk management (vol DNA).
 """
 
 from __future__ import annotations
@@ -33,8 +33,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        self.atr_drop_mult = float(config.get("atr_drop_mult", 0.8))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -56,6 +55,16 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         return sum(values[-period:]) / period
 
+    @staticmethod
+    def _consecutive_downs(closes: list[float]) -> int:
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
+
     def on_bar(
         self,
         symbol: str,
@@ -68,9 +77,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         # Event filters
@@ -81,31 +90,25 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
+        # 2+ consecutive down closes
+        consec = self._consecutive_downs(closes)
+        if consec < self.consec_down_min:
+            return None
+
+        # SMA — price must be below it (mean reversion setup)
         sma = self._sma(closes, self.sma_period)
         if sma is None or sma < 1e-9:
             return None
+        if bar.close >= sma:
+            return None
 
+        # ATR for stop sizing
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # IBS filter: close near day's low (selling exhaustion)
-        bar_range = bar.high - bar.low
-        if bar_range > 1e-9:
-            ibs = (bar.close - bar.low) / bar_range
-            if ibs > self.ibs_threshold:
-                return None
-
-        # Entry: price below SMA by at least atr_drop_mult * ATR
-        dip = sma - bar.close
-        if dip < self.atr_drop_mult * atr:
-            return None
-
         # Target: SMA (mean reversion)
         target = sma
-        if target <= bar.close:
-            return None
-
         stop = bar.close - self.stop_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
@@ -117,10 +120,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
+                "consec_down": consec,
                 "atr": round(atr, 4),
                 "sma": round(sma, 2),
-                "dip_atr": round(dip / atr, 2),
-                "ibs": round((bar.close - bar.low) / bar_range, 3) if bar_range > 1e-9 else 0.5,
-                "seed": "vol_mean_rev",
+                "dip_pct": round((sma - bar.close) / sma * 100, 2),
+                "seed": "consec_atr_mr",
             },
         )
