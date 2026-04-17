@@ -39,7 +39,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_expansion = float(config.get("atr_expansion", 1.5))
         self.vol_surge_mult = float(config.get("vol_surge_mult", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
 
         # Keltner channel width (ATR multiplier for upper/lower bands)
         self.keltner_mult = float(config.get("keltner_mult", 1.5))
@@ -92,12 +92,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip Monday entries (historically negative: -$8,760 vs all other days positive)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() == 0:
+        # Skip Monday and Tuesday entries (both historically negative)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (0, 1):
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
         if regime_labels.get("near_earnings"):
+            return None
+        if regime_labels.get("near_fomc"):
             return None
 
         vol_regime = regime_labels.get("regime_vol", "NORMAL")
