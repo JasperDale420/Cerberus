@@ -35,10 +35,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        # Fixed — not optimized to avoid CV instability
-        self.bb_proximity = 1.0
+        self.bb_proximity = float(config.get("bb_proximity", 1.0))
 
     # --- Indicator helpers ---
 
@@ -137,9 +136,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         lower_bb = bb_sma - self.bb_std * bb_std_val
         bb_distance = (bar.close - lower_bb) / bb_std_val
-        # In UP trend, require closer to/below lower BB (stronger signal needed)
-        effective_proximity = 0.5 if regime_trend == "UP" else self.bb_proximity
-        if bb_distance > effective_proximity:
+        if bb_distance > self.bb_proximity:
             return None
 
         # ATR for stop and target
