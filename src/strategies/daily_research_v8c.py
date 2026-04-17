@@ -34,6 +34,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
+        self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -77,9 +79,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH and SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
         # Event filters
@@ -95,6 +97,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if consec < self.consec_down_min:
             return None
 
+        # IBS filter: close near day's low
+        bar_range = bar.high - bar.low
+        if bar_range > 1e-9:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_threshold:
+                return None
+
         # SMA — price must be below it (mean reversion setup)
         sma = self._sma(closes, self.sma_period)
         if sma is None or sma < 1e-9:
@@ -102,9 +111,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close >= sma:
             return None
 
-        # ATR for stop sizing
+        # ATR for stop sizing and dip quality
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
+            return None
+
+        # Dip must be at least atr_dip_min * ATR below SMA
+        dip = sma - bar.close
+        if dip < self.atr_dip_min * atr:
             return None
 
         # Target: SMA (mean reversion)
