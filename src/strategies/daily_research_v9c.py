@@ -43,7 +43,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 4))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
         self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
-        self.min_price = float(config.get("min_price", 10.0))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -73,10 +72,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
         if not self._require_min_bars(symbol_state, self.min_bars):
-            return None
-
-        # Skip cheap stocks
-        if bar.close < self.min_price:
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
