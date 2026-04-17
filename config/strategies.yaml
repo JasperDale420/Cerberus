@@ -203,3 +203,24 @@ strategies:
       liquidity: [good, thin]
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
+
+  daily_research_v9a:
+    enabled: true
+    min_bars: 55
+    allow_overnight: true
+    max_hold_days: 3
+    cooldown_bars: 1
+    consec_down_min: 2
+    ibs_threshold: 0.3
+    sma_fast: 20
+    sma_slow: 50
+    atr_period: 14
+    stop_atr_mult: 1.5
+    target_atr_mult: 1.5
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
