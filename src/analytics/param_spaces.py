@@ -130,11 +130,8 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
     },
     "daily_research_v8b": {
         "atr_period": 14,
-        "max_hold_days": 7,
         "bb_period": 20,
         "bb_std": 2.0,
-        "high_vol_stop_scale": 0.8,
-        "high_vol_target_scale": 0.7,
     },
     "daily_research_v8c": {
         "breakout_lookback": 10,
@@ -286,12 +283,11 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
     ],
     "daily_research_v8b": [
         ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
-        ParamDef("target_atr_mult", "float", low=2.0, high=3.0, step=0.5, description="ATR target multiplier"),
-        ParamDef(
-            "ibs_entry_threshold", "float", low=0.25, high=0.40, step=0.05, description="IBS threshold for trend mode"
-        ),
-        ParamDef("mr_ibs_threshold", "float", low=0.15, high=0.30, step=0.05, description="IBS threshold for MR mode"),
-        ParamDef("max_realized_vol", "float", low=0.20, high=0.30, step=0.05, description="Max SPY realized vol gate"),
+        ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef("ibs_threshold", "float", low=0.20, high=0.35, step=0.05, description="IBS threshold"),
+        ParamDef("consec_down_min", "int", low=2, high=3, step=1, description="Min consecutive down days"),
+        ParamDef("max_hold_days", "int", low=3, high=7, step=1, description="Max hold days"),
+        ParamDef("bb_proximity", "float", low=0.5, high=1.5, step=0.5, description="BB proximity in std devs"),
     ],
     "daily_research_v8c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),

@@ -1,15 +1,12 @@
-"""Scalp the Bounce — ultra-short mean reversion after consecutive declines.
-
-Core edge: After 2+ consecutive down days with low IBS (closed near low),
-stocks bounce next day. Take the quick bounce with tight 1:1 R:R and exit fast.
-Very short hold (max 3 days) limits damage even in bear markets.
+"""Consecutive Down + BB Proximity + IBS mean reversion.
 
 Entry requires ALL of:
-  1. 2+ consecutive lower closes
-  2. Low IBS (< 0.25 — closed near day's low)
-  3. Close within 1 std dev of lower BB (near BB support)
+  1. N+ consecutive lower closes (consec_down_min, optimized 2-3)
+  2. Low IBS (closed near day's low, optimized 0.20-0.35)
+  3. Close near lower BB (within bb_proximity std devs, optimized 0.5-1.5)
 
-Skip SHOCK vol, earnings, FOMC.
+Skip SHOCK vol, earnings, FOMC, opex week.
+In DOWN regime, require consec >= 3 regardless of consec_down_min.
 """
 
 from __future__ import annotations
@@ -37,9 +34,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.bb_proximity = float(config.get("bb_proximity", 1.0))
 
     # --- Indicator helpers ---
@@ -109,21 +106,29 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
+        if labels.get("opex_week", False):
+            return None
+
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Required: 2+ consecutive down closes
+        # Required: consecutive down closes
         consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
+        required_consec = self.consec_down_min
+        # In DOWN regime, require at least 3 consecutive downs
+        if regime_trend == "DOWN":
+            required_consec = max(required_consec, 3)
+        if consec < required_consec:
             return None
 
-        # Required: Low IBS (closed near day's low — sellers in control)
+        # Required: Low IBS (closed near day's low)
         ibs = self._ibs(bar)
         if ibs > self.ibs_threshold:
             return None
 
-        # Required: Close near lower BB (within bb_proximity std devs)
+        # Required: Close near lower BB
         bb_sma = self._sma(closes, self.bb_period)
         bb_std_val = self._std(closes, self.bb_period)
         if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
@@ -139,9 +144,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Tight stops and targets: 1:1 R:R for high win-rate scalping
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Target: min of BB midline or ATR-based target
+        target_bb = bb_sma
+        target_atr = bar.close + self.target_atr_mult * atr
+        target = min(target_bb, target_atr)
 
         if target <= bar.close:
             return None
@@ -158,7 +165,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
                 "bb_distance": round(bb_distance, 2),
+                "regime_trend": regime_trend,
                 "atr": round(atr, 4),
-                "seed": "scalp_bounce",
+                "seed": "consec_ibs_bb",
             },
         )
