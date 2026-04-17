@@ -98,13 +98,17 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip SHOCK volatility and DOWN+HIGH regime (consistent losers)
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
+        labels = symbol_state.meta.get("regime_labels", {})
+        regime_trend = labels.get("regime_trend", "")
+        regime_vol = labels.get("regime_vol", "")
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
+            return None
 
         # Event filters
-        labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
