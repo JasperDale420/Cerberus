@@ -34,11 +34,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))
+        self.bb_proximity = float(config.get("bb_proximity", 0.3))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.15))
-        self.min_score = int(config.get("min_score", 3))
-        self.down_min_score = int(config.get("down_min_score", 4))
+        self.min_score = int(config.get("min_score", 4))
+        self.down_min_score = int(config.get("down_min_score", 5))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
