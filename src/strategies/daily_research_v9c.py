@@ -39,9 +39,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.kc_period = int(config.get("kc_period", 20))
         self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
-        self.mom_lookback = int(config.get("mom_lookback", 12))
+        self.mom_lookback = int(config.get("mom_lookback", 8))
         self.sma_period = int(config.get("sma_period", 20))
-        self.min_squeeze_bars = int(config.get("min_squeeze_bars", 3))
+        self.min_squeeze_bars = int(config.get("min_squeeze_bars", 2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
@@ -93,6 +93,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_vol == "SHOCK":
+            return None
+
+        # Skip DOWN trend — breakouts fail against macro downtrend
+        regime_trend = regime_labels.get("regime_trend", "FLAT")
+        if regime_trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
