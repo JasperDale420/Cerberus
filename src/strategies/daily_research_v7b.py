@@ -37,8 +37,10 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.08))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.05))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
+        self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
+        self.sma_fast_period = int(config.get("sma_fast_period", 20))
 
     # --- Indicator helpers ---
 
@@ -110,14 +112,22 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if len(closes) < self.min_bars:
             return None
 
-        # Trend filter: price must be above SMA (uptrend only)
+        # Dual trend filter: price above SMA(20) AND SMA(50)
         sma = self._sma(closes, self.sma_period)
         if sma is None:
             return None
         if bar.close < sma:
             return None
+        sma_fast = self._sma(closes, self.sma_fast_period)
+        if sma_fast is None:
+            return None
+        if bar.close < sma_fast:
+            return None
+        # Fast SMA must be above slow SMA (trend alignment)
+        if sma_fast < sma:
+            return None
 
-        # Max drawdown filter: skip if stock has dropped too much from recent high
+        # Max drawdown filter: skip if stock has dropped too much from 30-day high
         lookback = min(self.drawdown_lookback, len(closes))
         recent_high = max(closes[-lookback:])
         drawdown = (recent_high - bar.close) / recent_high
@@ -127,6 +137,11 @@ class dailyresearchv7bStrategy(BaseStrategy):
         # ATR for volatility filter and stops
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
+            return None
+
+        # Pullback must leave price well above SMA (not rolling over)
+        dist_from_sma = (bar.close - sma) / atr
+        if dist_from_sma < self.pullback_atr_min:
             return None
 
         # Vol filter: skip excessively volatile stocks (ATR/price too high)
