@@ -138,8 +138,13 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         # Entry condition 2: low IBS (closed near day's low)
+        # In elevated realized vol, require even lower IBS (more extreme dip)
         ibs = self._ibs(bar)
-        if ibs > self.ibs_max:
+        rvol = getattr(market_state, "realized_vol", None)
+        ibs_threshold = self.ibs_max
+        if rvol is not None and rvol > 0.20:
+            ibs_threshold = self.ibs_max * 0.7  # ~0.21 instead of 0.30
+        if ibs > ibs_threshold:
             return None
 
         # Entry condition 3: consecutive down closes
