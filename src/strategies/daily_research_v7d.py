@@ -29,7 +29,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
@@ -103,12 +103,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK vol
+        # Regime filter: skip SHOCK vol and DOWN+HIGH (consistently weak)
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
         if regime_vol == "SHOCK":
             return None
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
+            return None
 
         # Indicators
         bb_sma = self._sma(closes, self.bb_period)
@@ -142,11 +145,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Factor 3: IBS (low IBS = closed near low = oversold)
         ibs = self._ibs(bar)
         if ibs < self.ibs_threshold:
-            score += 1
-
-        # Factor 4: Price above SMA(50) — longer-term support
-        sma50 = self._sma(closes, 50)
-        if sma50 is not None and bar.close > sma50:
             score += 1
 
         # Require at least 3 factors
