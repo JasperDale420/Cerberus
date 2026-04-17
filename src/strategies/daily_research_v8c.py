@@ -37,7 +37,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.consec_down_min = 2
         self.ibs_threshold = 0.3  # hardcoded — was unstable (CV=0.308), mean was 0.294
         self.atr_dip_min = 0.5  # hardcoded — was unstable (CV=0.445), mean was 0.55
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.max_hold_days = int(config.get("max_hold_days", 3))
 
     @staticmethod
@@ -93,6 +93,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Event filters
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+        if labels.get("opex_week", False):
             return None
 
         bars = list(symbol_state.bars)
