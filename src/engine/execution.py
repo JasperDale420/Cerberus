@@ -341,27 +341,186 @@ class ExecutionEngine:
         self._flatten_handle_result(mismatch_mode, confirmed, open_positions, open_orders, reason)
 
     def _flatten_cancel_orders(self, reason: str) -> None:
-        """Cancel all open orders (best-effort)."""
-        assert self.broker_client is not None
-        try:
-            self.broker_client.trading_client.cancel_orders()
-        except Exception as e:
-            self.logger.error("Cancel orders failed", reason=reason, error=str(e), exc_info=True)
+        """Cancel Cerberus-owned open orders only (best-effort).
 
-    def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
-        """Close all positions (best-effort)."""
+        The Alpaca paper account is shared across multiple Empire trading services
+        (Orbit, 3Roses, Cerberus, etc.). Calling `cancel_orders()` would cancel
+        EVERY open order in the account. We must scope cancellation to orders
+        whose `client_order_id` begins with `cerberus_` — the prefix stamped by
+        `Signal.__post_init__` in `src/core/domain.py`.
+        """
         assert self.broker_client is not None
+        trading_client = self.broker_client.trading_client
+
         try:
-            self.broker_client.trading_client.close_all_positions(cancel_orders=True)
+            from alpaca.trading.enums import QueryOrderStatus
+            from alpaca.trading.requests import GetOrdersRequest
+
+            resp = trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
+            open_orders = resp if isinstance(resp, list) else []
         except Exception as e:
             self.logger.error(
-                "Close all positions failed",
+                "Fetch open orders failed during flatten",
+                reason=reason,
+                error=str(e),
+                exc_info=True,
+            )
+            return
+
+        cancelled = 0
+        skipped = 0
+        for order in open_orders:
+            coid = str(getattr(order, "client_order_id", "") or "")
+            if not coid.startswith("cerberus_"):
+                skipped += 1
+                continue
+            order_id = getattr(order, "id", None)
+            if order_id is None:
+                continue
+            try:
+                trading_client.cancel_order_by_id(order_id)
+                cancelled += 1
+            except Exception as e:
+                self.logger.error(
+                    "Cancel order failed",
+                    reason=reason,
+                    order_id=str(order_id),
+                    client_order_id=coid,
+                    error=str(e),
+                    exc_info=True,
+                )
+
+        self.logger.info(
+            "Flatten cancel_orders scoped to Cerberus",
+            reason=reason,
+            cancelled=cancelled,
+            skipped_foreign=skipped,
+        )
+
+    def _flatten_close_positions(self, reason: str, mismatch_mode: str) -> None:
+        """Close Cerberus-owned positions only (best-effort).
+
+        The Alpaca paper account is shared across multiple Empire trading services.
+        Calling `close_all_positions()` would liquidate EVERY position in the
+        account — including ones owned by Orbit, 3Roses, and any other service.
+
+        We identify Cerberus-owned positions by matching each open position to
+        its most recent filled opening order in the account. If that order's
+        `client_order_id` starts with `cerberus_`, we close it; otherwise we
+        leave it alone.
+        """
+        assert self.broker_client is not None
+        trading_client = self.broker_client.trading_client
+
+        try:
+            positions = list(trading_client.get_all_positions())
+        except Exception as e:
+            self.logger.error(
+                "Fetch positions failed during flatten",
                 reason=reason,
                 error=str(e),
                 exc_info=True,
             )
             if mismatch_mode in ("halt", "stop", "raise"):
                 raise
+            return
+
+        if not positions:
+            return
+
+        # Build symbol -> most-recent-filled-opening-order map from recent closed orders.
+        try:
+            from alpaca.trading.enums import QueryOrderStatus
+            from alpaca.trading.requests import GetOrdersRequest
+
+            resp = trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=500))
+            closed_orders = resp if isinstance(resp, list) else []
+        except Exception as e:
+            self.logger.error(
+                "Fetch closed orders failed during flatten — cannot determine ownership, skipping close",
+                reason=reason,
+                error=str(e),
+                exc_info=True,
+            )
+            if mismatch_mode in ("halt", "stop", "raise"):
+                raise
+            return
+
+        # Map symbol -> client_order_id of the most recent filled order that could
+        # have opened the current position. We prefer the most recently filled order
+        # per symbol regardless of side; whoever opened the current position last
+        # is the owner of record.
+        latest_owner_coid: Dict[str, str] = {}
+        latest_owner_ts: Dict[str, Any] = {}
+        for order in closed_orders:
+            try:
+                status = str(getattr(order, "status", "") or "").lower()
+                if status != "filled":
+                    continue
+                sym = str(getattr(order, "symbol", "") or "")
+                if not sym:
+                    continue
+                coid = str(getattr(order, "client_order_id", "") or "")
+                filled_at = getattr(order, "filled_at", None) or getattr(order, "updated_at", None)
+                prev_ts = latest_owner_ts.get(sym)
+                if prev_ts is None or (filled_at is not None and filled_at > prev_ts):
+                    latest_owner_coid[sym] = coid
+                    latest_owner_ts[sym] = filled_at
+            except Exception:
+                continue
+
+        closed = 0
+        skipped_foreign = 0
+        skipped_unknown = 0
+        first_exc: Optional[Exception] = None
+        for pos in positions:
+            sym = str(getattr(pos, "symbol", "") or "")
+            if not sym:
+                continue
+            owner_coid = latest_owner_coid.get(sym, "")
+            if not owner_coid:
+                # No recent filled order found — cannot prove this is ours.
+                # Err on the safe side and leave it alone.
+                skipped_unknown += 1
+                self.logger.warning(
+                    "Skipping position with no identifiable owner order",
+                    reason=reason,
+                    symbol=sym,
+                )
+                continue
+            if not owner_coid.startswith("cerberus_"):
+                skipped_foreign += 1
+                self.logger.info(
+                    "Skipping foreign-owned position during flatten",
+                    reason=reason,
+                    symbol=sym,
+                    owner_prefix=owner_coid.split("_", 1)[0] if "_" in owner_coid else owner_coid[:16],
+                )
+                continue
+            try:
+                trading_client.close_position(sym)
+                closed += 1
+            except Exception as e:
+                self.logger.error(
+                    "Close position failed",
+                    reason=reason,
+                    symbol=sym,
+                    error=str(e),
+                    exc_info=True,
+                )
+                if first_exc is None:
+                    first_exc = e
+
+        self.logger.info(
+            "Flatten close_positions scoped to Cerberus",
+            reason=reason,
+            closed=closed,
+            skipped_foreign=skipped_foreign,
+            skipped_unknown=skipped_unknown,
+        )
+
+        if first_exc is not None and mismatch_mode in ("halt", "stop", "raise"):
+            raise first_exc
 
     def _flatten_confirm_state(self) -> Tuple[list, list, bool]:
         """Confirm flat state at broker."""

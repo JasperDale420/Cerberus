@@ -141,21 +141,66 @@ async def test_reconcile_broker_state_runs(execution_engine, mock_alpaca):
 
 
 @pytest.mark.unit
-def test_flatten_all_calls_broker(execution_engine, mock_alpaca):
-    # Setup
+def test_flatten_all_uses_scoped_broker_calls(execution_engine, mock_alpaca):
+    """Flatten must NOT call the broad close_all_positions/cancel_orders APIs —
+    those would liquidate every position in the shared paper account. It must
+    use scoped per-order/per-position calls instead.
+
+    Scenario: one Cerberus-owned position (AAPL) and one foreign-owned position
+    (NVDA, opened by Orbit). Only AAPL should be closed.
+    """
     execution_engine.config["position_mismatch_mode"] = "log"
-    # Set broker_client so flatten_all actually runs broker operations
     execution_engine.broker_client = mock_alpaca
 
-    # Mock return values for verification steps to prevent errors
-    mock_alpaca.trading_client.get_all_positions.return_value = []
-    mock_alpaca.trading_client.get_orders.return_value = []
+    aapl_pos = MagicMock()
+    aapl_pos.symbol = "AAPL"
+    nvda_pos = MagicMock()
+    nvda_pos.symbol = "NVDA"
+
+    cerb_open_order = MagicMock()
+    cerb_open_order.id = "cerb_open_1"
+    cerb_open_order.symbol = "AAPL"
+    cerb_open_order.client_order_id = "cerberus_s-AAPL-1-a"
+
+    orbit_open_order = MagicMock()
+    orbit_open_order.id = "orbit_open_1"
+    orbit_open_order.symbol = "NVDA"
+    orbit_open_order.client_order_id = "orbit-NVDA-1-b"
+
+    cerb_filled = MagicMock()
+    cerb_filled.symbol = "AAPL"
+    cerb_filled.client_order_id = "cerberus_s-AAPL-0-a"
+    cerb_filled.status = "filled"
+    cerb_filled.filled_at = datetime(2025, 1, 1, 14, 0, tzinfo=timezone.utc)
+    cerb_filled.updated_at = cerb_filled.filled_at
+
+    orbit_filled = MagicMock()
+    orbit_filled.symbol = "NVDA"
+    orbit_filled.client_order_id = "orbit-NVDA-0-b"
+    orbit_filled.status = "filled"
+    orbit_filled.filled_at = datetime(2025, 1, 1, 14, 0, tzinfo=timezone.utc)
+    orbit_filled.updated_at = orbit_filled.filled_at
+
+    def _get_orders(req=None, *_a, **_kw):
+        status = getattr(req, "status", None)
+        status_str = str(getattr(status, "value", status) or "").lower()
+        if "closed" in status_str:
+            return [cerb_filled, orbit_filled]
+        return [cerb_open_order, orbit_open_order]
+
+    mock_alpaca.trading_client.get_orders.side_effect = _get_orders
+    mock_alpaca.trading_client.get_all_positions.return_value = [aapl_pos, nvda_pos]
 
     execution_engine.flatten_all(reason="Test")
 
-    # Verify calls
-    mock_alpaca.trading_client.cancel_orders.assert_called_once()
-    mock_alpaca.trading_client.close_all_positions.assert_called_once_with(cancel_orders=True)
+    # Legacy broad methods must NOT be called — they'd hit foreign positions.
+    mock_alpaca.trading_client.cancel_orders.assert_not_called()
+    mock_alpaca.trading_client.close_all_positions.assert_not_called()
+
+    # Only the Cerberus-owned open order is cancelled.
+    mock_alpaca.trading_client.cancel_order_by_id.assert_called_once_with("cerb_open_1")
+    # Only the Cerberus-owned position is closed.
+    mock_alpaca.trading_client.close_position.assert_called_once_with("AAPL")
 
 
 @pytest.mark.unit
