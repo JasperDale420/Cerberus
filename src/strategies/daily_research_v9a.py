@@ -29,13 +29,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.ema_fast = int(config.get("ema_fast", 20))
         self.ema_slow = int(config.get("ema_slow", 50))
-        self.pullback_pct = float(config.get("pullback_pct", 0.02))
+        self.pullback_pct = float(config.get("pullback_pct", 0.03))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_threshold = float(config.get("rsi_threshold", 20.0))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_avg_mult = float(config.get("vol_avg_mult", 0.8))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -48,6 +48,27 @@ class SeedMeanReversionStrategy(BaseStrategy):
         for v in values[1:]:
             ema = v * mult + ema * (1 - mult)
         return ema
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            if delta > 0:
+                gains.append(delta)
+                losses.append(0.0)
+            else:
+                gains.append(0.0)
+                losses.append(abs(delta))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -85,7 +106,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
         # EMA crossover: fast > slow = uptrend
         ema_f = self._ema(closes, self.ema_fast)
@@ -95,16 +115,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ema_f <= ema_s:
             return None  # No uptrend — don't trade
 
-        # Price must have pulled back near or below the fast EMA
+        # Price must be within pullback zone of fast EMA
         distance = (bar.close - ema_f) / ema_f
         if distance > self.pullback_pct:
-            return None  # Too extended above EMA — not a pullback
+            return None  # Too extended — not a pullback
 
-        # Volume check: at least vol_avg_mult of 20-day average
-        if len(volumes) >= self.vol_avg_period:
-            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_avg_mult:
-                return None
+        # RSI(2) must be oversold — extreme short-term selling pressure
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi >= self.rsi_threshold:
+            return None
 
         # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
@@ -125,7 +144,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             meta={
                 "ema_fast": round(ema_f, 2),
                 "ema_slow": round(ema_s, 2),
-                "pullback_pct": round(distance, 4),
+                "rsi2": round(rsi, 1),
                 "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
