@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -33,7 +33,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 50))
         self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = 3  # Fixed — 3 consecutive downs is more selective
         self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
         self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -79,10 +79,13 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip HIGH and SHOCK volatility
+        # Skip HIGH/SHOCK vol and DOWN trend
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
-            return None
+        if snapshot:
+            if snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
+                return None
+            if snapshot.trend == TrendRegime.DOWN:
+                return None
 
         # Event filters
         labels = symbol_state.meta.get("regime_labels", {})
