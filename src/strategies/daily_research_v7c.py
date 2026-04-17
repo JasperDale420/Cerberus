@@ -70,8 +70,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_fomc"):
             return None
 
-        # Skip Tuesdays, Thursdays, Fridays (historically negative)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() in (1, 3, 4):
+        # Skip Thursdays and Fridays (historically negative)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (3, 4):
             return None
 
         bars = list(symbol_state.bars)
