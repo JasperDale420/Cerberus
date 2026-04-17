@@ -95,7 +95,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Quality: inside day range should be at most 85% of outer day range
         inner_range = prev_bar.high - prev_bar.low
         outer_range = prev_prev.high - prev_prev.low
-        if outer_range < 1e-9 or inner_range / outer_range > 0.85:
+        if outer_range < 1e-9 or inner_range / outer_range > 0.75:
             return None
 
         # Breakout: current bar closes above the inside day's high
@@ -121,12 +121,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         avg_vol = sum(volumes[-20:]) / 20
         if avg_vol <= 0 or bar.volume < avg_vol * 0.8:
             return None
-
-        # Prior day should not be deeply red (inner day not a crash)
-        if len(bars) >= 4:
-            inner_return = (prev_bar.close - bars[-4].close) / bars[-4].close
-            if inner_return < -0.03:
-                return None
 
         # Trend context: above SMA(20) or close to it
         sma20 = self._sma(closes, 20)
