@@ -34,7 +34,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.ibs_max = float(config.get("ibs_max", 0.35))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -128,10 +128,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if bar.close > bb_mean:
             return None
 
-        # Condition 4: Price above SMA(50) (long-term trend intact)
+        # Condition 4: Trend health — SMA(20) > SMA(50) and price > SMA(50)
         sma_long = self._sma(closes, self.sma_long_period)
         if sma_long is not None and bar.close < sma_long:
             return None
+        if sma_long is not None and bb_mean < sma_long:
+            return None  # SMA(20) < SMA(50) = weakening trend
 
         # ATR for stops
         atr = self._atr(bars, self.atr_period)
