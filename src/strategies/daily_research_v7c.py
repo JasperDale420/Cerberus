@@ -67,9 +67,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         if regime_labels.get("regime_vol") == "SHOCK":
             return None
+        if regime_labels.get("near_fomc"):
+            return None
 
-        # Skip Fridays and Tuesdays (historically negative)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() in (1, 4):
+        # Skip Tuesdays, Thursdays, Fridays (historically negative)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (1, 3, 4):
             return None
 
         bars = list(symbol_state.bars)
@@ -88,6 +90,12 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Inside day detection: previous bar had range inside the bar before it
         was_inside = prev_bar.high <= prev_prev.high and prev_bar.low >= prev_prev.low
         if not was_inside:
+            return None
+
+        # Quality: inside day range should be at most 85% of outer day range
+        inner_range = prev_bar.high - prev_bar.low
+        outer_range = prev_prev.high - prev_prev.low
+        if outer_range < 1e-9 or inner_range / outer_range > 0.85:
             return None
 
         # Breakout: current bar closes above the inside day's high
