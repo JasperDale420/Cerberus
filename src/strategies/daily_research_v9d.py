@@ -48,7 +48,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Filters
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
 
     # --- Indicator helpers ---
 
@@ -99,9 +100,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc"):
             return None
 
-        # Vol filter — skip SHOCK
+        # Vol filter — skip SHOCK and HIGH
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_vol == "SHOCK":
+        if regime_vol in ("SHOCK", "HIGH"):
+            return None
+        # Calendar filters
+        if regime_labels.get("opex_week"):
             return None
 
         bars = list(symbol_state.bars)
@@ -158,7 +162,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
                 return None
 
         # Skip extremely wide bars (news-driven)
-        if daily_range > 2.5 * atr:
+        if daily_range > 2.0 * atr:
             return None
 
         # Stop below bar low, target Keltner midline
@@ -166,6 +170,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         target = kc_mid
 
         if target <= bar.close:
+            return None
+
+        # Cap risk per trade
+        risk = (bar.close - stop) / bar.close if bar.close > 0 else 1.0
+        if risk > self.max_risk_pct:
             return None
 
         self.last_signal_time[symbol] = bar.time
