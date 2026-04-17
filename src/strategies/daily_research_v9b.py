@@ -1,10 +1,11 @@
-"""Keltner-IBS Reversion: Buy at Keltner Lower Band with IBS Confirmation.
+"""Confluence: Consec Down + BB + IBS + Trend Health.
 
-Entry: Close below Keltner lower band (EMA20 - 1.5*ATR) AND IBS < 0.3.
-Trend filter: EMA(20) > EMA(50) ensures we're buying dips in uptrends.
-Target: EMA(20) (natural mean reversion level).
-Stop: 2.0 ATR below entry.
-Skips SHOCK vol and earnings. Long-only, daily bars, max_hold_days=5.
+Buy after 2+ consecutive down closes when:
+- Price below BB(20) midline (short-term oversold)
+- Price above SMA(50) (long-term trend intact)
+- IBS < 0.35 (closed near low = selling exhaustion)
+Skips SHOCK vol and earnings. ATR-based stops.
+Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
@@ -27,25 +28,31 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.ema_fast_period = int(config.get("ema_fast_period", 20))
-        self.ema_slow_period = int(config.get("ema_slow_period", 50))
-        self.keltner_atr_mult = float(config.get("keltner_atr_mult", 1.5))
-        self.ibs_max = float(config.get("ibs_max", 0.3))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.sma_long_period = int(config.get("sma_long_period", 50))
+        self.ibs_max = float(config.get("ibs_max", 0.35))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
+    def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
-        mult = 2.0 / (period + 1)
-        ema = values[0]
-        for v in values[1:]:
-            ema = v * mult + ema * (1 - mult)
-        return ema
+        return sum(values[-period:]) / period
+
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        data = values[-period:]
+        mean = sum(data) / period
+        variance = sum((x - mean) ** 2 for x in data) / period
+        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -58,6 +65,17 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _consecutive_down(closes: list[float]) -> int:
+        """Count consecutive down closes from the end."""
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
 
     @staticmethod
     def _ibs(bar: Bar) -> Optional[float]:
@@ -92,38 +110,38 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Trend filter: EMA(20) > EMA(50) — only buy dips in uptrends
-        ema_fast = self._ema(closes, self.ema_fast_period)
-        ema_slow = self._ema(closes, self.ema_slow_period)
-        if ema_fast is None or ema_slow is None:
-            return None
-        if ema_fast <= ema_slow:
+        # Condition 1: 2+ consecutive down closes
+        consec = self._consecutive_down(closes)
+        if consec < self.consec_down_min:
             return None
 
-        # ATR for Keltner bands and stops
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        # Keltner lower band: EMA(20) - mult * ATR
-        keltner_lower = ema_fast - self.keltner_atr_mult * atr
-
-        # Entry: close at or below Keltner lower band
-        if bar.close > keltner_lower:
-            return None
-
-        # IBS confirmation: close near the low (selling exhaustion)
+        # Condition 2: IBS < 0.35 (closed near low = selling exhaustion)
         ibs = self._ibs(bar)
         if ibs is None or ibs > self.ibs_max:
             return None
 
-        # Don't buy too far below (broken support, >3 ATR below EMA)
-        if bar.close < ema_fast - 3.0 * atr:
+        # Condition 3: Price below BB(20) midline (short-term oversold)
+        bb_mean = self._sma(closes, self.bb_period)
+        bb_std = self._std(closes, self.bb_period)
+        if bb_mean is None or bb_std is None or bb_std < 0.01:
+            return None
+        if bar.close > bb_mean:
             return None
 
+        # Condition 4: Price above SMA(50) (long-term trend intact)
+        sma_long = self._sma(closes, self.sma_long_period)
+        if sma_long is not None and bar.close < sma_long:
+            return None
+
+        # ATR for stops
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        z_score = (bar.close - bb_mean) / bb_std if bb_std > 0 else 0.0
+
         stop = bar.close - self.stop_atr_mult * atr
-        # Target: EMA(20) — natural mean reversion level
-        target = ema_fast
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -134,11 +152,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "keltner_ibs",
-                "ema_fast": round(ema_fast, 2),
-                "ema_slow": round(ema_slow, 2),
-                "keltner_lower": round(keltner_lower, 2),
+                "mode": "consec_ibs_bb_trend",
+                "consec_down": consec,
                 "ibs": round(ibs, 3),
+                "z_score": round(z_score, 2),
                 "atr": round(atr, 4),
             },
         )
