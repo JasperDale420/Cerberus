@@ -32,8 +32,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        self.bb_proximity = float(config.get("bb_proximity", 0.0))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
