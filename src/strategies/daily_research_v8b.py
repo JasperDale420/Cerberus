@@ -32,7 +32,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
-        self.consec_down_min = 4  # Fixed — 4 is an even stronger signal
+        self.consec_down_min = 3  # Fixed — 3 is stronger signal than 2
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
