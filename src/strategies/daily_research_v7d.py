@@ -125,14 +125,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Condition 3: Meaningful pullback — close below 10-day high by 0.5+ ATR
-        highs = [b.high for b in bars]
-        if len(highs) >= 10:
-            recent_high = max(highs[-10:])
-            drawdown = recent_high - bar.close
-            if drawdown < 0.5 * atr:
-                return None
-
         target = bar.close + self.target_atr_mult * atr
         stop = bar.close - self.stop_atr_mult * atr
 
