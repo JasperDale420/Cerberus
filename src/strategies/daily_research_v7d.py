@@ -92,9 +92,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip SHOCK and HIGH vol (too inconsistent)
+        # Regime filter: only skip SHOCK vol
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol in ("SHOCK", "HIGH"):
+        if regime_vol == "SHOCK":
             return None
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
@@ -119,6 +119,19 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             ibs_thresh = self.ibs_threshold
         if ibs > ibs_thresh:
             return None
+
+        # Condition 3: Meaningful pullback — 5-day return must be negative
+        if len(closes) >= 6:
+            five_day_return = (bar.close - closes[-6]) / closes[-6]
+            if five_day_return >= 0:
+                return None
+
+        # Condition 4: Volume confirmation — above 50% of 20-day avg
+        volumes = [b.volume for b in bars]
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume < avg_vol * 0.5:
+                return None
 
         # ATR for stops/targets
         atr = self._atr(bars, self.atr_period)
