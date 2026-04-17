@@ -1,9 +1,9 @@
-"""Consecutive-down + IBS mean reversion with pullback depth cap.
+"""Consecutive-down + IBS mean reversion with internal vol/trend filters.
 
-Entry: 2+ consecutive down closes + low IBS + close below SMA(20) but not
-too far below (max 8% gap). Prevents buying into freefall crashes.
-Symmetric ATR stop/target. Trades all regimes except SHOCK.
-Long-only, daily bars, max_hold_days=3.
+Entry: 2+ consecutive down closes + low IBS + close below SMA(20).
+Internal filters: ATR/price < 3% (skip volatile), ROC(20) > -10% (skip crashes).
+Does NOT rely on regime labels (unreliable per-bar). Only SHOCK via market_state.
+Symmetric ATR stop/target. Long-only, daily bars, max_hold_days=3.
 """
 
 from __future__ import annotations
@@ -29,11 +29,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.sma_period = int(config.get("sma_period", 20))
-        self.max_pullback_pct = float(config.get("max_pullback_pct", 0.15))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.atr_pct_cap = float(config.get("atr_pct_cap", 0.03))
+        self.roc_period = int(config.get("roc_period", 20))
+        self.roc_floor = float(config.get("roc_floor", -0.10))
 
     # --- Indicator helpers ---
 
@@ -72,6 +74,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return 0.5
         return (bar.close - bar.low) / rng
 
+    @staticmethod
+    def _roc(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        old = closes[-period - 1]
+        if old < 1e-9:
+            return None
+        return (closes[-1] - old) / old
+
     def on_bar(
         self,
         symbol: str,
@@ -89,16 +100,28 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Skip earnings, FOMC, and HIGH vol regime
+        # Skip earnings and FOMC
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
-            return None
-        regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+
+        # ATR for stop/target and vol filter
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        # Internal vol filter: ATR/price caps out high-vol periods
+        atr_pct = atr / bar.close if bar.close > 0 else 0
+        if atr_pct > self.atr_pct_cap:
+            return None
+
+        # Internal trend filter: skip if price crashed recently
+        roc = self._roc(closes, self.roc_period)
+        if roc is not None and roc < self.roc_floor:
+            return None
 
         # Consecutive down days (hard gate)
         consec = self._consecutive_downs(closes)
@@ -112,19 +135,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         # Close below SMA — mean reversion setup
         sma = self._sma(closes, self.sma_period)
-        if sma is None or sma < 1e-9:
-            return None
-        if bar.close >= sma:
-            return None
-
-        # Pullback depth cap: don't buy if too far below SMA (freefall)
-        pullback_pct = (sma - bar.close) / sma
-        if pullback_pct > self.max_pullback_pct:
-            return None
-
-        # ATR for stop and target
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
+        if sma is None or bar.close >= sma:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -141,8 +152,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
-                "pullback_pct": round(pullback_pct, 4),
-                "atr": round(atr, 4),
+                "atr_pct": round(atr_pct, 4),
+                "roc": round(roc, 4) if roc else None,
                 "seed": "mean_reversion",
             },
         )
