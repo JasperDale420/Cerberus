@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -82,9 +82,17 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip HIGH/SHOCK vol and DOWN trend via market_state snapshot
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot:
+            if snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
+                return None
+            if snapshot.trend == TrendRegime.DOWN:
+                return None
+
+        # Skip Thursday (consistently negative expectancy)
+        dow = bar.time.weekday() if hasattr(bar.time, "weekday") else None
+        if dow == 3:  # Thursday
             return None
 
         # Skip earnings and FOMC
