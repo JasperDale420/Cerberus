@@ -103,9 +103,13 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Day-of-week filter: skip Wed/Thu (historically losing)
-        dow = bar.time.weekday()  # 0=Mon, 1=Tue, ..., 4=Fri
-        if dow in (2, 3):  # Wed, Thu
+        # Day-of-week filter: skip Wed/Thu/Sat (historically losing)
+        dow = bar.time.weekday()  # 0=Mon, 1=Tue, ..., 4=Fri, 5=Sat
+        if dow in (2, 3, 5):  # Wed, Thu, Sat
+            return None
+
+        # Skip quad witch weeks (extra volatility from options expiration)
+        if regime_labels.get("quad_witch_week", False):
             return None
 
         # Regime filter: skip SHOCK vol
@@ -157,10 +161,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_trend == "DOWN" and score < 4:
             return None
 
-        # Target: min of BB midline or ATR-based target
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
+        # Target: BB midline (natural mean reversion target)
+        target = bb_sma
 
         if target <= bar.close:
             return None
