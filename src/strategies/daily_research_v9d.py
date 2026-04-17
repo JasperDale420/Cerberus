@@ -36,7 +36,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
         # Regime-adaptive IBS thresholds
-        self.ibs_up = float(config.get("ibs_up", 0.35))
+        self.ibs_up = float(config.get("ibs_up", 0.30))
         self.ibs_flat = float(config.get("ibs_flat", 0.25))
         self.ibs_down = float(config.get("ibs_down", 0.20))
         # Consecutive down day requirements
@@ -51,7 +51,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
         self.min_price = float(config.get("min_price", 10.0))
-        self.min_rr_ratio = float(config.get("min_rr_ratio", 1.5))
+        self.min_rr_ratio = float(config.get("min_rr_ratio", 2.0))
 
     # --- Indicator helpers ---
 
