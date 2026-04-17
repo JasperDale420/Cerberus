@@ -29,12 +29,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
-        self.min_rr_ratio = float(config.get("min_rr_ratio", 1.5))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
@@ -167,12 +166,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-
-        # Minimum reward:risk ratio filter
-        risk = bar.close - stop
-        reward = target - bar.close
-        if risk <= 0 or reward / risk < self.min_rr_ratio:
-            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
