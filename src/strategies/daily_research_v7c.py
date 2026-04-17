@@ -43,7 +43,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         # Keltner channel width (ATR multiplier for upper/lower bands)
         self.keltner_mult = float(config.get("keltner_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 4))
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
 
         # Max stop distance as % of price — caps overnight gap risk
@@ -90,6 +90,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._check_cooldown(symbol, bar.time):
             return None
         if not self._require_min_bars(symbol_state, self.min_bars):
+            return None
+
+        # Skip Monday entries (historically negative: -$8,760 vs all other days positive)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() == 0:
             return None
 
         regime_labels = symbol_state.meta.get("regime_labels", {})
