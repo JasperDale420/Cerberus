@@ -143,8 +143,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         # Entry condition 3: consecutive down closes
+        # UP regime needs deeper dips (3+ down) since pullbacks are shallower
         consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
+        min_consec = self.consec_down_min + 1 if regime_trend == "UP" else self.consec_down_min
+        if consec < min_consec:
             return None
 
         # Stop and target
