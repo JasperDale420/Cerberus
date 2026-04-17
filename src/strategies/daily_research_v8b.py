@@ -1,8 +1,9 @@
-"""Consecutive Down + BB Proximity + Volume Surge mean reversion.
+"""Consecutive Down + BB + Williams %R mean reversion with vol ceiling.
 
-Entry: 2+ consecutive lower closes + price near lower Bollinger Band +
-volume surge (above average). Uses Williams %R for oversold confirmation.
-Regime-adaptive: skip DOWN+HIGH, require stronger signal in DOWN.
+Entry: 2+ consecutive lower closes + price near lower BB + oversold Williams %R.
+Realized vol ceiling prevents trading in high-vol environments.
+SMA(10)/SMA(30) short-term trend filter avoids sustained downtrends.
+Score >= 4 in all regimes for consistency.
 Short hold, target = BB midline.
 """
 
@@ -38,6 +39,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
+        self.max_realized_vol = float(config.get("max_realized_vol", 0.30))
+        self.sma_fast = int(config.get("sma_fast", 10))
+        self.sma_slow = int(config.get("sma_slow", 30))
 
     # --- Indicator helpers ---
 
@@ -95,6 +99,23 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return 0.5
         return (bar.close - bar.low) / rng
 
+    @staticmethod
+    def _realized_vol(closes: list[float], period: int = 20) -> Optional[float]:
+        """Annualized realized volatility from daily log returns."""
+        if len(closes) < period + 1:
+            return None
+        import math
+
+        returns = []
+        for i in range(-period, 0):
+            if closes[i - 1] > 0:
+                returns.append(math.log(closes[i] / closes[i - 1]))
+        if len(returns) < period:
+            return None
+        mean_r = sum(returns) / len(returns)
+        var = sum((r - mean_r) ** 2 for r in returns) / len(returns)
+        return math.sqrt(var * 252)
+
     def on_bar(
         self,
         symbol: str,
@@ -117,18 +138,23 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
-        regime_vol = labels.get("regime_vol", "NORMAL").upper()
-
-        # Skip DOWN + HIGH combo
-        if regime_trend == "DOWN" and regime_vol == "HIGH":
-            return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         highs = [b.high for b in bars]
         lows = [b.low for b in bars]
         volumes = [b.volume for b in bars]
+
+        # Realized vol ceiling — avoid high-vol environments directly
+        rvol = self._realized_vol(closes, 20)
+        if rvol is not None and rvol > self.max_realized_vol:
+            return None
+
+        # Short-term trend filter: SMA(10) must be >= SMA(30)
+        # Prevents buying into sustained downtrends
+        sma_f = self._sma(closes, self.sma_fast)
+        sma_s = self._sma(closes, self.sma_slow)
+        if sma_f is not None and sma_s is not None and sma_f < sma_s * 0.99:
+            return None
 
         # --- Core entry: multi-factor scoring ---
         score = 0
@@ -169,15 +195,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if avg_vol is not None and avg_vol > 0 and bar.volume >= self.vol_min_ratio * avg_vol:
             score += 1
 
-        # Regime-adaptive threshold
-        if regime_trend == "DOWN":
-            required = 4
-        elif regime_trend == "FLAT":
-            required = 3
-        else:  # UP
-            required = 3
-
-        if score < required:
+        # Require 4 factors for all regimes
+        if score < 4:
             return None
 
         # ATR for stops
@@ -203,14 +222,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "regime_trend": regime_trend,
-                "regime_vol": regime_vol,
                 "consec_down": consec,
                 "bb_distance": round(bb_distance, 2),
                 "willr": round(willr, 2) if willr else None,
                 "ibs": round(ibs, 3),
                 "score": score,
+                "rvol": round(rvol, 3) if rvol else None,
                 "atr": round(atr, 4),
-                "seed": "consec_bb_willr",
+                "seed": "consec_bb_willr_v2",
             },
         )
