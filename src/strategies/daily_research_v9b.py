@@ -1,11 +1,10 @@
-"""Confluence: Consec Down + BB + IBS, BB Midline Target.
+"""Confluence: Consec Down + BB + IBS + Trend Health.
 
 Buy after 2+ consecutive down closes when:
 - Price below BB(20) midline (short-term oversold)
-- Price above BB lower band (not in freefall)
+- Price above SMA(50) (long-term trend intact)
 - IBS < 0.35 (closed near low = selling exhaustion)
-Target: BB midline (adaptive mean reversion target).
-Stop: 1.5 ATR below entry. Skips SHOCK vol and earnings.
+Skips SHOCK vol and earnings. ATR-based stops.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -31,10 +30,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
+        self.sma_long_period = int(config.get("sma_long_period", 50))
         self.ibs_max = float(config.get("ibs_max", 0.35))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -128,9 +128,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if bar.close > bb_mean:
             return None
 
-        # Condition 4: Price above BB lower band (not in freefall)
-        bb_lower = bb_mean - self.bb_std_mult * bb_std
-        if bar.close < bb_lower:
+        # Condition 4: Price above SMA(50) (long-term trend intact)
+        sma_long = self._sma(closes, self.sma_long_period)
+        if sma_long is not None and bar.close < sma_long:
             return None
 
         # ATR for stops
@@ -141,8 +141,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         z_score = (bar.close - bb_mean) / bb_std if bb_std > 0 else 0.0
 
         stop = bar.close - self.stop_atr_mult * atr
-        # Target = BB midline (adaptive mean reversion target)
-        target = bb_mean
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -153,11 +152,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "consec_ibs_bb_target",
+                "mode": "consec_ibs_bb_trend",
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
                 "z_score": round(z_score, 2),
-                "bb_mean": round(bb_mean, 2),
                 "atr": round(atr, 4),
             },
         )
