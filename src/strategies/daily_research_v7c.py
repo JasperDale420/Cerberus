@@ -47,7 +47,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.breakout_lookback = int(config.get("breakout_lookback", 10))
 
         # Max stop distance as % of price — caps overnight gap risk
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
 
         # Broader trend filter period
         self.trend_sma_period = int(config.get("trend_sma_period", 50))
@@ -100,6 +100,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if regime_labels.get("near_earnings"):
             return None
         if regime_labels.get("near_fomc"):
+            return None
+        if regime_labels.get("opex_week"):
             return None
 
         vol_regime = regime_labels.get("regime_vol", "NORMAL")
