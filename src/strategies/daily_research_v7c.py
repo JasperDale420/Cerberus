@@ -1,7 +1,7 @@
-"""Range Expansion Continuation (evolved from vol_breakout seed).
+"""Breakout-Pullback Strategy (evolved from vol_breakout seed).
 
-Buy above-average range up bars above short-term trend. Loosened
-thresholds for more trades + regime-adaptive stops for consistency.
+Buy pullbacks to support after recent breakout (new 20-day high within last 5 days).
+Better risk:reward than chasing breakouts. Regime-filtered for consistency.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 25))
+        self.min_bars = int(config.get("min_bars", 55))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
@@ -71,30 +71,43 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Range expansion: today's range > 1.1x ATR (loosened for more trades)
+        if len(bars) < 55:
+            return None
+
+        # Step 1: Recent breakout — a 20-day high was made within the last 5 bars
+        high_20d = max(b.high for b in bars[-21:-1])
+        recent_highs = [b.high for b in bars[-6:-1]]
+        had_breakout = any(h >= high_20d * 0.99 for h in recent_highs)
+        if not had_breakout:
+            return None
+
+        # Step 2: Pullback — today's close is below the recent high but not too far
+        recent_high = max(recent_highs)
+        pullback_pct = (recent_high - bar.close) / recent_high
+        if pullback_pct < 0.005 or pullback_pct > 0.05:
+            return None
+
+        # Step 3: Close strength — close in upper half of today's range (not weak)
         today_range = bar.high - bar.low
-        if today_range < 1e-9 or today_range < 1.1 * atr:
+        if today_range < 1e-9:
             return None
-
-        # Close strength: close in upper 40% of range
         close_position = (bar.close - bar.low) / today_range
-        if close_position < 0.6:
+        if close_position < 0.5:
             return None
 
-        # Up day: close above previous close
-        if bar.close <= bars[-2].close:
+        # Step 4: Trend — above both SMA(20) and SMA(50)
+        sma20 = self._sma(closes, 20)
+        sma50 = self._sma(closes, 50)
+        if sma20 is None or sma50 is None:
+            return None
+        if bar.close <= sma20 or bar.close <= sma50:
             return None
 
-        # Short-term trend: close above SMA(10)
-        sma10 = self._sma(closes, 10)
-        if sma10 is None or bar.close <= sma10:
-            return None
-
-        # Regime-adaptive stops
+        # Regime-adaptive stops: tighter in DOWN/HIGH
         regime_trend = regime_labels.get("regime_trend", "UP")
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_trend == "DOWN" or regime_vol == "HIGH":
-            stop_mult = self.stop_atr_mult * 0.6
+            stop_mult = self.stop_atr_mult * 0.7
         else:
             stop_mult = self.stop_atr_mult
 
@@ -111,7 +124,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "range_mult": round(today_range / atr, 2),
+                "pullback_pct": round(pullback_pct * 100, 2),
                 "close_pos": round(close_position, 2),
                 "seed": "vol_breakout",
             },
