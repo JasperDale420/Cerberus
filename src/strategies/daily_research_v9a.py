@@ -1,10 +1,12 @@
-"""Trend-pullback strategy: buy dips in confirmed uptrends.
+"""Volatility breakout: buy when vol compresses then expands bullishly.
 
-Entry: EMA(20) > EMA(50) (uptrend) + price pulls back near EMA(20) + volume OK.
-Naturally avoids DOWN regime windows since EMA alignment won't be bullish.
-Asymmetric R:R: stop 1.5 ATR, target 3.0 ATR (2:1 payoff).
+Entry: ATR(5) < squeeze_ratio * ATR(14) (vol compression) +
+       today's range > expansion_mult * ATR(14) (expansion) +
+       close > open (bullish day).
+Regime-agnostic — vol squeeze/expansion is universal.
+Stop 1.5 ATR, target 3.0 ATR.
 Skip SHOCK vol + earnings/FOMC.
-Long-only, daily bars, max_hold_days=7.
+Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
@@ -27,27 +29,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.ema_fast = int(config.get("ema_fast", 20))
-        self.ema_slow = int(config.get("ema_slow", 50))
-        self.pullback_pct = float(config.get("pullback_pct", 0.02))
-        self.atr_period = int(config.get("atr_period", 14))
+        self.atr_fast = int(config.get("atr_fast", 5))
+        self.atr_slow = int(config.get("atr_slow", 14))
+        self.squeeze_ratio = float(config.get("squeeze_ratio", 0.75))
+        self.expansion_mult = float(config.get("expansion_mult", 1.2))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.max_hold_days = int(config.get("max_hold_days", 7))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_avg_mult = float(config.get("vol_avg_mult", 0.8))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = values[0]
-        for v in values[1:]:
-            ema = v * mult + ema * (1 - mult)
-        return ema
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -84,35 +74,28 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # EMA crossover: fast > slow = uptrend
-        ema_f = self._ema(closes, self.ema_fast)
-        ema_s = self._ema(closes, self.ema_slow)
-        if ema_f is None or ema_s is None:
-            return None
-        if ema_f <= ema_s:
-            return None  # No uptrend — don't trade
-
-        # Price must have pulled back near or below the fast EMA
-        distance = (bar.close - ema_f) / ema_f
-        if distance > self.pullback_pct:
-            return None  # Too extended above EMA — not a pullback
-
-        # Volume check: at least vol_avg_mult of 20-day average
-        if len(volumes) >= self.vol_avg_period:
-            avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
-            if avg_vol > 0 and bar.volume < avg_vol * self.vol_avg_mult:
-                return None
-
-        # ATR for stop and target
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
+        # Compute fast and slow ATR
+        atr_fast = self._atr(bars, self.atr_fast)
+        atr_slow = self._atr(bars, self.atr_slow)
+        if atr_fast is None or atr_slow is None or atr_slow < 1e-9:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Vol compression: fast ATR much lower than slow ATR
+        if atr_fast >= self.squeeze_ratio * atr_slow:
+            return None  # No squeeze
+
+        # Vol expansion: today's range exceeds slow ATR
+        today_range = bar.high - bar.low
+        if today_range < self.expansion_mult * atr_slow:
+            return None  # No expansion
+
+        # Bullish close: close above open
+        if bar.close <= bar.open:
+            return None
+
+        stop = bar.close - self.stop_atr_mult * atr_slow
+        target = bar.close + self.target_atr_mult * atr_slow
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -123,10 +106,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema_fast": round(ema_f, 2),
-                "ema_slow": round(ema_s, 2),
-                "pullback_pct": round(distance, 4),
-                "atr": round(atr, 4),
+                "atr_fast": round(atr_fast, 4),
+                "atr_slow": round(atr_slow, 4),
+                "squeeze_ratio": round(atr_fast / atr_slow, 3),
+                "expansion": round(today_range / atr_slow, 3),
                 "seed": "mean_reversion",
             },
         )
