@@ -148,6 +148,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             self._setup_active[symbol] = False
             return None
 
+        # Skip DOWN trend — strategy loses money in sustained declines
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        if regime_trend == "DOWN":
+            self._setup_active[symbol] = False
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
