@@ -37,7 +37,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.06))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.05))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 30))
         self.pullback_atr_min = float(config.get("pullback_atr_min", 0.3))
         self.sma_fast_period = int(config.get("sma_fast_period", 20))
@@ -158,6 +158,13 @@ class dailyresearchv7bStrategy(BaseStrategy):
         rsi = self._rsi(closes, self.rsi_period)
         if rsi is None or rsi > self.rsi_max:
             return None
+
+        # IBS filter: bar should close near its low
+        bar_range = bar.high - bar.low
+        if bar_range > 1e-9:
+            ibs = (bar.close - bar.low) / bar_range
+            if ibs > self.ibs_entry_threshold:
+                return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
