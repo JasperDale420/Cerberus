@@ -1,12 +1,12 @@
-"""Connors RSI consecutive-down mean reversion with vol/IBS filters.
+"""Connors RSI consecutive-down mean reversion — buy oversold bounces in uptrends.
 
-Entry: 2+ consecutive down closes AND RSI < threshold AND IBS < threshold.
-Skips HIGH/SHOCK vol and high realized vol environments.
+Entry: 2+ consecutive down closes AND RSI < threshold AND price > SMA (uptrend).
+Uses ATR-based vol filter and IBS confirmation.
+Skips earnings, FOMC, and high-volatility stocks.
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, Optional
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
@@ -36,6 +36,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
         self.ibs_entry_threshold = float(config.get("ibs_entry_threshold", 0.3))
         self.mr_ibs_threshold = float(config.get("mr_ibs_threshold", 0.2))
         self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -96,41 +97,32 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Use regime labels (always populated in daily backtest)
+        # Skip earnings and FOMC via labels (if available)
         labels = symbol_state.meta.get("regime_labels", {})
-
-        # Skip HIGH and SHOCK vol regimes via labels
-        vol_regime = labels.get("regime_vol", "NORMAL")
-        if vol_regime in ("HIGH", "SHOCK"):
-            return None
-
-        # Skip earnings and FOMC
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Need enough history
         if len(closes) < self.min_bars:
             return None
 
-        # Realized vol filter: compute 30-day annualized vol from closes
-        if len(closes) >= 31:
-            log_returns = []
-            for i in range(-30, 0):
-                if closes[i - 1] > 0:
-                    log_returns.append((closes[i] / closes[i - 1]) - 1.0)
-            if log_returns:
-                rv_mean = sum(log_returns) / len(log_returns)
-                rv_var = sum((r - rv_mean) ** 2 for r in log_returns) / len(log_returns)
-                realized_vol = math.sqrt(rv_var * 252)
-                if realized_vol > self.max_realized_vol:
-                    return None
-
-        # Trend context
+        # Trend filter: price must be above SMA (uptrend only)
         sma = self._sma(closes, self.sma_period)
         if sma is None:
+            return None
+        if bar.close < sma:
+            return None
+
+        # ATR for volatility filter and stops
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        # Vol filter: skip excessively volatile stocks (ATR/price too high)
+        atr_pct = atr / bar.close
+        if atr_pct > self.max_atr_pct:
             return None
 
         # Core signal: consecutive down days
@@ -143,19 +135,12 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if rsi is None or rsi > self.rsi_max:
             return None
 
-        # IBS filter: bar should close near its low (confirms selling pressure)
+        # IBS filter: bar should close near its low
         bar_range = bar.high - bar.low
         if bar_range > 1e-9:
             ibs = (bar.close - bar.low) / bar_range
-            # Use stricter threshold if below SMA (mean reversion mode)
-            ibs_thresh = self.mr_ibs_threshold if bar.close < sma else self.ibs_entry_threshold
-            if ibs > ibs_thresh:
+            if ibs > self.ibs_entry_threshold:
                 return None
-
-        # ATR for stop and target
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
 
         stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
@@ -171,7 +156,7 @@ class dailyresearchv7bStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "rsi": round(rsi, 2),
-                "above_sma": bar.close > sma,
+                "atr_pct": round(atr_pct, 4),
                 "atr": round(atr, 4),
                 "seed": "connors_rsi2_mr",
             },
