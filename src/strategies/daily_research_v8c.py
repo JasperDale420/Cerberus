@@ -1,16 +1,15 @@
-"""Consecutive-down + BB + ATR mean reversion.
+"""Consecutive-down ATR mean reversion — buy after 2+ down days below SMA.
 
 Entry requires ALL of:
   1. 2+ consecutive lower closes
   2. IBS < threshold (closed near day's low)
-  3. Close near lower Bollinger Band (within bb_proximity std devs)
-  4. Price below SMA(20)
-  5. Dip at least atr_dip_min * ATR below SMA
-  6. Not in HIGH/SHOCK vol
-  7. Not near earnings or FOMC
+  3. Price below SMA(20) by at least atr_dip_min * ATR
+  4. Not in HIGH/SHOCK vol
+  5. Not near earnings or FOMC
 
-Target: BB midline (SMA). Stop: ATR-scaled below entry.
-Evolved from seed_vol_breakout — ATR + BB volatility-based approach.
+Target: SMA(20) — natural mean reversion level.
+Stop: entry - stop_atr_mult * ATR.
+Evolved from seed_vol_breakout — ATR-scaled risk management (vol DNA).
 """
 
 from __future__ import annotations
@@ -34,8 +33,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.sma_period = int(config.get("sma_period", 20))
-        self.bb_std = float(config.get("bb_std", 2.0))
-        self.bb_proximity = float(config.get("bb_proximity", 1.2))
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = 2
         self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
@@ -60,15 +57,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        subset = values[-period:]
-        mean = sum(subset) / period
-        variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance**0.5
 
     @staticmethod
     def _consecutive_downs(closes: list[float]) -> int:
@@ -117,20 +105,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             if ibs > self.ibs_threshold:
                 return None
 
-        # SMA and BB
+        # SMA — price must be below it
         sma = self._sma(closes, self.sma_period)
-        std_val = self._std(closes, self.sma_period)
-        if sma is None or std_val is None or sma < 1e-9 or std_val < 1e-9:
+        if sma is None or sma < 1e-9:
             return None
-
-        # Price must be below SMA
         if bar.close >= sma:
-            return None
-
-        # BB proximity: close must be near lower BB
-        lower_bb = sma - self.bb_std * std_val
-        bb_distance = (bar.close - lower_bb) / std_val
-        if bb_distance > self.bb_proximity:
             return None
 
         # ATR for stop sizing and dip quality
@@ -143,7 +122,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if dip < self.atr_dip_min * atr:
             return None
 
-        # Target: BB midline (SMA)
+        # Target: SMA (mean reversion)
         target = sma
         stop = bar.close - self.stop_atr_mult * atr
 
@@ -158,8 +137,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "atr": round(atr, 4),
-                "bb_dist": round(bb_distance, 2),
+                "sma": round(sma, 2),
                 "dip_atr": round(dip / atr, 2),
-                "seed": "consec_bb_atr",
+                "seed": "consec_atr_mr",
             },
         )
