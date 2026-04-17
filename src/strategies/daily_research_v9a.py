@@ -33,9 +33,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.atr_pct_cap = float(config.get("atr_pct_cap", 0.025))
+        self.atr_pct_cap = float(config.get("atr_pct_cap", 0.03))
         self.roc_period = int(config.get("roc_period", 20))
-        self.roc_floor = float(config.get("roc_floor", -0.03))
+        self.roc_floor = float(config.get("roc_floor", -0.05))
+        self.sma_trend_period = int(config.get("sma_trend_period", 50))
 
     # --- Indicator helpers ---
 
@@ -133,7 +134,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ibs >= self.ibs_threshold:
             return None
 
-        # Close below SMA — mean reversion setup
+        # Uptrend gate: close must be above SMA(50) — only buy dips in uptrends
+        sma_trend = self._sma(closes, self.sma_trend_period)
+        if sma_trend is not None and bar.close < sma_trend:
+            return None
+
+        # Close below SMA(20) — pullback entry
         sma = self._sma(closes, self.sma_period)
         if sma is None or bar.close >= sma:
             return None
