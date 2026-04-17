@@ -1,9 +1,9 @@
-"""Multi-factor pullback with regime adaptation.
+"""Multi-factor pullback with strict regime filtering.
 
-Entry: Short-term oversold (Williams %R + ROC reversal) near Keltner lower channel.
-Regime-adaptive: UP requires 2 factors, FLAT requires 3, DOWN requires 4.
+Entry: Short-term oversold (Williams %R + ROC + low IBS) near Keltner lower channel.
+Skips DOWN+HIGH and all SHOCK vol. Requires stronger signals in DOWN/HIGH regimes.
 Long-only, daily bars, tight R:R for consistency.
-Event filters (earnings, FOMC). Skips SHOCK vol.
+Event filters (earnings, FOMC, opex).
 """
 
 from __future__ import annotations
@@ -41,11 +41,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.keltner_mult = float(config.get("keltner_mult", 2.0))
         # Volume
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
-        # Scoring thresholds per regime
-        self.score_up = int(config.get("score_up", 2))
-        self.score_flat = int(config.get("score_flat", 3))
-        self.score_down = int(config.get("score_down", 4))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
+        # SMA for trend context
+        self.sma_period = int(config.get("sma_period", 50))
 
     # --- Indicator helpers ---
 
@@ -103,6 +101,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return 0.5
         return (bar.close - bar.low) / rng
 
+    @staticmethod
+    def _consecutive_downs(closes: list[float]) -> int:
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
+
     def on_bar(
         self,
         symbol: str,
@@ -115,14 +123,20 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Skip SHOCK and HIGH volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
         # Event filters
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
+        regime_trend = labels.get("regime_trend", "FLAT").upper()
+
+        # Skip DOWN trend entirely — data shows it's a losing proposition
+        if regime_trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
@@ -136,49 +150,53 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # --- Multi-factor scoring ---
-        score = 0
-
-        # Factor 1: Williams %R oversold
+        # --- Required: Williams %R oversold ---
         willr = self._williams_r(highs, lows, bar.close, self.willr_period)
-        if willr is not None and willr < self.willr_oversold:
-            score += 1
+        if willr is None or willr >= self.willr_oversold:
+            return None
 
-        # Factor 2: Negative rate of change (recent decline)
+        # --- Required: Low IBS (closed near low) ---
+        ibs = self._ibs(bar)
+        if ibs >= 0.3:
+            return None
+
+        # --- Additional factors (need at least 1 more) ---
+        extra = 0
+
+        # Factor: Negative ROC (recent decline)
         roc = self._roc(closes, self.roc_period)
         if roc is not None and roc < self.roc_threshold:
-            score += 1
+            extra += 1
 
-        # Factor 3: Price near or below Keltner lower channel
+        # Factor: Price near or below Keltner lower channel
         keltner_ma = self._ema(closes, self.keltner_period)
         if keltner_ma is not None:
             lower_keltner = keltner_ma - self.keltner_mult * atr
-            if bar.close <= lower_keltner:
-                score += 2  # Strong signal: below channel
-            elif bar.close <= lower_keltner + 0.5 * atr:
-                score += 1  # Near channel
+            if bar.close <= lower_keltner + 0.3 * atr:
+                extra += 1
 
-        # Factor 4: Low IBS (closed near day's low)
-        ibs = self._ibs(bar)
-        if ibs < 0.3:
-            score += 1
+        # Factor: Consecutive down days (2+)
+        consec = self._consecutive_downs(closes)
+        if consec >= 2:
+            extra += 1
 
-        # Factor 5: Volume above average (participation)
+        # Factor: Volume above average
         avg_vol = self._sma(volumes, self.vol_avg_period)
         if avg_vol is not None and avg_vol > 0 and bar.volume >= self.vol_min_ratio * avg_vol:
-            score += 1
+            extra += 1
 
-        # Regime-adaptive threshold
-        regime_trend = labels.get("regime_trend", "FLAT").upper()
+        # Require at least 2 extra factors in FLAT, 1 in UP
         if regime_trend == "UP":
-            required = self.score_up
-        elif regime_trend == "DOWN":
-            required = self.score_down
-        else:
-            required = self.score_flat
+            if extra < 1:
+                return None
+        else:  # FLAT
+            if extra < 2:
+                return None
 
-        if score < required:
-            return None
+        # Trend context: prefer price above SMA(50) for safer entries
+        sma = self._sma(closes, self.sma_period)
+        if sma is not None and bar.close < sma * 0.95:
+            return None  # Too far below trend — skip
 
         # Stop and target
         stop = bar.close - self.stop_atr_mult * atr
@@ -196,13 +214,13 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "score": score,
-                "required": required,
+                "extra_factors": extra,
                 "regime_trend": regime_trend,
-                "willr": round(willr, 2) if willr else None,
+                "willr": round(willr, 2),
                 "roc": round(roc, 2) if roc else None,
                 "ibs": round(ibs, 3),
+                "consec_down": consec,
                 "atr": round(atr, 4),
-                "seed": "multi_factor_pullback",
+                "seed": "multi_factor_pullback_v2",
             },
         )
