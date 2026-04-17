@@ -106,6 +106,10 @@ class dailyresearchv7bStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
+        # Skip Thursday and Friday entries (historically weak for this strategy)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (3, 4):
+            return None
+
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
