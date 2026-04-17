@@ -210,11 +210,11 @@ strategies:
     allow_overnight: true
     max_hold_days: 5
     cooldown_bars: 1
-    ema_fast: 20
-    ema_slow: 50
+    ema_fast: 10
+    ema_slow: 30
     pullback_pct: 0.03
     rsi_period: 2
-    rsi_threshold: 20.0
+    rsi_threshold: 15.0
     atr_period: 14
     stop_atr_mult: 1.5
     target_atr_mult: 3.0
