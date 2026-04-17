@@ -208,8 +208,8 @@ strategies:
     enabled: true
     min_bars: 55
     allow_overnight: true
-    max_hold_days: 3
-    cooldown_bars: 3
+    max_hold_days: 7
+    cooldown_bars: 1
     ema_fast: 20
     ema_slow: 50
     pullback_pct: 0.02
