@@ -108,8 +108,12 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_trend == "DOWN":
             return None
 
-        # Day-of-week filter: skip Thursday (historically worst day)
-        if hasattr(bar.time, "weekday") and bar.time.weekday() == 3:
+        # Day-of-week filter: skip Thursday and Monday (historically weakest days)
+        if hasattr(bar.time, "weekday") and bar.time.weekday() in (0, 3):
+            return None
+
+        # Skip HIGH vol regime (mean reversion less reliable in high vol)
+        if regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
