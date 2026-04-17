@@ -95,27 +95,69 @@ def test_execution_engine_routing_excludes_disabled_strategy_regime_pair() -> No
     assert strat.calls == 0
 
 
+class _FakeOrder:
+    def __init__(
+        self,
+        *,
+        order_id: str,
+        symbol: str,
+        client_order_id: str,
+        status: str = "open",
+        filled_at: Optional[datetime] = None,
+    ) -> None:
+        self.id = order_id
+        self.symbol = symbol
+        self.client_order_id = client_order_id
+        self.status = status
+        self.filled_at = filled_at
+        self.updated_at = filled_at
+
+
+class _FakePosition:
+    def __init__(self, symbol: str, qty: float = 1.0) -> None:
+        self.symbol = symbol
+        self.qty = qty
+        self.side = "long"
+        self.avg_entry_price = 1.0
+
+
 class _FakeTradingClient:
     def __init__(self) -> None:
-        self.cancel_orders_calls = 0
-        self.close_all_positions_calls = 0
+        self.cancel_orders_calls = 0  # legacy counter (should stay 0 after fix)
+        self.close_all_positions_calls = 0  # legacy counter (should stay 0 after fix)
+        self.cancel_order_by_id_calls: List[str] = []
+        self.close_position_calls: List[str] = []
         self._positions: List[Any] = []
-        self._orders: List[Any] = []
-        self.close_raises: Optional[Exception] = None
+        self._open_orders: List[Any] = []
+        self._closed_orders: List[Any] = []
+        self.close_position_raises: Optional[Exception] = None
 
+    # Legacy broad methods — retained so tests can assert they are NOT called.
     def cancel_orders(self) -> None:
         self.cancel_orders_calls += 1
 
     def close_all_positions(self, *_args: Any, **_kwargs: Any) -> None:
         self.close_all_positions_calls += 1
-        if self.close_raises is not None:
-            raise self.close_raises
+
+    # Scoped methods used by the new flatten implementation.
+    def cancel_order_by_id(self, order_id: Any) -> None:
+        self.cancel_order_by_id_calls.append(str(order_id))
+
+    def close_position(self, symbol: str, *_args: Any, **_kwargs: Any) -> None:
+        if self.close_position_raises is not None:
+            raise self.close_position_raises
+        self.close_position_calls.append(symbol)
 
     def get_all_positions(self) -> List[Any]:
         return list(self._positions)
 
-    def get_orders(self, *_args: Any, **_kwargs: Any) -> List[Any]:
-        return list(self._orders)
+    def get_orders(self, req: Any = None, *_args: Any, **_kwargs: Any) -> List[Any]:
+        # Inspect request.status to return open vs closed orders.
+        status = getattr(req, "status", None)
+        status_str = str(getattr(status, "value", status) or "").lower()
+        if "closed" in status_str:
+            return list(self._closed_orders)
+        return list(self._open_orders)
 
 
 class _FakeAlpacaClient:
@@ -304,6 +346,23 @@ def test_execution_engine_flatten_all_resets_local_state_on_success() -> None:
         clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
     engine.broker_client = alp
+
+    # Seed broker with a Cerberus-owned position + matching open order + fill history.
+    fill_ts = datetime(2025, 1, 1, 14, 30, tzinfo=timezone.utc)
+    alp.trading_client._positions = [_FakePosition("AAPL")]
+    alp.trading_client._open_orders = [
+        _FakeOrder(order_id="o1", symbol="AAPL", client_order_id="cerberus_s-AAPL-123-abc"),
+    ]
+    alp.trading_client._closed_orders = [
+        _FakeOrder(
+            order_id="o0",
+            symbol="AAPL",
+            client_order_id="cerberus_s-AAPL-100-xyz",
+            status="filled",
+            filled_at=fill_ts,
+        ),
+    ]
+
     engine.symbol_states["AAPL"] = SymbolState(
         symbol="AAPL",
         bars=deque(maxlen=10),
@@ -324,8 +383,11 @@ def test_execution_engine_flatten_all_resets_local_state_on_success() -> None:
 
     engine.flatten_all(reason="unit_test")
 
-    assert alp.trading_client.cancel_orders_calls == 1
-    assert alp.trading_client.close_all_positions_calls == 1
+    # New scoped API must be used; legacy broad methods must NOT be called.
+    assert alp.trading_client.cancel_orders_calls == 0
+    assert alp.trading_client.close_all_positions_calls == 0
+    assert alp.trading_client.cancel_order_by_id_calls == ["o1"]
+    assert alp.trading_client.close_position_calls == ["AAPL"]
     assert engine.symbol_states["AAPL"].position is None
     assert engine.symbol_states["AAPL"].open_orders == {}
 
@@ -333,7 +395,20 @@ def test_execution_engine_flatten_all_resets_local_state_on_success() -> None:
 @pytest.mark.unit
 def test_execution_engine_flatten_all_raises_when_close_fails_in_halt_mode() -> None:
     alp = _FakeAlpacaClient()
-    alp.trading_client.close_raises = RuntimeError("broker down")
+    alp.trading_client.close_position_raises = RuntimeError("broker down")
+    # Seed a Cerberus-owned position so close_position is actually attempted.
+    fill_ts = datetime(2025, 1, 1, 14, 30, tzinfo=timezone.utc)
+    alp.trading_client._positions = [_FakePosition("AAPL")]
+    alp.trading_client._closed_orders = [
+        _FakeOrder(
+            order_id="o0",
+            symbol="AAPL",
+            client_order_id="cerberus_s-AAPL-100-xyz",
+            status="filled",
+            filled_at=fill_ts,
+        ),
+    ]
+
     engine = ExecutionEngine(
         config={"position_mismatch_mode": "halt"},
         logger=_logger("test_exec_flatten_raise"),
@@ -342,6 +417,142 @@ def test_execution_engine_flatten_all_raises_when_close_fails_in_halt_mode() -> 
     engine.broker_client = alp
     with pytest.raises(RuntimeError, match="broker down"):
         engine.flatten_all(reason="unit_test")
+
+
+@pytest.mark.unit
+def test_execution_engine_flatten_leaves_foreign_positions_alone() -> None:
+    """Positions opened by other Empire services (Orbit, 3Roses, etc.) in the
+    shared paper account must NOT be closed by Cerberus flatten_all."""
+    alp = _FakeAlpacaClient()
+    fill_ts = datetime(2025, 1, 1, 14, 30, tzinfo=timezone.utc)
+
+    alp.trading_client._positions = [
+        _FakePosition("AAPL"),  # Cerberus-owned
+        _FakePosition("NVDA"),  # Orbit-owned
+        _FakePosition("TSLA"),  # 3Roses-owned
+        _FakePosition("AMD"),  # no owner record — unknown
+    ]
+    alp.trading_client._open_orders = [
+        _FakeOrder(order_id="ord_cerb", symbol="AAPL", client_order_id="cerberus_s-AAPL-1-a"),
+        _FakeOrder(order_id="ord_orbit", symbol="NVDA", client_order_id="orbit-NVDA-1-b"),
+        _FakeOrder(order_id="ord_3r", symbol="TSLA", client_order_id="3roses_TSLA-1-c"),
+    ]
+    alp.trading_client._closed_orders = [
+        _FakeOrder(
+            order_id="of_cerb",
+            symbol="AAPL",
+            client_order_id="cerberus_s-AAPL-0-a",
+            status="filled",
+            filled_at=fill_ts,
+        ),
+        _FakeOrder(
+            order_id="of_orbit",
+            symbol="NVDA",
+            client_order_id="orbit-NVDA-0-b",
+            status="filled",
+            filled_at=fill_ts,
+        ),
+        _FakeOrder(
+            order_id="of_3r",
+            symbol="TSLA",
+            client_order_id="3roses_TSLA-0-c",
+            status="filled",
+            filled_at=fill_ts,
+        ),
+    ]
+
+    engine = ExecutionEngine(
+        config={"position_mismatch_mode": "ignore"},
+        logger=_logger("test_exec_flatten_scoped"),
+        clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+    engine.broker_client = alp
+
+    engine.flatten_all(reason="unit_test_scoped")
+
+    # Legacy broad methods must stay untouched.
+    assert alp.trading_client.cancel_orders_calls == 0
+    assert alp.trading_client.close_all_positions_calls == 0
+    # Only the Cerberus-owned open order is cancelled.
+    assert alp.trading_client.cancel_order_by_id_calls == ["ord_cerb"]
+    # Only the Cerberus-owned position is closed. AMD (unknown owner) and the
+    # Orbit/3Roses positions are left alone.
+    assert alp.trading_client.close_position_calls == ["AAPL"]
+
+
+@pytest.mark.unit
+def test_execution_engine_flatten_prefers_most_recent_owner() -> None:
+    """If ownership changed hands (unlikely but possible), the most recent
+    filled order wins. Here AAPL was last opened by a Cerberus order, so it
+    should be closed."""
+    alp = _FakeAlpacaClient()
+    old_ts = datetime(2025, 1, 1, 14, 0, tzinfo=timezone.utc)
+    new_ts = datetime(2025, 1, 1, 15, 0, tzinfo=timezone.utc)
+
+    alp.trading_client._positions = [_FakePosition("AAPL")]
+    alp.trading_client._closed_orders = [
+        _FakeOrder(
+            order_id="old",
+            symbol="AAPL",
+            client_order_id="orbit-AAPL-0-a",
+            status="filled",
+            filled_at=old_ts,
+        ),
+        _FakeOrder(
+            order_id="new",
+            symbol="AAPL",
+            client_order_id="cerberus_s-AAPL-1-b",
+            status="filled",
+            filled_at=new_ts,
+        ),
+    ]
+
+    engine = ExecutionEngine(
+        config={"position_mismatch_mode": "ignore"},
+        logger=_logger("test_exec_flatten_recent_owner"),
+        clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+    engine.broker_client = alp
+
+    engine.flatten_all(reason="unit_test_recent")
+    assert alp.trading_client.close_position_calls == ["AAPL"]
+
+
+@pytest.mark.unit
+def test_execution_engine_flatten_no_close_when_only_foreign_is_most_recent() -> None:
+    """If the most recent fill was foreign, do not close even if older Cerberus
+    fills exist — another service now owns this position."""
+    alp = _FakeAlpacaClient()
+    old_ts = datetime(2025, 1, 1, 14, 0, tzinfo=timezone.utc)
+    new_ts = datetime(2025, 1, 1, 15, 0, tzinfo=timezone.utc)
+
+    alp.trading_client._positions = [_FakePosition("AAPL")]
+    alp.trading_client._closed_orders = [
+        _FakeOrder(
+            order_id="old",
+            symbol="AAPL",
+            client_order_id="cerberus_s-AAPL-0-a",
+            status="filled",
+            filled_at=old_ts,
+        ),
+        _FakeOrder(
+            order_id="new",
+            symbol="AAPL",
+            client_order_id="orbit-AAPL-1-b",
+            status="filled",
+            filled_at=new_ts,
+        ),
+    ]
+
+    engine = ExecutionEngine(
+        config={"position_mismatch_mode": "ignore"},
+        logger=_logger("test_exec_flatten_foreign_owner"),
+        clock=lambda: datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+    engine.broker_client = alp
+
+    engine.flatten_all(reason="unit_test_foreign")
+    assert alp.trading_client.close_position_calls == []
 
 
 @pytest.mark.unit

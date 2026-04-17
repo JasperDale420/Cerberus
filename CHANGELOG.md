@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Critical: `flatten_all` no longer closes positions owned by other Empire services.** The prior implementation called Alpaca's account-wide `close_all_positions()` and `cancel_orders()` — which would liquidate *every* position and cancel *every* open order in the shared paper account, including ones owned by Orbit, 3Roses, and any other Empire service that trades through the same account. The end-of-day flatten and the daily-loss kill switch now scope strictly to Cerberus-owned activity: open orders are cancelled individually only when their `client_order_id` starts with `cerberus_`, and positions are closed only when their most recent filled opening order carries the `cerberus_` prefix. Positions with no identifiable owner fill (or a foreign prefix like `orbit-`, `3roses_`) are left alone. See `_flatten_cancel_orders` / `_flatten_close_positions` in `src/engine/execution.py`.
+
 ### Added
 
 - **RegimeAdaptive strategy**: New cross-regime generalist (`src/strategies/regime_adaptive.py`) that switches entry logic by trend regime — dip-buy in UP, fade bounce in DOWN, RSI extremes in FLAT. 3-factor logic (RSI + ATR), permissive activation across all sessions/trends/vols. Registered in main.py with param space in `param_spaces.py`.
