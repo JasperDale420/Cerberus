@@ -104,10 +104,10 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Regime filter: skip HIGH vol (noisy, inconsistent for mean reversion)
+        # Regime filter: skip DOWN+HIGH (historically inconsistent)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
         regime_vol = labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol == "HIGH":
+        if regime_trend == "DOWN" and regime_vol == "HIGH":
             return None
 
         bars = list(symbol_state.bars)
