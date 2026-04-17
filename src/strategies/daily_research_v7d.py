@@ -137,13 +137,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if consec >= self.consec_down_min + 1:
             score += 1
 
-        # Minimum pullback depth: total decline must be meaningful
-        if consec >= self.consec_down_min:
-            pullback_start = closes[-(consec + 1)]
-            pullback_depth = pullback_start - bar.close
-            if pullback_depth < 0.5 * atr:
-                return None
-
         # Factor 2: BB proximity (close near or below lower BB)
         bb_distance = (bar.close - lower_bb) / bb_std_val if bb_std_val > 0 else 999
         if bb_distance < self.bb_proximity:
