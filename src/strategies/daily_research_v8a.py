@@ -1,7 +1,8 @@
-"""V8a: Consecutive-Down + Z-Score + IBS Mean Reversion.
+"""V8a: Trend Pullback with Inside Day Pattern.
 
-Multi-factor mean reversion using consecutive down closes, distance from
-moving average (z-score), and Internal Bar Strength. No RSI dependency.
+Buy when price is in an uptrend (above SMA40), pulls back near SMA20,
+and forms an inside day (compression before expansion). Structurally
+different from mean reversion — this is trend continuation.
 Long-only, daily bars.
 """
 
@@ -25,13 +26,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
-        # Consecutive down days
-        self.consec_down_min = int(config.get("consec_down_min", 3))
-        # Z-score (distance from SMA)
-        self.sma_period = int(config.get("sma_period", 20))
-        self.zscore_threshold = float(config.get("zscore_threshold", -1.0))
-        # IBS filter
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.2))
+        # Trend filter
+        self.trend_sma_period = int(config.get("trend_sma_period", 40))
+        self.pullback_sma_period = int(config.get("pullback_sma_period", 20))
+        self.pullback_pct = float(config.get("pullback_pct", 0.03))
+        # Inside day
+        self.inside_day_required = bool(config.get("inside_day_required", True))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
         self.drawdown_max = float(config.get("drawdown_max", 0.12))
@@ -41,7 +41,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # ATR for stop/target
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
 
     # --- Indicator helpers ---
@@ -51,15 +51,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _std(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        subset = values[-period:]
-        mean = sum(subset) / period
-        variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -74,15 +65,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _consecutive_down(closes: list[float]) -> int:
-        """Count consecutive down closes from the most recent bar."""
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
+    def _is_inside_day(bars: list[Bar]) -> bool:
+        """Check if the latest bar is an inside day (range within previous bar)."""
+        if len(bars) < 2:
+            return False
+        curr = bars[-1]
+        prev = bars[-2]
+        return curr.high <= prev.high and curr.low >= prev.low
 
     def on_bar(
         self,
@@ -99,35 +88,37 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # --- Filter 1: Consecutive down days ---
-        consec = self._consecutive_down(closes)
-        if consec < self.consec_down_min:
+        # --- Filter 1: Trend — price above SMA40 (uptrend) ---
+        trend_sma = self._sma(closes, self.trend_sma_period)
+        if trend_sma is None or bar.close < trend_sma:
             return None
 
-        # --- Filter 2: Z-score below threshold ---
-        sma = self._sma(closes, self.sma_period)
-        std = self._std(closes, self.sma_period)
-        if sma is None or std is None or std < 1e-9:
+        # --- Filter 2: Pullback — price near SMA20 ---
+        pullback_sma = self._sma(closes, self.pullback_sma_period)
+        if pullback_sma is None:
             return None
-        zscore = (bar.close - sma) / std
-        if zscore > self.zscore_threshold:
+        # Price should be within pullback_pct of the pullback SMA (near or slightly below)
+        distance = (bar.close - pullback_sma) / pullback_sma
+        if distance > self.pullback_pct:
+            return None  # Too far above — not a pullback
+        if distance < -self.pullback_pct:
+            return None  # Too far below — trend might be breaking
+
+        # --- Filter 3: SMA alignment (fast > slow = healthy trend) ---
+        if pullback_sma <= trend_sma:
             return None
 
-        # --- Filter 3: IBS (close near low = selling exhaustion) ---
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
-            return None
-        ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_threshold:
+        # --- Filter 4: Inside day (compression) ---
+        if self.inside_day_required and not self._is_inside_day(bars):
             return None
 
-        # --- Filter 4: Drawdown guard (don't buy into crashes) ---
+        # --- Filter 5: Drawdown guard ---
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # --- Filter 5: Regime filter (skip DOWN trend entirely) ---
+        # --- Filter 6: Regime filter ---
         labels = symbol_state.meta.get("regime_labels", {})
         regime_trend = labels.get("regime_trend", "FLAT")
         regime_vol = labels.get("regime_vol", "NORMAL")
@@ -136,7 +127,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if regime_vol in ("HIGH", "SHOCK"):
             return None
 
-        # --- Filter 6: Volume filter (minimum participation) ---
+        # --- Filter 7: Volume filter ---
         volumes = [b.volume for b in bars]
         if len(volumes) >= self.vol_avg_period:
             avg_vol = sum(volumes[-self.vol_avg_period :]) / self.vol_avg_period
@@ -160,11 +151,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "consec_down": consec,
-                "zscore": round(zscore, 2),
-                "ibs": round(ibs, 3),
+                "pullback_dist": round(distance, 4),
+                "trend_sma": round(trend_sma, 2),
+                "inside_day": self._is_inside_day(bars),
                 "atr": round(atr, 4),
                 "regime": f"{regime_trend}+{regime_vol}",
-                "drawdown_from_peak": round((peak - bar.close) / peak, 4),
             },
         )
