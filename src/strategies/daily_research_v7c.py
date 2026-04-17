@@ -119,8 +119,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if len(volumes) < 20:
             return None
         avg_vol = sum(volumes[-20:]) / 20
-        if avg_vol <= 0 or bar.volume < avg_vol * 0.6:
+        if avg_vol <= 0 or bar.volume < avg_vol * 0.8:
             return None
+
+        # Prior day should not be deeply red (inner day not a crash)
+        if len(bars) >= 4:
+            inner_return = (prev_bar.close - bars[-4].close) / bars[-4].close
+            if inner_return < -0.03:
+                return None
 
         # Trend context: above SMA(20) or close to it
         sma20 = self._sma(closes, 20)
