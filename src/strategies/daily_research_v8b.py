@@ -1,10 +1,15 @@
-"""Consecutive Down + BB + Williams %R mean reversion with vol ceiling.
+"""Scalp the Bounce — ultra-short mean reversion after consecutive declines.
 
-Entry: 2+ consecutive lower closes + price near lower BB + oversold Williams %R.
-Realized vol ceiling prevents trading in high-vol environments.
-SMA(10)/SMA(30) short-term trend filter avoids sustained downtrends.
-Score >= 4 in all regimes for consistency.
-Short hold, target = BB midline.
+Core edge: After 2+ consecutive down days with low IBS (closed near low),
+stocks bounce next day. Take the quick bounce with tight 1:1 R:R and exit fast.
+Very short hold (max 3 days) limits damage even in bear markets.
+
+Entry requires ALL of:
+  1. 2+ consecutive lower closes
+  2. Low IBS (< 0.25 — closed near day's low)
+  3. Close within 1 std dev of lower BB (near BB support)
+
+Skip SHOCK vol, earnings, FOMC.
 """
 
 from __future__ import annotations
@@ -30,18 +35,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.bb_period = int(config.get("bb_period", 20))
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.willr_period = int(config.get("willr_period", 14))
-        self.willr_oversold = float(config.get("willr_oversold", -75.0))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
-        self.bb_proximity = float(config.get("bb_proximity", 0.5))
-        self.max_realized_vol = float(config.get("max_realized_vol", 0.30))
-        self.sma_fast = int(config.get("sma_fast", 10))
-        self.sma_slow = int(config.get("sma_slow", 30))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.0))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.bb_proximity = float(config.get("bb_proximity", 1.0))
 
     # --- Indicator helpers ---
 
@@ -73,16 +72,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         return sum(trs) / period
 
     @staticmethod
-    def _williams_r(highs: list[float], lows: list[float], close: float, period: int) -> Optional[float]:
-        if len(highs) < period or len(lows) < period:
-            return None
-        highest = max(highs[-period:])
-        lowest = min(lows[-period:])
-        if highest - lowest < 1e-9:
-            return -50.0
-        return -100.0 * (highest - close) / (highest - lowest)
-
-    @staticmethod
     def _consecutive_downs(closes: list[float]) -> int:
         count = 0
         for i in range(len(closes) - 1, 0, -1):
@@ -98,23 +87,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if rng < 1e-9:
             return 0.5
         return (bar.close - bar.low) / rng
-
-    @staticmethod
-    def _realized_vol(closes: list[float], period: int = 20) -> Optional[float]:
-        """Annualized realized volatility from daily log returns."""
-        if len(closes) < period + 1:
-            return None
-        import math
-
-        returns = []
-        for i in range(-period, 0):
-            if closes[i - 1] > 0:
-                returns.append(math.log(closes[i] / closes[i - 1]))
-        if len(returns) < period:
-            return None
-        mean_r = sum(returns) / len(returns)
-        var = sum((r - mean_r) ** 2 for r in returns) / len(returns)
-        return math.sqrt(var * 252)
 
     def on_bar(
         self,
@@ -140,34 +112,18 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-        highs = [b.high for b in bars]
-        lows = [b.low for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # Realized vol ceiling — avoid high-vol environments directly
-        rvol = self._realized_vol(closes, 20)
-        if rvol is not None and rvol > self.max_realized_vol:
-            return None
-
-        # Short-term trend filter: SMA(10) must be >= SMA(30)
-        # Prevents buying into sustained downtrends
-        sma_f = self._sma(closes, self.sma_fast)
-        sma_s = self._sma(closes, self.sma_slow)
-        if sma_f is not None and sma_s is not None and sma_f < sma_s * 0.99:
-            return None
-
-        # --- Core entry: multi-factor scoring ---
-        score = 0
-
-        # Factor 1: Consecutive down closes (required)
+        # Required: 2+ consecutive down closes
         consec = self._consecutive_downs(closes)
         if consec < self.consec_down_min:
             return None
-        score += 1
-        if consec >= 3:
-            score += 1
 
-        # Factor 2: BB proximity (close near or below lower BB)
+        # Required: Low IBS (closed near day's low — sellers in control)
+        ibs = self._ibs(bar)
+        if ibs > self.ibs_threshold:
+            return None
+
+        # Required: Close near lower BB (within bb_proximity std devs)
         bb_sma = self._sma(closes, self.bb_period)
         bb_std_val = self._std(closes, self.bb_period)
         if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
@@ -175,40 +131,17 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         lower_bb = bb_sma - self.bb_std * bb_std_val
         bb_distance = (bar.close - lower_bb) / bb_std_val
-        if bb_distance < self.bb_proximity:
-            score += 1
-        if bb_distance < 0:
-            score += 1
-
-        # Factor 3: Williams %R oversold
-        willr = self._williams_r(highs, lows, bar.close, self.willr_period)
-        if willr is not None and willr < self.willr_oversold:
-            score += 1
-
-        # Factor 4: Low IBS
-        ibs = self._ibs(bar)
-        if ibs < 0.3:
-            score += 1
-
-        # Factor 5: Volume above average
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0 and bar.volume >= self.vol_min_ratio * avg_vol:
-            score += 1
-
-        # Require 4 factors for all regimes
-        if score < 4:
+        if bb_distance > self.bb_proximity:
             return None
 
-        # ATR for stops
+        # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Target: min of BB midline or ATR-based target
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
+        # Tight stops and targets: 1:1 R:R for high win-rate scalping
         stop = bar.close - self.stop_atr_mult * atr
+        target = bar.close + self.target_atr_mult * atr
 
         if target <= bar.close:
             return None
@@ -223,12 +156,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "consec_down": consec,
-                "bb_distance": round(bb_distance, 2),
-                "willr": round(willr, 2) if willr else None,
                 "ibs": round(ibs, 3),
-                "score": score,
-                "rvol": round(rvol, 3) if rvol else None,
+                "bb_distance": round(bb_distance, 2),
                 "atr": round(atr, 4),
-                "seed": "consec_bb_willr_v2",
+                "seed": "scalp_bounce",
             },
         )
