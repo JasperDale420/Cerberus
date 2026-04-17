@@ -103,8 +103,6 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
-        if labels.get("quad_witch_week", False):
-            return None
 
         # Regime filter: skip DOWN+HIGH (historically bad)
         regime_trend = labels.get("regime_trend", "FLAT").upper()
