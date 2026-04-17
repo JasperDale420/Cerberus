@@ -41,7 +41,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 4))
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
         self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
 
     @staticmethod
