@@ -26,7 +26,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
 
     @staticmethod
@@ -85,7 +85,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         # Pullback — today near but below recent high (0.5%-5%)
         recent_high = max(recent_highs)
         pullback_pct = (recent_high - bar.close) / recent_high
-        if pullback_pct < 0.005 or pullback_pct > 0.05:
+        if pullback_pct < 0.005 or pullback_pct > 0.07:
             return None
 
         # Close in upper half of today's range
@@ -101,22 +101,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if sma20 is None or bar.close <= sma20:
             return None
 
-        # Breadth: at least 5 of last 10 bars were up days
+        # Breadth: at least 6 of last 10 bars were up days
         if len(bars) < 11:
             return None
         up_days = sum(1 for i in range(-10, 0) if bars[i].close > bars[i - 1].close)
-        if up_days < 5:
+        if up_days < 6:
             return None
 
-        # Regime-adaptive stops
-        regime_trend = regime_labels.get("regime_trend", "UP")
-        regime_vol = regime_labels.get("regime_vol", "NORMAL")
-        if regime_trend == "DOWN" or regime_vol == "HIGH":
-            stop_mult = self.stop_atr_mult * 0.7
-        else:
-            stop_mult = self.stop_atr_mult
+        # Skip excessively volatile stocks (ATR > 5% of price)
+        if atr / bar.close > 0.05:
+            return None
 
-        stop = bar.close - stop_mult * atr
+        stop = bar.close - self.stop_atr_mult * atr
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
