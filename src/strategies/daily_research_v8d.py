@@ -118,12 +118,19 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
         # Core indicators
         ema = self._ema(closes, self.kc_ema_period)
         atr = self._atr(bars, self.atr_period)
         if ema is None or atr is None or atr < 1e-9:
             return None
+
+        # Volume confirmation: require above-average volume (selling exhaustion)
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if bar.volume < avg_vol * 0.8:
+                return None
 
         # Range filter: skip news-driven wide bars (don't mean-revert well)
         daily_range = bar.high - bar.low
@@ -149,13 +156,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if consec < min_consec:
             return None
 
-        # Stop and target
+        # Adaptive stop/target based on dip depth (deeper dip = wider target)
+        kc_dist = (lower_kc - bar.close) / atr  # How far below KC (positive = deeper)
+        depth_bonus = min(kc_dist * 0.3, 0.5)  # Cap at 0.5 ATR bonus
         stop = bar.close - self.stop_atr_mult * atr
-        # In FLAT regime, target the EMA (mean reversion); otherwise fixed ATR target
+        # In FLAT regime, target the EMA (mean reversion); otherwise depth-adjusted target
         if regime_trend == "FLAT" and ema > bar.close:
             target = ema
         else:
-            target = bar.close + self.target_atr_mult * atr
+            target = bar.close + (self.target_atr_mult + depth_bonus) * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
