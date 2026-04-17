@@ -129,8 +129,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if dip < self.atr_dip_min * atr:
             return None
 
-        # Target: 70% of distance to SMA — take partial profit, reduce exposure
-        target = bar.close + 0.7 * dip
+        # Target: SMA (mean reversion)
+        target = sma
         stop = bar.close - self.stop_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
