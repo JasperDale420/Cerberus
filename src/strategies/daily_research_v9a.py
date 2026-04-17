@@ -29,7 +29,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.sma_period = int(config.get("sma_period", 20))
-        self.max_pullback_pct = float(config.get("max_pullback_pct", 0.08))
+        self.max_pullback_pct = float(config.get("max_pullback_pct", 0.15))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))

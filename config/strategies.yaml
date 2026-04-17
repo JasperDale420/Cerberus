@@ -213,7 +213,7 @@ strategies:
     consec_down_min: 2
     ibs_threshold: 0.35
     sma_period: 20
-    max_pullback_pct: 0.08
+    max_pullback_pct: 0.15
     atr_period: 14
     stop_atr_mult: 1.5
     target_atr_mult: 1.5
