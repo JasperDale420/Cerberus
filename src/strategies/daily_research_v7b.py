@@ -1,7 +1,7 @@
 """Multi-Day Selloff Recovery — buy after N consecutive down days.
 
 Core logic: stocks that close lower for 2+ days with low IBS (near day's low)
-and a meaningful total drop tend to bounce. Filter with max-drawdown-from-high,
+and a meaningful total drop tend to bounce. Filter with SMA trend support,
 volume exhaustion check, and ATR vol gate.
 Single unified entry across all regimes, no mode switching.
 Long-only, daily bars.
@@ -33,9 +33,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         # Minimum total drop over N days (as pct of price)
         self.min_drop_pct = float(config.get("min_drop_pct", 0.02))
-        # Max drawdown from recent high — don't buy into freefall
-        self.high_lookback = int(config.get("high_lookback", 50))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.15))
+        # Trend support — price must be above SMA(N)
+        self.sma_period = int(config.get("sma_period", 50))
         # ATR params
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
@@ -43,9 +42,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Vol filters
         self.max_atr_pct = float(config.get("max_atr_pct", 0.03))
-        self.max_realized_vol = float(config.get("max_realized_vol", 0.22))
+        self.max_realized_vol = float(config.get("max_realized_vol", 0.25))
         # Max stop as pct of price
         self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -92,7 +97,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Realized vol hard gate — conservative to avoid HIGH vol periods
+        # Realized vol hard gate
         if market_state.realized_vol and market_state.realized_vol > self.max_realized_vol:
             return None
 
@@ -124,15 +129,19 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if ibs > self.ibs_threshold:
             return None
 
-        # Max drawdown from recent high — don't buy into catastrophic freefall
-        if len(closes) >= self.high_lookback:
-            recent_high = max(closes[-self.high_lookback :])
-            if recent_high > 0:
-                drawdown = (recent_high - bar.close) / recent_high
-                if drawdown > self.max_drawdown_pct:
-                    return None
+        # Trend support — price above SMA for long-term support
+        sma = self._sma(closes, self.sma_period)
+        if sma is not None and bar.close < sma:
+            return None
+
+        # Max drawdown from 50-day high — extra safety against freefall
+        if len(closes) >= 50:
+            recent_high = max(closes[-50:])
+            if recent_high > 0 and (recent_high - bar.close) / recent_high > 0.20:
+                return None
 
         # Volume exhaustion — today's volume should not be spiking vs recent average
+        # (spiking volume on down days = panic selling, not exhaustion)
         volumes = [b.volume for b in bars]
         if len(volumes) >= 20:
             avg_vol = sum(volumes[-20:]) / 20
