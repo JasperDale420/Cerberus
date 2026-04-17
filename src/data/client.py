@@ -562,7 +562,11 @@ class UnifiedDataClient:
         """Connect to gateway WebSocket and authenticate."""
         import websockets
 
-        self._ws = await websockets.connect(self._ws_url)
+        self._ws = await websockets.connect(
+            self._ws_url,
+            ping_interval=30,  # Match Data Gateway's uvicorn --ws-ping-interval
+            ping_timeout=90,  # Match Data Gateway's uvicorn --ws-ping-timeout
+        )
         # Auth
         await self._ws.send(json.dumps({"action": "auth", "key": self.gateway_key}))
         raw = await self._ws.recv()
