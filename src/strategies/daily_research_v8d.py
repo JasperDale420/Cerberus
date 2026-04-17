@@ -33,7 +33,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Entry filters
         self.ibs_max = float(config.get("ibs_max", 0.30))
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.max_range_atr = float(config.get("max_range_atr", 2.5))
+        self.max_range_atr = float(config.get("max_range_atr", 2.0))
         # Stop/target in ATR multiples
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.8))
@@ -106,8 +106,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
-        # Skip opex week (abnormal gamma dynamics)
-        if labels.get("opex_week", False):
+        # Skip opex week and quad witch (abnormal gamma dynamics)
+        if labels.get("opex_week", False) or labels.get("quad_witch_week", False):
             return None
 
         # Regime filter: skip all DOWN regimes (worst WFO windows)
