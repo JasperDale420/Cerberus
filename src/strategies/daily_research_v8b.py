@@ -125,6 +125,12 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if ibs > self.ibs_threshold:
             return None
 
+        # Volume confirmation: require above-average volume (selling capitulation)
+        volumes = [b.volume for b in bars]
+        avg_vol = self._sma(volumes, 20)
+        if avg_vol is not None and avg_vol > 0 and bar.volume < avg_vol:
+            return None
+
         # Required: Close near lower BB
         bb_sma = self._sma(closes, self.bb_period)
         bb_std_val = self._std(closes, self.bb_period)
