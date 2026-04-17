@@ -1,9 +1,12 @@
-"""Consecutive Down + BB Proximity + IBS mean reversion.
+"""Confirmed Reversal — buy the bounce day after an oversold setup.
 
-Entry requires ALL of:
-  1. N+ consecutive lower closes (consec_down_min, optimized 2-3)
-  2. Low IBS (closed near day's low, optimized 0.20-0.35)
-  3. Close near lower BB (within bb_proximity std devs, optimized 0.5-1.5)
+Two-bar pattern:
+  Day 1 (setup): 2+ consecutive down closes + low IBS + near lower BB
+  Day 2 (entry): close > previous close (reversal confirmed)
+
+This avoids buying into continued declines. We only enter when the
+bounce has actually started. Structurally different from buying the
+oversold day itself.
 
 Skip SHOCK vol, earnings, FOMC.
 """
@@ -24,6 +27,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def __init__(self, config: Dict[str, Any], logger: StructuredLogger):
         super().__init__(config, logger)
         self.allow_overnight = True
+        # Track which symbols had a valid setup yesterday
+        self._setup_active: dict[str, bool] = {}
+        self._setup_bb_sma: dict[str, float] = {}
+        self._setup_atr: dict[str, float] = {}
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
@@ -34,9 +41,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.25))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.bb_proximity = float(config.get("bb_proximity", 1.0))
+        self.bb_proximity = 1.0
 
     # --- Indicator helpers ---
 
@@ -84,6 +91,39 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return 0.5
         return (bar.close - bar.low) / rng
 
+    def _check_setup(self, symbol: str, bar: Bar, closes: list[float], bars: list[Bar]) -> bool:
+        """Check if today qualifies as a setup day (oversold conditions)."""
+        # Consecutive down closes
+        consec = self._consecutive_downs(closes)
+        if consec < self.consec_down_min:
+            return False
+
+        # Low IBS
+        ibs = self._ibs(bar)
+        if ibs > self.ibs_threshold:
+            return False
+
+        # Near lower BB
+        bb_sma = self._sma(closes, self.bb_period)
+        bb_std_val = self._std(closes, self.bb_period)
+        if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
+            return False
+
+        lower_bb = bb_sma - self.bb_std * bb_std_val
+        bb_distance = (bar.close - lower_bb) / bb_std_val
+        if bb_distance > self.bb_proximity:
+            return False
+
+        # ATR for later use
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return False
+
+        # Store for entry day
+        self._setup_bb_sma[symbol] = bb_sma
+        self._setup_atr[symbol] = atr
+        return True
+
     def on_bar(
         self,
         symbol: str,
@@ -99,64 +139,47 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
+            self._setup_active[symbol] = False
             return None
 
         # Event filters
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            self._setup_active[symbol] = False
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Required: consecutive down closes
-        consec = self._consecutive_downs(closes)
-        if consec < self.consec_down_min:
-            return None
+        # Check if we had a setup yesterday and today confirms reversal
+        signal = None
+        if self._setup_active.get(symbol, False) and len(closes) >= 2:
+            # Reversal confirmation: today's close > yesterday's close
+            if bar.close > closes[-2]:
+                atr = self._setup_atr.get(symbol, 0)
+                bb_sma = self._setup_bb_sma.get(symbol, 0)
+                if atr > 1e-9:
+                    stop = bar.close - self.stop_atr_mult * atr
+                    target_bb = bb_sma
+                    target_atr = bar.close + self.target_atr_mult * atr
+                    target = min(target_bb, target_atr)
 
-        # Required: Low IBS (closed near day's low)
-        ibs = self._ibs(bar)
-        if ibs > self.ibs_threshold:
-            return None
+                    if target > bar.close:
+                        self.last_signal_time[symbol] = bar.time
+                        signal = self._create_signal(
+                            symbol,
+                            OrderSide.BUY,
+                            bar,
+                            market_state,
+                            stop_price=stop,
+                            target_price=target,
+                            meta={
+                                "atr": round(atr, 4),
+                                "seed": "confirmed_reversal",
+                            },
+                        )
 
-        # Required: Close near lower BB
-        bb_sma = self._sma(closes, self.bb_period)
-        bb_std_val = self._std(closes, self.bb_period)
-        if bb_sma is None or bb_std_val is None or bb_std_val < 1e-9:
-            return None
+        # Check if today is a new setup day (regardless of whether we traded)
+        self._setup_active[symbol] = self._check_setup(symbol, bar, closes, bars)
 
-        lower_bb = bb_sma - self.bb_std * bb_std_val
-        bb_distance = (bar.close - lower_bb) / bb_std_val
-        if bb_distance > self.bb_proximity:
-            return None
-
-        # ATR for stop and target
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-        # Target: min of BB midline or ATR-based target
-        target_bb = bb_sma
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = min(target_bb, target_atr)
-
-        if target <= bar.close:
-            return None
-
-        self.last_signal_time[symbol] = bar.time
-        return self._create_signal(
-            symbol,
-            OrderSide.BUY,
-            bar,
-            market_state,
-            stop_price=stop,
-            target_price=target,
-            meta={
-                "consec_down": consec,
-                "ibs": round(ibs, 3),
-                "bb_distance": round(bb_distance, 2),
-                "atr": round(atr, 4),
-                "seed": "consec_ibs_bb",
-            },
-        )
+        return signal
