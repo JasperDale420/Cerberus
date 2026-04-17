@@ -286,8 +286,6 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
         ParamDef("ibs_threshold", "float", low=0.20, high=0.35, step=0.05, description="IBS threshold"),
         ParamDef("consec_down_min", "int", low=2, high=3, step=1, description="Min consecutive down days"),
-        ParamDef("max_hold_days", "int", low=3, high=7, step=1, description="Max hold days"),
-        ParamDef("bb_proximity", "float", low=0.5, high=1.5, step=0.5, description="BB proximity in std devs"),
     ],
     "daily_research_v8c": [
         ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
