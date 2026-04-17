@@ -1,15 +1,15 @@
-"""Confluence Mean Reversion: Consecutive Down + BB + IBS, Market-Filtered.
+"""Confluence Mean Reversion: Consecutive Down Days + BB Position + Volume.
 
-Buy after 2+ consecutive down closes when price is below BB midline and
-IBS is low. Uses market_state.regime_snapshot to skip DOWN trend markets.
-Skips SHOCK vol and earnings. Long-only, daily bars, max_hold_days=5.
+Buy after 2+ consecutive down closes when price is in lower half of Bollinger Band
+and volume is above average. Uses ATR-based stops. Skips SHOCK vol and earnings.
+Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -27,12 +27,14 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.bb_period = int(config.get("bb_period", 20))
-        self.bb_std_mult = float(config.get("bb_std_mult", 2.0))
-        self.ibs_max = float(config.get("ibs_max", 0.35))
+        self.bb_std = float(config.get("bb_std", 2.0))
+        self.sma_long_period = int(config.get("sma_long_period", 50))
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
 
     # --- Indicator helpers ---
 
@@ -74,14 +76,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
                 break
         return count
 
-    @staticmethod
-    def _ibs(bar: Bar) -> Optional[float]:
-        """Internal Bar Strength: (close - low) / (high - low)."""
-        rng = bar.high - bar.low
-        if rng < 1e-9:
-            return None
-        return (bar.close - bar.low) / rng
-
     def on_bar(
         self,
         symbol: str,
@@ -94,47 +88,50 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK and HIGH volatility
+        # Skip SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
-        # Skip DOWN trend markets (long-only mean reversion doesn't work)
-        if snapshot and snapshot.trend == TrendRegime.DOWN:
-            return None
-
-        # Skip near earnings and FOMC
+        # Skip near earnings
         labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+        if labels.get("near_earnings", False):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
-        # Condition 1: Consecutive down closes (2+)
+        # Condition 1: Consecutive down closes
         consec = self._consecutive_down(closes)
         if consec < self.consec_down_min:
             return None
 
-        # Condition 2: Low IBS (closed near the low = selling exhaustion)
-        ibs = self._ibs(bar)
-        if ibs is None or ibs > self.ibs_max:
-            return None
-
-        # Condition 3: Price below BB midline (oversold territory)
+        # Condition 2: Price in lower half of Bollinger Band
         bb_mean = self._sma(closes, self.bb_period)
         bb_std = self._std(closes, self.bb_period)
         if bb_mean is None or bb_std is None or bb_std < 0.01:
             return None
 
+        # Price should be below BB midline (oversold area)
         if bar.close > bb_mean:
             return None
 
-        # ATR for stops
+        # Condition 3: Not in total freefall — price above SMA(50) - 2*ATR
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
+        sma_long = self._sma(closes, self.sma_long_period)
+        if sma_long is not None and bar.close < sma_long - 2.0 * atr:
+            return None  # Too far below long-term trend
+
+        # Condition 4: Volume above average (selling pressure = buyers stepping in)
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
+            return None
+
+        # Calculate BB z-score for position sizing signal
         z_score = (bar.close - bb_mean) / bb_std if bb_std > 0 else 0.0
 
         stop = bar.close - self.stop_atr_mult * atr
@@ -149,10 +146,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "mode": "consec_down_ibs_bb",
+                "mode": "consec_down_bb",
                 "consec_down": consec,
-                "ibs": round(ibs, 3),
                 "z_score": round(z_score, 2),
+                "bb_mean": round(bb_mean, 2),
                 "atr": round(atr, 4),
             },
         )
