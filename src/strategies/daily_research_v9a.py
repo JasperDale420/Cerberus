@@ -1,8 +1,9 @@
 """Multi-factor consecutive-down mean reversion with regime gating.
 
 Entry: 2+ consecutive lower closes + IBS + BB proximity scoring.
-Multi-factor scoring: consecutive downs, BB position, IBS, volume.
+Multi-factor scoring: consecutive downs, BB position, IBS.
 Long-only. Event and regime filters. ATR-based stops and targets.
+Tighter stops (1.0 ATR) to limit loss per trade.
 """
 
 from __future__ import annotations
@@ -29,14 +30,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.bb_std = float(config.get("bb_std", 2.0))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
         self.bb_proximity = float(config.get("bb_proximity", 0.5))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.drawdown_max = float(config.get("drawdown_max", 0.10))
-        self.atr_vol_cap = float(config.get("atr_vol_cap", 0.06))
+        self.drawdown_max = float(config.get("drawdown_max", 0.12))
 
     # --- Indicator helpers ---
 
@@ -113,16 +113,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
-        # Day-of-week filter: skip Friday (worst negative expectancy)
-        dow = bar.time.weekday() if hasattr(bar.time, "weekday") else None
-        if dow is not None and dow == 4:  # Fri=4
-            return None
-
-        # Opex week filter: skip monthly options expiration week
-        if regime_labels.get("opex_week", False):
-            return None
-
-        # Drawdown filter: skip if price crashed too far from recent high
+        # Drawdown filter
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
@@ -138,45 +129,40 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Internal vol check: ATR/price ratio caps out high-vol names
-        atr_pct = atr / bar.close if bar.close > 0 else 0
-        if atr_pct > self.atr_vol_cap:
-            return None
-
         lower_bb = bb_sma - self.bb_std * bb_std_val
 
         # Multi-factor entry scoring
         score = 0
 
-        # Factor 1: Consecutive down closes (required: at least consec_down_min)
+        # Factor 1: Consecutive down closes (hard gate)
         consec = self._consecutive_downs(closes)
         if consec < self.consec_down_min:
-            return None  # Hard gate
+            return None
         score += 1
         if consec >= self.consec_down_min + 1:
             score += 1
 
-        # Factor 2: BB proximity (close near or below lower BB)
+        # Factor 2: BB proximity
         bb_distance = (bar.close - lower_bb) / bb_std_val if bb_std_val > 0 else 999
         if bb_distance < self.bb_proximity:
             score += 1
-        if bb_distance < 0:  # Below lower BB
+        if bb_distance < 0:
             score += 1
 
-        # Factor 3: IBS (low IBS = closed near low = oversold)
+        # Factor 3: IBS
         ibs = self._ibs(bar)
         if ibs < self.ibs_threshold:
             score += 1
 
-        # Require at least 3 factors total
+        # Require at least 3 factors
         if score < 3:
             return None
 
-        # In DOWN or FLAT regime, require stronger signal
-        if regime_trend in ("DOWN", "FLAT") and score < 4:
+        # In DOWN regime, require 4+ factors
+        if regime_trend == "DOWN" and score < 4:
             return None
 
-        # Target: min of BB midline or ATR-based target
+        # Target: min of BB midline or ATR-based
         target_bb = bb_sma
         target_atr = bar.close + self.target_atr_mult * atr
         target = min(target_bb, target_atr)
