@@ -124,17 +124,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Dip must be at least atr_dip_min * ATR below SMA, but not too large (crash)
+        # Dip must be at least atr_dip_min * ATR below SMA
         dip = sma - bar.close
         if dip < self.atr_dip_min * atr:
-            return None
-        if dip > 2.5 * atr:
-            return None
-
-        # Volume confirmation: require above-average volume on the down day
-        volumes = [b.volume for b in bars]
-        avg_vol = self._sma(volumes, self.sma_period)
-        if avg_vol and avg_vol > 0 and bar.volume < avg_vol:
             return None
 
         # Target: SMA (mean reversion)
