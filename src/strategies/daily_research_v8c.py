@@ -36,7 +36,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = 2
         self.ibs_threshold = 0.3  # hardcoded — was unstable (CV=0.308), mean was 0.294
-        self.atr_dip_min = 0.5  # hardcoded — was unstable (CV=0.445), mean was 0.55
+        self.atr_dip_min = 0.8  # ensure min target ≥ 0.8*ATR for better risk:reward vs 1.2*ATR stop
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
         self.max_hold_days = int(config.get("max_hold_days", 3))
 
