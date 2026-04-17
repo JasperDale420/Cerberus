@@ -64,8 +64,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         if regime_labels.get("regime_vol") == "SHOCK":
             return None
-        if regime_labels.get("near_fomc"):
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -95,7 +93,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if today_range < 1e-9:
             return None
         close_position = (bar.close - bar.low) / today_range
-        if close_position < 0.55:
+        if close_position < 0.5:
             return None
 
         # Trend: above SMA(20)
