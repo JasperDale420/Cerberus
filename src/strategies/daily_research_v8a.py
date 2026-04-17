@@ -40,8 +40,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.vol_min_mult = float(config.get("vol_min_mult", 0.5))
         # ATR for stop/target
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
         self.max_hold_days = int(config.get("max_hold_days", 7))
 
     # --- Indicator helpers ---
