@@ -36,8 +36,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.max_range_atr = float(config.get("max_range_atr", 2.5))
         # Stop/target in ATR multiples
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 1.8))
+        self.max_hold_days = int(config.get("max_hold_days", 4))
 
     # --- Indicator helpers ---
 
