@@ -147,6 +147,13 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if ibs < self.ibs_threshold:
             score += 1
 
+        # Factor 4: Volume spike (high vol on pullback = institutional)
+        volumes = [b.volume for b in bars]
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume > avg_vol * 1.2:
+                score += 1
+
         # Require at least 3 factors
         if score < 3:
             return None
