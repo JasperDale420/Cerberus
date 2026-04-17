@@ -92,9 +92,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if regime_labels.get("near_fomc", False):
             return None
 
-        # Regime filter: only skip SHOCK vol
+        # Regime filter: skip SHOCK and HIGH vol (too inconsistent)
         regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
-        if regime_vol == "SHOCK":
+        if regime_vol in ("SHOCK", "HIGH"):
             return None
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
