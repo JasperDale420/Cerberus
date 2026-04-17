@@ -119,6 +119,38 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "ibs_threshold": 0.25,
         "consec_down_days": 2,
     },
+    # v8 campaign — same locked params as v7 (seeds are identical)
+    "daily_research_v8a": {
+        "rsi_period": 2,
+        "trend_period": 50,
+        "max_drawdown_pct": 0.10,
+        "drawdown_lookback": 40,
+        "max_hold_days": 5,
+        "max_stop_pct": 0.02,
+    },
+    "daily_research_v8b": {
+        "atr_period": 14,
+        "max_hold_days": 7,
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "high_vol_stop_scale": 0.8,
+        "high_vol_target_scale": 0.7,
+    },
+    "daily_research_v8c": {
+        "breakout_lookback": 10,
+        "max_hold_days": 5,
+        "stop_atr_mult": 1.5,
+        "max_stop_pct": 0.03,
+        "trend_sma_period": 50,
+    },
+    "daily_research_v8d": {
+        "atr_period": 14,
+        "sma_fast": 20,
+        "sma_slow": 50,
+        "atr_mult": 1.5,
+        "ibs_threshold": 0.25,
+        "consec_down_days": 2,
+    },
 }
 
 PARAM_SPACES: dict[str, list[ParamDef]] = {
@@ -245,6 +277,27 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
     ],
     "daily_research_v7d": [
+        ParamDef("max_hold_days", "int", low=4, high=6, step=1, description="Max hold days"),
+    ],
+    # v8 campaign — mirrors v7 param spaces
+    "daily_research_v8a": [
+        ParamDef("atr_expansion_mult", "float", low=1.0, high=1.5, step=0.1, description="ATR expansion threshold"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target multiplier"),
+    ],
+    "daily_research_v8b": [
+        ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=3.0, step=0.5, description="ATR target multiplier"),
+        ParamDef(
+            "ibs_entry_threshold", "float", low=0.25, high=0.40, step=0.05, description="IBS threshold for trend mode"
+        ),
+        ParamDef("mr_ibs_threshold", "float", low=0.15, high=0.30, step=0.05, description="IBS threshold for MR mode"),
+        ParamDef("max_realized_vol", "float", low=0.20, high=0.30, step=0.05, description="Max SPY realized vol gate"),
+    ],
+    "daily_research_v8c": [
+        ParamDef("atr_expansion", "float", low=1.1, high=1.8, step=0.1, description="ATR expansion ratio"),
+        ParamDef("target_atr_mult", "float", low=2.0, high=3.5, step=0.5, description="ATR target"),
+    ],
+    "daily_research_v8d": [
         ParamDef("max_hold_days", "int", low=4, high=6, step=1, description="Max hold days"),
     ],
 }
