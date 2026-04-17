@@ -35,8 +35,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = 2
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.40))
-        self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.atr_dip_min = float(config.get("atr_dip_min", 0.8))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
@@ -80,9 +80,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility only (HIGH vol still has edge with selective entries)
+        # Skip HIGH and SHOCK volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.HIGH, VolRegime.SHOCK):
             return None
 
         # Event filters
