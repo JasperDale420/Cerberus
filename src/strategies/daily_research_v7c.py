@@ -110,6 +110,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if close_pos < 0.5:
             return None
 
+        # Expansion: breakout day range should exceed inside day range
+        if today_range <= inner_range:
+            return None
+
         # Volume confirmation: above 80% of 20-day average
         volumes = [b.volume for b in bars]
         if len(volumes) < 20:
@@ -120,7 +124,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         # Trend context: above SMA(20) or close to it
         sma20 = self._sma(closes, 20)
-        if sma20 is not None and bar.close < sma20 * 0.97:
+        if sma20 is not None and bar.close < sma20 * 0.95:
             return None
 
         # Regime-adaptive stops
