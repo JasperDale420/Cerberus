@@ -97,9 +97,17 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
+        # Skip inverse/leveraged volatility products (don't mean-revert)
+        if symbol.upper() in ("VXX", "UVXY", "SVXY", "VIXY"):
+            return None
+
         # Event filters
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
+            return None
+
+        # Skip opex week (abnormal gamma dynamics)
+        if labels.get("opex_week", False):
             return None
 
         # Regime filter: skip all DOWN regimes (worst WFO windows)
