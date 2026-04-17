@@ -1,15 +1,14 @@
-"""Regime-Adaptive Dip Buyer — Unified entry with regime-scaled thresholds.
+"""Regime-Adaptive ROC Mean Reversion — Buy oversold bounces measured by
+Rate of Change, with regime-scaled thresholds and volume confirmation.
 
-Evolved from seed_regime_switch. Instead of 3 completely different strategies
-per regime, uses ONE core signal (consecutive down + low IBS + below Keltner band)
-with regime-adaptive entry strictness:
+Evolved from seed_regime_switch. Uses ROC (5-day price change %) to detect
+oversold conditions instead of Keltner bands. Regime-adaptive entry:
 
-  UP   — easiest entry (2 down days, IBS<0.35, below KC lower)
-  FLAT — moderate entry (2 down days, IBS<0.25, below KC lower)
-  DOWN — strict entry (3 down days, IBS<0.20, below KC lower, tighter target)
+  UP   — moderate oversold (ROC < -4%) + volume surge
+  FLAT — deeper oversold (ROC < -5%) + volume surge
+  DOWN — SKIP entirely (catch falling knives)
 
-Long-only. Event filters (earnings, FOMC). Vol filter (skip SHOCK).
-Stops: tight ATR-based below bar low. Target: Keltner midline.
+Long-only. Event/calendar filters. ATR stops, SMA(20) target.
 """
 
 from __future__ import annotations
@@ -32,25 +31,24 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
-        self.kc_period = int(config.get("kc_period", 20))
-        self.kc_mult = float(config.get("kc_mult", 1.5))
+        self.roc_period = int(config.get("roc_period", 5))
+        self.sma_period = int(config.get("sma_period", 20))
         self.atr_period = int(config.get("atr_period", 14))
-        # Regime-adaptive IBS thresholds
-        self.ibs_up = float(config.get("ibs_up", 0.25))
-        self.ibs_flat = float(config.get("ibs_flat", 0.25))
-        self.ibs_down = float(config.get("ibs_down", 0.15))
-        # Consecutive down day requirements
-        self.consec_down_up = int(config.get("consec_down_up", 2))
-        self.consec_down_flat = int(config.get("consec_down_flat", 2))
-        self.consec_down_down = int(config.get("consec_down_down", 3))
+        # Regime-adaptive ROC thresholds (must be negative — how much price fell)
+        self.roc_up = float(config.get("roc_up", -0.04))
+        self.roc_flat = float(config.get("roc_flat", -0.05))
+        # IBS confirmation
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.30))
+        # Volume surge: require above-avg volume
+        self.vol_surge_mult = float(config.get("vol_surge_mult", 1.0))
         # Stop/target
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         # Filters
         self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
-        self.max_risk_pct = float(config.get("max_risk_pct", 0.02))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
         self.min_price = float(config.get("min_price", 15.0))
+        self.min_consec_down = int(config.get("min_consec_down", 2))
 
     # --- Indicator helpers ---
 
@@ -100,19 +98,24 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
         if regime_labels.get("near_fomc"):
             return None
+        if regime_labels.get("opex_week"):
+            return None
 
         # Vol filter — skip SHOCK and HIGH
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_vol in ("SHOCK", "HIGH"):
             return None
-        # Calendar filters
-        if regime_labels.get("opex_week"):
+
+        # Regime trend — skip DOWN entirely
+        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+        if regime_trend == "DOWN":
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
-        if len(closes) < self.kc_period + 1:
+        if len(closes) < max(self.sma_period, self.roc_period) + 1:
             return None
 
         # Min price filter
@@ -128,14 +131,23 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if bar.close > 0 and atr / bar.close > self.max_atr_pct:
             return None
 
-        # Keltner Channel
-        kc_mid = self._sma(closes, self.kc_period)
-        if kc_mid is None:
+        # Rate of Change
+        roc_ref = closes[-(self.roc_period + 1)]
+        if roc_ref < 1e-9:
             return None
-        kc_lower = kc_mid - self.kc_mult * atr
+        roc = (bar.close - roc_ref) / roc_ref
 
-        # Price must be below lower Keltner band
-        if bar.close >= kc_lower:
+        # Regime-adaptive ROC threshold
+        if regime_trend == "UP":
+            if roc > self.roc_up:
+                return None
+        else:  # FLAT
+            if roc > self.roc_flat:
+                return None
+
+        # Consecutive down days
+        consec_down = self._count_consec_down(closes)
+        if consec_down < self.min_consec_down:
             return None
 
         # IBS: close near daily low (capitulation)
@@ -143,40 +155,25 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         if daily_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / daily_range
+        if ibs > self.ibs_threshold:
+            return None
 
-        # Consecutive down days
-        consec_down = self._count_consec_down(closes)
-
-        # Regime-adaptive thresholds
-        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
-
-        if regime_trend == "UP":
-            if consec_down < self.consec_down_up:
-                return None
-            if ibs > self.ibs_up:
-                return None
-            # In UP regime, confirm uptrend intact: price should be above SMA(50)
-            sma50 = self._sma(closes, 50)
-            if sma50 is not None and bar.close < sma50:
-                return None
-        elif regime_trend == "DOWN":
-            if consec_down < self.consec_down_down:
-                return None
-            if ibs > self.ibs_down:
-                return None
-        else:  # FLAT
-            if consec_down < self.consec_down_flat:
-                return None
-            if ibs > self.ibs_flat:
+        # Volume surge confirmation
+        if len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            if avg_vol > 0 and bar.volume < avg_vol * self.vol_surge_mult:
                 return None
 
-        # Skip extremely wide bars (news-driven)
+        # Skip extremely wide bars
         if daily_range > 2.0 * atr:
             return None
 
-        # Stop below bar low, target Keltner midline
-        stop = bar.low - self.stop_atr_mult * atr
-        target = kc_mid
+        # Stop and target
+        stop = bar.close - self.stop_atr_mult * atr
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
+            return None
+        target = sma  # Revert to mean
 
         if target <= bar.close:
             return None
@@ -197,11 +194,11 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             meta={
                 "regime": regime_trend,
                 "regime_vol": regime_vol,
-                "atr": round(atr, 4),
-                "kc_mid": round(kc_mid, 2),
-                "kc_lower": round(kc_lower, 2),
+                "roc": round(roc, 4),
                 "ibs": round(ibs, 3),
                 "consec_down": consec_down,
-                "seed": "regime_switch_v2",
+                "atr": round(atr, 4),
+                "sma20": round(sma, 2),
+                "seed": "regime_switch_roc_v1",
             },
         )
