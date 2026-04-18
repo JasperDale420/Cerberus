@@ -106,6 +106,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         regime_vol = regime_labels.get("regime_vol", "NORMAL")
         if regime_vol in ("SHOCK", "HIGH"):
             return None
+        # Continuous vol cap: skip when SPY realized vol > 22% annualized
+        if market_state.realized_vol > 0.22:
+            return None
         # Calendar filters
         if regime_labels.get("opex_week"):
             return None
