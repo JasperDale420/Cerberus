@@ -44,7 +44,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.consec_down_flat = int(config.get("consec_down_flat", 2))
         self.consec_down_down = int(config.get("consec_down_down", 3))
         # Stop/target
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 0.75))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 4))
         # Filters
