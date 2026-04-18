@@ -151,13 +151,15 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         # Regime-adaptive thresholds
         regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
 
-        if regime_trend == "DOWN":
-            return None  # Skip DOWN regime — long-only dip buying in downtrends is unreliable
-
         if regime_trend == "UP":
             if consec_down < self.consec_down_up:
                 return None
             if ibs > self.ibs_up:
+                return None
+        elif regime_trend == "DOWN":
+            if consec_down < self.consec_down_down:
+                return None
+            if ibs > self.ibs_down:
                 return None
         else:  # FLAT
             if consec_down < self.consec_down_flat:
