@@ -48,9 +48,9 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 4))
         # Filters
-        self.max_atr_pct = float(config.get("max_atr_pct", 0.04))
-        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
-        self.min_price = float(config.get("min_price", 10.0))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.035))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.02))
+        self.min_price = float(config.get("min_price", 15.0))
         self.min_rr_ratio = float(config.get("min_rr_ratio", 2.0))
 
     # --- Indicator helpers ---
@@ -108,6 +108,8 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
         # Calendar filters
         if regime_labels.get("opex_week"):
+            return None
+        if regime_labels.get("quad_witch_week"):
             return None
 
         bars = list(symbol_state.bars)
