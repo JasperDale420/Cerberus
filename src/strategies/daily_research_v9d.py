@@ -33,7 +33,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
         self.kc_period = int(config.get("kc_period", 20))
-        self.kc_mult = float(config.get("kc_mult", 1.8))
+        self.kc_mult = float(config.get("kc_mult", 1.5))
         self.atr_period = int(config.get("atr_period", 14))
         # Regime-adaptive IBS thresholds
         self.ibs_up = float(config.get("ibs_up", 0.30))
