@@ -34,17 +34,20 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.pullback_pct_min = float(config.get("pullback_pct_min", 0.02))
-        self.min_score = float(config.get("min_score", 2.0))
+        self.min_score = float(config.get("min_score", 2.5))
+        self.min_score_down = float(config.get("min_score_down", 4.0))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 4))
         # Drawdown filter
         self.drawdown_lookback = int(config.get("drawdown_lookback", 50))
-        self.drawdown_max = float(config.get("drawdown_max", 0.20))
+        self.drawdown_max = float(config.get("drawdown_max", 0.15))
         # Trend SMA for regime adaptation
         self.trend_sma_period = int(config.get("trend_sma_period", 40))
+        # Volume confirmation
+        self.vol_sma_period = int(config.get("vol_sma_period", 20))
 
     # --- Indicator helpers ---
 
@@ -118,9 +121,21 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if pullback >= 0.05:
                 score += 0.5  # Extra for deeper pullback
 
-        # Need minimum score to enter
-        if score < self.min_score:
+        # Regime-aware minimum score
+        labels = symbol_state.meta.get("regime_labels", {})
+        trend = labels.get("regime_trend", "FLAT")
+
+        # In DOWN regimes, require much stronger oversold signal
+        required_score = self.min_score_down if trend == "DOWN" else self.min_score
+        if score < required_score:
             return None
+
+        # Volume confirmation: today's volume should be above average
+        volumes = [b.volume for b in bars[-self.vol_sma_period :]]
+        if len(volumes) >= self.vol_sma_period:
+            avg_vol = sum(volumes) / len(volumes)
+            if bar.volume < avg_vol * 0.7:
+                return None
 
         # Drawdown filter: avoid catching falling knives
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
@@ -133,16 +148,12 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Regime-adaptive targets: tighter in DOWN, wider in UP
-        labels = symbol_state.meta.get("regime_labels", {})
-        trend = labels.get("regime_trend", "FLAT")
-
+        # Regime-adaptive targets
         if trend == "DOWN":
-            # Tighter target in downtrends
-            target_mult = self.target_atr_mult * 0.7
-            stop_mult = self.stop_atr_mult * 0.8
+            target_mult = self.target_atr_mult * 0.6
+            stop_mult = self.stop_atr_mult * 0.7
         elif trend == "UP":
-            target_mult = self.target_atr_mult * 1.1
+            target_mult = self.target_atr_mult * 1.2
             stop_mult = self.stop_atr_mult
         else:
             target_mult = self.target_atr_mult
