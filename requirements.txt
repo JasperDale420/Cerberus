@@ -6,18 +6,18 @@
 # ====================================
 alpaca-py==0.43.2
 unusualwhales-python-client==5.0.1
-pydantic==2.12.5
+pydantic==2.13.3
 pydantic-settings>=2.0
 pyarrow==23.0.1
-pandas==3.0.0
+pandas==3.0.2
 pandas-ta==0.4.71b0
-numpy>=1.26.0,<2.3
+numpy>=1.26.0,<2.5
 python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
-sqlalchemy==2.0.46
+sqlalchemy==2.0.49
 PyYAML==6.0.3
 APScheduler==3.11.2
-httpx>=0.20.0,<0.28.0
-pytz==2025.2
+httpx>=0.20.0,<0.29.0
+pytz==2026.1.post1
 statsmodels==0.14.6
 structlog>=24.1.0
 pomegranate==1.1.2
@@ -26,19 +26,19 @@ filterpy>=1.4
 # ====================================
 # Development & Testing
 # ====================================
-pytest==9.0.2
-pytest-cov==7.0.0
+pytest==9.0.3
+pytest-cov==7.1.0
 pytest-asyncio==1.3.0
-ruff==0.15.1
-mypy==1.19.1
-black==26.1.0
-bandit==1.9.3
+ruff==0.15.11
+mypy==1.20.1
+black==26.3.1
+bandit==1.9.4
 detect-secrets==1.5.0
 pre-commit>=3.0.0
 
 # ====================================
 # Type Stubs
 # ====================================
-types-PyYAML==6.0.12.20250915
-types-requests==2.32.4.20260107
-types-pytz==2025.2.0.20251108
+types-PyYAML==6.0.12.20260408
+types-requests==2.33.0.20260408
+types-pytz==2026.1.1.20260408
