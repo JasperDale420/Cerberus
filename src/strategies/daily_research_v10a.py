@@ -32,10 +32,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.min_score = float(config.get("min_score", 2.0))
         # Trend quality
         self.trend_sma = int(config.get("trend_sma", 50))
+        self.target_sma = int(config.get("target_sma", 20))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         # Drawdown
         self.drawdown_max = float(config.get("drawdown_max", 0.15))
@@ -128,13 +128,18 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        # ATR for stops and targets
+        # Target: SMA(20) — natural mean reversion level
+        target_sma = self._sma(closes, self.target_sma)
+        if target_sma is None or target_sma <= bar.close:
+            return None  # Target must be above entry
+
+        # ATR for stop
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        target = target_sma
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
