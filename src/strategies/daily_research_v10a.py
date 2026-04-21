@@ -1,8 +1,9 @@
-"""Daily Research v10a — Multi-Factor Oversold + Trend Quality.
+"""Daily Research v10a — Multi-Factor Oversold + ATR Expansion.
 
 Composite oversold score (consecutive down + IBS + pullback depth).
-Trend quality: price > SMA(50) ensures uptrend context per stock.
-Tight stops (1 ATR) with 2:1 reward ratio.
+Trend quality: price > SMA(trend_period) ensures uptrend context.
+ATR expansion filter: only enter when current ATR > avg ATR * atr_expansion_mult.
+This ensures trades fire during volatile moves (mean reversion is stronger after big moves).
 Long-only, daily bars.
 """
 
@@ -25,20 +26,21 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
+        # Fixed params from harness
         self.min_bars = int(config.get("min_bars", 55))
-        # Entry scoring
+        self.trend_period = int(config.get("trend_period", 50))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Tunable params from optimizer
+        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
+        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
+        # Internal (not tuned)
+        self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.min_score = float(config.get("min_score", 2.0))
-        # Trend quality
-        self.trend_sma = int(config.get("trend_sma", 50))
-        # Risk management
-        self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 0.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 4))
-        # Drawdown
-        self.drawdown_max = float(config.get("drawdown_max", 0.15))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
 
     # --- Indicator helpers ---
 
@@ -85,11 +87,22 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Trend quality: price must be above SMA(50)
-        sma = self._sma(closes, self.trend_sma)
+        # Trend quality: price must be above SMA(trend_period)
+        sma = self._sma(closes, self.trend_period)
         if sma is None:
             return None
         if bar.close < sma:
+            return None
+
+        # ATR expansion filter: current ATR must be above average ATR * expansion_mult
+        atr_now = self._atr(bars, self.atr_period)
+        if atr_now is None or atr_now < 1e-9:
+            return None
+        # Average ATR over longer period (2x atr_period)
+        atr_avg = self._atr(bars, self.atr_period * 2)
+        if atr_avg is None or atr_avg < 1e-9:
+            return None
+        if atr_now < atr_avg * self.atr_expansion_mult:
             return None
 
         # Composite oversold score
@@ -123,18 +136,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
             return None
 
         # Drawdown filter
-        lookback_highs = [b.high for b in bars[-40:]]
+        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
-        if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
+        if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # ATR for stops and targets
-        atr = self._atr(bars, self.atr_period)
-        if atr is None or atr < 1e-9:
-            return None
-
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        stop = bar.close - self.stop_atr_mult * atr_now
+        target = bar.close + self.target_atr_mult * atr_now
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -149,7 +157,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
                 "consec_down": consec_down,
                 "ibs": round(ibs, 3),
                 "pullback": round(pullback, 4),
-                "atr": round(atr, 4),
+                "atr_ratio": round(atr_now / atr_avg, 3),
+                "atr": round(atr_now, 4),
                 "seed": "mean_reversion",
             },
         )
