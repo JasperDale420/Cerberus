@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation baseline refreshed to match Empire standards: added `AGENTS.md`, added `docs/API_REFERENCE.md`, canonicalized `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md`, updated `README.md` doc links, and added `docs/audits/DOCUMENTATION_AUDIT_2026-04-21.md`.
+
 ### Fixed
 
 - **WebSocket connection now uses explicit ping keep-alive settings** (`ping_interval=30s`, `ping_timeout=90s`) in `UnifiedDataClient` to match Data-Gateway's uvicorn configuration, preventing silent disconnections during low-activity periods.
