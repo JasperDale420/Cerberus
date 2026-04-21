@@ -39,7 +39,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.min_score = float(config.get("min_score", 2.0))
+        self.min_score = float(config.get("min_score", 1.5))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
 
     # --- Indicator helpers ---
