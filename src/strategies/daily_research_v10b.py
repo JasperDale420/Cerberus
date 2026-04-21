@@ -1,7 +1,7 @@
 """Daily Research v10b — BB + IBS + Consecutive Down Confluence.
 
 Buy when price closes below lower Bollinger Band, IBS is low (close near day low),
-and there have been 2+ consecutive down days. Drawdown and volume filters.
+and there have been 2+ consecutive down days. Minimal filters for trade count.
 Long-only, daily bars.
 """
 
@@ -36,9 +36,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Fixed internal params
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
 
     # --- Indicator helpers ---
 
@@ -129,17 +126,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        # Drawdown filter: skip if too far from recent high (catching falling knives)
-        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
-        peak = max(lookback_highs) if lookback_highs else 0
-        if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
-            return None
-
-        # Skip earnings and FOMC
+        # Skip earnings
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False):
-            return None
-        if labels.get("near_fomc", False):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
