@@ -94,14 +94,15 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if bar.close < sma:
             return None
 
-        # ATR expansion filter: today's true range must exceed average ATR * expansion_mult
-        atr_avg = self._atr(bars, self.atr_period)
+        # ATR expansion filter: current ATR must be above average ATR * expansion_mult
+        atr_now = self._atr(bars, self.atr_period)
+        if atr_now is None or atr_now < 1e-9:
+            return None
+        # Average ATR over longer period (2x atr_period)
+        atr_avg = self._atr(bars, self.atr_period * 2)
         if atr_avg is None or atr_avg < 1e-9:
             return None
-        # Today's true range
-        prev_close = bars[-2].close if len(bars) >= 2 else bar.close
-        todays_tr = max(bar.high - bar.low, abs(bar.high - prev_close), abs(bar.low - prev_close))
-        if todays_tr < atr_avg * self.atr_expansion_mult:
+        if atr_now < atr_avg * self.atr_expansion_mult:
             return None
 
         # Composite oversold score
@@ -140,8 +141,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr_avg
-        target = bar.close + self.target_atr_mult * atr_avg
+        stop = bar.close - self.stop_atr_mult * atr_now
+        target = bar.close + self.target_atr_mult * atr_now
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -156,8 +157,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
                 "consec_down": consec_down,
                 "ibs": round(ibs, 3),
                 "pullback": round(pullback, 4),
-                "tr_ratio": round(todays_tr / atr_avg, 3),
-                "atr": round(atr_avg, 4),
+                "atr_ratio": round(atr_now / atr_avg, 3),
+                "atr": round(atr_now, 4),
                 "seed": "mean_reversion",
             },
         )
