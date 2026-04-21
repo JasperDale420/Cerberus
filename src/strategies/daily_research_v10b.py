@@ -36,8 +36,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Fixed internal params
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
-        self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
 
     # --- Indicator helpers ---
 
@@ -126,12 +124,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # ATR for stop and target
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
-            return None
-
-        # Drawdown filter: skip if too far from recent high
-        lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
-        peak = max(lookback_highs) if lookback_highs else 0
-        if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
         # Skip earnings
