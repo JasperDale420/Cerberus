@@ -64,6 +64,7 @@ LOCKED_PARAMS: dict[str, dict[str, Any]] = {
         "atr_period": 14,
         "bb_period": 20,
         "bb_std": 2.0,
+        "stop_atr_mult": 1.0,
     },
     "daily_research_v10c": {
         "atr_period": 14,
@@ -657,7 +658,7 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ParamDef("target_atr_mult", "float", low=2.0, high=4.0, step=0.5, description="ATR target multiplier"),
     ],
     "daily_research_v10b": [
-        ParamDef("stop_atr_mult", "float", low=1.0, high=2.0, step=0.5, description="ATR stop multiplier"),
+        # stop_atr_mult locked at 1.0 (converged across windows)
         ParamDef("target_atr_mult", "float", low=1.5, high=3.0, step=0.5, description="ATR target multiplier"),
         ParamDef("ibs_threshold", "float", low=0.20, high=0.35, step=0.05, description="IBS threshold"),
     ],

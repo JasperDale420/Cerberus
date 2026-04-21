@@ -36,7 +36,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Fixed internal params
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.025))
 
     # --- Indicator helpers ---
 
