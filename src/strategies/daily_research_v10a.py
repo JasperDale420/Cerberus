@@ -1,8 +1,8 @@
-"""Daily Research v10a — Multi-Factor Oversold with Market Trend Filter.
+"""Daily Research v10a — Multi-Factor Oversold + Trend Quality.
 
 Composite oversold score (consecutive down + IBS + pullback depth).
-Market-wide trend filter: skip when SPY regime is DOWN.
-EMA alignment for individual stock quality.
+Trend quality: price > SMA(50) ensures uptrend context per stock.
+Tight stops (1 ATR) with 2:1 reward ratio.
 Long-only, daily bars.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -25,33 +25,28 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 50))
+        self.min_bars = int(config.get("min_bars", 55))
         # Entry scoring
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.min_score = float(config.get("min_score", 2.0))
-        # EMA trend (stock-level)
-        self.ema_fast = int(config.get("ema_fast", 10))
-        self.ema_slow = int(config.get("ema_slow", 40))
+        # Trend quality
+        self.trend_sma = int(config.get("trend_sma", 50))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        # Drawdown filter
+        # Drawdown
         self.drawdown_max = float(config.get("drawdown_max", 0.15))
 
     # --- Indicator helpers ---
 
     @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
+    def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
-        mult = 2.0 / (period + 1)
-        ema = values[0]
-        for v in values[1:]:
-            ema = v * mult + ema * (1 - mult)
-        return ema
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -87,25 +82,14 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Market-wide filters
-        snapshot = market_state.regime_snapshot
-        if snapshot:
-            # Skip if broad market trend is DOWN
-            if snapshot.trend == TrendRegime.DOWN:
-                return None
-            # Skip SHOCK volatility
-            if snapshot.vol == VolRegime.SHOCK:
-                return None
-
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Stock-level EMA alignment: fast > slow (individual uptrend)
-        ema_f = self._ema(closes, self.ema_fast)
-        ema_s = self._ema(closes, self.ema_slow)
-        if ema_f is None or ema_s is None:
+        # Trend quality: price must be above SMA(50)
+        sma = self._sma(closes, self.trend_sma)
+        if sma is None:
             return None
-        if ema_f <= ema_s:
+        if bar.close < sma:
             return None
 
         # Composite oversold score
@@ -126,7 +110,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if ibs < 0.15:
                 score += 0.5
 
-        # Factor 3: Pullback from recent high
+        # Factor 3: Pullback from 20-day high
         recent_high = max(closes[-20:])
         pullback = (recent_high - bar.close) / recent_high if recent_high > 0 else 0
         if pullback >= 0.02:
@@ -134,7 +118,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
             if pullback >= 0.05:
                 score += 0.5
 
-        # Need minimum composite score
+        # Need minimum score
         if score < self.min_score:
             return None
 
