@@ -1,8 +1,8 @@
-"""Daily Research v10a — EMA-Aligned Oversold Bounce.
+"""Daily Research v10a — Multi-Factor Oversold with Market Trend Filter.
 
-Trend filter: EMA(fast) > EMA(slow) ensures we only buy dips in uptrends.
-Entry: consecutive down days + low IBS + price pulled back toward EMA.
-Exit: ATR-based target (asymmetric R:R) or time-based.
+Composite oversold score (consecutive down + IBS + pullback depth).
+Market-wide trend filter: skip when SPY regime is DOWN.
+EMA alignment for individual stock quality.
 Long-only, daily bars.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime, VolRegime
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -25,19 +25,21 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        self.min_bars = int(config.get("min_bars", 55))
-        # Trend confirmation
-        self.ema_fast = int(config.get("ema_fast", 20))
-        self.ema_slow = int(config.get("ema_slow", 50))
-        # Entry conditions
+        self.min_bars = int(config.get("min_bars", 50))
+        # Entry scoring
         self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.3))
-        self.pullback_from_ema = float(config.get("pullback_from_ema", 0.01))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.min_score = float(config.get("min_score", 2.0))
+        # EMA trend (stock-level)
+        self.ema_fast = int(config.get("ema_fast", 10))
+        self.ema_slow = int(config.get("ema_slow", 40))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        # Drawdown filter
+        self.drawdown_max = float(config.get("drawdown_max", 0.15))
 
     # --- Indicator helpers ---
 
@@ -65,7 +67,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     @staticmethod
     def _count_consecutive_down(closes: list[float]) -> int:
-        """Count consecutive down closes from the end."""
         count = 0
         for i in range(len(closes) - 1, 0, -1):
             if closes[i] < closes[i - 1]:
@@ -86,20 +87,20 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility
+        # Market-wide filters
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
-            return None
-
-        # Skip earnings and FOMC
-        labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
-            return None
+        if snapshot:
+            # Skip if broad market trend is DOWN
+            if snapshot.trend == TrendRegime.DOWN:
+                return None
+            # Skip SHOCK volatility
+            if snapshot.vol == VolRegime.SHOCK:
+                return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # EMA alignment: fast > slow = uptrend (natural DOWN filter)
+        # Stock-level EMA alignment: fast > slow (individual uptrend)
         ema_f = self._ema(closes, self.ema_fast)
         ema_s = self._ema(closes, self.ema_slow)
         if ema_f is None or ema_s is None:
@@ -107,24 +108,41 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if ema_f <= ema_s:
             return None
 
-        # Consecutive down days
-        consec_down = self._count_consecutive_down(closes)
-        if consec_down < self.consec_down_min:
-            return None
+        # Composite oversold score
+        score = 0.0
 
-        # IBS: close near low of day
+        # Factor 1: Consecutive down days
+        consec_down = self._count_consecutive_down(closes)
+        if consec_down >= self.consec_down_min:
+            score += min(consec_down - self.consec_down_min + 1, 3)
+
+        # Factor 2: IBS (close near low)
         bar_range = bar.high - bar.low
         if bar_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / bar_range
-        if ibs >= self.ibs_threshold:
+        if ibs < self.ibs_threshold:
+            score += 1.0
+            if ibs < 0.15:
+                score += 0.5
+
+        # Factor 3: Pullback from recent high
+        recent_high = max(closes[-20:])
+        pullback = (recent_high - bar.close) / recent_high if recent_high > 0 else 0
+        if pullback >= 0.02:
+            score += 1.0
+            if pullback >= 0.05:
+                score += 0.5
+
+        # Need minimum composite score
+        if score < self.min_score:
             return None
 
-        # Price has pulled back toward fast EMA (within range or below)
-        if ema_f > 0:
-            pct_from_ema = (ema_f - bar.close) / ema_f
-            if pct_from_ema < self.pullback_from_ema:
-                return None  # Not enough pullback
+        # Drawdown filter
+        lookback_highs = [b.high for b in bars[-40:]]
+        peak = max(lookback_highs)
+        if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
+            return None
 
         # ATR for stops and targets
         atr = self._atr(bars, self.atr_period)
@@ -143,10 +161,10 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
+                "score": round(score, 1),
                 "consec_down": consec_down,
                 "ibs": round(ibs, 3),
-                "pct_from_ema": round(pct_from_ema, 4),
-                "ema_spread": round((ema_f - ema_s) / ema_s, 4),
+                "pullback": round(pullback, 4),
                 "atr": round(atr, 4),
                 "seed": "mean_reversion",
             },
