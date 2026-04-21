@@ -132,12 +132,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
-        # Target = BB mean (natural mean-reversion level), floored by ATR minimum
-        target_bb = bb_mean
-        target_atr = bar.close + self.target_atr_mult * atr
-        target = max(target_bb, bar.close + 0.5 * atr)  # at least 0.5 ATR
-        if target_bb < target_atr:
-            target = target_bb  # prefer BB mean when it's closer
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
