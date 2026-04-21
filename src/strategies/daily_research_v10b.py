@@ -91,9 +91,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility only
+        # Skip SHOCK and HIGH volatility
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
         bars = list(symbol_state.bars)
@@ -135,9 +135,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # Skip earnings
+        # Skip earnings and FOMC
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False):
+            return None
+        if labels.get("near_fomc", False):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
