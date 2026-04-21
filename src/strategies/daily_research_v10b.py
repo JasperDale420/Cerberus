@@ -36,6 +36,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Fixed internal params
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_stop_pct = float(config.get("max_stop_pct", 0.03))
 
     # --- Indicator helpers ---
 
@@ -131,7 +132,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False):
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # ATR-based stop with max percentage cap to limit tail losses
+        atr_stop = bar.close - self.stop_atr_mult * atr
+        pct_stop = bar.close * (1.0 - self.max_stop_pct)
+        stop = max(atr_stop, pct_stop)  # tighter of the two
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
