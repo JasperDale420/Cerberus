@@ -36,7 +36,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         # Fixed internal params
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.12))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
 
@@ -91,9 +91,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK and HIGH volatility
+        # Skip SHOCK volatility only
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
+        if snapshot and snapshot.vol == VolRegime.SHOCK:
             return None
 
         bars = list(symbol_state.bars)
@@ -107,8 +107,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         lower_band = bb_mean - self.bb_std * bb_sd
 
-        # Price must be at or below lower Bollinger Band
-        if bar.close > lower_band:
+        # Price must be near or below lower Bollinger Band (within 0.5 SD above)
+        bb_proximity = lower_band + 0.5 * bb_sd
+        if bar.close > bb_proximity:
             return None
 
         # IBS: close near the low of the day
@@ -141,11 +142,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
             return None
 
-        # Skip earnings and FOMC
+        # Skip earnings
         labels = symbol_state.meta.get("regime_labels", {})
         if labels.get("near_earnings", False):
-            return None
-        if labels.get("near_fomc", False):
             return None
 
         stop = bar.close - self.stop_atr_mult * atr
