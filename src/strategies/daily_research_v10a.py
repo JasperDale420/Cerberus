@@ -98,8 +98,8 @@ class SeedMeanReversionStrategy(BaseStrategy):
         atr_now = self._atr(bars, self.atr_period)
         if atr_now is None or atr_now < 1e-9:
             return None
-        # Average ATR over longer period (2x atr_period)
-        atr_avg = self._atr(bars, self.atr_period * 2)
+        # Average ATR over slightly longer period
+        atr_avg = self._atr(bars, self.atr_period + 7)
         if atr_avg is None or atr_avg < 1e-9:
             return None
         if atr_now < atr_avg * self.atr_expansion_mult:
