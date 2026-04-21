@@ -29,16 +29,17 @@ class SeedMeanReversionStrategy(BaseStrategy):
         # Entry scoring
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.min_score = float(config.get("min_score", 2.0))
+        self.min_score = float(config.get("min_score", 2.5))
         # Trend quality
         self.trend_sma = int(config.get("trend_sma", 50))
         # Risk management
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.03))
         # Drawdown
-        self.drawdown_max = float(config.get("drawdown_max", 0.15))
+        self.drawdown_max = float(config.get("drawdown_max", 0.12))
 
     # --- Indicator helpers ---
 
@@ -133,7 +134,13 @@ class SeedMeanReversionStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # Cap risk per trade
+        risk = self.stop_atr_mult * atr
+        max_risk = bar.close * self.max_risk_pct
+        if risk > max_risk:
+            risk = max_risk
+
+        stop = bar.close - risk
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
