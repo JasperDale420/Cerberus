@@ -1,8 +1,11 @@
-"""Seed: Trend-Following Pullback Entry.
+"""Trend Quality Pullback — Consecutive Down + IBS Exhaustion in Healthy Uptrends.
 
-Buy pullbacks to EMA(20) in confirmed uptrends (price > SMA50, EMA20 > SMA50).
-Volume and RSI(14) filters. Skips SHOCK volatility regime.
-Long-only, daily bars, max_hold_days=10.
+Entry: SMA(10) > SMA(50) uptrend + SMA(10) rising + 2+ consecutive down closes
+       + IBS < 0.35 (selling exhaustion) + adequate volume.
+Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC.
+Risk: Stop 1.2 ATR, target 2.0 ATR. Max hold 5 days.
+
+Long-only, daily bars.
 """
 
 from __future__ import annotations
@@ -25,19 +28,17 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_slow_period = int(config.get("sma_slow_period", 50))
-        self.ema_fast_period = int(config.get("ema_fast_period", 20))
-        self.pullback_min_pct = float(config.get("pullback_min_pct", 0.01))
-        self.pullback_max_pct = float(config.get("pullback_max_pct", 0.02))
-        self.rsi_period = int(config.get("rsi_period", 14))
-        self.rsi_low = float(config.get("rsi_low", 40.0))
-        self.rsi_high = float(config.get("rsi_high", 55.0))
+        self.sma_fast = int(config.get("sma_fast", 10))
+        self.sma_slow = int(config.get("sma_slow", 50))
+        self.slope_lookback = int(config.get("slope_lookback", 5))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.8))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 2.0))
-        self.target_atr_mult = float(config.get("target_atr_mult", 4.0))
-        self.max_hold_days = int(config.get("max_hold_days", 10))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -46,33 +47,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
-
-    @staticmethod
-    def _ema(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        mult = 2.0 / (period + 1)
-        ema = sum(values[:period]) / period
-        for v in values[period:]:
-            ema = (v - ema) * mult + ema
-        return ema
-
-    @staticmethod
-    def _rsi(closes: list[float], period: int) -> Optional[float]:
-        if len(closes) < period + 1:
-            return None
-        gains = []
-        losses = []
-        for i in range(-period, 0):
-            delta = closes[i] - closes[i - 1]
-            gains.append(max(delta, 0.0))
-            losses.append(max(-delta, 0.0))
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss < 1e-9:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -86,6 +60,18 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             trs.append(tr)
         return sum(trs) / period
 
+    @staticmethod
+    def _consecutive_down_count(closes: list[float]) -> int:
+        if len(closes) < 2:
+            return 0
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
+
     def on_bar(
         self,
         symbol: str,
@@ -98,43 +84,57 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # Skip SHOCK volatility regime
+        # --- Regime filters ---
         snapshot = market_state.regime_snapshot
         if snapshot and snapshot.vol == VolRegime.SHOCK:
+            return None
+
+        labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("regime_trend", "") == "DOWN":
+            return None
+        if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # Trend confirmation: price > SMA(50)
-        sma50 = self._sma(closes, self.sma_slow_period)
-        if sma50 is None or bar.close <= sma50:
+        # --- Trend quality ---
+        sma_f = self._sma(closes, self.sma_fast)
+        sma_s = self._sma(closes, self.sma_slow)
+        if sma_f is None or sma_s is None:
+            return None
+        if sma_f <= sma_s:
+            return None
+        if bar.close <= sma_s:
             return None
 
-        # Momentum alignment: EMA(20) > SMA(50)
-        ema20 = self._ema(closes, self.ema_fast_period)
-        if ema20 is None or ema20 <= sma50:
+        # SMA fast must be rising (positive slope)
+        if len(closes) < self.sma_fast + self.slope_lookback:
+            return None
+        sma_prev = self._sma(closes[: -self.slope_lookback], self.sma_fast)
+        if sma_prev is None or sma_f <= sma_prev:
             return None
 
-        # Pullback to EMA(20): close within 1-2% of EMA20
-        if ema20 < 1e-9:
-            return None
-        dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_max_pct or dist_pct > self.pullback_min_pct:
+        # --- Pullback: consecutive down closes ---
+        consec = self._consecutive_down_count(closes)
+        if consec < self.consec_down_min:
             return None
 
-        # RSI(14) in sweet spot: not overbought, not oversold
-        rsi = self._rsi(closes, self.rsi_period)
-        if rsi is None or rsi < self.rsi_low or rsi > self.rsi_high:
+        # --- IBS exhaustion ---
+        bar_range = bar.high - bar.low
+        if bar_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+        if ibs >= self.ibs_threshold:
             return None
 
-        # Volume confirmation: above 0.8x 20-day average
+        # --- Volume confirmation ---
         avg_vol = self._sma(volumes, self.vol_avg_period)
         if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
-        # ATR for stop and target
+        # --- ATR for stop and target ---
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
@@ -151,11 +151,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "ema20": round(ema20, 2),
-                "sma50": round(sma50, 2),
-                "pullback_pct": round(dist_pct, 4),
-                "rsi14": round(rsi, 2),
-                "vol_ratio": round(bar.volume / avg_vol, 2),
+                "consec_down": consec,
+                "ibs": round(ibs, 3),
+                "sma_fast": round(sma_f, 2),
+                "sma_slow": round(sma_s, 2),
                 "atr": round(atr, 4),
                 "seed": "trend_pullback",
             },
