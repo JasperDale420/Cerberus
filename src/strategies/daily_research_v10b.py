@@ -1,9 +1,9 @@
-"""Trend Pullback — Consec Down + IBS, Symmetric R:R for Consistency.
+"""Trend Pullback — Consec Down + IBS in Strong Uptrends.
 
-Entry: SMA(10) > SMA(50) stock uptrend + close > SMA(50) + 2+ consecutive
+Entry: SMA(10) > SMA(50) by min_spread + close > SMA(50) + 2+ consecutive
        down closes + IBS < threshold + adequate volume.
-Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC/quad_witch.
-Risk: Stop 1.5 ATR, target 1.5 ATR (1:1 R:R). Max hold 5 days.
+Filters: Block DOWN regime + SHOCK/HIGH vol, skip earnings/FOMC/quad_witch.
+Risk: Stop 1.5 ATR, target optimized. Max hold 3 days.
 
 Long-only, daily bars.
 """
@@ -37,7 +37,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
 
     # --- Indicator helpers ---
 
@@ -85,7 +86,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
 
         # --- Regime filters ---
         snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
+        if snapshot and snapshot.vol in (VolRegime.SHOCK, VolRegime.HIGH):
             return None
 
         labels = symbol_state.meta.get("regime_labels", {})
@@ -100,12 +101,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # --- Trend: SMA(10) > SMA(50), close > SMA(50) ---
+        # --- Trend: SMA(10) > SMA(50) by min spread, close > SMA(50) ---
         sma_f = self._sma(closes, self.sma_fast)
         sma_s = self._sma(closes, self.sma_slow)
         if sma_f is None or sma_s is None:
             return None
-        if sma_f <= sma_s:
+        if sma_s < 1e-9:
+            return None
+        sma_spread = (sma_f - sma_s) / sma_s
+        if sma_spread < self.min_sma_spread:
             return None
         if bar.close <= sma_s:
             return None
