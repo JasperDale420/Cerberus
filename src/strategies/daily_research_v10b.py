@@ -1,9 +1,9 @@
-"""Trend Quality Pullback — Consecutive Down + IBS Exhaustion in Healthy Uptrends.
+"""Trend Pullback with BB Width Guard — Consec Down + IBS in Stable Uptrends.
 
-Entry: SMA(10) > SMA(50) uptrend + SMA(10) rising + 2+ consecutive down closes
-       + IBS < 0.35 (selling exhaustion) + adequate volume.
-Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC.
-Risk: Stop 1.2 ATR, target 2.0 ATR. Max hold 5 days.
+Entry: SMA(10) > SMA(50) uptrend + close > SMA(20) + BB width below threshold
+       + 2+ consecutive down closes + IBS < threshold + adequate volume.
+Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC/quad_witch.
+Risk: Stop 1.5 ATR, target optimized. Max hold 5 days.
 
 Long-only, daily bars.
 """
@@ -29,15 +29,16 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
         self.sma_fast = int(config.get("sma_fast", 10))
+        self.sma_mid = int(config.get("sma_mid", 20))
         self.sma_slow = int(config.get("sma_slow", 50))
-        self.slope_lookback = int(config.get("slope_lookback", 5))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
+        self.bb_width_max = float(config.get("bb_width_max", 0.08))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
@@ -47,6 +48,15 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
+
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        data = values[-period:]
+        mean = sum(data) / period
+        variance = sum((x - mean) ** 2 for x in data) / period
+        return variance**0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -94,26 +104,30 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
+        if labels.get("quad_witch_week", False):
+            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # --- Trend quality ---
+        # --- Trend: SMA(10) > SMA(50), close > SMA(20) ---
         sma_f = self._sma(closes, self.sma_fast)
+        sma_m = self._sma(closes, self.sma_mid)
         sma_s = self._sma(closes, self.sma_slow)
-        if sma_f is None or sma_s is None:
+        if sma_f is None or sma_m is None or sma_s is None:
             return None
         if sma_f <= sma_s:
             return None
-        if bar.close <= sma_s:
+        if bar.close <= sma_m:
             return None
 
-        # SMA fast must be rising (positive slope)
-        if len(closes) < self.sma_fast + self.slope_lookback:
+        # --- BB width guard: skip choppy/volatile markets ---
+        bb_std = self._std(closes, self.sma_mid)
+        if bb_std is None or sma_m < 1e-9:
             return None
-        sma_prev = self._sma(closes[: -self.slope_lookback], self.sma_fast)
-        if sma_prev is None or sma_f <= sma_prev:
+        bb_width = (2.0 * bb_std) / sma_m
+        if bb_width > self.bb_width_max:
             return None
 
         # --- Pullback: consecutive down closes ---
@@ -153,7 +167,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
+                "bb_width": round(bb_width, 4),
                 "sma_fast": round(sma_f, 2),
+                "sma_mid": round(sma_m, 2),
                 "sma_slow": round(sma_s, 2),
                 "atr": round(atr, 4),
                 "seed": "trend_pullback",
