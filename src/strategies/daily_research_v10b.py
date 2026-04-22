@@ -35,10 +35,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
         self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
+        self.consec_down_max = int(config.get("consec_down_max", 4))
 
     # --- Indicator helpers ---
 
@@ -114,9 +115,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if bar.close <= sma_s:
             return None
 
-        # --- Pullback: consecutive down closes ---
+        # --- Pullback: consecutive down closes (2-4 range) ---
         consec = self._consecutive_down_count(closes)
         if consec < self.consec_down_min:
+            return None
+        if consec > self.consec_down_max:
             return None
 
         # --- IBS exhaustion ---
