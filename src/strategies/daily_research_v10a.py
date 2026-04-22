@@ -1,10 +1,7 @@
-"""Daily Research v10a — Multi-Factor Oversold + ATR Expansion.
+"""Seed: Multi-Factor Mean Reversion.
 
-Composite oversold score (consecutive down + IBS + pullback depth).
-Trend quality: price > SMA(trend_period) ensures uptrend context.
-ATR expansion filter: only enter when current ATR > avg ATR * atr_expansion_mult.
-This ensures trades fire during volatile moves (mean reversion is stronger after big moves).
-Long-only, daily bars.
+RSI(2) + Bollinger Band + IBS (Internal Bar Strength) with drawdown filter.
+Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
@@ -26,29 +23,51 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
-        # Fixed params from harness
-        self.min_bars = int(config.get("min_bars", 55))
-        self.trend_period = int(config.get("trend_period", 50))
-        self.max_drawdown_pct = float(config.get("max_drawdown_pct", 0.10))
+        self.min_bars = int(config.get("min_bars", 50))
+        self.rsi_period = int(config.get("rsi_period", 2))
+        self.rsi_threshold = float(config.get("rsi_threshold", 25.0))
+        self.bb_period = int(config.get("bb_period", 20))
+        self.bb_std = float(config.get("bb_std", 2.0))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.5))
         self.drawdown_lookback = int(config.get("drawdown_lookback", 40))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
-        # Tunable params from optimizer
-        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.2))
-        self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        # Internal (not tuned)
+        self.drawdown_max = float(config.get("drawdown_max", 0.12))
         self.atr_period = int(config.get("atr_period", 14))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
-        self.min_score = float(config.get("min_score", 2.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _rsi(closes: list[float], period: int) -> Optional[float]:
+        if len(closes) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(-period, 0):
+            delta = closes[i] - closes[i - 1]
+            gains.append(max(delta, 0.0))
+            losses.append(max(-delta, 0.0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss < 1e-9:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     @staticmethod
     def _sma(values: list[float], period: int) -> Optional[float]:
         if len(values) < period:
             return None
         return sum(values[-period:]) / period
+
+    @staticmethod
+    def _std(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        subset = values[-period:]
+        mean = sum(subset) / period
+        variance = sum((v - mean) ** 2 for v in subset) / period
+        return variance ** 0.5
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -61,16 +80,6 @@ class SeedMeanReversionStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _count_consecutive_down(closes: list[float]) -> int:
-        count = 0
-        for i in range(len(closes) - 1, 0, -1):
-            if closes[i] < closes[i - 1]:
-                count += 1
-            else:
-                break
-        return count
 
     def on_bar(
         self,
@@ -87,62 +96,42 @@ class SeedMeanReversionStrategy(BaseStrategy):
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
 
-        # Trend quality: price must be above SMA(trend_period)
-        sma = self._sma(closes, self.trend_period)
-        if sma is None:
-            return None
-        if bar.close < sma:
+        # RSI(2) filter
+        rsi = self._rsi(closes, self.rsi_period)
+        if rsi is None or rsi >= self.rsi_threshold:
             return None
 
-        # ATR expansion filter: current ATR must be above average ATR * expansion_mult
-        atr_now = self._atr(bars, self.atr_period)
-        if atr_now is None or atr_now < 1e-9:
-            return None
-        # Average ATR over longer period (2x atr_period)
-        atr_avg = self._atr(bars, self.atr_period * 2)
-        if atr_avg is None or atr_avg < 1e-9:
-            return None
-        if atr_now < atr_avg * self.atr_expansion_mult:
+        # Bollinger Band: compute for target (midline) — not a hard gate
+        sma = self._sma(closes, self.bb_period)
+        std = self._std(closes, self.bb_period)
+        if sma is None or std is None or std < 1e-9:
             return None
 
-        # Composite oversold score
-        score = 0.0
-
-        # Factor 1: Consecutive down days
-        consec_down = self._count_consecutive_down(closes)
-        if consec_down >= self.consec_down_min:
-            score += min(consec_down - self.consec_down_min + 1, 3)
-
-        # Factor 2: IBS (close near low)
+        # IBS (Internal Bar Strength): must be low
         bar_range = bar.high - bar.low
         if bar_range < 1e-9:
             return None
         ibs = (bar.close - bar.low) / bar_range
-        if ibs < self.ibs_threshold:
-            score += 1.0
-            if ibs < 0.15:
-                score += 0.5
-
-        # Factor 3: Pullback from 20-day high
-        recent_high = max(closes[-20:])
-        pullback = (recent_high - bar.close) / recent_high if recent_high > 0 else 0
-        if pullback >= 0.02:
-            score += 1.0
-            if pullback >= 0.05:
-                score += 0.5
-
-        # Need minimum score
-        if score < self.min_score:
+        if ibs >= self.ibs_threshold:
             return None
 
-        # Drawdown filter
+        # Drawdown filter: skip if price dropped > drawdown_max from lookback high
         lookback_highs = [b.high for b in bars[-self.drawdown_lookback :]]
         peak = max(lookback_highs)
-        if peak > 0 and (peak - bar.close) / peak > self.max_drawdown_pct:
+        if peak > 0 and (peak - bar.close) / peak > self.drawdown_max:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr_now
-        target = bar.close + self.target_atr_mult * atr_now
+        # ATR for stop
+        atr = self._atr(bars, self.atr_period)
+        if atr is None or atr < 1e-9:
+            return None
+
+        stop = bar.close - self.stop_atr_mult * atr
+        target = sma  # BB midline (SMA20)
+
+        # Only enter if target is above entry (positive expectancy)
+        if target <= bar.close:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -153,12 +142,11 @@ class SeedMeanReversionStrategy(BaseStrategy):
             stop_price=stop,
             target_price=target,
             meta={
-                "score": round(score, 1),
-                "consec_down": consec_down,
+                "rsi2": round(rsi, 2),
                 "ibs": round(ibs, 3),
-                "pullback": round(pullback, 4),
-                "atr_ratio": round(atr_now / atr_avg, 3),
-                "atr": round(atr_now, 4),
+                "lower_bb": round(lower_bb, 2),
+                "atr": round(atr, 4),
+                "drawdown_from_peak": round((peak - bar.close) / peak, 4),
                 "seed": "mean_reversion",
             },
         )
