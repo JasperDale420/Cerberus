@@ -2,10 +2,8 @@
 
 Entry: SMA(10) > SMA(50) uptrend + SMA(10) rising + 2+ consecutive down closes
        + IBS < 0.35 (selling exhaustion) + adequate volume.
-       Pullback depth guard: close must stay within max_pullback_pct of SMA(10).
-       ATR expansion filter: skip when short ATR >> long ATR (volatility spike).
-Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC/quad_witch.
-Risk: Stop 1.0 ATR, target 2.0 ATR. Max hold 4 days.
+Filters: Block DOWN regime + SHOCK vol, skip earnings/FOMC.
+Risk: Stop 1.2 ATR, target 2.0 ATR. Max hold 5 days.
 
 Long-only, daily bars.
 """
@@ -38,11 +36,9 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
         self.atr_period = int(config.get("atr_period", 14))
-        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.0))
+        self.stop_atr_mult = float(config.get("stop_atr_mult", 1.2))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
-        self.max_hold_days = int(config.get("max_hold_days", 4))
-        self.max_pullback_pct = float(config.get("max_pullback_pct", 0.03))
-        self.atr_expansion_mult = float(config.get("atr_expansion_mult", 1.8))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
 
     # --- Indicator helpers ---
 
@@ -98,8 +94,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
-        if labels.get("quad_witch_week", False):
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
@@ -121,18 +115,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         sma_prev = self._sma(closes[: -self.slope_lookback], self.sma_fast)
         if sma_prev is None or sma_f <= sma_prev:
             return None
-
-        # Pullback depth guard: close must not fall too far below SMA fast
-        pullback_depth = (sma_f - bar.close) / sma_f
-        if pullback_depth > self.max_pullback_pct:
-            return None
-
-        # ATR expansion filter: skip when short-term vol is spiking
-        atr_short = self._atr(bars, 5)
-        atr_long = self._atr(bars, self.atr_period)
-        if atr_short is not None and atr_long is not None and atr_long > 1e-9:
-            if atr_short / atr_long > self.atr_expansion_mult:
-                return None
 
         # --- Pullback: consecutive down closes ---
         consec = self._consecutive_down_count(closes)
