@@ -1,11 +1,10 @@
-"""NR4 Volatility Contraction Breakout — evolved from vol_breakout seed.
+"""ATR-Envelope Dip Buy — evolved from vol_breakout seed.
 
-Buy after a Narrow Range 4 (NR4) day when the next day confirms upward
-breakout (close > NR4 bar's high). Volatility contraction precedes
-expansion — this is the vol_breakout DNA from the setup side.
+Buy when close dips below SMA(20) by at least atr_dip_min * ATR,
+and IBS confirms selling exhaustion. Target: SMA(20) mean reversion.
+Uses ATR for envelope, stop, and normalization — vol_breakout DNA.
 
-Uses ATR for stop/target sizing. Adds trend context (close > SMA50).
-Filters: Skip SHOCK, skip earnings/FOMC.
+Filters: Skip SHOCK vol, skip earnings/FOMC.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -30,13 +29,19 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
-        self.nr_lookback = int(config.get("nr_lookback", 4))
+        self.sma_period = int(config.get("sma_period", 20))
+        self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.trend_sma_period = int(config.get("trend_sma_period", 50))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -49,12 +54,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     def on_bar(
         self,
@@ -80,48 +79,34 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
-        if len(bars) < self.nr_lookback + 2:
-            return None
-
         closes = [b.close for b in bars]
 
-        # Trend filter: close above SMA(50) for uptrend context
-        sma_trend = self._sma(closes, self.trend_sma_period)
-        if sma_trend is None or bar.close <= sma_trend:
+        # SMA — our mean reversion anchor
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
             return None
 
-        # Check if PREVIOUS bar was NR4 (narrowest range of last nr_lookback days)
-        prev_bar = bars[-2]
-        prev_range = prev_bar.high - prev_bar.low
-        if prev_range < 1e-9:
-            return None
-
-        # Compare previous bar's range to the nr_lookback-1 bars before it
-        is_nr = True
-        for i in range(3, self.nr_lookback + 2):
-            if len(bars) < i + 1:
-                is_nr = False
-                break
-            comp_bar = bars[-i]
-            comp_range = comp_bar.high - comp_bar.low
-            if prev_range >= comp_range:
-                is_nr = False
-                break
-
-        if not is_nr:
-            return None
-
-        # Breakout confirmation: today's close > NR bar's high
-        if bar.close <= prev_bar.high:
-            return None
-
-        # ATR for stop/target
+        # ATR — volatility normalizer
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
+        # ATR-envelope dip: close must be below SMA by at least atr_dip_min * ATR
+        lower_band = sma - self.atr_dip_min * atr
+        if bar.close >= lower_band:
+            return None
+
+        # IBS: selling exhaustion — close near day's low
+        bar_range = bar.high - bar.low
+        if bar_range < 1e-9:
+            return None
+        ibs = (bar.close - bar.low) / bar_range
+        if ibs >= self.ibs_threshold:
+            return None
+
+        # Stop: ATR below entry, Target: SMA (mean reversion)
         stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        target = sma
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -133,8 +118,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "nr_range": round(prev_range, 4),
-                "nr_high": round(prev_bar.high, 2),
+                "sma": round(sma, 2),
+                "dip_atr": round((sma - bar.close) / atr, 2),
+                "ibs": round(ibs, 3),
                 "seed": "vol_breakout",
             },
         )
