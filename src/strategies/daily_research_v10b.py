@@ -28,8 +28,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_fast = int(config.get("sma_fast", 10))
-        self.sma_slow = int(config.get("sma_slow", 50))
+        self.sma_fast = int(config.get("sma_fast", 5))
+        self.sma_slow = int(config.get("sma_slow", 40))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
@@ -137,7 +137,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if atr is None or atr < 1e-9:
             return None
 
-        stop = bar.close - self.stop_atr_mult * atr
+        # Stop below day's low minus cushion, or ATR-based, whichever is tighter
+        stop_atr = bar.close - self.stop_atr_mult * atr
+        stop_low = bar.low - 0.5 * atr
+        stop = max(stop_atr, stop_low)  # tighter stop wins
         target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
