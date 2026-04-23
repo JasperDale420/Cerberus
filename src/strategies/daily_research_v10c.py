@@ -1,10 +1,10 @@
 """Keltner Dip Buy with defensive filters — evolved from vol_breakout seed.
 
 Buy when close dips below lower Keltner band (SMA - atr_dip_min * ATR),
-IBS confirms exhaustion, and 2+ consecutive down closes confirm timing.
-Defensive filters: block HIGH/SHOCK vol, skip volatile stocks, cap risk,
-filter news-driven wide bars. Consecutive down reduces atr_dip_min sensitivity.
+IBS confirms exhaustion. Defensive filters from v9c: block HIGH/SHOCK vol,
+skip volatile stocks, cap risk per trade, filter news-driven wide bars.
 
+atr_dip_min is the Keltner channel multiplier (harness tunes 0.3-1.0).
 Target: Keltner midline (SMA). Stop: below bar low.
 Long-only, daily bars, max_hold_days=5.
 """
@@ -36,8 +36,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
-        self.max_risk_pct = float(config.get("max_risk_pct", 0.035))
-        self.min_consec_down = int(config.get("min_consec_down", 2))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
 
     # --- Indicator helpers ---
 
@@ -92,17 +91,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
-
-        # Consecutive down closes — timing filter
-        if len(closes) >= self.min_consec_down + 1:
-            consec_down = 0
-            for i in range(1, min(len(closes), 10)):
-                if closes[-i] < closes[-i - 1]:
-                    consec_down += 1
-                else:
-                    break
-            if consec_down < self.min_consec_down:
-                return None
 
         # ATR — core volatility measure
         atr = self._atr(bars, self.atr_period)
