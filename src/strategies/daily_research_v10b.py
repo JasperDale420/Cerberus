@@ -38,9 +38,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.min_sma_spread = float(config.get("min_sma_spread", 0.02))
-        self.high_lookback = int(config.get("high_lookback", 20))
-        self.near_high_pct = float(config.get("near_high_pct", 0.95))
+        self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
 
     # --- Indicator helpers ---
 
@@ -115,13 +113,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
         if bar.close <= sma_s:
             return None
-
-        # --- Near recent high: price within 5% of 20-day high ---
-        highs = [b.high for b in bars]
-        if len(highs) >= self.high_lookback:
-            recent_high = max(highs[-self.high_lookback :])
-            if recent_high > 0 and bar.close < self.near_high_pct * recent_high:
-                return None
 
         # --- Pullback: consecutive down closes ---
         consec = self._consecutive_down_count(closes)
