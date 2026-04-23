@@ -14,6 +14,8 @@ dist/
 build/
 *.egg-info/
 cerberus.db
+cerberus.db-shm
+cerberus.db-wal
 coverage.xml
 artifacts/
 *.log
@@ -50,11 +52,13 @@ vectors.db
 .agents/tmp/**/*.db
 .agents/tmp/**/*.db-journal
 .agents/tmp/**/*.db-wal
+.agents/tmp/**/*.db-shm
 
 # Large binary files
 ledger.db
 *.db-journal
 *.db-wal
+*.db-shm
 *_backup_*.db
 .axon/
 
