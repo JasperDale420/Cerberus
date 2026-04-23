@@ -1,10 +1,10 @@
 """ATR-Normalized Dip Buy — evolved from vol_breakout seed.
 
 Buy when price has dipped significantly relative to ATR from its recent high,
-and IBS confirms selling exhaustion. Uses ATR to normalize entry depth
-so the strategy adapts to changing volatility — maintains vol_breakout DNA.
+IBS confirms selling exhaustion, and at least 2 consecutive down closes.
+Uses ATR to normalize entry depth — maintains vol_breakout DNA.
 
-Filters: Skip earnings/FOMC, skip SHOCK vol.
+Filters: Block DOWN trend regime, skip SHOCK vol, skip earnings/FOMC.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -35,6 +35,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.consec_down_min = int(config.get("consec_down_min", 2))
 
     # --- Indicator helpers ---
 
@@ -49,6 +50,18 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             tr = max(b.high - b.low, abs(b.high - prev_close), abs(b.low - prev_close))
             trs.append(tr)
         return sum(trs) / period
+
+    @staticmethod
+    def _consecutive_down_count(closes: list[float]) -> int:
+        if len(closes) < 2:
+            return 0
+        count = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] < closes[i - 1]:
+                count += 1
+            else:
+                break
+        return count
 
     def on_bar(
         self,
@@ -68,12 +81,20 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("regime_trend", "") == "DOWN":
+            return None
         if labels.get("near_earnings", False):
             return None
         if labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
+        closes = [b.close for b in bars]
+
+        # Consecutive down closes — require real dip exhaustion
+        consec = self._consecutive_down_count(closes)
+        if consec < self.consec_down_min:
+            return None
 
         # ATR — our core volatility measure
         atr = self._atr(bars, self.atr_period)
