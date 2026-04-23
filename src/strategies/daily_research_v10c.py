@@ -6,7 +6,7 @@ skip volatile stocks, cap risk per trade, filter news-driven wide bars.
 
 atr_dip_min is the Keltner channel multiplier (harness tunes 0.3-1.0).
 Target: Keltner midline (SMA). Stop: below bar low.
-Long-only, daily bars, max_hold_days=3.
+Long-only, daily bars, max_hold_days=5.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 3))
+        self.max_hold_days = int(config.get("max_hold_days", 5))
         self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
         self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
 
