@@ -30,7 +30,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.min_bars = int(config.get("min_bars", 55))
         self.sma_fast = int(config.get("sma_fast", 10))
         self.sma_slow = int(config.get("sma_slow", 50))
-        self.consec_down_min = int(config.get("consec_down_min", 2))
+        self.consec_down_min = int(config.get("consec_down_min", 3))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
         self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
