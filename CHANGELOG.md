@@ -8,10 +8,13 @@ All notable changes to this project will be documented in this file.
 
 - **Graduated strategies** promoted from the autoresearch pipeline: `strat_connors_rsi_v1` (Connors RSI(2) mean reversion), `strat_consecdown_bb_v1` (consecutive-down Bollinger Band), and `strat_ibs_regime_v1` (IBS regime-gated). Loaded automatically by the `src/main.py` dynamic strategy scanner from `src/strategies/graduated/`.
 - **Strategy research archive** at `src/strategies/research_archive/` preserving v6–v8 daily research iterations, alternate v9a variants, the iter70 $191k "best" `daily_research_strategy.py` (4.05x SPY), earlier archived strategies (failed_breakout, trend_pullback), and the up_normal experiment. See `research_archive/README.md` for provenance.
+- **Documentation baseline**: `AGENTS.md` (agent/service inventory) and `docs/API_REFERENCE.md` (public API surfaces), plus `docs/audits/DOCUMENTATION_AUDIT_2026-04-21.md`.
 
 ### Changed
 
 - **Consolidated all research iteration branches into main.** Autoresearch iterations that previously ran on disposable `fix/auto-health-*` and `autoresearch/*` branches now run directly on `main`. Branch tips are preserved as `research-archive/*` git tags so the full commit history of each iteration run remains reachable even after the branches are deleted.
+- **Autoresearch playbooks** (`program_cerberus.md`, `program_cerberus_v3.md`, `autoresearch/program.md`) now explicitly forbid creating new branches or worktrees — all iterations commit directly on `main`, failed experiments are reverted via `git reset --hard HEAD~1`.
+- Documentation baseline aligned with Empire standards: canonicalized `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md` casing, refreshed `README.md` doc links.
 
 ### Fixed
 

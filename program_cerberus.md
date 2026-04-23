@@ -10,8 +10,12 @@ You are spawned by a driver script. Each iteration:
 2. Read `src/strategies/<name>.py` — understand the current code
 3. Make **ONE** change to improve the score
 4. `ruff check src/strategies/<name>.py` — catch errors before wasting 45 min
-5. `git commit` with a descriptive message
+5. `git commit` with a descriptive message (commit directly on `main` — see branching rule below)
 6. **STOP.** The driver runs the evaluation. You never run it.
+
+## Branching rule
+
+**Stay on `main`. Do NOT create branches or worktrees.** Every iteration is an atomic commit on `main`; failed experiments are reverted with `git reset --hard HEAD~1`. Never run `git checkout -b`, `git switch -c`, or `git worktree add`.
 
 ## Simplicity Criterion
 

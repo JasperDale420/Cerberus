@@ -4,7 +4,7 @@ You are an autonomous quant researcher. You modify ONE file to find profitable t
 
 ## Setup
 
-1. Create branch: `git checkout -b autoresearch/<tag>` from current HEAD
+1. **Stay on `main`. Do NOT create a new branch.** All iterations commit directly to `main` — each experiment is an atomic commit that is either kept (score improved) or discarded via `git reset --hard HEAD~1` (score did not improve). Never run `git checkout -b`, `git switch -c`, or `git worktree add`.
 2. Read the in-scope files for full context:
    - `program_cerberus_v3.md` — this file (your instructions)
    - `src/strategies/autoresearch_strategy.py` — **the file you modify**. Signal logic, indicators, entry/exit.
