@@ -1,8 +1,8 @@
 """Trend Pullback — Consec Down + IBS in Strong Uptrends.
 
 Entry: SMA(10) > SMA(50) by min_spread + close > SMA(50) + 2+ consecutive
-       down closes + IBS < threshold.
-Filters: Block DOWN regime + SHOCK/HIGH vol, skip earnings/FOMC/quad_witch/opex.
+       down closes + IBS < threshold + adequate volume.
+Filters: Block DOWN regime + SHOCK/HIGH vol, skip earnings/FOMC/quad_witch.
 Risk: Stop 1.5 ATR, target optimized. Max hold 3 days.
 
 Long-only, daily bars.
@@ -96,11 +96,10 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
         if labels.get("quad_witch_week", False):
             return None
-        if labels.get("opex_week", False):
-            return None
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
 
         # --- Trend: SMA(10) > SMA(50) by min spread, close > SMA(50) ---
         sma_f = self._sma(closes, self.sma_fast)
@@ -126,6 +125,11 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
         ibs = (bar.close - bar.low) / bar_range
         if ibs >= self.ibs_threshold:
+            return None
+
+        # --- Volume confirmation ---
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is None or avg_vol < 1e-9 or bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
         # --- ATR for stop and target ---
