@@ -1,11 +1,11 @@
-"""Trend Pullback — Consec Down + IBS in Strong Uptrends.
+"""Broad Dip-Buy — Pullback Below SMA(20) in Stocks Above SMA(50).
 
-Entry: SMA(10) > SMA(50) by min_spread + close > SMA(50) + 2+ consecutive
-       down closes + IBS < threshold + adequate volume.
+Entry: Close > SMA(50) (major trend intact) + close < SMA(20) (pullback)
+       + 2+ consecutive down closes + IBS < threshold + adequate volume.
 Filters: Block DOWN regime + SHOCK/HIGH vol, skip earnings/FOMC/quad_witch.
 Risk: Stop 1.5 ATR, target optimized. Max hold 3 days.
 
-Long-only, daily bars.
+Long-only, daily bars. Works in UP + FLAT regimes.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
     def _set_params(self, config: Dict[str, Any]) -> None:
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 55))
-        self.sma_fast = int(config.get("sma_fast", 10))
-        self.sma_slow = int(config.get("sma_slow", 50))
+        self.sma_short = int(config.get("sma_short", 20))
+        self.sma_long = int(config.get("sma_long", 50))
         self.consec_down_min = int(config.get("consec_down_min", 2))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.vol_avg_period = int(config.get("vol_avg_period", 20))
@@ -38,7 +38,6 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
 
     # --- Indicator helpers ---
 
@@ -101,20 +100,21 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
-        # --- Trend: SMA(10) > SMA(50) by min spread, close > SMA(50) ---
-        sma_f = self._sma(closes, self.sma_fast)
-        sma_s = self._sma(closes, self.sma_slow)
-        if sma_f is None or sma_s is None:
+        # --- Major trend intact: close > SMA(50) ---
+        sma_l = self._sma(closes, self.sma_long)
+        if sma_l is None:
             return None
-        if sma_s < 1e-9:
-            return None
-        sma_spread = (sma_f - sma_s) / sma_s
-        if sma_spread < self.min_sma_spread:
-            return None
-        if bar.close <= sma_s:
+        if bar.close <= sma_l:
             return None
 
-        # --- Pullback: consecutive down closes ---
+        # --- Pullback confirmed: close < SMA(20) ---
+        sma_s = self._sma(closes, self.sma_short)
+        if sma_s is None:
+            return None
+        if bar.close >= sma_s:
+            return None
+
+        # --- Consecutive down closes ---
         consec = self._consecutive_down_count(closes)
         if consec < self.consec_down_min:
             return None
@@ -151,8 +151,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             meta={
                 "consec_down": consec,
                 "ibs": round(ibs, 3),
-                "sma_fast": round(sma_f, 2),
-                "sma_slow": round(sma_s, 2),
+                "sma_short": round(sma_s, 2),
+                "sma_long": round(sma_l, 2),
                 "atr": round(atr, 4),
                 "seed": "trend_pullback",
             },
