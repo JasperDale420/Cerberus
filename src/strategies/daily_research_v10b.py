@@ -38,7 +38,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 3))
-        self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
+        self.min_sma_spread = float(config.get("min_sma_spread", 0.015))
 
     # --- Indicator helpers ---
 
@@ -95,6 +95,8 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None
         if labels.get("quad_witch_week", False):
+            return None
+        if labels.get("opex_week", False):
             return None
 
         bars = list(symbol_state.bars)
