@@ -1,10 +1,10 @@
-"""ATR-Envelope Dip Buy — evolved from vol_breakout seed.
+"""ATR-Normalized Dip Buy — evolved from vol_breakout seed.
 
-Buy when close dips below SMA(20) by at least atr_dip_min * ATR,
-IBS confirms selling exhaustion, and price is above SMA(50) (uptrend).
-Target: SMA(20) mean reversion.
+Buy when price has dipped significantly relative to ATR from its recent high,
+and IBS confirms selling exhaustion. Uses ATR to normalize entry depth
+so the strategy adapts to changing volatility — maintains vol_breakout DNA.
 
-Filters: Close > SMA(50), skip SHOCK vol, skip earnings/FOMC, volume check.
+Filters: Block DOWN trend regime, skip SHOCK vol, skip earnings/FOMC.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -29,22 +29,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
-        self.sma_period = int(config.get("sma_period", 20))
-        self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
+        self.high_lookback = int(config.get("high_lookback", 10))
+        self.atr_dip_min = float(config.get("atr_dip_min", 1.5))
         self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
+        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
-        self.trend_sma_period = int(config.get("trend_sma_period", 50))
-        self.vol_avg_period = int(config.get("vol_avg_period", 20))
-        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
 
     # --- Indicator helpers ---
-
-    @staticmethod
-    def _sma(values: list[float], period: int) -> Optional[float]:
-        if len(values) < period:
-            return None
-        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -76,34 +68,30 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         labels = symbol_state.meta.get("regime_labels", {})
+        if labels.get("regime_trend", "") == "DOWN":
+            return None
         if labels.get("near_earnings", False):
             return None
         if labels.get("near_fomc", False):
             return None
 
         bars = list(symbol_state.bars)
-        closes = [b.close for b in bars]
-        volumes = [b.volume for b in bars]
 
-        # Long-term trend: price above SMA(50) — only buy dips in uptrends
-        sma_trend = self._sma(closes, self.trend_sma_period)
-        if sma_trend is None or bar.close <= sma_trend:
-            return None
-
-        # SMA — our mean reversion anchor
-        sma = self._sma(closes, self.sma_period)
-        if sma is None:
-            return None
-
-        # ATR — volatility normalizer
+        # ATR — our core volatility measure
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # ATR-envelope dip: close must be below SMA by at least atr_dip_min * ATR
-        lower_band = sma - self.atr_dip_min * atr
-        if bar.close >= lower_band:
+        # Recent high over lookback period (excluding current bar)
+        if len(bars) < self.high_lookback + 1:
             return None
+        recent_highs = [b.high for b in bars[-(self.high_lookback + 1) : -1]]
+        recent_high = max(recent_highs)
+
+        # ATR-normalized dip: how many ATRs has price dropped from recent high?
+        dip_depth = (recent_high - bar.close) / atr
+        if dip_depth < self.atr_dip_min:
+            return None  # Not deep enough
 
         # IBS: selling exhaustion — close near day's low
         bar_range = bar.high - bar.low
@@ -111,16 +99,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         ibs = (bar.close - bar.low) / bar_range
         if ibs >= self.ibs_threshold:
-            return None
+            return None  # Sellers haven't given up yet
 
-        # Volume: must have reasonable participation
-        avg_vol = self._sma(volumes, self.vol_avg_period)
-        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
-            return None
-
-        # Stop: ATR below entry, Target: SMA (mean reversion)
+        # Stop and target based on ATR
         stop = bar.close - self.stop_atr_mult * atr
-        target = sma
+        target = bar.close + self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -132,8 +115,8 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "sma": round(sma, 2),
-                "dip_atr": round((sma - bar.close) / atr, 2),
+                "dip_depth_atr": round(dip_depth, 2),
+                "recent_high": round(recent_high, 2),
                 "ibs": round(ibs, 3),
                 "seed": "vol_breakout",
             },
