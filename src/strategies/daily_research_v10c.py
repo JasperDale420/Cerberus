@@ -105,11 +105,6 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         sma = self._sma(closes, self.sma_period)
         if sma is None:
             return None
-
-        # Recent pullback: previous close was above SMA (genuine dip, not sustained decline)
-        if len(closes) < 2 or closes[-2] <= sma:
-            return None
-
         lower_band = sma - self.atr_dip_min * atr
 
         # Entry: close below lower Keltner band
