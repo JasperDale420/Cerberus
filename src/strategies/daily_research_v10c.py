@@ -84,6 +84,7 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
 
         bars = list(symbol_state.bars)
+        closes = [b.close for b in bars]
         volumes = [b.volume for b in bars]
 
         # Current ATR
