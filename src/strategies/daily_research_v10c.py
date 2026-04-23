@@ -1,10 +1,10 @@
 """ATR-Envelope Dip Buy — evolved from vol_breakout seed.
 
 Buy when close dips below SMA(20) by at least atr_dip_min * ATR,
-and IBS confirms selling exhaustion. Target: SMA(20) mean reversion.
-Uses ATR for envelope, stop, and normalization — vol_breakout DNA.
+IBS confirms selling exhaustion, and price is above SMA(50) (uptrend).
+Target: SMA(20) mean reversion.
 
-Filters: Skip SHOCK vol, skip earnings/FOMC.
+Filters: Close > SMA(50), skip SHOCK vol, skip earnings/FOMC, volume check.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -34,6 +34,9 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.trend_sma_period = int(config.get("trend_sma_period", 50))
+        self.vol_avg_period = int(config.get("vol_avg_period", 20))
+        self.vol_min_ratio = float(config.get("vol_min_ratio", 0.7))
 
     # --- Indicator helpers ---
 
@@ -80,6 +83,12 @@ class SeedVolBreakoutStrategy(BaseStrategy):
 
         bars = list(symbol_state.bars)
         closes = [b.close for b in bars]
+        volumes = [b.volume for b in bars]
+
+        # Long-term trend: price above SMA(50) — only buy dips in uptrends
+        sma_trend = self._sma(closes, self.trend_sma_period)
+        if sma_trend is None or bar.close <= sma_trend:
+            return None
 
         # SMA — our mean reversion anchor
         sma = self._sma(closes, self.sma_period)
@@ -102,6 +111,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             return None
         ibs = (bar.close - bar.low) / bar_range
         if ibs >= self.ibs_threshold:
+            return None
+
+        # Volume: must have reasonable participation
+        avg_vol = self._sma(volumes, self.vol_avg_period)
+        if avg_vol is not None and avg_vol > 0 and bar.volume < self.vol_min_ratio * avg_vol:
             return None
 
         # Stop: ATR below entry, Target: SMA (mean reversion)
