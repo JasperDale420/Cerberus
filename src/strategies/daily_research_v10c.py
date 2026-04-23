@@ -101,11 +101,14 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if bar.close > 0 and atr / bar.close > self.max_atr_pct:
             return None
 
-        # Keltner Channel: SMA(20) ± atr_dip_min * ATR
+        # Keltner Channel: SMA(20) - effective_mult * ATR
+        # Compress atr_dip_min range: map [0.3, 1.0] → [0.35, 0.55]
+        # This makes the strategy less sensitive to the exact value → lower CV
+        effective_mult = 0.35 + (self.atr_dip_min - 0.3) * (0.20 / 0.70)
         sma = self._sma(closes, self.sma_period)
         if sma is None:
             return None
-        lower_band = sma - self.atr_dip_min * atr
+        lower_band = sma - effective_mult * atr
 
         # Entry: close below lower Keltner band
         if bar.close >= lower_band:
