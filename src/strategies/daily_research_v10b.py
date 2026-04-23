@@ -37,7 +37,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
         self.atr_period = int(config.get("atr_period", 14))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 1.5))
-        self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_hold_days = int(config.get("max_hold_days", 3))
         self.min_sma_spread = float(config.get("min_sma_spread", 0.01))
 
     # --- Indicator helpers ---
