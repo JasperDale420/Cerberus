@@ -1,10 +1,11 @@
-"""ATR-Normalized Dip Buy — evolved from vol_breakout seed.
+"""Keltner Dip Buy with defensive filters — evolved from vol_breakout seed.
 
-Buy when price has dipped significantly relative to ATR from its recent high,
-and IBS confirms selling exhaustion. Uses ATR to normalize entry depth
-so the strategy adapts to changing volatility — maintains vol_breakout DNA.
+Buy when close dips below lower Keltner band (SMA - atr_dip_min * ATR),
+IBS confirms exhaustion. Defensive filters from v9c: block HIGH/SHOCK vol,
+skip volatile stocks, cap risk per trade, filter news-driven wide bars.
 
-Filters: Block DOWN trend regime, skip SHOCK vol, skip earnings/FOMC.
+atr_dip_min is the Keltner channel multiplier (harness tunes 0.3-1.0).
+Target: Keltner midline (SMA). Stop: below bar low.
 Long-only, daily bars, max_hold_days=5.
 """
 
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, VolRegime
+from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState
 from src.core.logger import StructuredLogger
 from src.strategies.base import BaseStrategy
 
@@ -29,14 +30,21 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 50))
         self.atr_period = int(config.get("atr_period", 14))
-        self.high_lookback = int(config.get("high_lookback", 10))
-        self.atr_dip_min = float(config.get("atr_dip_min", 1.5))
-        self.ibs_threshold = float(config.get("ibs_threshold", 0.4))
+        self.sma_period = int(config.get("sma_period", 20))
+        self.atr_dip_min = float(config.get("atr_dip_min", 0.5))
+        self.ibs_threshold = float(config.get("ibs_threshold", 0.35))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
-        self.target_atr_mult = float(config.get("target_atr_mult", 2.0))
         self.max_hold_days = int(config.get("max_hold_days", 5))
+        self.max_atr_pct = float(config.get("max_atr_pct", 0.05))
+        self.max_risk_pct = float(config.get("max_risk_pct", 0.025))
 
     # --- Indicator helpers ---
+
+    @staticmethod
+    def _sma(values: list[float], period: int) -> Optional[float]:
+        if len(values) < period:
+            return None
+        return sum(values[-period:]) / period
 
     @staticmethod
     def _atr(bars: list[Bar], period: int) -> Optional[float]:
@@ -62,48 +70,67 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if not self._require_min_bars(symbol_state, self.min_bars):
             return None
 
-        # --- Regime filters ---
-        snapshot = market_state.regime_snapshot
-        if snapshot and snapshot.vol == VolRegime.SHOCK:
-            return None
-
+        # --- Calendar + regime filters (from v9c) ---
         labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("regime_trend", "") == "DOWN":
-            return None
         if labels.get("near_earnings", False):
             return None
         if labels.get("near_fomc", False):
             return None
+        if labels.get("opex_week", False):
+            return None
+        if labels.get("quad_witch_week", False):
+            return None
+
+        regime_vol = labels.get("regime_vol", "NORMAL")
+        if regime_vol in ("SHOCK", "HIGH"):
+            return None
+
+        regime_trend = labels.get("regime_trend", "FLAT")
+        if regime_trend == "DOWN":
+            return None
 
         bars = list(symbol_state.bars)
+        closes = [b.close for b in bars]
 
-        # ATR — our core volatility measure
+        # ATR — core volatility measure
         atr = self._atr(bars, self.atr_period)
         if atr is None or atr < 1e-9:
             return None
 
-        # Recent high over lookback period (excluding current bar)
-        if len(bars) < self.high_lookback + 1:
+        # Skip very volatile stocks (ATR > 5% of price)
+        if bar.close > 0 and atr / bar.close > self.max_atr_pct:
             return None
-        recent_highs = [b.high for b in bars[-(self.high_lookback + 1) : -1]]
-        recent_high = max(recent_highs)
 
-        # ATR-normalized dip: how many ATRs has price dropped from recent high?
-        dip_depth = (recent_high - bar.close) / atr
-        if dip_depth < self.atr_dip_min:
-            return None  # Not deep enough
+        # Keltner Channel: SMA(20) ± atr_dip_min * ATR
+        sma = self._sma(closes, self.sma_period)
+        if sma is None:
+            return None
+        lower_band = sma - self.atr_dip_min * atr
+
+        # Entry: close below lower Keltner band
+        if bar.close >= lower_band:
+            return None
 
         # IBS: selling exhaustion — close near day's low
-        bar_range = bar.high - bar.low
-        if bar_range < 1e-9:
+        daily_range = bar.high - bar.low
+        if daily_range < 1e-9:
             return None
-        ibs = (bar.close - bar.low) / bar_range
+        ibs = (bar.close - bar.low) / daily_range
         if ibs >= self.ibs_threshold:
-            return None  # Sellers haven't given up yet
+            return None
 
-        # Stop and target based on ATR
-        stop = bar.close - self.stop_atr_mult * atr
-        target = bar.close + self.target_atr_mult * atr
+        # Filter extremely wide bars (news-driven, unreliable)
+        if daily_range > 2.0 * atr:
+            return None
+
+        # Stop below bar's low, target Keltner midline (SMA)
+        stop = bar.low - self.stop_atr_mult * atr
+        target = sma
+
+        # Cap risk per trade
+        risk = (bar.close - stop) / bar.close if bar.close > 0 else 1.0
+        if risk > self.max_risk_pct:
+            return None
 
         self.last_signal_time[symbol] = bar.time
         return self._create_signal(
@@ -115,9 +142,10 @@ class SeedVolBreakoutStrategy(BaseStrategy):
             target_price=target,
             meta={
                 "atr": round(atr, 4),
-                "dip_depth_atr": round(dip_depth, 2),
-                "recent_high": round(recent_high, 2),
+                "sma": round(sma, 2),
+                "lower_band": round(lower_band, 2),
                 "ibs": round(ibs, 3),
+                "daily_range_atr": round(daily_range / atr, 2),
                 "seed": "vol_breakout",
             },
         )
