@@ -45,18 +45,20 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 # Default symbol universe: diversified, liquid, covers multiple sectors
 DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META"]
 
-# WFO parameters tuned for speed with regime diversity
-# 5 windows x 6-month OOS = ~15-20 min per iteration
-# Wider windows = fewer windows but more trades per OOS (statistically meaningful)
-# Covers: 2021 bull, 2022 bear, 2023 recovery, 2024 bull, early 2025
-WFO_FULL_START = "2020-06-01"
-WFO_FULL_END = "2025-09-30"
+# WFO parameters — full available data window (2016-06-01 → 2026-03-19)
+# Rolling 12-month train + 6-month OOS + 3-month final holdout.
+# Coverage: 2016-17 low-vol bull, 2018 vol-spike, 2019-20 pre/covid crash, 2020-21 recovery,
+# 2022 bear, 2023 recovery, 2024 bull, 2025-26 latest. ~18 OOS windows.
+# Each iteration ~45-75 min depending on strategy complexity.
+WFO_FULL_START = "2016-06-01"
+WFO_FULL_END = "2026-03-19"
 WFO_TRAIN_MONTHS = 12
 WFO_TEST_MONTHS = 6
 WFO_HOLDOUT_MONTHS = 3
 WFO_MODE = "rolling"
 DATA_DIR = "data/bars_2023_2025"
 CONFIG_PATH = "config/backtest_v2.yaml"
+STARTING_CAPITAL = 100_000.0  # for SPY benchmark comparison
 
 
 def classify_window_regime(data_dir: str, start: str, end: str) -> str:
@@ -373,6 +375,42 @@ def main():
         f"worst_regime={worst_regime}:{worst_regime_pf:.2f} "
         f"loc={strategy_loc} loc_penalty={loc_penalty:.1f}"
     )
+
+    # ── SPY buy-and-hold benchmark over the OOS window span ─────────
+    # Strategy total PnL is the sum of net_pnl across OOS windows.
+    # Benchmark is SPY buy-and-hold return over the span of the OOS windows
+    # applied to the same starting capital. Ratio = strategy_return / spy_return.
+    try:
+        strategy_total_pnl = sum(m.get("net_pnl", 0.0) for m in oos_metrics)
+        strategy_return_pct = (strategy_total_pnl / STARTING_CAPITAL) * 100.0
+
+        spy_bars_path = Path(args.data_dir) / "SPY_1Min.parquet"
+        spy_return_pct = float("nan")
+        if spy_bars_path.exists() and windows:
+            spy = pd.read_parquet(spy_bars_path)
+            ts_col = "timestamp" if "timestamp" in spy.columns else spy.columns[0]
+            spy[ts_col] = pd.to_datetime(spy[ts_col], utc=True)
+            # Span the OOS windows: first window test_start → last window test_end
+            span_start = pd.Timestamp(windows[0]["test_start"], tz="UTC")
+            span_end = pd.Timestamp(windows[-1]["test_end"], tz="UTC")
+            span = spy[(spy[ts_col] >= span_start) & (spy[ts_col] <= span_end)]
+            if len(span) > 1:
+                spy_return_pct = ((float(span.iloc[-1]["close"]) / float(span.iloc[0]["close"])) - 1.0) * 100.0
+
+        ratio = (
+            strategy_return_pct / spy_return_pct
+            if spy_return_pct and spy_return_pct == spy_return_pct and spy_return_pct != 0
+            else float("nan")
+        )
+        emit(
+            f"AUTORESEARCH_BENCHMARK strategy_return_pct={strategy_return_pct:.2f} "
+            f"spy_return_pct={spy_return_pct:.2f} "
+            f"ratio_vs_spy={ratio:.2f} "
+            f"goal=2.00 "
+            f"span={windows[0]['test_start']}..{windows[-1]['test_end']}"
+        )
+    except Exception as e:
+        emit(f"AUTORESEARCH_BENCHMARK error={e}")
 
     # ── Save full results JSON ─────────────────────────────────────
     out_dir = "artifacts/autoresearch"

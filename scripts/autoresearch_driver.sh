@@ -47,8 +47,9 @@ echo "============================================================"
 if [ "$ITER" -eq 0 ]; then
     echo "[iter 0] Running baseline..."
     COMMIT=$(git rev-parse --short HEAD)
-    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
+    BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
 
     if [ -z "$RESULT_LINE" ]; then
         echo "[iter 0] ERROR: No result line"; echo "$EVAL_OUTPUT" | tail -20; exit 1
@@ -68,6 +69,10 @@ if [ "$ITER" -eq 0 ]; then
 
     cat > "$LAST_RESULT_FILE" <<EOF
 baseline: $STRATEGY score=$SCORE trades=$TRADES windows=$WIN_PROF sortino=$SORTINO
+
+SPY benchmark (goal: strategy_return ≥ 2x SPY over the OOS span):
+  ${BENCHMARK_LINE:-(missing)}
+
 Regimes: $(echo "$REGIMES" | tr '|' '\n' | head -8)
 Aggregates: $(echo "$AGGREGATES" | head -5)
 EOF
@@ -189,12 +194,13 @@ print(f'IMPORT_OK: {cls.__name__}')
 
     echo "[iter $ITER] Evaluating $EVAL_STRATEGY..."
     EVAL_START=$(date +%s)
-    EVAL_OUTPUT=$(timeout 4800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 $REGIME_FLAG 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 $REGIME_FLAG 2>&1 || true)
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
     echo "[iter $ITER] Eval completed in ${EVAL_DURATION}m"
 
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
+    BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
     REGIME_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_BREAKDOWN" || echo "")
     AGGREGATE_LINES=$(echo "$EVAL_OUTPUT" | grep "^REGIME_AGGREGATE" || echo "")
     INSIGHTS=$(uv run python scripts/extract_wfo_insights.py "$EVAL_STRATEGY" 2>/dev/null || echo "NO_INSIGHTS")
@@ -256,6 +262,9 @@ print(f'IMPORT_OK: {cls.__name__}')
     cat > "$LAST_RESULT_FILE" <<EOFRESULT
 iter=$ITER status=$STATUS score=$SCORE best=$BEST_SCORE trades=$TRADES windows=$WIN_PROF
 change: $COMMIT_MSG
+
+SPY benchmark (goal: strategy_return ≥ 2x SPY over the OOS span):
+  ${BENCHMARK_LINE:-(missing)}
 
 Regime breakdown:
 $(echo "$REGIME_LINES" | sed 's/^/  /' | head -8)

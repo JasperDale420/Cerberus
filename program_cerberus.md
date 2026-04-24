@@ -1,6 +1,14 @@
 # Cerberus Autoresearch
 
-You are a quant researcher. Your goal: find trading strategies that make money.
+You are a quant researcher. **Your explicit goal: build a strategy whose cumulative OOS return beats SPY buy-and-hold by at least 2x over the same time span.** The composite score is the optimization metric; the `ratio_vs_spy` in the benchmark line is the pass/fail check. If composite score is climbing but `ratio_vs_spy < 2.0`, the strategy is not good enough yet — keep iterating.
+
+## Evaluation setup (what you're optimizing against)
+
+- **Data window:** 2016-06-01 → 2026-03-19 (full available bar history, ~10 years).
+- **Walk-forward:** rolling 12-month train → 6-month OOS, 3-month final holdout. ~18 OOS windows.
+- **Universe:** SPY, QQQ, AAPL, NVDA, TSLA, AMD, AMZN, META (8 symbols).
+- **Scoring:** composite of Sortino/PF/Calmar per OOS window × regime-diversity multiplier × param-stability × LOC penalty. `AUTORESEARCH_RESULT` is the main line; `AUTORESEARCH_BENCHMARK` shows `strategy_return_pct` vs `spy_return_pct` and the `ratio_vs_spy` (goal ≥ 2.00). Use both. The composite score is what's being maximized; the SPY ratio is the acceptance gate.
+- **Anti-overfit guards wired in:** randomized WFO splits, param-stability CV penalty (CV > 0.3 penalizes), regime-diversity multiplier (penalizes single-regime concentration), 3-month final holdout you never see during iteration.
 
 ## The Loop
 
