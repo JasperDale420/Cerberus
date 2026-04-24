@@ -68,9 +68,9 @@ class RegimeTrendUpStrategy(BaseStrategy):
         if ema20 is None or ema50 is None or ema20 <= ema50:
             return None
 
-        # Factor 2: Price must be at or below EMA20 (true pullback, not chasing)
+        # Factor 2: Price within pullback_pct of EMA20 (near-EMA entry)
         dist_pct = (bar.close - ema20) / ema20
-        if dist_pct < -self.pullback_pct or dist_pct > 0.0:
+        if abs(dist_pct) > self.pullback_pct:
             return None
 
         # Factor 3: RSI not overbought and not in freefall
