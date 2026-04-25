@@ -3,7 +3,7 @@ RegimeTrendUp Strategy
 
 Type: trend-following
 Description: Buys pullbacks in uptrends during UP+NORMAL regime.
-3-factor entry: EMA trend confirmation, pullback to EMA20, RSI not overbought.
+2-factor entry: EMA trend confirmation, pullback to EMA20.
 BUY-only.
 """
 
@@ -19,7 +19,7 @@ from src.strategies.base import BaseStrategy
 
 
 class RegimeTrendUpStrategy(BaseStrategy):
-    """Buy pullbacks in uptrends: EMA trend + price near EMA20 + RSI range."""
+    """Buy pullbacks in uptrends: EMA trend + price at EMA20."""
 
     name: str = "regime_trend_up"
 
@@ -30,8 +30,6 @@ class RegimeTrendUpStrategy(BaseStrategy):
         super()._set_params(config)
         self.min_bars = int(config.get("min_bars", 30))
         self.pullback_pct = float(config.get("pullback_pct", 0.008))
-        self.rsi_max = float(config.get("rsi_max", 70.0))
-        self.rsi_min = float(config.get("rsi_min", 35.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_rr = float(config.get("target_rr", 2.5))
         self.time_window_start = time_utils.parse_time_string(str(config.get("time_window_start", "09:35")))
@@ -73,11 +71,6 @@ class RegimeTrendUpStrategy(BaseStrategy):
         if dist_pct < -self.pullback_pct or dist_pct > 0:
             return None
 
-        # Factor 3: RSI not overbought and not in freefall
-        rsi = mtf.get_rsi("1m", 14)
-        if rsi is not None and (rsi > self.rsi_max or rsi < self.rsi_min):
-            return None
-
         atr = mtf.get_atr("1m", 14)
         if atr is None or atr <= 0:
             return None
@@ -93,5 +86,5 @@ class RegimeTrendUpStrategy(BaseStrategy):
             stop_price=stop_price,
             target_price=target_price,
             size_hint=1.0,
-            meta={"ema20": round(ema20, 4), "dist_pct": round(dist_pct, 5), "rsi": round(rsi, 2) if rsi else None},
+            meta={"ema20": round(ema20, 4), "dist_pct": round(dist_pct, 5)},
         )
