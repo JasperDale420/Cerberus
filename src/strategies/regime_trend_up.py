@@ -2,8 +2,8 @@
 RegimeTrendUp Strategy
 
 Type: trend-following
-Description: Buys pullbacks in uptrends during UP+NORMAL regime.
-2-factor entry: EMA trend confirmation, pullback to EMA20.
+Description: Buys pullbacks to EMA20 during UP+NORMAL regime.
+Regime detector provides trend confirmation; EMA20 is the entry trigger.
 BUY-only.
 """
 
@@ -19,7 +19,7 @@ from src.strategies.base import BaseStrategy
 
 
 class RegimeTrendUpStrategy(BaseStrategy):
-    """Buy pullbacks in uptrends: EMA trend + price at EMA20."""
+    """Buy pullbacks to EMA20 in UP+NORMAL regime."""
 
     name: str = "regime_trend_up"
 
@@ -60,13 +60,11 @@ class RegimeTrendUpStrategy(BaseStrategy):
 
         mtf = MultiTimeframeAnalyzer(symbol_state)
 
-        # Factor 1: EMA20 > EMA50 — intraday uptrend confirmed
+        # EMA20 acts as dynamic support; regime detector already confirms uptrend
         ema20 = mtf.get_ema("1m", 20)
-        ema50 = mtf.get_ema("1m", 50)
-        if ema20 is None or ema50 is None or ema20 <= ema50:
+        if ema20 is None:
             return None
 
-        # Factor 2: Price at or just below EMA20 (true pullback to support)
         dist_pct = (bar.close - ema20) / ema20
         if dist_pct < -self.pullback_pct or dist_pct > 0:
             return None
