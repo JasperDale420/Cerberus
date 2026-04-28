@@ -13,7 +13,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **regime_trend_up iter4** — removed EMA50 uptrend filter; regime detector already confirms the broader trend, making the intraday EMA50 check redundant. Entry now requires only price within `pullback_pct` below EMA20 during UP+NORMAL regime.
 - **Autoresearch WFO window extended to full available bar history** — 2016-06-01 → 2026-03-19 (was 2020-06-01 → 2025-09-30). Roughly 18 rolling 6-month OOS windows instead of 7, covering 2016-17 low-vol bull, 2018 vol-spike, 2019-20 pre/covid crash, 2020-21 recovery, 2022 bear, 2023 recovery, 2024 bull, 2025-26. Driver timeout bumped 4800→10800s to accommodate the ~3x eval duration.
 - **Consolidated all research iteration branches into main.** Autoresearch iterations that previously ran on disposable `fix/auto-health-*` and `autoresearch/*` branches now run directly on `main`. Branch tips are preserved as `research-archive/*` git tags so the full commit history of each iteration run remains reachable even after the branches are deleted.
 - **Autoresearch playbooks** (`program_cerberus.md`, `program_cerberus_v3.md`, `autoresearch/program.md`) now explicitly forbid creating new branches or worktrees — all iterations commit directly on `main`, failed experiments are reverted via `git reset --hard HEAD~1`.
