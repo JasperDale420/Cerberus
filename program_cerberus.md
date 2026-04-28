@@ -7,8 +7,15 @@ You are a quant researcher. **Your explicit goal: build a strategy whose cumulat
 - **Data window:** 2016-06-01 → 2026-03-19 (full available bar history, ~10 years).
 - **Walk-forward:** rolling 12-month train → 6-month OOS, 3-month final holdout. ~18 OOS windows.
 - **Universe:** SPY, QQQ, AAPL, NVDA, TSLA, AMD, AMZN, META (8 symbols).
-- **Scoring:** composite of Sortino/PF/Calmar per OOS window × regime-diversity multiplier × param-stability × LOC penalty. `AUTORESEARCH_RESULT` is the main line; `AUTORESEARCH_BENCHMARK` shows `strategy_return_pct` vs `spy_return_pct` and the `ratio_vs_spy` (goal ≥ 2.00). Use both. The composite score is what's being maximized; the SPY ratio is the acceptance gate.
-- **Anti-overfit guards wired in:** randomized WFO splits, param-stability CV penalty (CV > 0.3 penalizes), regime-diversity multiplier (penalizes single-regime concentration), 3-month final holdout you never see during iteration.
+- **Composite score = `ratio_vs_spy` (with adjustments).** This is THE metric. Computed honestly from `strategy_total_pnl / starting_capital` divided by SPY buy-and-hold return over the same OOS window span. **Goal: composite ≥ 2.0** (double SPY).
+- **Hard gates** — if any of these fail, score is forced to **−2.0** regardless of any other metric:
+  - `windows_profitable_pct ≥ 40%` — at least 40% of scoring windows must have **positive net PnL** (not just "didn't trip a hard-reject sentinel"). This is the lie-prevention check.
+  - `ratio_vs_spy > 0` — strategy must be net profitable over the span.
+  - `total_oos_trades ≥ 5 × n_windows` — minimum activity floor.
+- **Adjustments after gates pass:** `composite = ratio_vs_spy + loc_penalty`, then multiplied by the param-stability penalty `max(0.5, 1 − (cv_max − 0.3))` if `cv_max > 0.3`.
+- **Anti-overfit guards:** randomized WFO splits, param-stability CV multiplier, regime-diversity scoring inside the WFO, 3-month final holdout the agent never sees during iteration.
+
+The old "average of profitable-only windows" scoring was gameable — a strategy losing money in 12/13 windows could still score high from the one lucky window. The new score collapses to **−2.0** in that scenario.
 
 ## The Loop
 

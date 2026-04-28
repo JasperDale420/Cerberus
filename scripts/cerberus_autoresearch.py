@@ -255,17 +255,15 @@ def main():
     oos_metrics = results.get("oos_metrics", [])
     param_stability = results.get("param_stability", {})
 
-    positive_windows = sum(1 for s in oos_scores if s > 0)
     total_windows = len(oos_scores)
     total_oos_trades = sum(m.get("n_trades", 0) for m in oos_metrics)
+    # "Profitable" now means actual positive net PnL on the window — NOT
+    # "didn't trip a hard-reject sentinel". This is the honest measure.
+    positive_windows = sum(1 for m in oos_metrics if m.get("net_pnl", 0.0) > 0)
 
     # Avg Sortino (only from windows with trades)
     sortinos = [m.get("sortino_ratio", 0) for m in oos_metrics if m.get("n_trades", 0) > 0]
     avg_sortino = sum(sortinos) / max(len(sortinos), 1)
-
-    # Composite score: mean of OOS scores (excluding hard-reject sentinel values)
-    valid_scores = [s for s in oos_scores if s > -100]
-    composite_score = sum(valid_scores) / max(len(valid_scores), 1) if valid_scores else -999.0
 
     # Simplicity bonus/penalty based on strategy LOC (Karpathy: simpler is better)
     strategy_path = Path(f"src/strategies/{strategy_name}.py")
@@ -279,8 +277,6 @@ def main():
         loc_penalty = min(0.5, 0.02 * (50 - strategy_loc))  # +0.02/line, capped at +0.5
     else:
         loc_penalty = 0.0
-    if composite_score > -100:  # Only apply to real scores, not sentinel -999
-        composite_score += loc_penalty
 
     # Max param CV
     param_cvs = [stats.get("cv", 0.0) for stats in param_stability.values()]
@@ -341,26 +337,85 @@ def main():
             worst_regime = regime
 
     # ── Regime-filtered scoring for specialists ─────────────────────
-    # When --target-regime is set, recompute composite using only matching windows.
-    # This prevents a UP+NORMAL specialist from being penalized for DOWN+HIGH windows.
+    # When --target-regime is set, all subsequent metrics (windows, trades, PnL,
+    # SPY benchmark) are restricted to OOS windows whose classified regime matches.
+    # This prevents an UP+NORMAL specialist from being penalized for DOWN+HIGH
+    # windows it intentionally avoids.
     target_regime = args.target_regime
+    scoring_windows = list(range(total_windows))  # default: all windows
     if target_regime and regime_stats.get(target_regime):
-        target_windows = regime_stats[target_regime]
-        target_valid = [s["score"] for s in target_windows if s["score"] > -100]
-        if target_valid:
-            composite_score = sum(target_valid) / len(target_valid)
-        target_trades = sum(s["trades"] for s in target_windows)
-        target_positive = sum(1 for s in target_windows if s["score"] > 0)
+        # Collect the original window indices for this regime
+        scoring_windows = [
+            i
+            for i, w in enumerate(windows)
+            if classify_window_regime(args.data_dir, w["test_start"], w["test_end"]) == target_regime
+        ]
+        target_trades = sum(oos_metrics[i].get("n_trades", 0) for i in scoring_windows)
+        target_positive_pnl = sum(1 for i in scoring_windows if oos_metrics[i].get("net_pnl", 0.0) > 0)
         emit(
             f"REGIME_FILTERED target={target_regime} "
-            f"composite_score={composite_score:.4f} "
-            f"windows={target_positive}/{len(target_windows)} "
+            f"windows={target_positive_pnl}/{len(scoring_windows)} "
             f"trades={target_trades}"
         )
-        # Override totals for the summary line
-        positive_windows = target_positive
-        total_windows = len(target_windows)
+        positive_windows = target_positive_pnl
+        total_windows = len(scoring_windows)
         total_oos_trades = target_trades
+
+    # ── SPY buy-and-hold benchmark + new composite score ────────────
+    # Score is now driven by ratio_vs_spy directly (the user's actual goal),
+    # gated on basic sanity checks. No more "average of profitable windows
+    # only" — all scoring windows count, hard-rejects included.
+    GATE_FLOOR = -2.0  # visible negative; agent sees gate failure clearly
+    MIN_WINDOWS_PROFITABLE_PCT = 40.0  # at least 40% of scoring windows must have net_pnl > 0
+    MIN_TRADES_PER_WINDOW = 5  # avg lower bound
+
+    strategy_total_pnl = sum(oos_metrics[i].get("net_pnl", 0.0) for i in scoring_windows)
+    strategy_return_pct = (strategy_total_pnl / STARTING_CAPITAL) * 100.0
+
+    spy_return_pct = float("nan")
+    ratio_vs_spy = float("nan")
+    benchmark_span = "n/a"
+    try:
+        spy_bars_path = Path(args.data_dir) / "SPY_1Min.parquet"
+        if spy_bars_path.exists() and scoring_windows:
+            spy = pd.read_parquet(spy_bars_path, columns=["timestamp", "close"])
+            spy["timestamp"] = pd.to_datetime(spy["timestamp"], utc=True)
+            # SPY benchmark spans the full union of scoring windows
+            sw_starts = [pd.Timestamp(windows[i]["test_start"], tz="UTC") for i in scoring_windows]
+            sw_ends = [pd.Timestamp(windows[i]["test_end"], tz="UTC") for i in scoring_windows]
+            span_start, span_end = min(sw_starts), max(sw_ends)
+            benchmark_span = f"{span_start.date()}..{span_end.date()}"
+            span = spy[(spy["timestamp"] >= span_start) & (spy["timestamp"] <= span_end)]
+            if len(span) > 1:
+                spy_return_pct = ((float(span.iloc[-1]["close"]) / float(span.iloc[0]["close"])) - 1.0) * 100.0
+                if spy_return_pct != 0:
+                    ratio_vs_spy = strategy_return_pct / spy_return_pct
+    except Exception as e:
+        emit(f"AUTORESEARCH_BENCHMARK_ERROR error={e}")
+
+    # ── Apply gates ─────────────────────────────────────────────────
+    windows_profitable_pct = (positive_windows / max(total_windows, 1)) * 100.0
+    min_total_trades = total_windows * MIN_TRADES_PER_WINDOW
+    gate_failures: list[str] = []
+    if total_oos_trades < min_total_trades:
+        gate_failures.append(f"trades={total_oos_trades}<{min_total_trades}")
+    if windows_profitable_pct < MIN_WINDOWS_PROFITABLE_PCT:
+        gate_failures.append(f"win_windows={windows_profitable_pct:.0f}%<{MIN_WINDOWS_PROFITABLE_PCT:.0f}%")
+    if not (ratio_vs_spy == ratio_vs_spy):  # NaN check
+        gate_failures.append("benchmark_unavailable")
+    elif ratio_vs_spy <= 0:
+        gate_failures.append(f"ratio_vs_spy={ratio_vs_spy:.2f}<=0")
+
+    if gate_failures:
+        composite_score = GATE_FLOOR
+        score_explanation = "gates_failed:" + ",".join(gate_failures)
+    else:
+        # Honest composite = how many SPYs we beat. Goal: 2.0+
+        composite_score = float(ratio_vs_spy) + loc_penalty
+        # Param-stability penalty: unstable params (CV > 0.3) shrink the score
+        if param_cv_max > 0.3:
+            composite_score *= max(0.5, 1.0 - (param_cv_max - 0.3))
+        score_explanation = f"ratio_vs_spy={ratio_vs_spy:.2f}+loc_penalty={loc_penalty:.2f}*cv_mult"
 
     # ── Summary result line ─────────────────────────────────────────
     emit(
@@ -373,44 +428,16 @@ def main():
         f"wfo_efficiency={wfo_efficiency:.4f} "
         f"best_regime={best_regime}:{best_regime_pf:.2f} "
         f"worst_regime={worst_regime}:{worst_regime_pf:.2f} "
-        f"loc={strategy_loc} loc_penalty={loc_penalty:.1f}"
+        f"loc={strategy_loc} loc_penalty={loc_penalty:.1f} "
+        f"score_explanation={score_explanation}"
     )
-
-    # ── SPY buy-and-hold benchmark over the OOS window span ─────────
-    # Strategy total PnL is the sum of net_pnl across OOS windows.
-    # Benchmark is SPY buy-and-hold return over the span of the OOS windows
-    # applied to the same starting capital. Ratio = strategy_return / spy_return.
-    try:
-        strategy_total_pnl = sum(m.get("net_pnl", 0.0) for m in oos_metrics)
-        strategy_return_pct = (strategy_total_pnl / STARTING_CAPITAL) * 100.0
-
-        spy_bars_path = Path(args.data_dir) / "SPY_1Min.parquet"
-        spy_return_pct = float("nan")
-        if spy_bars_path.exists() and windows:
-            spy = pd.read_parquet(spy_bars_path)
-            ts_col = "timestamp" if "timestamp" in spy.columns else spy.columns[0]
-            spy[ts_col] = pd.to_datetime(spy[ts_col], utc=True)
-            # Span the OOS windows: first window test_start → last window test_end
-            span_start = pd.Timestamp(windows[0]["test_start"], tz="UTC")
-            span_end = pd.Timestamp(windows[-1]["test_end"], tz="UTC")
-            span = spy[(spy[ts_col] >= span_start) & (spy[ts_col] <= span_end)]
-            if len(span) > 1:
-                spy_return_pct = ((float(span.iloc[-1]["close"]) / float(span.iloc[0]["close"])) - 1.0) * 100.0
-
-        ratio = (
-            strategy_return_pct / spy_return_pct
-            if spy_return_pct and spy_return_pct == spy_return_pct and spy_return_pct != 0
-            else float("nan")
-        )
-        emit(
-            f"AUTORESEARCH_BENCHMARK strategy_return_pct={strategy_return_pct:.2f} "
-            f"spy_return_pct={spy_return_pct:.2f} "
-            f"ratio_vs_spy={ratio:.2f} "
-            f"goal=2.00 "
-            f"span={windows[0]['test_start']}..{windows[-1]['test_end']}"
-        )
-    except Exception as e:
-        emit(f"AUTORESEARCH_BENCHMARK error={e}")
+    emit(
+        f"AUTORESEARCH_BENCHMARK strategy_return_pct={strategy_return_pct:.2f} "
+        f"spy_return_pct={spy_return_pct:.2f} "
+        f"ratio_vs_spy={ratio_vs_spy:.2f} "
+        f"goal=2.00 "
+        f"span={benchmark_span}"
+    )
 
     # ── Save full results JSON ─────────────────────────────────────
     out_dir = "artifacts/autoresearch"

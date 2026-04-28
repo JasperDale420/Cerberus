@@ -37,10 +37,52 @@ def main():
     for m in oos_metrics:
         all_trades.extend(m.get("trades", []))
 
-    if not all_trades:
+    # Use window-aggregated counts as the source of truth — the per-trade list may
+    # have been stripped during JSON serialization even when trades occurred.
+    aggregate_n_trades = sum(m.get("n_trades", 0) for m in oos_metrics)
+
+    if aggregate_n_trades == 0:
         print("NO_TRADES — strategy generated zero trades across all OOS windows.")
         print("ROOT CAUSE: Entry gates are too strict, or strategy is not registered.")
         print("ACTION: Loosen entry criteria, remove hard gates, or check activation policy.")
+        sys.exit(0)
+
+    if not all_trades:
+        # We have aggregate counts but no per-trade detail — emit window-level summary.
+        print(
+            f"TRADE ANALYSIS (aggregate-only — {aggregate_n_trades} trades across "
+            f"{len(oos_metrics)} OOS windows; per-trade detail not in JSON):"
+        )
+        total_n_wins = sum(m.get("n_wins", 0) for m in oos_metrics)
+        total_n_losses = sum(m.get("n_losses", 0) for m in oos_metrics)
+        total_pnl = sum(m.get("net_pnl", 0.0) for m in oos_metrics)
+        agg_winrate = total_n_wins / aggregate_n_trades if aggregate_n_trades else 0
+        agg_avg_pnl = total_pnl / aggregate_n_trades if aggregate_n_trades else 0
+        avg_pf = sum(m.get("profit_factor", 0) for m in oos_metrics if m.get("n_trades", 0) > 0) / max(
+            sum(1 for m in oos_metrics if m.get("n_trades", 0) > 0), 1
+        )
+        print(f"  Win rate: {agg_winrate:.1%} ({total_n_wins}W / {total_n_losses}L)")
+        print(f"  Total PnL: ${total_pnl:.2f} | Avg PnL/trade: ${agg_avg_pnl:.2f} | Avg PF: {avg_pf:.2f}")
+        print("\nPER-WINDOW PERFORMANCE:")
+        for i, m in enumerate(oos_metrics):
+            wt = m.get("n_trades", 0)
+            if wt > 0:
+                print(
+                    f"  window {i}: {wt} trades, PF={m.get('profit_factor', 0):.2f}, "
+                    f"WR={m.get('winrate', 0):.0%}, Sharpe={m.get('sharpe_ratio', 0):.2f}, "
+                    f"PnL=${m.get('net_pnl', 0):.0f}"
+                )
+        print("\nDIAGNOSIS:")
+        if total_pnl > 0:
+            print("  PROFITABLE in aggregate — focus on widening which windows/regimes work.")
+        else:
+            print("  LOSING in aggregate — examine which windows/regimes lose money and why.")
+        # Param stability still works
+        unstable = [(p, s) for p, s in param_stability.items() if s.get("cv", 0) >= 0.25]
+        if unstable:
+            print("\nUNSTABLE PARAMS (CV >= 0.25):")
+            for p, s in sorted(unstable):
+                print(f"  {p}: mean={s.get('mean', 0):.3f} CV={s.get('cv', 0):.3f}")
         sys.exit(0)
 
     # Basic stats
