@@ -153,33 +153,36 @@ def check_heber_connectivity() -> Dict[str, Any]:
 def _latest_dataset_file(data_root: Path, feed: str) -> Path | None:
     """Find the most recent parquet file in the latest date partition.
 
-    Uses a targeted scan of only the most recent partition directory
-    rather than a full rglob, which can take 55+ seconds over Docker
-    volume mounts on large data lakes.
+    Filters dt= candidates by NAME before any stat() call. Each is_dir()
+    on the bind-mounted Heber volume costs ~30 ms; a feed with 2,500 dt=
+    partitions previously spent 80+ s here, blowing past the docker
+    healthcheck's 60 s timeout. Now we only stat the top-3 lexicographic
+    candidates (which is ~equivalent to top-3 by date for dt=YYYY-MM-DD).
     """
     dataset_root = data_root / "silver" / f"feed={feed}"
     if not dataset_root.exists():
         return None
 
-    # Collect all date partition directories (e.g. dt=2026-03-24/).
+    # Collect dt= candidates by NAME only — no stat() per entry.
     # The Silver schema includes an optional instrument_type= level between
     # feed= and dt=, so we search both direct children and one level deeper.
     raw_date_dirs: list[Path] = []
     for child in dataset_root.iterdir():
-        if not child.is_dir():
-            continue
         if child.name.startswith("dt="):
             raw_date_dirs.append(child)
-        else:
-            # Descend one level (e.g. instrument_type=equity)
+        elif child.name.startswith("instrument_type="):
+            # Descend exactly one level for the optional instrument_type= layer.
             for grandchild in child.iterdir():
-                if grandchild.is_dir() and grandchild.name.startswith("dt="):
+                if grandchild.name.startswith("dt="):
                     raw_date_dirs.append(grandchild)
 
     date_dirs = sorted(raw_date_dirs, key=lambda p: p.name, reverse=True)
 
-    # Check the most recent date partitions for parquet files (up to 3)
+    # Check the most recent date partitions for parquet files (up to 3).
+    # is_dir() is now called only for these top candidates, not every dt= sibling.
     for date_dir in date_dirs[:3]:
+        if not date_dir.is_dir():
+            continue
         latest: Path | None = None
         latest_mtime = -1.0
         for parquet_file in date_dir.rglob("*.parquet"):

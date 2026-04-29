@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Healthcheck timeout (cerberus_trader unhealthy 8 days)** — `python -m src.main --healthcheck` was running 115 s, blowing past the docker healthcheck's 60 s timeout. `_latest_dataset_file` in `src/core/health.py` called `Path.is_dir()` on every `dt=` partition sibling to filter for directories; with 2,500+ bars partitions on the bind-mounted `/Volumes/heber` Docker volume each is_dir costs ~30 ms, so the per-feed walk burned 80+ s before even looking at a parquet file. Fix: filter dt= candidates by NAME first (no stat), sort lexicographically (which equals date order for `dt=YYYY-MM-DD`), and only call `is_dir()` on the top-3 candidates we actually inspect. `check_heber_freshness` now completes in <1 s instead of 147 s. Regression test: `tests/unit/test_health_heber_freshness_unit.py::test_latest_dataset_file_does_not_stat_every_dt_sibling`.
 - Remove unused `closes` variable in `daily_research_v10c.py` (ruff F841).
 
 - **WebSocket connection now uses explicit ping keep-alive settings** (`ping_interval=30s`, `ping_timeout=90s`) in `UnifiedDataClient` to match Data-Gateway's uvicorn configuration, preventing silent disconnections during low-activity periods.
