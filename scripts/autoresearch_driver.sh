@@ -38,9 +38,40 @@ fi
 BEST_SCORE=$(cat "$BEST_SCORE_FILE")
 ITER=$(tail -n +2 "$TSV" | wc -l | tr -d ' ')
 
+# ── Baseline commit + best commit pointers ────────────────────────
+# CRITICAL: discards reset to BEST_COMMIT (last known-good), not HEAD~1.
+# This prevents the driver from walking back through infrastructure commits
+# (harness fixes, baseline reverts, etc.) when the agent makes multiple
+# commits per iteration or when discards accumulate.
+BASELINE_COMMIT_FILE="autoresearch/.baseline_commit"
+BEST_COMMIT_FILE="autoresearch/.best_commit"
+if [ ! -f "$BASELINE_COMMIT_FILE" ]; then
+    git rev-parse HEAD > "$BASELINE_COMMIT_FILE"
+fi
+BASELINE_COMMIT=$(cat "$BASELINE_COMMIT_FILE")
+if [ ! -f "$BEST_COMMIT_FILE" ]; then
+    echo "$BASELINE_COMMIT" > "$BEST_COMMIT_FILE"
+fi
+BEST_COMMIT=$(cat "$BEST_COMMIT_FILE")
+
+# Files the agent must never modify; restored to BASELINE before every iteration.
+PROTECTED_FILES=(
+    "scripts/cerberus_autoresearch.py"
+    "scripts/extract_wfo_insights.py"
+    "scripts/autoresearch_driver.sh"
+    "program_cerberus.md"
+)
+
+restore_protected() {
+    for f in "${PROTECTED_FILES[@]}"; do
+        git checkout "$BASELINE_COMMIT" -- "$f" 2>/dev/null || true
+    done
+}
+
 echo "============================================================"
 echo "  Cerberus Autoresearch v2"
 echo "  Strategy: $STRATEGY | Best: $BEST_SCORE | Iter: $ITER"
+echo "  Baseline: ${BASELINE_COMMIT:0:8} | Best commit: ${BEST_COMMIT:0:8}"
 echo "============================================================"
 
 # ── Baseline ──────────────────────────────────────────────────────
@@ -110,6 +141,17 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
     fi
 
     # ── Step 1: Spawn agent ───────────────────────────────────────
+    # Defense in depth: restore harness/playbook to BASELINE before each iteration.
+    # If a previous agent or interrupted process left those files modified, the
+    # eval will run against the baseline harness, not a contaminated one.
+    restore_protected
+    if ! git diff-index --quiet HEAD -- "${PROTECTED_FILES[@]}" 2>/dev/null; then
+        # Stage and commit the baseline restore so HEAD matches working tree
+        git add "${PROTECTED_FILES[@]}" 2>/dev/null && git commit -m "driver: restore protected files to baseline" --no-verify 2>/dev/null || true
+        BEST_COMMIT=$(git rev-parse HEAD)
+        echo "$BEST_COMMIT" > "$BEST_COMMIT_FILE"
+    fi
+
     echo "[iter $ITER] Spawning agent..."
     LAST_RESULT=$(cat "$LAST_RESULT_FILE" 2>/dev/null || echo "(no previous result)")
     HISTORY=$(tail -4 "$TSV" | head -3 | awk -F'\t' '{printf "  iter%s: score=%s status=%s trades=%s — %s\n", $1, $4, $5, $7, substr($10,1,60)}' 2>/dev/null || echo "  (none)")
@@ -148,6 +190,28 @@ Then STOP."
 
     NEW_COMMIT=$(git rev-parse --short HEAD)
     PREV_COMMIT=$(tail -1 "$TSV" | cut -f2)
+
+    # ── Protected-file violation check ────────────────────────────
+    # If the agent modified harness, playbook, or driver in any way (committed
+    # or uncommitted), reset to BEST_COMMIT and skip this iteration. The score
+    # would otherwise be measured against a contaminated harness.
+    VIOLATIONS=""
+    for pf in "${PROTECTED_FILES[@]}"; do
+        if ! git diff "$BASELINE_COMMIT" HEAD -- "$pf" | head -1 | grep -q "."; then
+            : # no diff vs baseline — clean
+        else
+            VIOLATIONS="$VIOLATIONS $pf"
+        fi
+        if ! git diff-index --quiet HEAD -- "$pf" 2>/dev/null; then
+            VIOLATIONS="$VIOLATIONS ${pf}(uncommitted)"
+        fi
+    done
+    if [ -n "$VIOLATIONS" ]; then
+        echo "[iter $ITER] AGENT VIOLATED PROTECTED FILES:$VIOLATIONS — resetting to ${BEST_COMMIT:0:8}"
+        git reset --hard "$BEST_COMMIT"
+        printf "%d\t%s\t%s\t-2.0\tprotected_violation\t0/0\t0\t0.0\t\tagent_modified:%s\n" "$ITER" "$NEW_COMMIT" "$EVAL_STRATEGY" "$VIOLATIONS" >> "$TSV"
+        CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); ITER=$((ITER + 1)); continue
+    fi
 
     # ── Import/config verification for new strategies ─────────────
     if [ "$NEW_COMMIT" != "$PREV_COMMIT" ] && [ -f "src/strategies/${STRAT_FILE}.py" ]; then
@@ -208,7 +272,7 @@ print(f'IMPORT_OK: {cls.__name__}')
     if [ -z "$RESULT_LINE" ]; then
         echo "[iter $ITER] ERROR: eval failed"
         printf "%d\t%s\t%s\t-999.0\terror\t0/0\t0\t0.0\t\t%s\n" "$ITER" "$NEW_COMMIT" "$EVAL_STRATEGY" "$COMMIT_MSG" >> "$TSV"
-        git reset --hard HEAD~1
+        git reset --hard "$BEST_COMMIT"
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); ITER=$((ITER + 1)); continue
     fi
 
@@ -246,12 +310,16 @@ print(f'IMPORT_OK: {cls.__name__}')
     if [ "$KEEP" = "true" ]; then
         STATUS="keep"
         CONSECUTIVE_DISCARDS=0
-        echo "[iter $ITER] KEEP — $KEEP_REASON"
+        BEST_COMMIT=$(git rev-parse HEAD)
+        echo "$BEST_COMMIT" > "$BEST_COMMIT_FILE"
+        echo "[iter $ITER] KEEP — $KEEP_REASON (best_commit=${BEST_COMMIT:0:8})"
     else
         STATUS="discard"
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
-        git reset --hard HEAD~1
-        echo "[iter $ITER] DISCARD — score=$SCORE vs best=$BEST_SCORE trades=$TRADES ($COMMIT_MSG)"
+        # Reset to last known-good commit (NOT HEAD~1 — agent may have made
+        # multiple commits, and walking back blindly can corrupt infra commits).
+        git reset --hard "$BEST_COMMIT"
+        echo "[iter $ITER] DISCARD — score=$SCORE vs best=$BEST_SCORE trades=$TRADES ($COMMIT_MSG); reset to ${BEST_COMMIT:0:8}"
     fi
 
     # ── Step 5: Record ────────────────────────────────────────────
