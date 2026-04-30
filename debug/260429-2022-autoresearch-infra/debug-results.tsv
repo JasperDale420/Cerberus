@@ -1,0 +1,9 @@
+iteration	type	hypothesis	result	severity	location	description
+1	hypothesis	trades dropped in to_dict	confirmed	CRITICAL	backtest_report.py:582	regime diversity scoring inert; insights blinded
+2	hypothesis	SPY span includes gaps when target_regime filter active	confirmed	HIGH	cerberus_autoresearch.py:384-390	specialist scoring biased against bull-skew gaps
+3	hypothesis	loc_penalty added to ratio_vs_spy mixing units	confirmed	MEDIUM	cerberus_autoresearch.py:414	inflates score for low-LOC barely-positive strategies
+4	hypothesis	heredoc cmd injection via commit message	disproven	-	autoresearch_driver.sh:330	bash heredoc does not re-parse var values for substitution
+5	hypothesis	bootstrap path keeps gate-failed iterations as best	confirmed	HIGH	autoresearch_driver.sh:302	broken foundation contaminates lineage
+6	hypothesis	stale latest.json survives crashes	confirmed	MEDIUM	cerberus_autoresearch.py:446	agent reads phantom insights from prior runs
+7	hypothesis	driver doesn't verify agent edited target strategy	confirmed	MEDIUM	autoresearch_driver.sh:217	wasted evals on no-op commits
+8	hypothesis	orphan trial DBs leak from killed workers	confirmed	LOW	optuna_harness.py:825	458MB / 436 files accumulated

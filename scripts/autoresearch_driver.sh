@@ -27,6 +27,11 @@ PHASE_ITER=0
 # ── Setup ──────────────────────────────────────────────────────────
 mkdir -p autoresearch artifacts/autoresearch/logs
 
+# Sweep stale trial DBs from prior crashed/killed workers.
+# Files older than 60 minutes can't belong to any in-flight eval (eval timeout = 180m max
+# but trial DBs are short-lived per-trial). Reclaims disk and keeps the dir performant.
+find .agents/tmp/optuna_dbs/ -name 'trial_*.db*' -mmin +60 -delete 2>/dev/null || true
+
 if [ ! -f "$TSV" ]; then
     printf "iteration\tcommit\tstrategy\tcomposite_score\tstatus\twindows_profitable\ttotal_trades\tavg_sortino\tregime_breakdown\tdescription\n" > "$TSV"
 fi
@@ -78,6 +83,9 @@ echo "============================================================"
 if [ "$ITER" -eq 0 ]; then
     echo "[iter 0] Running baseline..."
     COMMIT=$(git rev-parse --short HEAD)
+    # Remove any stale latest.json from a prior crashed eval — prevents
+    # extract_wfo_insights from feeding phantom data into the next iteration.
+    rm -f "artifacts/autoresearch/${STRATEGY}_latest.json"
     EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
@@ -251,6 +259,15 @@ print(f'IMPORT_OK: {cls.__name__}')
     COMMIT_MSG=$(git log -1 --format='%s' | tr -d '\n\r')
     echo "[iter $ITER] Committed: $NEW_COMMIT — $COMMIT_MSG"
 
+    # Verify agent's commit actually touched the target strategy file.
+    # Without this guard, a no-op or wrong-file commit triggers a wasted ~60min eval.
+    if ! git diff "$BEST_COMMIT" HEAD --name-only | grep -q "^src/strategies/${STRAT_FILE}\.py$"; then
+        echo "[iter $ITER] Agent did not modify src/strategies/${STRAT_FILE}.py — skipping eval"
+        git reset --hard "$BEST_COMMIT"
+        printf "%d\t%s\t%s\t-2.0\tno_strategy_change\t0/0\t0\t0.0\t\tagent_no_change\n" "$ITER" "$NEW_COMMIT" "$STRAT_FILE" >> "$TSV"
+        CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); ITER=$((ITER + 1)); continue
+    fi
+
     # ── Step 2: Evaluate ──────────────────────────────────────────
     EVAL_STRATEGY="$STRAT_FILE"
     REGIME_FLAG=""
@@ -258,6 +275,9 @@ print(f'IMPORT_OK: {cls.__name__}')
 
     echo "[iter $ITER] Evaluating $EVAL_STRATEGY..."
     EVAL_START=$(date +%s)
+    # Remove any stale latest.json from a prior crashed eval — prevents
+    # extract_wfo_insights from feeding phantom data into this iteration's prompt.
+    rm -f "artifacts/autoresearch/${EVAL_STRATEGY}_latest.json"
     EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 $REGIME_FLAG 2>&1 || true)
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
@@ -299,10 +319,15 @@ print(f'IMPORT_OK: {cls.__name__}')
         BEST_SCORE="$SCORE"
     fi
 
-    # Bootstrap: first strategy with trades escapes -999
-    if [ "$KEEP" = "false" ] && [ "$HAS_TRADES" = "true" ] && echo "$BEST_SCORE" | awk '{exit ($1 <= -999) ? 0 : 1}'; then
+    # Bootstrap: first strategy with trades AND a non-gate-failed score escapes -999.
+    # Gate-failed scores (composite=-2.0) must NOT become the bootstrap baseline,
+    # otherwise the agent's lineage roots in a known-broken strategy.
+    GATE_FLOOR_LOCAL=-2.0
+    if [ "$KEEP" = "false" ] && [ "$HAS_TRADES" = "true" ] \
+           && echo "$BEST_SCORE" | awk '{exit ($1 <= -999) ? 0 : 1}' \
+           && echo "$SCORE $GATE_FLOOR_LOCAL" | awk '{exit ($1 > $2) ? 0 : 1}'; then
         KEEP=true
-        KEEP_REASON="bootstrap: first $TRADES trades"
+        KEEP_REASON="bootstrap: first $TRADES trades, score $SCORE > floor"
         echo "$SCORE" > "$BEST_SCORE_FILE"
         BEST_SCORE="$SCORE"
     fi

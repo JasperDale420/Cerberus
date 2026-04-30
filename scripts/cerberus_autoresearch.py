@@ -380,15 +380,24 @@ def main():
         if spy_bars_path.exists() and scoring_windows:
             spy = pd.read_parquet(spy_bars_path, columns=["timestamp", "close"])
             spy["timestamp"] = pd.to_datetime(spy["timestamp"], utc=True)
-            # SPY benchmark spans the full union of scoring windows
+            # Compound per-window SPY returns so the benchmark covers exactly the
+            # scoring windows (no gaps for filtered-out regimes). This keeps the
+            # strategy/SPY comparison apples-to-apples when --target-regime is set.
             sw_starts = [pd.Timestamp(windows[i]["test_start"], tz="UTC") for i in scoring_windows]
             sw_ends = [pd.Timestamp(windows[i]["test_end"], tz="UTC") for i in scoring_windows]
-            span_start, span_end = min(sw_starts), max(sw_ends)
-            benchmark_span = f"{span_start.date()}..{span_end.date()}"
-            span = spy[(spy["timestamp"] >= span_start) & (spy["timestamp"] <= span_end)]
-            if len(span) > 1:
-                spy_return_pct = ((float(span.iloc[-1]["close"]) / float(span.iloc[0]["close"])) - 1.0) * 100.0
-                if spy_return_pct != 0:
+            spy_total_return = 1.0
+            n_segments = 0
+            for i in scoring_windows:
+                seg_start = pd.Timestamp(windows[i]["test_start"], tz="UTC")
+                seg_end = pd.Timestamp(windows[i]["test_end"], tz="UTC")
+                seg = spy[(spy["timestamp"] >= seg_start) & (spy["timestamp"] <= seg_end)]
+                if len(seg) > 1:
+                    spy_total_return *= float(seg.iloc[-1]["close"]) / float(seg.iloc[0]["close"])
+                    n_segments += 1
+            if n_segments > 0:
+                spy_return_pct = (spy_total_return - 1.0) * 100.0
+                benchmark_span = f"{n_segments} segments {min(sw_starts).date()}..{max(sw_ends).date()}"
+                if abs(spy_return_pct) > 1.0:  # require >=1% SPY move; below that the ratio is too noisy to trust
                     ratio_vs_spy = strategy_return_pct / spy_return_pct
     except Exception as e:
         emit(f"AUTORESEARCH_BENCHMARK_ERROR error={e}")
@@ -411,11 +420,14 @@ def main():
         score_explanation = "gates_failed:" + ",".join(gate_failures)
     else:
         # Honest composite = how many SPYs we beat. Goal: 2.0+
-        composite_score = float(ratio_vs_spy) + loc_penalty
+        # loc_penalty is multiplicative, scaled to keep semantic ("50% LOC bonus = 1.025x score,
+        # 100% LOC penalty = 0.9x score"). loc_penalty range ±2 -> ±10% effective.
+        loc_multiplier = 1.0 + (loc_penalty * 0.05)
+        composite_score = float(ratio_vs_spy) * loc_multiplier
         # Param-stability penalty: unstable params (CV > 0.3) shrink the score
         if param_cv_max > 0.3:
             composite_score *= max(0.5, 1.0 - (param_cv_max - 0.3))
-        score_explanation = f"ratio_vs_spy={ratio_vs_spy:.2f}+loc_penalty={loc_penalty:.2f}*cv_mult"
+        score_explanation = f"ratio_vs_spy={ratio_vs_spy:.2f}*loc_mult={loc_multiplier:.3f}*cv_mult"
 
     # ── Summary result line ─────────────────────────────────────────
     emit(
@@ -440,6 +452,18 @@ def main():
     )
 
     # ── Save full results JSON ─────────────────────────────────────
+    import subprocess
+
+    try:
+        commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        commit_sha = "unknown"
+    results["meta"] = {
+        "commit_sha": commit_sha,
+        "strategy": strategy_name,
+        "eval_completed": datetime.now().isoformat(),
+        "wfo_window": f"{WFO_FULL_START}..{WFO_FULL_END}",
+    }
     out_dir = "artifacts/autoresearch"
     os.makedirs(out_dir, exist_ok=True)
     out_path = f"{out_dir}/{strategy_name}_latest.json"

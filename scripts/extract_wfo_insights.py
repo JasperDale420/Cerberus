@@ -29,6 +29,24 @@ def main():
         print("NO_INSIGHTS (failed to parse results JSON)")
         sys.exit(0)
 
+    # Freshness check: harness stamps results.meta.commit_sha at write time.
+    # If the JSON belongs to a different commit than current HEAD, the trade analysis
+    # is stale (previous eval succeeded, this one crashed; or strategy reverted).
+    # Bail rather than feed phantom insights to the next agent.
+    meta = results.get("meta", {})
+    saved_sha = meta.get("commit_sha")
+    if saved_sha and saved_sha != "unknown":
+        try:
+            import subprocess
+
+            head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+            if saved_sha != head_sha:
+                print(f"STALE_INSIGHTS — JSON is for commit {saved_sha[:8]}, HEAD is {head_sha[:8]}")
+                print("ACTION: previous eval crashed or strategy reverted; new eval will write fresh data.")
+                sys.exit(0)
+        except Exception:
+            pass  # if git fails, fall through and use the JSON anyway
+
     oos_metrics = results.get("oos_metrics", [])
     param_stability = results.get("param_stability", {})
 

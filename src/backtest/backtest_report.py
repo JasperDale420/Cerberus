@@ -21,7 +21,7 @@ Usage::
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -659,7 +659,23 @@ class BacktestReportCard:
                 else {}
             ),
             "analytics": self.analytics if hasattr(self, "analytics") else {},
+            "trades": [self._trade_to_dict(t) for t in self.trades],
         }
+
+    @staticmethod
+    def _trade_to_dict(t: TradeRecord) -> dict[str, Any]:
+        """Serialize a TradeRecord for JSON output (downstream uses default=str)."""
+        d = asdict(t)
+        # Derived: hold_minutes (downstream regime-diversity guard expects this)
+        try:
+            hold_seconds = (t.exit_time - t.entry_time).total_seconds()
+            d["hold_minutes"] = hold_seconds / 60.0
+        except Exception:
+            d["hold_minutes"] = None
+        # Surface exit_reason from meta if present (TradeRecord doesn't carry it directly)
+        meta = d.get("meta") or {}
+        d["exit_reason"] = meta.get("exit_reason") if isinstance(meta, dict) else None
+        return d
 
     def write_markdown(self, path: str | Path) -> Path:
         """Write a human-readable markdown report to disk."""
