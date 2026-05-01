@@ -7,7 +7,11 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-STRATEGY="${1:-rsi_bounce}"
+# H3 fix: $1 was ambiguous — formerly used as the baseline strategy but ignored
+# during iterations (which always used REGIME_PHASES[CURRENT_PHASE]). Now $1
+# selects the *starting phase* by strategy name; baseline runs against that
+# same phase. Defaults to the first phase if $1 is unrecognised.
+START_PHASE_ARG="${1:-}"
 MAX_ITER="${2:-50}"
 TSV="autoresearch/results.tsv"
 BEST_SCORE_FILE="autoresearch/.best_score"
@@ -23,6 +27,18 @@ REGIME_TARGETS=("UP+NORMAL" "DOWN+HIGH" "FLAT+NORMAL" "")
 REGIME_HINTS=("Trend-following: buy pullbacks in uptrends. BUY-only." "Bear specialist: short breakdowns or fade oversold bounces." "Mean reversion: RSI bounce, BB fade. Both directions." "Adaptive: check regime labels, switch behavior.")
 CURRENT_PHASE=0
 PHASE_ITER=0
+
+# Resolve $1 to a phase index if it matches a phase strategy name.
+if [ -n "$START_PHASE_ARG" ]; then
+    for _i in "${!REGIME_PHASES[@]}"; do
+        if [ "${REGIME_PHASES[$_i]}" = "$START_PHASE_ARG" ]; then
+            CURRENT_PHASE="$_i"
+            break
+        fi
+    done
+fi
+# STRATEGY is now always the current phase's strategy file (was: $1 with default rsi_bounce).
+STRATEGY="${REGIME_PHASES[$CURRENT_PHASE]}"
 
 # ── Setup ──────────────────────────────────────────────────────────
 mkdir -p autoresearch artifacts/autoresearch/logs
