@@ -1,0 +1,20 @@
+iteration	type	hypothesis	result	severity	location	description
+1	hypothesis	EVAL_STRATEGY unbound in protected_violation branch (set -u crash)	confirmed	HIGH	scripts/autoresearch_driver.sh:220	Driver crashes when agent modifies protected file instead of skipping iteration
+2	hypothesis	Bootstrap branch is dead code; phase pivot doesn't reset BEST_SCORE/BEST_COMMIT	confirmed	HIGH	scripts/autoresearch_driver.sh:325-333,137-149	New-phase scoring is meaningless and discard-reset uses old-phase code
+3	hypothesis	Baseline runs user's $STRATEGY arg but iterations use REGIME_PHASES[CURRENT_PHASE] - mismatched strategy	confirmed	HIGH	scripts/autoresearch_driver.sh:10,89,125	Baseline score is for a different strategy than iterations - BEST_SCORE comparison is incoherent
+4	hypothesis	ratio_vs_spy = strat/spy flips sign when SPY is negative - losses score as 2x SPY wins	confirmed	CRITICAL	scripts/cerberus_autoresearch.py:401	Bypasses hard gate; bear-market losers can hit headline goal
+5	hypothesis	strategy_return_pct is sum/100k (additive); SPY is compounded - apples to oranges	confirmed	CRITICAL	scripts/cerberus_autoresearch.py:373,388-396	Identical 5% per-window returns give ratio=0.64 (strategy looks 36% worse than SPY)
+6	hypothesis	--target-regime falls open silently to all-windows when no match	confirmed	MEDIUM	scripts/cerberus_autoresearch.py:346	FLAT+NORMAL phase (5% of data) most exposed - regime specialist scored against off-regime windows
+7	hypothesis	No timeout on claude -p agent call - hanging agent stalls loop forever	confirmed	MEDIUM	scripts/autoresearch_driver.sh:197,236	Eval has timeout 10800; agent has none
+8	hypothesis	Legacy autoresearch_score*.py use deprecated weighted scoring	confirmed	MEDIUM	scripts/autoresearch_score.py:24-48,autoresearch_score_cv.py:42-67,autoresearch_pairs_score.py:25-48,autoresearch_trp_sortino.py:38-...	Dead code with gameable formula - delete or align with ratio_vs_spy
+9	hypothesis	PROTECTED_FILES missing program_cerberus_v3.md and v3 launcher	confirmed	LOW	scripts/autoresearch_driver.sh:63-68	v3 path unprotected; harmless under v2 driver but vulnerable if v3 used
+11	hypothesis	no_strategy_change check fails for newly created files	disproven	-	-	git diff --name-only includes added files
+12	hypothesis	Commit message sanitization strips newlines but not tabs - TSV corruption possible	confirmed	LOW	scripts/autoresearch_driver.sh:259	tr -d '\n\r' should also strip tab; HISTORY parsing breaks if tab leaks
+13	hypothesis	LOC counter includes docstrings; miscounts strategy code	confirmed	LOW	scripts/cerberus_autoresearch.py:271-273	A documented strategy can lose simplicity bonus from docstring lines
+16	hypothesis	Driver auto-appender uses restrictive activation (missing premarket/close/shock)	confirmed	MEDIUM	scripts/autoresearch_driver.sh:243	New strategies silently locked out of premarket/close/shock conditions
+19	hypothesis	WFO_FULL_END is stale relative to available data	disproven	-	-	data ends 2026-03-19; WFO_FULL_END matches
+20	hypothesis	Holdout window is reserved but never validated; advertised anti-overfit guard is inert	confirmed	MEDIUM	src/analytics/optuna_harness.py:1147,1470 program_cerberus.md:8	No backtest run against holdout; agent never sees a holdout score either
+21	hypothesis	Near-zero SPY threshold (|spy|<=1%) makes FLAT specialists unscoreable	confirmed	MEDIUM	scripts/cerberus_autoresearch.py:400-401	FLAT+NORMAL phase most exposed; legitimate profits forced to -2.0
+23	hypothesis	Eval logs accumulate in artifacts/autoresearch/logs/ without cleanup	confirmed	LOW	artifacts/autoresearch/logs/	2569 files / 61MB; mirror trial-DB sweeper pattern
+28	hypothesis	Driver hardcodes n-trials=5; harness default is 8 (inconsistent)	confirmed	LOW	scripts/autoresearch_driver.sh:89,281 vs scripts/cerberus_autoresearch.py:170	Direct invocation differs from driver invocation
+30	hypothesis	HISTORY tail -4 | head -3 drops most recent iteration	confirmed	MEDIUM	scripts/autoresearch_driver.sh:165	Agent's HISTORY block misses iter N-1; should be 'tail -3'

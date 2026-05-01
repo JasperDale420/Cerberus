@@ -1,0 +1,14 @@
+iteration	bug_id	category	delta	guard	status	description
+0	-	baseline	-	pass	baseline	17 bugs (2 CRITICAL, 3 HIGH, 7 MEDIUM, 5 LOW)
+1	C1+C2	CRITICAL	-2	pass	fixed	compound strategy returns + sign-safe ratio in bull/bear/flat regimes
+2	H1	HIGH	-1	pass	fixed	use STRAT_FILE (in scope) instead of unbound EVAL_STRATEGY
+3	H2	HIGH	-1	pass	fixed	reset BEST_SCORE/BEST_COMMIT on phase pivot; revives bootstrap branch
+4	H3	HIGH	-1	pass	fixed	baseline strategy now derived from CURRENT_PHASE; $1 selects starting phase
+5	M1	MEDIUM	-1	pass	fixed	--target-regime no-match emits REGIME_FILTER_NOMATCH and fails gate
+6	M2	MEDIUM	-1	pass	fixed	wrap claude -p agent calls in timeout (1800/600s)
+7	M3	MEDIUM	-1	pass	fixed	replaced 4 legacy scorers with deprecation stubs (-481 LOC)
+8	M4	MEDIUM	-1	pass	fixed	auto-config now uses full session/vol set (premarket, close, shock)
+9	M5	MEDIUM	-1	pass	fixed	playbook holdout claim corrected; scoring math documented to match new behavior
+10	M7	MEDIUM	-1	pass	fixed	HISTORY now uses tail -3; most recent iter visible to agent
+11	L1+L2+L4+L5	LOW	-4	pass	fixed	driver hygiene: PROTECTED_FILES, tab/TSV, log sweeper, N_TRIALS env var
+12	L3	LOW	-1	pass	fixed	LOC counter uses AST; excludes docstrings
