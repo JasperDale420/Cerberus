@@ -265,12 +265,33 @@ def main():
     sortinos = [m.get("sortino_ratio", 0) for m in oos_metrics if m.get("n_trades", 0) > 0]
     avg_sortino = sum(sortinos) / max(len(sortinos), 1)
 
-    # Simplicity bonus/penalty based on strategy LOC (Karpathy: simpler is better)
+    # Simplicity bonus/penalty based on strategy LOC (Karpathy: simpler is better).
+    # L3 fix: count actual code statements via AST, not raw non-blank/non-comment
+    # lines. Previous counter penalized strategies for docstrings — a 50-line
+    # docstring + 30 lines of code reported as 80 LOC (real code = 30).
     strategy_path = Path(f"src/strategies/{strategy_name}.py")
     strategy_loc = 0
     if strategy_path.exists():
-        lines = strategy_path.read_text().splitlines()
-        strategy_loc = sum(1 for ln in lines if ln.strip() and not ln.strip().startswith("#"))
+        try:
+            import ast
+
+            tree = ast.parse(strategy_path.read_text())
+            # Count statements that are NOT bare expression-statements containing only
+            # a string literal (i.e., docstrings). Walks the entire tree so docstrings
+            # inside class/function bodies are also excluded.
+            for node in ast.walk(tree):
+                if isinstance(node, ast.stmt):
+                    if (
+                        isinstance(node, ast.Expr)
+                        and isinstance(node.value, ast.Constant)
+                        and isinstance(node.value.value, str)
+                    ):
+                        continue  # docstring or stray string-statement
+                    strategy_loc += 1
+        except Exception:
+            # AST parse failed — fall back to old line-based counter
+            lines = strategy_path.read_text().splitlines()
+            strategy_loc = sum(1 for ln in lines if ln.strip() and not ln.strip().startswith("#"))
     if strategy_loc > 100:
         loc_penalty = max(-2.0, -0.05 * (strategy_loc - 100))  # -0.05/line, capped at -2.0
     elif strategy_loc < 50 and strategy_loc > 0:
