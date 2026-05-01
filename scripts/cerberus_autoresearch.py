@@ -361,28 +361,44 @@ def main():
         total_windows = len(scoring_windows)
         total_oos_trades = target_trades
 
-    # ── SPY buy-and-hold benchmark + new composite score ────────────
-    # Score is now driven by ratio_vs_spy directly (the user's actual goal),
-    # gated on basic sanity checks. No more "average of profitable windows
-    # only" — all scoring windows count, hard-rejects included.
+    # ── SPY buy-and-hold benchmark + composite score ────────────────
+    # Score is driven by ratio_vs_spy, gated on basic sanity checks. All
+    # scoring windows count (hard-rejects included). Math: BOTH strategy and
+    # SPY are compounded as growth factors so the comparison is apples-to-apples.
     GATE_FLOOR = -2.0  # visible negative; agent sees gate failure clearly
     MIN_WINDOWS_PROFITABLE_PCT = 40.0  # at least 40% of scoring windows must have net_pnl > 0
     MIN_TRADES_PER_WINDOW = 5  # avg lower bound
 
+    # Compound the strategy's per-window returns (Bug C2 fix).
+    # Previous code used sum(pnl)/$100k (additive) while SPY compounded — see
+    # debug session 260430-1728 finding C2 for the reproduction. Identical
+    # 5%/window strategy and SPY would report ratio=0.64 instead of ratio=1.0.
+    strategy_total_growth = 1.0
+    running_capital = float(STARTING_CAPITAL)
+    for i in scoring_windows:
+        window_pnl = float(oos_metrics[i].get("net_pnl", 0.0))
+        if running_capital <= 0:
+            # Capital wiped out — strategy total growth stays at whatever it is,
+            # remaining windows have nothing to risk.
+            break
+        gf = 1.0 + (window_pnl / running_capital)
+        gf = max(gf, 0.01)  # floor at -99% per window; pathological windows can't cause neg-growth artifacts
+        strategy_total_growth *= gf
+        running_capital *= gf
+    strategy_return_pct = (strategy_total_growth - 1.0) * 100.0
     strategy_total_pnl = sum(oos_metrics[i].get("net_pnl", 0.0) for i in scoring_windows)
-    strategy_return_pct = (strategy_total_pnl / STARTING_CAPITAL) * 100.0
 
     spy_return_pct = float("nan")
     ratio_vs_spy = float("nan")
     benchmark_span = "n/a"
+    benchmark_mode = "none"
     try:
         spy_bars_path = Path(args.data_dir) / "SPY_1Min.parquet"
         if spy_bars_path.exists() and scoring_windows:
             spy = pd.read_parquet(spy_bars_path, columns=["timestamp", "close"])
             spy["timestamp"] = pd.to_datetime(spy["timestamp"], utc=True)
             # Compound per-window SPY returns so the benchmark covers exactly the
-            # scoring windows (no gaps for filtered-out regimes). This keeps the
-            # strategy/SPY comparison apples-to-apples when --target-regime is set.
+            # scoring windows (no gaps for filtered-out regimes).
             sw_starts = [pd.Timestamp(windows[i]["test_start"], tz="UTC") for i in scoring_windows]
             sw_ends = [pd.Timestamp(windows[i]["test_end"], tz="UTC") for i in scoring_windows]
             spy_total_return = 1.0
@@ -397,8 +413,22 @@ def main():
             if n_segments > 0:
                 spy_return_pct = (spy_total_return - 1.0) * 100.0
                 benchmark_span = f"{n_segments} segments {min(sw_starts).date()}..{max(sw_ends).date()}"
-                if abs(spy_return_pct) > 1.0:  # require >=1% SPY move; below that the ratio is too noisy to trust
+                # Sign-safe ratio (Bug C1 fix). Three regimes:
+                #   bull (SPY > +1%): standard ratio = strategy_return / spy_return — matches "2x SPY return" goal.
+                #   bear (SPY < -1%): ratio = 1 + alpha/|spy| — alpha=0 -> 1.0 (matched SPY); alpha=|spy| -> 2.0 (broke even in bear).
+                #   flat (|SPY| <= 1%): ratio = strategy_return_pct — absolute return as alpha proxy when benchmark is noise.
+                if spy_return_pct > 1.0:
                     ratio_vs_spy = strategy_return_pct / spy_return_pct
+                    benchmark_mode = "bull_ratio"
+                elif spy_return_pct < -1.0:
+                    alpha = strategy_return_pct - spy_return_pct
+                    ratio_vs_spy = 1.0 + (alpha / abs(spy_return_pct))
+                    benchmark_mode = "bear_alpha"
+                else:
+                    # Bug M6 fix: don't force gate floor when SPY is near-flat. Use absolute return as score.
+                    # This makes FLAT-regime specialists evaluable.
+                    ratio_vs_spy = strategy_return_pct
+                    benchmark_mode = "flat_absolute"
     except Exception as e:
         emit(f"AUTORESEARCH_BENCHMARK_ERROR error={e}")
 
@@ -445,8 +475,10 @@ def main():
     )
     emit(
         f"AUTORESEARCH_BENCHMARK strategy_return_pct={strategy_return_pct:.2f} "
+        f"strategy_total_pnl={strategy_total_pnl:.2f} "
         f"spy_return_pct={spy_return_pct:.2f} "
         f"ratio_vs_spy={ratio_vs_spy:.2f} "
+        f"mode={benchmark_mode} "
         f"goal=2.00 "
         f"span={benchmark_span}"
     )
