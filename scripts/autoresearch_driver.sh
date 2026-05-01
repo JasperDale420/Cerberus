@@ -218,7 +218,10 @@ Under 50 LOC gets a score bonus. Over 100 LOC gets penalized.
 Commit as: experiment(${STRAT_FILE}): iter${ITER} — <description>
 Then STOP."
 
-    AGENT_RESULT=$(claude -p "$AGENT_PROMPT" --model sonnet --allowedTools "Read,Edit,Write,Bash,Glob,Grep" --permission-mode bypassPermissions 2>&1 || true)
+    # M2 fix: bound the agent call. Without timeout, a hung Claude session
+    # (network stall, infinite tool loop) would block the loop indefinitely.
+    # 1800s (30min) is generous for a single edit-and-commit task.
+    AGENT_RESULT=$(timeout 1800 claude -p "$AGENT_PROMPT" --model sonnet --allowedTools "Read,Edit,Write,Bash,Glob,Grep" --permission-mode bypassPermissions 2>&1 || true)
 
     NEW_COMMIT=$(git rev-parse --short HEAD)
     PREV_COMMIT=$(tail -1 "$TSV" | cut -f2)
@@ -259,7 +262,9 @@ print(f'IMPORT_OK: {cls.__name__}')
 
         if echo "$IMPORT_CHECK" | grep -q "IMPORT_FAIL"; then
             echo "[iter $ITER] Import FAILED — spawning fix agent"
-            claude -p "Fix import error in src/strategies/${STRAT_FILE}.py: $IMPORT_CHECK. Read file, fix, ruff check, commit." \
+            # M2 fix: bound the import-fix agent. 600s (10min) is enough for a
+            # single targeted fix; longer hangs indicate a deeper issue.
+            timeout 600 claude -p "Fix import error in src/strategies/${STRAT_FILE}.py: $IMPORT_CHECK. Read file, fix, ruff check, commit." \
                 --model sonnet --allowedTools "Read,Edit,Write,Bash" --permission-mode bypassPermissions 2>&1 || true
             NEW_COMMIT=$(git rev-parse --short HEAD)
         fi
