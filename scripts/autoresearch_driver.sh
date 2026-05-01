@@ -13,6 +13,10 @@ cd "$(dirname "$0")/.."
 # same phase. Defaults to the first phase if $1 is unrecognised.
 START_PHASE_ARG="${1:-}"
 MAX_ITER="${2:-50}"
+# L5 fix: was hardcoded --n-trials 5; harness default is 8. Now configurable
+# via env var (default 5 to preserve previous driver behavior). Direct
+# invocations of cerberus_autoresearch.py still use the harness default of 8.
+N_TRIALS="${N_TRIALS:-5}"
 TSV="autoresearch/results.tsv"
 BEST_SCORE_FILE="autoresearch/.best_score"
 LAST_RESULT_FILE="autoresearch/.last_result"
@@ -48,6 +52,10 @@ mkdir -p autoresearch artifacts/autoresearch/logs
 # but trial DBs are short-lived per-trial). Reclaims disk and keeps the dir performant.
 find .agents/tmp/optuna_dbs/ -name 'trial_*.db*' -mmin +60 -delete 2>/dev/null || true
 
+# L4 fix: sweep stale eval logs >24h old. Without this, artifacts/autoresearch/logs/
+# grows linearly with iterations (was 2569 files / 61MB at debug session start).
+find artifacts/autoresearch/logs/ -name '*.log' -mmin +1440 -delete 2>/dev/null || true
+
 if [ ! -f "$TSV" ]; then
     printf "iteration\tcommit\tstrategy\tcomposite_score\tstatus\twindows_profitable\ttotal_trades\tavg_sortino\tregime_breakdown\tdescription\n" > "$TSV"
 fi
@@ -76,11 +84,15 @@ fi
 BEST_COMMIT=$(cat "$BEST_COMMIT_FILE")
 
 # Files the agent must never modify; restored to BASELINE before every iteration.
+# L1 fix: include v3 playbook + v3 launcher (harmless under v2 driver, but
+# protects them if the v3 path ever runs in the same workspace).
 PROTECTED_FILES=(
     "scripts/cerberus_autoresearch.py"
     "scripts/extract_wfo_insights.py"
     "scripts/autoresearch_driver.sh"
+    "scripts/autoresearch_loop.sh"
     "program_cerberus.md"
+    "program_cerberus_v3.md"
 )
 
 restore_protected() {
@@ -102,7 +114,7 @@ if [ "$ITER" -eq 0 ]; then
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into the next iteration.
     rm -f "artifacts/autoresearch/${STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials 5 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials "$N_TRIALS" 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
 
@@ -293,8 +305,10 @@ print(f'IMPORT_OK: {cls.__name__}')
         ITER=$((ITER + 1)); CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); continue
     fi
 
-    # Sanitize: strip newlines to prevent heredoc injection from agent-authored commit messages
-    COMMIT_MSG=$(git log -1 --format='%s' | tr -d '\n\r')
+    # Sanitize: strip newlines AND tabs (L2 fix). TSV is tab-delimited, so a tab
+    # in the agent's commit message would corrupt the description column and
+    # break HISTORY parsing in subsequent iterations.
+    COMMIT_MSG=$(git log -1 --format='%s' | tr -d '\n\r\t')
     echo "[iter $ITER] Committed: $NEW_COMMIT — $COMMIT_MSG"
 
     # Verify agent's commit actually touched the target strategy file.
@@ -316,7 +330,7 @@ print(f'IMPORT_OK: {cls.__name__}')
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into this iteration's prompt.
     rm -f "artifacts/autoresearch/${EVAL_STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials 5 $REGIME_FLAG 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials "$N_TRIALS" $REGIME_FLAG 2>&1 || true)
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
     echo "[iter $ITER] Eval completed in ${EVAL_DURATION}m"
