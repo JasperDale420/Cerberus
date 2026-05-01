@@ -186,7 +186,10 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
 
     echo "[iter $ITER] Spawning agent..."
     LAST_RESULT=$(cat "$LAST_RESULT_FILE" 2>/dev/null || echo "(no previous result)")
-    HISTORY=$(tail -4 "$TSV" | head -3 | awk -F'\t' '{printf "  iter%s: score=%s status=%s trades=%s — %s\n", $1, $4, $5, $7, substr($10,1,60)}' 2>/dev/null || echo "  (none)")
+    # M7 fix: was `tail -4 | head -3` which dropped the most recent iteration
+    # (rows N-4..N-2 instead of N-3..N-1). Agent's HISTORY block missed iter N-1,
+    # making it possible to repeat iter N-1's failed approach.
+    HISTORY=$(tail -3 "$TSV" | awk -F'\t' '{printf "  iter%s: score=%s status=%s trades=%s — %s\n", $1, $4, $5, $7, substr($10,1,60)}' 2>/dev/null || echo "  (none)")
 
     TASK_INSTRUCTION=""
     if [ ! -f "src/strategies/${STRAT_FILE}.py" ]; then
