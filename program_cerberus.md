@@ -5,15 +5,20 @@ You are a quant researcher. **Your explicit goal: build a strategy whose cumulat
 ## Evaluation setup (what you're optimizing against)
 
 - **Data window:** 2016-06-01 → 2026-03-19 (full available bar history, ~10 years).
-- **Walk-forward:** rolling 12-month train → 6-month OOS, 3-month final holdout. ~18 OOS windows.
+- **Walk-forward:** rolling 12-month train → 6-month OOS, with the final 3 months reserved (excluded from training and from OOS scoring; not currently validated). ~18 OOS windows.
 - **Universe:** SPY, QQQ, AAPL, NVDA, TSLA, AMD, AMZN, META (8 symbols).
-- **Composite score = `ratio_vs_spy` (with adjustments).** This is THE metric. Computed honestly from `strategy_total_pnl / starting_capital` divided by SPY buy-and-hold return over the same OOS window span. **Goal: composite ≥ 2.0** (double SPY).
+- **Composite score = `ratio_vs_spy` (with adjustments).** This is THE metric. Both strategy returns and SPY are compounded as growth factors over the scoring windows, so the comparison is apples-to-apples. The benchmark uses three sign-safe modes:
+  - **bull** (SPY > +1%): `ratio_vs_spy = strategy_return_pct / spy_return_pct` — direct "2x SPY return" goal.
+  - **bear** (SPY < −1%): `ratio_vs_spy = 1 + alpha/|spy|` — alpha=0 means matched SPY (1.0); breaking even when SPY lost 10% is alpha=10% on |spy|=10% → 2.0 (2x SPY in bear-market sense).
+  - **flat** (|SPY| ≤ 1%): `ratio_vs_spy = strategy_return_pct` — absolute return as alpha proxy when the benchmark is noise; needed to keep FLAT-regime specialists evaluable.
+  - **Goal: composite ≥ 2.0** in any mode.
 - **Hard gates** — if any of these fail, score is forced to **−2.0** regardless of any other metric:
   - `windows_profitable_pct ≥ 40%` — at least 40% of scoring windows must have **positive net PnL** (not just "didn't trip a hard-reject sentinel"). This is the lie-prevention check.
-  - `ratio_vs_spy > 0` — strategy must be net profitable over the span.
+  - `ratio_vs_spy > 0` — strategy must be net profitable over the span (in flat mode this means absolute return > 0; in bear mode it means alpha > −|spy|).
   - `total_oos_trades ≥ 5 × n_windows` — minimum activity floor.
-- **Adjustments after gates pass:** `composite = ratio_vs_spy + loc_penalty`, then multiplied by the param-stability penalty `max(0.5, 1 − (cv_max − 0.3))` if `cv_max > 0.3`.
-- **Anti-overfit guards:** randomized WFO splits, param-stability CV multiplier, regime-diversity scoring inside the WFO, 3-month final holdout the agent never sees during iteration.
+  - When `--target-regime` is set: at least one OOS window must classify as that regime (else gate fails with `regime_filter_no_match=<regime>`).
+- **Adjustments after gates pass:** `composite = ratio_vs_spy * loc_multiplier`, where `loc_multiplier = 1 + loc_penalty * 0.05` (LOC penalty/bonus is multiplicative, ±10% effective range). If `cv_max > 0.3`, multiply by `max(0.5, 1 − (cv_max − 0.3))`.
+- **Anti-overfit guards:** randomized WFO splits, param-stability CV multiplier, regime-diversity scoring inside the WFO. The 3-month final holdout window is excluded from training/OOS but is **not currently validated** (date-range exclusion only — implementing a holdout backtest is future work).
 
 The old "average of profitable-only windows" scoring was gameable — a strategy losing money in 12/13 windows could still score high from the one lucky window. The new score collapses to **−2.0** in that scenario.
 
