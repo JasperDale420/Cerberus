@@ -217,7 +217,9 @@ Then STOP."
     if [ -n "$VIOLATIONS" ]; then
         echo "[iter $ITER] AGENT VIOLATED PROTECTED FILES:$VIOLATIONS — resetting to ${BEST_COMMIT:0:8}"
         git reset --hard "$BEST_COMMIT"
-        printf "%d\t%s\t%s\t-2.0\tprotected_violation\t0/0\t0\t0.0\t\tagent_modified:%s\n" "$ITER" "$NEW_COMMIT" "$EVAL_STRATEGY" "$VIOLATIONS" >> "$TSV"
+        # Use STRAT_FILE (in scope from L125) — EVAL_STRATEGY isn't assigned until Step 2 (L272).
+        # Without this fix, set -u crashes the entire driver session here. See debug 260430-1728 H1.
+        printf "%d\t%s\t%s\t-2.0\tprotected_violation\t0/0\t0\t0.0\t\tagent_modified:%s\n" "$ITER" "$NEW_COMMIT" "$STRAT_FILE" "$VIOLATIONS" >> "$TSV"
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1)); ITER=$((ITER + 1)); continue
     fi
 
