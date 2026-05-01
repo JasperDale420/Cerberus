@@ -271,7 +271,11 @@ print(f'IMPORT_OK: {cls.__name__}')
 
         if ! grep -q "^  ${STRAT_FILE}:" config/strategies.yaml 2>/dev/null; then
             echo "[iter $ITER] Adding config entry for ${STRAT_FILE}"
-            printf "\n  %s:\n    enabled: true\n    activation:\n      session: [opening, midday, power_hour]\n      trend: [up, down, flat]\n      vol: [low, normal, high]\n      liquidity: [good, thin]\n      risk: [risk_on, neutral, risk_off]\n      min_confidence: 0.0\n" "$STRAT_FILE" >> config/strategies.yaml
+            # M4 fix: use the FULL activation set (premarket+close session, shock vol)
+            # to match existing strategies. Previous restrictive set silently locked
+            # new strategies out of premarket/close/shock conditions despite the
+            # agent prompt's own "keep activation permissive" instruction.
+            printf "\n  %s:\n    enabled: true\n    activation:\n      session: [premarket, opening, midday, power_hour, close]\n      trend: [up, down, flat]\n      vol: [low, normal, high, shock]\n      liquidity: [good, thin]\n      risk: [risk_on, neutral, risk_off]\n      min_confidence: 0.0\n" "$STRAT_FILE" >> config/strategies.yaml
             git add config/strategies.yaml && git commit -m "fix: add ${STRAT_FILE} config" --no-verify 2>/dev/null || true
             NEW_COMMIT=$(git rev-parse --short HEAD)
         fi
