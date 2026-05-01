@@ -142,7 +142,15 @@ while [ "$ITER" -le "$MAX_ITER" ]; do
         REGIME_HINT="${REGIME_HINTS[$CURRENT_PHASE]}"
         CONSECUTIVE_DISCARDS=0
         PHASE_ITER=0
-        echo "[iter $ITER] PIVOT → Phase $CURRENT_PHASE: $REGIME_DESC"
+        # H2 fix: Reset BEST_SCORE and BEST_COMMIT on pivot. Without this, the
+        # new-phase strategy is compared against the previous phase's score
+        # (incoherent across-strategy comparison) and discards reset to the
+        # previous phase's BEST_COMMIT (wrong code base).
+        BEST_SCORE="-999.0"
+        echo "$BEST_SCORE" > "$BEST_SCORE_FILE"
+        BEST_COMMIT="$BASELINE_COMMIT"
+        echo "$BEST_COMMIT" > "$BEST_COMMIT_FILE"
+        echo "[iter $ITER] PIVOT → Phase $CURRENT_PHASE: $REGIME_DESC (BEST_SCORE=-999, BEST_COMMIT=baseline)"
     elif [ "$CONSECUTIVE_DISCARDS" -ge "$MAX_CONSECUTIVE_DISCARDS" ] && [ "$CURRENT_PHASE" -ge "$MAX_PHASE_IDX" ]; then
         echo "[iter $ITER] Stuck on final phase ($REGIME_DESC) — no more phases to try"
         # Don't reset counter — let it accumulate so the agent sees the full discard streak
