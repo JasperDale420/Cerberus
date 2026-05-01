@@ -343,8 +343,13 @@ def main():
     # windows it intentionally avoids.
     target_regime = args.target_regime
     scoring_windows = list(range(total_windows))  # default: all windows
-    if target_regime and regime_stats.get(target_regime):
-        # Collect the original window indices for this regime
+    regime_filter_no_match = False
+    if target_regime:
+        # M1 fix: previously `if target_regime and regime_stats.get(target_regime):`
+        # silently fell open to all-windows when the filter matched zero windows.
+        # FLAT+NORMAL phase (5% of data) was the most exposed: a regime specialist
+        # got scored against all 18 windows, guaranteeing gate failure.
+        # Now we always attempt the filter and signal explicitly when it matches none.
         scoring_windows = [
             i
             for i, w in enumerate(windows)
@@ -357,6 +362,11 @@ def main():
             f"windows={target_positive_pnl}/{len(scoring_windows)} "
             f"trades={target_trades}"
         )
+        if not scoring_windows:
+            emit(
+                f"REGIME_FILTER_NOMATCH target={target_regime} — 0 of {len(windows)} windows classified as this regime"
+            )
+            regime_filter_no_match = True
         positive_windows = target_positive_pnl
         total_windows = len(scoring_windows)
         total_oos_trades = target_trades
@@ -436,6 +446,10 @@ def main():
     windows_profitable_pct = (positive_windows / max(total_windows, 1)) * 100.0
     min_total_trades = total_windows * MIN_TRADES_PER_WINDOW
     gate_failures: list[str] = []
+    if regime_filter_no_match:
+        # M1 fix: when --target-regime matches zero classified windows, fail the
+        # gate explicitly rather than silently scoring against all windows.
+        gate_failures.append(f"regime_filter_no_match={target_regime}")
     if total_oos_trades < min_total_trades:
         gate_failures.append(f"trades={total_oos_trades}<{min_total_trades}")
     if windows_profitable_pct < MIN_WINDOWS_PROFITABLE_PCT:
