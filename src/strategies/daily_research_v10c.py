@@ -81,11 +81,11 @@ class SeedVolBreakoutStrategy(BaseStrategy):
         if labels.get("quad_witch_week", False):
             return None
 
-        regime_vol = labels.get("regime_vol", "NORMAL")
+        regime_vol = labels.get("vol_regime_symbol", "NORMAL")
         if regime_vol in ("SHOCK", "HIGH"):
             return None
 
-        regime_trend = labels.get("regime_trend", "FLAT")
+        regime_trend = labels.get("trend_regime_symbol", "FLAT")
         if regime_trend == "DOWN":
             return None
 

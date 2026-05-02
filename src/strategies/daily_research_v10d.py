@@ -66,7 +66,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         subset = values[-period:]
         mean = sum(subset) / period
         variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance ** 0.5
+        return variance**0.5
 
     @staticmethod
     def _rsi(closes: list[float], period: int) -> Optional[float]:
@@ -136,7 +136,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
 
         # Read regime from symbol_state meta
         regime_labels = symbol_state.meta.get("regime_labels", {})
-        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+        regime_trend = regime_labels.get("trend_regime_symbol", "FLAT").upper()
 
         stop_mult = self._vol_adjusted_stop_mult(market_state)
 

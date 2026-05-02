@@ -90,7 +90,7 @@ class SeedTrendPullbackStrategy(BaseStrategy):
             return None
 
         labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("regime_trend", "") == "DOWN":
+        if labels.get("trend_regime_symbol", "") == "DOWN":
             return None
         if labels.get("near_earnings", False) or labels.get("near_fomc", False):
             return None

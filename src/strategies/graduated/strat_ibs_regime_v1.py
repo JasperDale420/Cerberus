@@ -113,11 +113,11 @@ class StratIbsRegimeV1Strategy(BaseStrategy):
             return None
 
         # Regime filter: skip SHOCK vol
-        regime_vol = regime_labels.get("regime_vol", "NORMAL").upper()
+        regime_vol = regime_labels.get("vol_regime_symbol", "NORMAL").upper()
         if regime_vol == "SHOCK":
             return None
 
-        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+        regime_trend = regime_labels.get("trend_regime_symbol", "FLAT").upper()
 
         # Indicators
         bb_sma = self._sma(closes, self.bb_period)

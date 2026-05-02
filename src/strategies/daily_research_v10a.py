@@ -99,7 +99,7 @@ class SeedMeanReversionStrategy(BaseStrategy):
 
         # Block DOWN regime (market-level)
         labels = symbol_state.meta.get("regime_labels", {})
-        if labels.get("regime_trend", "") == "DOWN":
+        if labels.get("trend_regime_symbol", "") == "DOWN":
             return None
 
         # Skip earnings, FOMC, quad witch

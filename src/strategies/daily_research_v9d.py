@@ -103,7 +103,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
             return None
 
         # Vol filter — skip SHOCK and HIGH
-        regime_vol = regime_labels.get("regime_vol", "NORMAL")
+        regime_vol = regime_labels.get("vol_regime_symbol", "NORMAL")
         if regime_vol in ("SHOCK", "HIGH"):
             return None
         # Calendar filters
@@ -149,7 +149,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         consec_down = self._count_consec_down(closes)
 
         # Regime-adaptive thresholds
-        regime_trend = regime_labels.get("regime_trend", "FLAT").upper()
+        regime_trend = regime_labels.get("trend_regime_symbol", "FLAT").upper()
 
         if regime_trend == "UP":
             if consec_down < self.consec_down_up:
