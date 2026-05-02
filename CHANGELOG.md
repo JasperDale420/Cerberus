@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (regime-labeling pipeline v2 — 2026-05-02)
+
+- **`scripts/label_regime_dataset_v2.py` — two-column regime labeler.** Replaces the single broken `regime_vol` column with two named columns:
+  - `vol_regime_market` — Labeler A applied to SPY (30d realized vol, absolute thresholds LOW<8% / HIGH≥20% / SHOCK≥50%) and broadcast to all symbols. Semantics: "is the broad market in a vol shock?"
+  - `vol_regime_symbol` — Labeler B per-symbol (EWMA variance ratio z-score, matches `MarketContextService._classify_vol`). Semantics: "is this symbol unusually volatile for itself right now?"
+  - Trend axis is similarly split into `trend_regime_market` (SPY broadcast) and `trend_regime_symbol` (per-symbol).
+- v2 outputs go to `data/regime_labeled_v2/` (gitignored). v1 at `data/regime_labeled/` is untouched and continues to feed existing autoresearch runs.
+- Validation against 8 hand-curated SPY ground-truth periods (`scripts/regime_grid_search.py::GROUND_TRUTH`): 7/7 top-bin matches expected. Cross-symbol invariant verified: `vol_regime_market` is identical across SPY/AMD/NVDA on common dates.
+- Distribution v1 → v2 vol_regime_symbol: per-symbol HIGH+SHOCK fraction was 83.3% mean (median 94.3%) under v1's per-symbol absolute thresholds; under v2's relative EWMA-z it is 4.5% mean (uniform 2-9% range). LOW fraction was 0.5% mean → 29.5% mean.
+- Migration plan documented at `data/regime_labeled_v2/README.md` (steps 2-5: parameterize aux labelers, update strategy code, update backtest runner, decommission v1).
+- Context: companion reason-loop audit at `reason/260501-0159-regime-labels-critique/` — 3 unanimous rounds converged on this two-column design as the highest-leverage fix.
+
 ### Fixed (autoresearch infrastructure debug+fix — 2026-04-30)
 
 A second debug session (`debug/260430-1728-autoresearch-loop/`) found 17 confirmed bugs after the live loop ran 5 consecutive iterations all stuck at the `-2.0` gate floor. All fixes landed via `fix/260430-1756-autoresearch-loop/` (12 atomic commits).
