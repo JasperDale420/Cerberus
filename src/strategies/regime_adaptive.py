@@ -2,10 +2,10 @@
 RegimeAdaptive Strategy
 
 Type: adaptive
-Description: Cross-regime generalist — switches entry mode based on trend regime.
-  UP: buys RSI dips (momentum continuation)
-  DOWN: shorts RSI bounces (fade the bounce)
-  FLAT/unknown: RSI extremes (mean reversion)
+Description: Cross-regime generalist — EMA20 momentum with ATR stops.
+  UP: buy when price pulls back to EMA20 from above
+  DOWN: short when price bounces to EMA20 from below
+  FLAT/unknown: buy RSI < 35, short RSI > 65
 """
 
 from __future__ import annotations
@@ -13,55 +13,57 @@ from __future__ import annotations
 from typing import Any
 
 from src.core.domain import Bar, MarketState, OrderSide, Signal, SymbolState, TrendRegime
-from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.strategies.base import BaseStrategy
 
 
 class RegimeAdaptiveStrategy(BaseStrategy):
-    """Switch entry logic by trend regime: dip-buy in UP, fade bounce in DOWN, RSI extremes in FLAT."""
+    """EMA20 pullback in UP/DOWN regimes; RSI extremes in FLAT."""
 
     name: str = "regime_adaptive"
 
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
-        self.rsi_long_entry = float(config.get("rsi_long_entry", 45.0))
-        self.rsi_short_entry = float(config.get("rsi_short_entry", 60.0))
+        self.min_bars = int(config.get("min_bars", 20))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 3.0))
-        self.min_bars = int(config.get("min_bars", 20))
 
-    def on_bar(
-        self,
-        symbol: str,
-        bar: Bar,
-        symbol_state: SymbolState,
-        market_state: MarketState,
-    ) -> Signal | None:
-        if not self._is_evaluation_bar(bar):
-            return None
+    def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> Signal | None:
         if not self._check_cooldown(symbol, bar.time):
             return None
-        if not self._require_min_bars(symbol_state, self.min_bars):
+        bars = list(symbol_state.bars_1m)
+        if len(bars) < self.min_bars:
             return None
 
-        mtf = MultiTimeframeAnalyzer(symbol_state)
-        rsi = mtf.get_rsi("1m", 14)
-        atr = mtf.get_atr("1m", 14)
-        if rsi is None or atr is None or atr <= 0:
+        closes = [float(b.close) for b in bars[-20:]]
+        ema20 = sum(closes) / len(closes)  # simple MA as proxy
+
+        # ATR from last 14 bars
+        recent = bars[-14:]
+        atr = sum(abs(float(b.high) - float(b.low)) for b in recent) / len(recent)
+        if atr <= 0:
             return None
 
+        price = float(bar.close)
         snapshot = market_state.regime_snapshot
         trend = snapshot.trend if snapshot else None
 
         if trend == TrendRegime.UP:
-            if rsi >= self.rsi_long_entry:
+            if price > ema20 * 0.999:  # at or above EMA — no pullback
                 return None
             side = OrderSide.BUY
         elif trend == TrendRegime.DOWN:
-            if rsi <= self.rsi_short_entry:
+            if price < ema20 * 1.001:  # at or below EMA — no bounce
                 return None
             side = OrderSide.SELL
-        else:  # FLAT or no snapshot — mean reversion
+        else:
+            rsi_period = 14
+            if len(bars) < rsi_period + 1:
+                return None
+            gains = [max(0.0, float(bars[-i].close) - float(bars[-i - 1].close)) for i in range(1, rsi_period + 1)]
+            losses = [max(0.0, float(bars[-i - 1].close) - float(bars[-i].close)) for i in range(1, rsi_period + 1)]
+            avg_gain = sum(gains) / rsi_period
+            avg_loss = sum(losses) / rsi_period
+            rsi = 100.0 - 100.0 / (1.0 + avg_gain / avg_loss) if avg_loss > 0 else 50.0
             if rsi < 35.0:
                 side = OrderSide.BUY
             elif rsi > 65.0:
@@ -69,13 +71,8 @@ class RegimeAdaptiveStrategy(BaseStrategy):
             else:
                 return None
 
-        stop_dist = self.stop_atr_mult * atr
-        if side == OrderSide.BUY:
-            stop_price = bar.close - stop_dist
-            target_price = bar.close + self.target_atr_mult * atr
-        else:
-            stop_price = bar.close + stop_dist
-            target_price = bar.close - self.target_atr_mult * atr
+        stop = price - self.stop_atr_mult * atr if side == OrderSide.BUY else price + self.stop_atr_mult * atr
+        target = price + self.target_atr_mult * atr if side == OrderSide.BUY else price - self.target_atr_mult * atr
 
         self.last_signal_time[symbol] = bar.time
-        return self._create_signal(symbol, side, bar, market_state, stop_price, target_price)
+        return self._create_signal(symbol, side, bar, market_state, stop, target)
