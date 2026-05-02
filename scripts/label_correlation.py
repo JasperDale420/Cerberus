@@ -13,12 +13,14 @@ import logging  # noqa: E402
 
 logging.disable(logging.CRITICAL)
 
+import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+DATA_DIR = Path(os.environ.get("CERBERUS_REGIME_DIR", _DEFAULT_DATA_DIR))
 SYMBOLS = ["AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META", "JPM", "XOM", "NFLX", "BAC"]
 WINDOW = 20
 

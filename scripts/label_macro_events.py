@@ -9,7 +9,8 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "regime_labeled")
+_DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "regime_labeled")
+DATA_DIR = os.environ.get("CERBERUS_REGIME_DIR", _DEFAULT_DATA_DIR)
 
 # ---------------------------------------------------------------------------
 # Part A: OPEX dates

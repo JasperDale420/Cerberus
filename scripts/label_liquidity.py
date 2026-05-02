@@ -1,5 +1,6 @@
 """Label per-symbol liquidity regimes from existing daily regime bar data."""
 
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -8,7 +9,8 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-REGIME_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+_DEFAULT_REGIME_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+REGIME_DIR = Path(os.environ.get("CERBERUS_REGIME_DIR", _DEFAULT_REGIME_DIR))
 ROLLING_WINDOW = 20
 LOW_DOLLAR_VOL_THRESHOLD = 10_000_000  # $10M
 

@@ -16,8 +16,11 @@ import warnings  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
+import os  # noqa: E402
+
 INPUT_DIR = Path("data/bars_2023_2025")
-OUTPUT_DIR = Path("data/regime_labeled")
+_DEFAULT_OUTPUT_DIR = Path("data/regime_labeled")
+OUTPUT_DIR = Path(os.environ.get("CERBERUS_REGIME_DIR", _DEFAULT_OUTPUT_DIR))
 
 PHASE_RANGES = [
     ("pre_market", 4, 0, 9, 29),

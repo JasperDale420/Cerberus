@@ -19,7 +19,8 @@ import logging  # noqa: E402
 
 logging.disable(logging.CRITICAL)
 
-REGIME_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+_DEFAULT_REGIME_DIR = Path(__file__).resolve().parent.parent / "data" / "regime_labeled"
+REGIME_DIR = Path(os.environ.get("CERBERUS_REGIME_DIR", _DEFAULT_REGIME_DIR))
 GATEWAY_URL = os.environ.get("DATA_INGESTION_URL", "http://localhost:8080")
 
 
