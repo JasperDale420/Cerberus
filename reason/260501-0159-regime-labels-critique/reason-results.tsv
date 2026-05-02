@@ -1,0 +1,4 @@
+round	winner	vote_tally	A_words	B_words	AB_words	consecutive_synthesis_wins	critic_fatals	critic_majors	critic_minors	label_map
+1	AB	3-0-0	1350	1485	1484	1	2	5	2	X=AB Y=A Z=B
+2	AB	3-0-0	1398	1500	1468	2	2	6	2	X=A2 Y=B2 Z=AB2
+3	AB	3-0-0	1402	1469	1496	3	1	6	2	X=B3 Y=AB3 Z=A3
