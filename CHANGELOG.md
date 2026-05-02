@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed (regime-labeling v2 migration — 2026-05-02)
+
+Migration steps 2-4 of the v2 regime-labeling rollout (see `data/regime_labeled_v2/README.md`):
+
+- **Step 2 — Auxiliary labelers parameterized.** `scripts/label_earnings.py`, `label_macro_events.py`, `label_correlation.py`, `label_liquidity.py`, `label_session_phases.py` now honor `CERBERUS_REGIME_DIR` env var, defaulting to `data/regime_labeled` (v1) when unset. Run against v2 with `CERBERUS_REGIME_DIR=data/regime_labeled_v2` to enrich the new dataset with liquidity, correlation, macro-event, earnings, and 1m session-phase columns. (Earnings labeling currently returns 0 events for all symbols due to a pre-existing yfinance/Data-Gateway issue affecting both v1 and v2; tracked separately.)
+
+- **Step 3 — Strategy code reads new column names.** Updated 9 files in the autoresearch lineage to read `vol_regime_symbol` / `trend_regime_symbol` instead of the v1 `regime_vol` / `regime_trend` keys: `daily_research_v9{c,d}.py`, `daily_research_v10{a,b,c,d}.py`, `graduated/strat_consecdown_bb_v1.py`, `graduated/strat_ibs_regime_v1.py`, `autoresearch/frozen/seed_regime_switch.py`. Local variable names and output meta-dict keys preserved to minimize diff and keep the downstream `regime_stats` / trade-record contract stable. v9a, v9b — only event-window filters, no rename needed. v6/v7/v8 source files no longer exist (deleted in earlier autoresearch iterations); their `*_latest.json` artifacts remain provisional per `artifacts/autoresearch/PROVISIONAL_FINDINGS.md`.
+
+- **Step 4 — Backtest runner injects 4-axis schema with v1↔v2 aliasing.** `src/backtest/runner.py::_REGIME_LABEL_COLUMNS` now lists v2 axes (`vol_regime_market`, `vol_regime_symbol`, `trend_regime_market`, `trend_regime_symbol`) alongside the v1 axes. New helper `_build_regime_labels_dict` aliases v2↔v1 names so consumers reading either schema work against either parquet version. Verified end-to-end: a v2 row injects all v2 keys plus aliased v1 keys; a v1 row injects all v1 keys plus aliased v2 keys (with `vol_regime_market` = None since v1 has no market axis).
+
 ### Added (regime-labeling pipeline v2 — 2026-05-02)
 
 - **`scripts/label_regime_dataset_v2.py` — two-column regime labeler.** Replaces the single broken `regime_vol` column with two named columns:

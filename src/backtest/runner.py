@@ -328,9 +328,20 @@ def _validate_survivorship(
 
 
 _REGIME_LABEL_COLUMNS = [
+    # v2 schema (regime-labeled v2 parquets) — preferred when present.
+    # See data/regime_labeled_v2/README.md for column semantics.
+    "vol_regime_market",
+    "vol_regime_symbol",
+    "trend_regime_market",
+    "trend_regime_symbol",
+    # v1 schema (legacy regime_labeled parquets) — kept for backwards compat
+    # while the v1 dataset is still in use. Aliased into v2 keys by
+    # _build_regime_labels_dict below so strategies that read either schema
+    # work against either parquet version.
     "regime_trend",
     "regime_vol",
     "regime",
+    # Aux columns (unchanged across v1/v2)
     "liquidity_regime",
     "earnings_window",
     "near_earnings",
@@ -341,6 +352,30 @@ _REGIME_LABEL_COLUMNS = [
     "correlation_regime",
     "spy_beta",
 ]
+
+
+def _build_regime_labels_dict(rl_row: Any, columns: list[str]) -> dict[str, Any]:
+    """Build the regime_labels dict for symbol_state.meta with v1<->v2 aliasing.
+
+    The dataset is mid-migration: v1 parquets emit `regime_vol`/`regime_trend`,
+    v2 parquets emit `vol_regime_symbol`/`trend_regime_symbol` (plus a separate
+    market axis). Strategies read v2 names. This helper makes both schemas
+    look the same to consumers — if a v2 key is missing, fall back to its v1
+    equivalent; if a v1 key is missing, fall back to its v2 equivalent.
+
+    See data/regime_labeled_v2/README.md for the full migration plan.
+    """
+    out = {col: rl_row[col] for col in columns if col in rl_row.index}
+    aliases = (
+        ("vol_regime_symbol", "regime_vol"),
+        ("trend_regime_symbol", "regime_trend"),
+    )
+    for v2_key, v1_key in aliases:
+        if v2_key not in out and v1_key in out:
+            out[v2_key] = out[v1_key]
+        elif v1_key not in out and v2_key in out:
+            out[v1_key] = out[v2_key]
+    return out
 
 
 def _load_regime_labels(
@@ -569,9 +604,7 @@ def _build_trade_records(
                             rl_df = regime_labels.get(sym)
                             if rl_df is not None and not rl_df.empty and entry_date in rl_df.index:
                                 rl_row = rl_df.loc[entry_date]
-                                parquet_regime = {
-                                    col: rl_row[col] for col in _REGIME_LABEL_COLUMNS if col in rl_row.index
-                                }
+                                parquet_regime = _build_regime_labels_dict(rl_row, _REGIME_LABEL_COLUMNS)
                                 trade_meta["regime_labels"] = parquet_regime
 
                     # Resolve: prefer signal meta, then parquet, then "unknown"
@@ -1164,9 +1197,7 @@ async def run_backtest(
                 _bar_date = current_day  # already computed above
                 if _bar_date in _rl_df.index:
                     _rl_row = _rl_df.loc[_bar_date]
-                    _sym_state.meta["regime_labels"] = {
-                        col: _rl_row[col] for col in _REGIME_LABEL_COLUMNS if col in _rl_row.index
-                    }
+                    _sym_state.meta["regime_labels"] = _build_regime_labels_dict(_rl_row, _REGIME_LABEL_COLUMNS)
                 # else: keep previous day's labels (or empty if never set)
 
         if session_labels:
