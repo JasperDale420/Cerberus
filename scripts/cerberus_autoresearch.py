@@ -72,7 +72,8 @@ def classify_window_regime(data_dir: str, start: str, end: str) -> str:
     Otherwise falls back to computing from raw 1-minute bars.
     """
     # Try pre-labeled data first (fast path)
-    regime_dir = Path("data/regime_labeled")
+    # Honor CERBERUS_REGIME_DIR for v2 dataset (data/regime_labeled_v2/)
+    regime_dir = Path(os.environ.get("CERBERUS_REGIME_DIR", "data/regime_labeled"))
     spy_regime = regime_dir / "SPY_daily_regime.parquet"
     if spy_regime.exists():
         try:

@@ -378,6 +378,19 @@ def _build_regime_labels_dict(rl_row: Any, columns: list[str]) -> dict[str, Any]
     return out
 
 
+def _resolve_regime_dir(data_dir: Path) -> Path:
+    """Resolve the regime-labeled directory.
+
+    Honors `CERBERUS_REGIME_DIR` env var when set (allows pointing the runner
+    at v2 — `data/regime_labeled_v2/` — without changing data_dir or layout).
+    Defaults to `data_dir / "regime_labeled"` (v1) when the env var is unset.
+    """
+    env_override = os.environ.get("CERBERUS_REGIME_DIR")
+    if env_override:
+        return Path(env_override)
+    return data_dir / "regime_labeled"
+
+
 def _load_regime_labels(
     data_dir: Path,
     symbols: set[str],
@@ -388,7 +401,7 @@ def _load_regime_labels(
     Returns a dict mapping symbol -> DataFrame indexed by ``datetime.date``.
     Missing files are logged as warnings and produce empty DataFrames.
     """
-    regime_dir = data_dir / "regime_labeled"
+    regime_dir = _resolve_regime_dir(data_dir)
     if not regime_dir.is_dir():
         logger.info("No regime_labeled directory found — skipping regime label loading", path=str(regime_dir))
         return {}
@@ -427,7 +440,7 @@ def _load_session_labels(
 
     Returns a dict mapping symbol -> DataFrame indexed by UTC timestamp (rounded to minute).
     """
-    regime_dir = data_dir / "regime_labeled"
+    regime_dir = _resolve_regime_dir(data_dir)
     if not regime_dir.is_dir():
         return {}
 
