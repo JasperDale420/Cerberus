@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed (daily_research_v*/seed_* lineage retired — 2026-05-03)
+
+The `daily_research_v9{a,b,c,d}`, `daily_research_v10{a,b,c,d}`, and `seed_*` autoresearch lineage is removed. Empirical confirmation in [reason/260501-0159-regime-labels-critique/p0_audit_memo.md](reason/260501-0159-regime-labels-critique/p0_audit_memo.md): under the corrected v2 regime-labeling pipeline these strategies overtraded catastrophically (6,800–9,900 trades per 6-month WFO window across 4 symbols, Sharpe -10 to -16, every trial hitting the score floor). Their apparent v1 backtested edge was a calibration artifact of broken per-symbol Labeler A — the regime filter was over-blocking 98% of bars on high-beta names, and that artificial signal-rarefier was doing all the work. With proper per-symbol calibration the underlying logic is non-viable.
+
+The current state of HEAD before deletion is preserved at git tag `research-archive/daily-research-lineage-removed-2026-05-03` for forensic reference.
+
+#### Removed
+- `src/strategies/daily_research_v9{a,b,c,d}.py` and `daily_research_v10{a,b,c,d}.py` — 8 strategy implementations
+- 8 `activation:` blocks in `config/strategies.yaml`
+- 4 `LOCKED_PARAMS` entries (v10a-d) and 4 `PARAM_SPACES` entries (v10a-d) in `src/analytics/param_spaces.py`. v9 strategies had no param-space entries (a separate, pre-existing gap surfaced during the smoke test).
+- 25 `*_latest.json` autoresearch artifacts in `artifacts/autoresearch/` (gitignored): `daily_research_strategy`, `daily_research_v6{a,b,c,d}`, `daily_research_v7{a,b,c,d}`, `daily_research_v7a_test`, `daily_research_v8{a,b,c,d}`, `daily_research_v9{a,b,c,d}`, `daily_research_v10{a,b,c,d}`, `seed_mean_reversion`, `seed_regime_switch`, `seed_trend_pullback`, `seed_vol_breakout`
+- 5 frozen autoresearch templates in `autoresearch/frozen/` (gitignored): `seed_mean_reversion.py`, `seed_regime_switch.py`, `seed_trend_pullback.py`, `seed_vol_breakout.py`, `strategy_template.py`
+- 4 frozen orchestration scripts in `autoresearch/frozen/` (gitignored): `autoresearch_loop_v7.sh`, `autoresearch_loop_v8.sh`, `autoresearch_loop_v9.sh`, `autoresearch_loop_v10.sh`
+- `artifacts/autoresearch/PROVISIONAL_FINDINGS.md` (gitignored) — obsolete now that the dirty lineage is gone
+
+#### Active autoresearch lineages (unchanged, clean)
+The strategies autoresearch has been iterating on most recently are NOT affected: `regime_trend_up`, `regime_bear`, `regime_adaptive`, `autoresearch_strategy`. None of them read `symbol_state.meta["regime_labels"]` (they use `market_state.regime_snapshot` from the live `MarketContextService` only). Recent git-log iter wins on these are not contaminated by the v1 calibration bug.
+
 ### Changed (regime-labeling v2 migration — 2026-05-02)
 
 Migration steps 2-4 of the v2 regime-labeling rollout (see `data/regime_labeled_v2/README.md`):
