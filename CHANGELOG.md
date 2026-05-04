@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed (risk axis removed from activation gating — 2026-05-03)
+
+Removed the `risk:` field from all 12 `activation:` blocks in `config/strategies.yaml`. Per the regime-labeling reason loop's converged recommendation: ship a real Risk classifier or stop emitting it. We are doing neither while we work toward (1) — so for now we stop gating on it.
+
+#### Why
+- `RiskRegime` is classified by `MarketContextService._classify_risk` ([src/analysis/regime.py:542](src/analysis/regime.py:542)) via VRP z-score, falling back to VXX momentum, then a 5-day SPY return proxy.
+- The 5-day-return proxy was scored at 58% against the 8 hand-curated SPY ground-truth periods. Class-balance check: `RISK_ON` is ~80% of days in that ground truth, so an always-predict-`RISK_ON` constant classifier scores ~80%. The 5-day proxy is **below the constant baseline**.
+- The VRP-based primary path may well be better, but it has never been scored against a held-out OOS truth. Gating strategies on a classifier of unknown accuracy is exactly what the reason loop flagged as "the worst of both worlds" (P0 audit memo, finding 5).
+- An empty list on any axis in `StrategyActivationPolicy` means "no constraint" — see [src/engine/strategy_engine.py:41-58](src/engine/strategy_engine.py:41). Removing the field is equivalent to setting `risk: [risk_on, neutral, risk_off]` but cleaner.
+
+#### Effect
+Strategies whose own internal logic already handles risk context — `vix_spike_fade` (only fires during VIX spikes by construction), `vwap_trend_rider` (only fires during trends), `momentum_continuation` (only fires on breakouts) — are unchanged in practice. Strategies whose only risk handling was the activation gate (`vwap_reversion`, `orb`, `index_mean_reversion`, `flow_momentum`, `gap_fill`) are now permitted to fire on RISK_OFF days they were previously excluded from. Empirical impact is bounded: their internal trend/vol filters and entry logic still gate signal generation.
+
+#### When to revisit
+Once OOS multi-asset ground truth exists (4 hand-labeled periods on JNJ / TSLA / XLE / SPY 2018) and a Risk classifier has been scored against it with documented accuracy. Pre-registered acceptance gates: must label Mar 2020, Jan 2022, SVB Mar 2023, yen-carry Aug 2024 as `RISK_OFF` on t±2; ≥80% of unambiguous calm windows as `RISK_ON`. Re-add `risk:` lines to activation only after that.
+
+#### Not changed
+The five backtest configs (`backtest_v2.yaml`, `backtest_portfolio.yaml`, `backtest_smoke.yaml`, `backtest_trp_sortino.yaml`, `autoresearch_2025.yaml`) still have `risk:` axes in their strategy activation blocks. The principle applies equally there, but those configs are tuning artifacts that may be re-run for reproducibility — leaving them as-is until a Risk classifier exists rather than mass-editing tuning configs.
+
 ### Removed (daily_research_v*/seed_* lineage retired — 2026-05-03)
 
 The `daily_research_v9{a,b,c,d}`, `daily_research_v10{a,b,c,d}`, and `seed_*` autoresearch lineage is removed. Empirical confirmation in [reason/260501-0159-regime-labels-critique/p0_audit_memo.md](reason/260501-0159-regime-labels-critique/p0_audit_memo.md): under the corrected v2 regime-labeling pipeline these strategies overtraded catastrophically (6,800–9,900 trades per 6-month WFO window across 4 symbols, Sharpe -10 to -16, every trial hitting the score floor). Their apparent v1 backtested edge was a calibration artifact of broken per-symbol Labeler A — the regime filter was over-blocking 98% of bars on high-beta names, and that artificial signal-rarefier was doing all the work. With proper per-symbol calibration the underlying logic is non-viable.

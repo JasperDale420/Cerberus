@@ -18,7 +18,6 @@ strategies:
       trend: [flat]
       vol: [normal, high]
       liquidity: [good, thin]
-      risk: [neutral, risk_off]
       min_confidence: 0.6
 
   orb:
@@ -35,7 +34,6 @@ strategies:
       trend: [up, down]
       vol: [normal, high, shock]
       liquidity: [good]
-      risk: [risk_on, neutral]
       min_confidence: 0.5
 
   index_mean_reversion:
@@ -50,7 +48,6 @@ strategies:
       trend: [flat]
       vol: [normal, high]
       liquidity: [good]
-      risk: [neutral, risk_off]
       min_confidence: 0.6
 
   flow_momentum:
@@ -64,7 +61,6 @@ strategies:
       trend: [up, down]
       vol: [normal, high, shock]
       liquidity: [good]
-      risk: [risk_on, neutral]
       min_confidence: 0.5
 
   gap_fill:
@@ -81,7 +77,6 @@ strategies:
       trend: [up, down, flat]
       vol: [normal, high]
       liquidity: [good, thin]
-      risk: [neutral]
       min_confidence: 0.4
 
   vwap_trend_rider:
@@ -97,7 +92,6 @@ strategies:
       trend: [up, down]
       vol: [low, normal]
       liquidity: [good]
-      risk: [risk_on]
       min_confidence: 0.6
 
   # NEW: Fills shock volatility gap - fades VIX spikes
@@ -114,7 +108,6 @@ strategies:
       trend: [down]
       vol: [high, shock]  # KEY: Only strategy for shock
       liquidity: [good]
-      risk: [risk_off]
       min_confidence: 0.4
 
   # NEW: Fast breakouts without pullback wait
@@ -132,7 +125,6 @@ strategies:
       trend: [up, down]
       vol: [normal, high, shock]
       liquidity: [good]
-      risk: [risk_on]
       min_confidence: 0.6
 
   regime_trend_up:
@@ -151,7 +143,6 @@ strategies:
       trend: [up, down, flat]
       vol: [low, normal, high]
       liquidity: [good, thin]
-      risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
 
   regime_bear:
@@ -171,7 +162,6 @@ strategies:
       trend: [up, down, flat]
       vol: [low, normal, high, shock]
       liquidity: [good, thin, stressed]
-      risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
 
   regime_adaptive:
@@ -187,7 +177,6 @@ strategies:
       trend: [up, down, flat]
       vol: [low, normal, high, shock]
       liquidity: [good, thin, stressed]
-      risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
 
   autoresearch_strategy:
@@ -201,5 +190,4 @@ strategies:
       trend: [up, down, flat]
       vol: [low, normal, high]
       liquidity: [good, thin]
-      risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
