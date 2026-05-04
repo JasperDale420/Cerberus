@@ -190,6 +190,21 @@ strategies:
       risk: [risk_on, neutral, risk_off]
       min_confidence: 0.0
 
+  regime_flat:
+    enabled: true
+    rsi_oversold: 30
+    rsi_overbought: 70
+    stop_atr_mult: 1.5
+    target_atr_mult: 2.5
+    min_bars: 20
+    activation:
+      session: [premarket, opening, midday, power_hour, close]
+      trend: [up, down, flat]
+      vol: [low, normal, high, shock]
+      liquidity: [good, thin]
+      risk: [risk_on, neutral, risk_off]
+      min_confidence: 0.0
+
   autoresearch_strategy:
     enabled: true
     stop_atr_mult: 1.5
