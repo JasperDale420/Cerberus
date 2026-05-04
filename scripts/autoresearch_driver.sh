@@ -13,10 +13,10 @@ cd "$(dirname "$0")/.."
 # same phase. Defaults to the first phase if $1 is unrecognised.
 START_PHASE_ARG="${1:-}"
 MAX_ITER="${2:-50}"
-# L5 fix: was hardcoded --n-trials 5; harness default is 8. Now configurable
-# via env var (default 5 to preserve previous driver behavior). Direct
-# invocations of cerberus_autoresearch.py still use the harness default of 8.
-N_TRIALS="${N_TRIALS:-5}"
+# L5 fix: was hardcoded --n-trials 5; harness default is now 15. n_trials=5 produced
+# noisy WFO param surfaces (1 trial per ~3.4 windows) — CV-based stability rejection
+# became a coin flip. 15 is the new minimum that keeps each iteration trustworthy.
+N_TRIALS="${N_TRIALS:-15}"
 TSV="autoresearch/results.tsv"
 BEST_SCORE_FILE="autoresearch/.best_score"
 LAST_RESULT_FILE="autoresearch/.last_result"
@@ -91,6 +91,7 @@ PROTECTED_FILES=(
     "scripts/extract_wfo_insights.py"
     "scripts/autoresearch_driver.sh"
     "scripts/autoresearch_loop.sh"
+    "scripts/run_holdout.py"
     "program_cerberus.md"
     "program_cerberus_v3.md"
 )
@@ -358,38 +359,78 @@ print(f'IMPORT_OK: {cls.__name__}')
     echo "[iter $ITER] Result: score=$SCORE trades=$TRADES windows=$WIN_PROF"
 
     # ── Step 4: Keep or discard ───────────────────────────────────
+    # KEEP gate: must (a) have trades, (b) beat current best, AND (c) clear the
+    # gate floor. Previously the "improved" branch only checked (a)+(b) — after
+    # a phase pivot reset BEST_SCORE to -999, a gate-failed score=-2.0 was
+    # silently kept as the new baseline (last 20-iter run iter20 reproduction).
+    # Bootstrap branch removed: the unified gate covers it (score > -999 AND
+    # score > -2.0 is the same condition).
     KEEP=false
     KEEP_REASON=""
     HAS_TRADES=false
+    GATE_FLOOR_LOCAL=-2.0
     [ "$TRADES" -gt 30 ] 2>/dev/null && HAS_TRADES=true
 
-    # Keep if improved (with trades)
-    if [ "$HAS_TRADES" = "true" ] && echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}'; then
-        KEEP=true
-        KEEP_REASON="improved: $SCORE > $BEST_SCORE"
-        echo "$SCORE" > "$BEST_SCORE_FILE"
-        BEST_SCORE="$SCORE"
-    fi
-
-    # Bootstrap: first strategy with trades AND a non-gate-failed score escapes -999.
-    # Gate-failed scores (composite=-2.0) must NOT become the bootstrap baseline,
-    # otherwise the agent's lineage roots in a known-broken strategy.
-    GATE_FLOOR_LOCAL=-2.0
-    if [ "$KEEP" = "false" ] && [ "$HAS_TRADES" = "true" ] \
-           && echo "$BEST_SCORE" | awk '{exit ($1 <= -999) ? 0 : 1}' \
+    if [ "$HAS_TRADES" = "true" ] \
+           && echo "$SCORE $BEST_SCORE" | awk '{exit ($1 > $2) ? 0 : 1}' \
            && echo "$SCORE $GATE_FLOOR_LOCAL" | awk '{exit ($1 > $2) ? 0 : 1}'; then
         KEEP=true
-        KEEP_REASON="bootstrap: first $TRADES trades, score $SCORE > floor"
-        echo "$SCORE" > "$BEST_SCORE_FILE"
-        BEST_SCORE="$SCORE"
+        KEEP_REASON="improved: $SCORE > best=$BEST_SCORE > floor=$GATE_FLOOR_LOCAL"
     fi
+
+    PREV_BEST_COMMIT="$BEST_COMMIT"
+    PREV_BEST_SCORE="$BEST_SCORE"
+    HOLDOUT_LINE=""
 
     if [ "$KEEP" = "true" ]; then
         STATUS="keep"
         CONSECUTIVE_DISCARDS=0
+        echo "$SCORE" > "$BEST_SCORE_FILE"
+        BEST_SCORE="$SCORE"
         BEST_COMMIT=$(git rev-parse HEAD)
         echo "$BEST_COMMIT" > "$BEST_COMMIT_FILE"
-        echo "[iter $ITER] KEEP — $KEEP_REASON (best_commit=${BEST_COMMIT:0:8})"
+        echo "[iter $ITER] KEEP (provisional) — $KEEP_REASON (best_commit=${BEST_COMMIT:0:8})"
+
+        # ── Holdout validation ────────────────────────────────────
+        # Re-run the kept iteration on the reserved 2026-Q1 window using
+        # WFO-selected consensus params from the eval JSON. If the holdout
+        # ratio_vs_spy collapses (< 50% of OOS or sign-flips negative), the
+        # iteration is suspected of overfitting — downgrade to discard.
+        HOLDOUT_PARAMS_PATH="artifacts/autoresearch/${EVAL_STRATEGY}_latest.json"
+        rm -f "artifacts/autoresearch/holdout/${EVAL_STRATEGY}_holdout_latest.json"
+        echo "[iter $ITER] Holdout: 2026-01-01..2026-03-19"
+        HOLDOUT_OUTPUT=$(timeout 1800 uv run python scripts/run_holdout.py \
+            --strategy "$EVAL_STRATEGY" \
+            --start "2026-01-01" --end "2026-03-19" \
+            --params-from "$HOLDOUT_PARAMS_PATH" \
+            --quiet 2>&1 || true)
+        HOLDOUT_LINE=$(echo "$HOLDOUT_OUTPUT" | grep "^HOLDOUT_RESULT" || echo "")
+        HOLDOUT_RATIO=$(echo "$HOLDOUT_LINE" | grep -o 'ratio_vs_spy=[^ ]*' | cut -d= -f2 || echo "")
+        HOLDOUT_TRADES=$(echo "$HOLDOUT_LINE" | grep -o 'n_trades=[^ ]*' | cut -d= -f2 || echo "0")
+        OOS_RATIO=$(echo "$BENCHMARK_LINE" | grep -o 'ratio_vs_spy=[^ ]*' | cut -d= -f2 || echo "")
+
+        if [ -n "$HOLDOUT_RATIO" ] && [ -n "$OOS_RATIO" ]; then
+            HOLDOUT_VERDICT=$(echo "$OOS_RATIO $HOLDOUT_RATIO" | awk '{
+                oos=$1; hold=$2;
+                if (oos > 0 && (hold < 0 || hold < 0.5*oos)) print "fail";
+                else print "ok";
+            }')
+            if [ "$HOLDOUT_VERDICT" = "fail" ]; then
+                echo "[iter $ITER] HOLDOUT FAIL — OOS=$OOS_RATIO holdout=$HOLDOUT_RATIO (sign-flip or <50%×OOS) — downgrading to discard"
+                STATUS="holdout_fail"
+                KEEP=false
+                CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
+                BEST_COMMIT="$PREV_BEST_COMMIT"
+                BEST_SCORE="$PREV_BEST_SCORE"
+                echo "$BEST_COMMIT" > "$BEST_COMMIT_FILE"
+                echo "$BEST_SCORE" > "$BEST_SCORE_FILE"
+                git reset --hard "$BEST_COMMIT"
+            else
+                echo "[iter $ITER] HOLDOUT OK — ratio=$HOLDOUT_RATIO trades=$HOLDOUT_TRADES (OOS=$OOS_RATIO)"
+            fi
+        else
+            echo "[iter $ITER] HOLDOUT no-result — keeping iter without validation (run_holdout.py may have errored)"
+        fi
     else
         STATUS="discard"
         CONSECUTIVE_DISCARDS=$((CONSECUTIVE_DISCARDS + 1))
@@ -408,8 +449,11 @@ print(f'IMPORT_OK: {cls.__name__}')
 iter=$ITER status=$STATUS score=$SCORE best=$BEST_SCORE trades=$TRADES windows=$WIN_PROF
 change: $COMMIT_MSG
 
-SPY benchmark (goal: strategy_return ≥ 2x SPY over the OOS span):
+SPY benchmark (goal: composite ≥ 3.0 — pretax 3× clears short-term cap-gains tax friction):
   ${BENCHMARK_LINE:-(missing)}
+
+Holdout (2026-01-01..2026-03-19):
+  ${HOLDOUT_LINE:-(skipped — only runs after KEEP)}
 
 Regime breakdown:
 $(echo "$REGIME_LINES" | sed 's/^/  /' | head -8)
