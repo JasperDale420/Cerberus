@@ -115,7 +115,7 @@ if [ "$ITER" -eq 0 ]; then
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into the next iteration.
     rm -f "artifacts/autoresearch/${STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials "$N_TRIALS" 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 25200 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials "$N_TRIALS" 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
 
@@ -331,7 +331,7 @@ print(f'IMPORT_OK: {cls.__name__}')
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into this iteration's prompt.
     rm -f "artifacts/autoresearch/${EVAL_STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 10800 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials "$N_TRIALS" $REGIME_FLAG 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 25200 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials "$N_TRIALS" $REGIME_FLAG 2>&1 || true)
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
     echo "[iter $ITER] Eval completed in ${EVAL_DURATION}m"
