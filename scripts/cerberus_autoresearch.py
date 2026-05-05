@@ -42,8 +42,33 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 # ── Fixed configuration ──────────────────────────────────────────────
 
-# Default symbol universe: diversified, liquid, covers multiple sectors
-DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META"]
+# Default symbol universe — 16 symbols, regime-diverse:
+#   indices: SPY, QQQ, IWM (small-cap)
+#   high-beta tech: AAPL, NVDA, TSLA, AMD, AMZN, META
+#   defensives: KO, JNJ, XLP (consumer staples), XLU (utilities)
+#   bond proxy: TLT (long Treasuries — bull-flat in bear regimes)
+#   commodity: GLD (gold — risk-off hedge)
+#   cyclical financials: XLF
+# Bear/flat-regime specialists previously had no instruments to express edge against;
+# the 8-symbol mega-cap-tech list overweighted bull regimes.
+DEFAULT_SYMBOLS = [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "AAPL",
+    "NVDA",
+    "TSLA",
+    "AMD",
+    "AMZN",
+    "META",
+    "KO",
+    "JNJ",
+    "XLP",
+    "XLU",
+    "TLT",
+    "GLD",
+    "XLF",
+]
 
 # WFO parameters — full available data window (2016-06-01 → 2026-03-19)
 # Rolling 12-month train + 6-month OOS + 3-month final holdout.
@@ -169,7 +194,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cerberus Autoresearch Evaluation Runner")
     parser.add_argument("strategy", help="Strategy name to evaluate")
     parser.add_argument("--n-trials", type=int, default=15, help="Optuna trials per window")
-    parser.add_argument("--n-symbols", type=int, default=8, help="Number of symbols")
+    parser.add_argument("--n-symbols", type=int, default=16, help="Number of symbols")
     parser.add_argument("--data-dir", default=DATA_DIR, help="Bar data directory")
     parser.add_argument("--log-dir", default="artifacts/autoresearch/logs", help="Directory for verbose WFO logs")
     parser.add_argument(

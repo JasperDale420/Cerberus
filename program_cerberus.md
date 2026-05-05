@@ -8,7 +8,7 @@ The 3.0 target is set above the "obvious" 2.0 because of capital-gains tax frict
 
 - **Data window:** 2016-06-01 → 2026-03-19 (full available bar history, ~10 years).
 - **Walk-forward:** rolling 12-month train → 6-month OOS, with the final 3 months reserved as a holdout (2026-01-01 → 2026-03-19). ~18 OOS windows. The holdout is **now validated** — see "Holdout validation" below.
-- **Universe:** SPY, QQQ, AAPL, NVDA, TSLA, AMD, AMZN, META (8 symbols). Defensive / cross-sector adds (KO, GLD, TLT, XLP, XLU, IWM, XLF) are queued but blocked on bar-data download.
+- **Universe:** 16 symbols, regime-diverse — indices (SPY, QQQ, IWM), high-beta tech (AAPL, NVDA, TSLA, AMD, AMZN, META), defensives (KO, JNJ, XLP, XLU), bond proxy (TLT), commodity (GLD), cyclical financials (XLF). Bear and flat-regime specialists previously had no instruments to express edge against; the prior 8-symbol mega-cap-tech list overweighted bull regimes.
 - **Composite score = `ratio_vs_spy` (with adjustments).** This is THE metric. Both strategy returns and SPY are compounded as growth factors over the scoring windows, so the comparison is apples-to-apples. The benchmark uses three sign-safe modes:
   - **bull** (SPY > +1%): `ratio_vs_spy = strategy_return_pct / spy_return_pct` — direct "Nx SPY return" goal.
   - **bear** (SPY < −1%): `ratio_vs_spy = 1 + alpha/|spy|` — alpha=0 means matched SPY (1.0); breaking even when SPY lost 10% is alpha=10% on |spy|=10% → 2.0 (2x SPY in bear-market sense).

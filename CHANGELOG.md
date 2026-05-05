@@ -25,6 +25,7 @@ Pre-flight package addressing six issues found before relaunching the autoresear
 - **`N_TRIALS` default 5 → 15** in both `scripts/autoresearch_driver.sh` (env override) and `scripts/cerberus_autoresearch.py` (CLI default). 5 trials over 17 windows = 1 trial per ~3.4 windows — param surfaces were too noisy for CV-based stability rejection to be meaningful. 15 is the new minimum where each iteration is trustworthy. Iteration time scales roughly linearly; budget for ~3-4× the previous ~75-90 min/iter.
 - **Composite score goal `2.0 → 3.0`** in `program_cerberus.md` and the `AUTORESEARCH_BENCHMARK` line. Rationale: 2× pretax ≈ 1.6× after short-term cap-gains tax (35% combined). 3× pretax ≈ 2.4× after tax — genuine alpha after Uncle Sam.
 - **`PROTECTED_FILES`** in the driver now includes `scripts/run_holdout.py` (it's part of the harness contract; the agent should not modify it during iterations).
+- **Universe expansion 8 → 16 symbols.** `DEFAULT_SYMBOLS` in `scripts/cerberus_autoresearch.py` now covers indices (SPY, QQQ, IWM), high-beta tech (AAPL, NVDA, TSLA, AMD, AMZN, META), defensives (KO, JNJ, XLP, XLU), bond proxy (TLT), commodity (GLD), cyclical financials (XLF). Backfilled 2016-06-01 → 2026-03-19 via Alpaca SIP for the 7 new symbols (8.56M new bars). Bear/flat-regime specialists now have instruments where their edge can actually express — the prior 8-symbol mega-cap-tech universe overweighted bull regimes. `--n-symbols` default 8 → 16.
 
 #### Pre-launch checklist for the user
 Before running `bash scripts/autoresearch_driver.sh` next:
@@ -35,9 +36,6 @@ rm -f autoresearch/.baseline_commit autoresearch/.best_commit autoresearch/.best
 # (The TSV is appended-to; old rows from the 2026-05-02 run will still be there.)
 mv autoresearch/results.tsv autoresearch/results_pre_2026-05-04_relaunch.tsv 2>/dev/null || true
 ```
-
-#### Deferred (separate task)
-- **Universe expansion blocked on bar-data download.** Of the 8 proposed defensive/cross-sector adds (KO, JNJ, GLD, TLT, XLP, XLU, IWM, XLF), only JNJ exists in `data/bars_2023_2025/`. Downloading the rest via Data-Gateway is queued separately. Loop runs against the existing 8-symbol universe in the meantime.
 
 ---
 
