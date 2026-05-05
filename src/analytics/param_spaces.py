@@ -420,6 +420,52 @@ PARAM_SPACES: dict[str, list[ParamDef]] = {
         ),
     ],
     # ------------------------------------------------------------------
+    # Regime Flat — FLAT-regime specialist
+    #   Bidirectional RSI mean-reversion. Key knobs: RSI bands, stop/target, warmup.
+    # ------------------------------------------------------------------
+    "regime_flat": [
+        ParamDef(
+            "rsi_oversold",
+            "float",
+            low=20.0,
+            high=35.0,
+            step=2.5,
+            description="RSI threshold below which to enter long",
+        ),
+        ParamDef(
+            "rsi_overbought",
+            "float",
+            low=65.0,
+            high=80.0,
+            step=2.5,
+            description="RSI threshold above which to enter short",
+        ),
+        ParamDef(
+            "stop_atr_mult",
+            "float",
+            low=1.0,
+            high=2.5,
+            step=0.25,
+            description="ATR multiplier for stop loss",
+        ),
+        ParamDef(
+            "target_atr_mult",
+            "float",
+            low=1.5,
+            high=4.0,
+            step=0.5,
+            description="ATR multiplier for take profit target",
+        ),
+        ParamDef(
+            "min_bars",
+            "int",
+            low=15,
+            high=30,
+            step=5,
+            description="Minimum bars required before evaluating signals",
+        ),
+    ],
+    # ------------------------------------------------------------------
     # Regime Bear — 5 params
     #   Bear/high-vol specialist: shorts RSI bounces in downtrends.
     #   Key knobs: RSI entry thresholds, stop/target geometry.

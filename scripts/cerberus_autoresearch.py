@@ -42,8 +42,33 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 # ── Fixed configuration ──────────────────────────────────────────────
 
-# Default symbol universe: diversified, liquid, covers multiple sectors
-DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "AMD", "AMZN", "META"]
+# Default symbol universe — 16 symbols, regime-diverse:
+#   indices: SPY, QQQ, IWM (small-cap)
+#   high-beta tech: AAPL, NVDA, TSLA, AMD, AMZN, META
+#   defensives: KO, JNJ, XLP (consumer staples), XLU (utilities)
+#   bond proxy: TLT (long Treasuries — bull-flat in bear regimes)
+#   commodity: GLD (gold — risk-off hedge)
+#   cyclical financials: XLF
+# Bear/flat-regime specialists previously had no instruments to express edge against;
+# the 8-symbol mega-cap-tech list overweighted bull regimes.
+DEFAULT_SYMBOLS = [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "AAPL",
+    "NVDA",
+    "TSLA",
+    "AMD",
+    "AMZN",
+    "META",
+    "KO",
+    "JNJ",
+    "XLP",
+    "XLU",
+    "TLT",
+    "GLD",
+    "XLF",
+]
 
 # WFO parameters — full available data window (2016-06-01 → 2026-03-19)
 # Rolling 12-month train + 6-month OOS + 3-month final holdout.
@@ -168,8 +193,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cerberus Autoresearch Evaluation Runner")
     parser.add_argument("strategy", help="Strategy name to evaluate")
-    parser.add_argument("--n-trials", type=int, default=8, help="Optuna trials per window")
-    parser.add_argument("--n-symbols", type=int, default=8, help="Number of symbols")
+    parser.add_argument("--n-trials", type=int, default=15, help="Optuna trials per window")
+    parser.add_argument("--n-symbols", type=int, default=16, help="Number of symbols")
     parser.add_argument("--data-dir", default=DATA_DIR, help="Bar data directory")
     parser.add_argument("--log-dir", default="artifacts/autoresearch/logs", help="Directory for verbose WFO logs")
     parser.add_argument(
@@ -509,13 +534,38 @@ def main():
         f"loc={strategy_loc} loc_penalty={loc_penalty:.1f} "
         f"score_explanation={score_explanation}"
     )
+    # ── After-tax informational ratio (NOT gated; pretax composite is the gate) ──
+    # Strategy avg hold ≪ 1 year ⇒ short-term gains, modal high-earner federal+state ≈ 35%.
+    # SPY benchmark is buy-and-hold across the whole span ⇒ long-term gains, ≈ 18% combined.
+    # See program_cerberus.md "After-tax math" for the rationale and break-even targets.
+    ST_TAX = 0.35
+    LT_TAX = 0.18
+    after_tax_ratio = float("nan")
+    after_tax_mode = "n/a"
+    if ratio_vs_spy == ratio_vs_spy:  # not NaN
+        at_strat = strategy_return_pct * (1.0 - ST_TAX)
+        if benchmark_mode == "bull_ratio":
+            at_spy = spy_return_pct * (1.0 - LT_TAX)
+            after_tax_ratio = at_strat / at_spy if at_spy != 0 else float("nan")
+            after_tax_mode = "bull"
+        elif benchmark_mode == "bear_alpha":
+            # SPY loss has no tax friction; strategy alpha is taxed at ST.
+            at_alpha = (strategy_return_pct - spy_return_pct) * (1.0 - ST_TAX)
+            after_tax_ratio = 1.0 + at_alpha / abs(spy_return_pct)
+            after_tax_mode = "bear"
+        else:  # flat_absolute
+            after_tax_ratio = at_strat
+            after_tax_mode = "flat"
+
     emit(
         f"AUTORESEARCH_BENCHMARK strategy_return_pct={strategy_return_pct:.2f} "
         f"strategy_total_pnl={strategy_total_pnl:.2f} "
         f"spy_return_pct={spy_return_pct:.2f} "
         f"ratio_vs_spy={ratio_vs_spy:.2f} "
+        f"after_tax_ratio={after_tax_ratio:.2f} "
+        f"after_tax_mode={after_tax_mode} "
         f"mode={benchmark_mode} "
-        f"goal=2.00 "
+        f"goal=3.00 "
         f"span={benchmark_span}"
     )
 

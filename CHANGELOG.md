@@ -4,9 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (autoresearch pre-flight hardening — 2026-05-04)
+
+Pre-flight package addressing six issues found before relaunching the autoresearch loop after the 2026-05-02 20-iter run that bottomed at composite=−2.0 across all phases.
+
+#### Added
+- **`src/strategies/regime_flat.py`** — baseline FLAT-regime specialist (49 AST stmts). Bidirectional RSI mean-reversion, gates in code on `market_state.regime_snapshot.trend == TrendRegime.FLAT`, ATR-based stops/targets. Phase 3 of the driver previously asked the agent to *create* this file from scratch each iter, burning ~75 min per attempt; now it has a working baseline.
+- **`PARAM_SPACES["regime_flat"]`** in `src/analytics/param_spaces.py` (rsi_oversold, rsi_overbought, stop_atr_mult, target_atr_mult, min_bars).
+- **Permissive `regime_flat` activation block** in `config/strategies.yaml` — `trend: [up, down, flat]`; FLAT filter is enforced in code, not activation, mirroring how `regime_bear` and `regime_adaptive` are wired.
+- **Post-KEEP holdout validation.** After every KEEP, the driver re-runs the iteration on 2026-01-01 → 2026-03-19 (the previously-reserved-but-unvalidated holdout) using WFO-selected consensus params from `artifacts/autoresearch/<strategy>_latest.json`. If `holdout ratio_vs_spy < 0.5 × OOS ratio` (or sign-flips negative), the iteration is downgraded to `holdout_fail` and `BEST_COMMIT`/`BEST_SCORE` roll back to their pre-iter values. `program_cerberus.md` previously admitted "the 3-month final holdout is excluded from training/OOS but is **not currently validated**." That gap is now closed.
+- **`scripts/run_holdout.py` driver mode.** New `--start`, `--end`, `--params-from <json>`, `--quiet` flags. `--params-from` pulls the per-param mean from any autoresearch latest.json's `param_stability` section. Emits a single `HOLDOUT_RESULT` line for the driver to grep. Backwards compat with the legacy preset usage (`--strategy orb_v2` / `trend_rider_pro`) preserved.
+- **After-tax ratio emission** in `AUTORESEARCH_BENCHMARK`. New `after_tax_ratio` and `after_tax_mode` fields use `ST_TAX=0.35` (short-term gains, modal high-earner federal+state) and `LT_TAX=0.18` (long-term, SPY buy-and-hold) — informational, not gated. The composite goal is bumped from `2.0` to `3.0` to clear short-term capital-gains friction (3× pretax → ~2.4× after tax). Documented in the new "After-tax math" section of `program_cerberus.md`.
+- **"Regime data policy"** section in `program_cerberus.md` forbidding `symbol_state.meta["regime_labels"]` reads. That dict is empty in live mode (no engine writer), so any strategy filtering on it runs with no filter in production — silent train/live divergence that inverts risk profile. The four phase strategies (`regime_trend_up`, `regime_bear`, `regime_flat`, `regime_adaptive`) all already use `market_state.regime_snapshot` (Labeler B). Future iterations are now explicitly forbidden from re-introducing the meta-dict path. See [reason/260501-0159-regime-labels-critique/p0_audit_memo.md](reason/260501-0159-regime-labels-critique/p0_audit_memo.md) for the audit that surfaced this.
+
+#### Fixed
+- **KEEP gate now requires `score > GATE_FLOOR_LOCAL` (`-2.0`).** The previous "improved" branch only checked `score > BEST_SCORE`, so after a phase pivot reset `BEST_SCORE = -999`, a gate-failed iteration with composite=`-2.0` was silently kept as the new baseline — exactly what happened on iter20 of the 2026-05-02 run (kept with 1/17 windows profitable, 71k trades, 14.5x ratio that was a single-window compounding artifact). The previously separate "bootstrap" branch is now collapsed into the unified gate; both conditions are equivalent under the floor check.
+- **`scripts/run_holdout.py`** removed an unused `numpy` import surfaced by ruff.
+
+#### Changed
+- **`N_TRIALS` default 5 → 15** in both `scripts/autoresearch_driver.sh` (env override) and `scripts/cerberus_autoresearch.py` (CLI default). 5 trials over 17 windows = 1 trial per ~3.4 windows — param surfaces were too noisy for CV-based stability rejection to be meaningful. 15 is the new minimum where each iteration is trustworthy. Iteration time scales roughly linearly; budget for ~3-4× the previous ~75-90 min/iter.
+- **Composite score goal `2.0 → 3.0`** in `program_cerberus.md` and the `AUTORESEARCH_BENCHMARK` line. Rationale: 2× pretax ≈ 1.6× after short-term cap-gains tax (35% combined). 3× pretax ≈ 2.4× after tax — genuine alpha after Uncle Sam.
+- **`PROTECTED_FILES`** in the driver now includes `scripts/run_holdout.py` (it's part of the harness contract; the agent should not modify it during iterations).
+- **Universe expansion 8 → 16 symbols.** `DEFAULT_SYMBOLS` in `scripts/cerberus_autoresearch.py` now covers indices (SPY, QQQ, IWM), high-beta tech (AAPL, NVDA, TSLA, AMD, AMZN, META), defensives (KO, JNJ, XLP, XLU), bond proxy (TLT), commodity (GLD), cyclical financials (XLF). Backfilled 2016-06-01 → 2026-03-19 via Alpaca SIP for the 7 new symbols (8.56M new bars). Bear/flat-regime specialists now have instruments where their edge can actually express — the prior 8-symbol mega-cap-tech universe overweighted bull regimes. `--n-symbols` default 8 → 16.
+
+#### Pre-launch checklist for the user
+Before running `bash scripts/autoresearch_driver.sh` next:
+```bash
+# Reset state files (they're per-checkout, gitignored, not auto-cleaned).
+rm -f autoresearch/.baseline_commit autoresearch/.best_commit autoresearch/.best_score autoresearch/.last_result
+# Optional: clear the prior results.tsv if you want a clean slate.
+# (The TSV is appended-to; old rows from the 2026-05-02 run will still be there.)
+mv autoresearch/results.tsv autoresearch/results_pre_2026-05-04_relaunch.tsv 2>/dev/null || true
+```
+
+---
+
 ### Changed (risk axis removed from activation gating — 2026-05-03)
 
 Removed the `risk:` field from all 12 `activation:` blocks in `config/strategies.yaml`. Per the regime-labeling reason loop's converged recommendation: ship a real Risk classifier or stop emitting it. We are doing neither while we work toward (1) — so for now we stop gating on it.
+
+The new `regime_flat` block added on 2026-05-04 (above) was authored before this change merged; its `risk:` line was stripped during the merge to align with this policy.
 
 #### Why
 - `RiskRegime` is classified by `MarketContextService._classify_risk` ([src/analysis/regime.py:542](src/analysis/regime.py:542)) via VRP z-score, falling back to VXX momentum, then a 5-day SPY return proxy.
@@ -22,6 +59,8 @@ Once OOS multi-asset ground truth exists (4 hand-labeled periods on JNJ / TSLA /
 
 #### Not changed
 The five backtest configs (`backtest_v2.yaml`, `backtest_portfolio.yaml`, `backtest_smoke.yaml`, `backtest_trp_sortino.yaml`, `autoresearch_2025.yaml`) still have `risk:` axes in their strategy activation blocks. The principle applies equally there, but those configs are tuning artifacts that may be re-run for reproducibility — leaving them as-is until a Risk classifier exists rather than mass-editing tuning configs.
+
+---
 
 ### Removed (daily_research_v*/seed_* lineage retired — 2026-05-03)
 
