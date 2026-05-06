@@ -1619,6 +1619,12 @@ class ExecutionEngine:
         fill_price: float,
         fill_qty: float,
     ) -> None:
+        # Skip in backtest mode — DbFill is only consumed by the per-engine-startup
+        # dedup recovery (`_restore_fill_dedup_set`); nothing in the backtest hot path
+        # reads fills back. At 70k+ trades per WFO this saves ~150k SELECT+INSERT
+        # transactions (5-15x speedup on the per-trade persistence path).
+        if self.backtest_mode:
+            return
         fill_ts = self._normalize_timestamp(fill_ts)
         broker_order_id = fill.get("broker_order_id")
         explicit_order_id = fill.get("order_id")
@@ -1749,6 +1755,13 @@ class ExecutionEngine:
         return ts
 
     def _persist_closed_trade(self, closed: Any) -> None:
+        # Skip in backtest mode — DbTrade is read only by analytics (src/analysis/analytics.py)
+        # and the EOD agent (src/agent/core.py:381). The backtest's own trade rebuild reads
+        # DbOrder filled rows via _build_trade_records and constructs TradeRecord in-memory,
+        # so DbTrade writes are dead weight here.
+        if self.backtest_mode:
+            return
+
         def _write_trade(session: Session) -> None:
             trade = DbTrade(
                 symbol=closed.symbol,

@@ -515,6 +515,27 @@ def _build_trade_records(
     for f in fill_dicts:
         by_symbol.setdefault(f["symbol"], []).append(f)
 
+    # Pre-extract regime labels into nested dicts so per-trade lookups become
+    # plain dict[symbol].get(date, {}) instead of pandas Series.loc + per-column
+    # rl_row[col] access. At 70k+ trades this avoids ~1M Series accesses; the
+    # v1<->v2 alias merge is also done once per (symbol, date) instead of per trade.
+    regime_lookup: dict[str, dict[Any, dict[str, Any]]] = {}
+    if regime_labels:
+        _alias_pairs = (("vol_regime_symbol", "regime_vol"), ("trend_regime_symbol", "regime_trend"))
+        for _sym, _rl_df in regime_labels.items():
+            if _rl_df is None or _rl_df.empty:
+                continue
+            _date_lookup: dict[Any, dict[str, Any]] = {}
+            for _date, _row_dict in _rl_df.to_dict(orient="index").items():
+                _aliased = {col: _row_dict[col] for col in _REGIME_LABEL_COLUMNS if col in _row_dict}
+                for _v2_key, _v1_key in _alias_pairs:
+                    if _v2_key not in _aliased and _v1_key in _aliased:
+                        _aliased[_v2_key] = _aliased[_v1_key]
+                    elif _v1_key not in _aliased and _v2_key in _aliased:
+                        _aliased[_v1_key] = _aliased[_v2_key]
+                _date_lookup[_date] = _aliased
+            regime_lookup[_sym] = _date_lookup
+
     trades: list[TradeRecord] = []
 
     for sym, sym_fills in by_symbol.items():
@@ -611,13 +632,11 @@ def _build_trade_records(
                     # -- Regime context from parquet labels (fallback) --
                     trade_meta: dict[str, Any] = {}
                     parquet_regime: dict[str, Any] = {}
-                    if regime_labels:
+                    if regime_lookup:
                         entry_date = head["time"].date() if hasattr(head["time"], "date") else None
                         if entry_date:
-                            rl_df = regime_labels.get(sym)
-                            if rl_df is not None and not rl_df.empty and entry_date in rl_df.index:
-                                rl_row = rl_df.loc[entry_date]
-                                parquet_regime = _build_regime_labels_dict(rl_row, _REGIME_LABEL_COLUMNS)
+                            parquet_regime = regime_lookup.get(sym, {}).get(entry_date, {})
+                            if parquet_regime:
                                 trade_meta["regime_labels"] = parquet_regime
 
                     # Resolve: prefer signal meta, then parquet, then "unknown"
@@ -1203,15 +1222,20 @@ async def run_backtest(
         _maybe_aggregate_bar(_sym_state, mock_bar, 5, _sym_state.bars_5m)
         _maybe_aggregate_bar(_sym_state, mock_bar, 15, _sym_state.bars_15m)
 
-        # Attach regime labels to symbol_state.meta for strategy/engine access
+        # Attach regime labels to symbol_state.meta for strategy/engine access.
+        # Cache by date — labels only change on day boundaries, so rebuilding the
+        # 15-key dict on every 1m bar (~390x/day/symbol) is wasted work. At
+        # 16 symbols × ~2.5M bars this is ~24M Series.loc + dict allocations.
         if regime_labels:
             _rl_df = regime_labels.get(row.symbol)
             if _rl_df is not None and not _rl_df.empty:
                 _bar_date = current_day  # already computed above
-                if _bar_date in _rl_df.index:
-                    _rl_row = _rl_df.loc[_bar_date]
-                    _sym_state.meta["regime_labels"] = _build_regime_labels_dict(_rl_row, _REGIME_LABEL_COLUMNS)
-                # else: keep previous day's labels (or empty if never set)
+                if _bar_date != _sym_state.meta.get("_regime_date"):
+                    if _bar_date in _rl_df.index:
+                        _rl_row = _rl_df.loc[_bar_date]
+                        _sym_state.meta["regime_labels"] = _build_regime_labels_dict(_rl_row, _REGIME_LABEL_COLUMNS)
+                        _sym_state.meta["_regime_date"] = _bar_date
+                    # else: keep previous day's labels (or empty if never set)
 
         if session_labels:
             _sl_df = session_labels.get(row.symbol)
