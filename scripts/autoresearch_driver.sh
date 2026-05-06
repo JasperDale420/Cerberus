@@ -13,10 +13,11 @@ cd "$(dirname "$0")/.."
 # same phase. Defaults to the first phase if $1 is unrecognised.
 START_PHASE_ARG="${1:-}"
 MAX_ITER="${2:-50}"
-# L5 fix: was hardcoded --n-trials 5; harness default is now 15. n_trials=5 produced
-# noisy WFO param surfaces (1 trial per ~3.4 windows) — CV-based stability rejection
-# became a coin flip. 15 is the new minimum that keeps each iteration trustworthy.
-N_TRIALS="${N_TRIALS:-15}"
+# N_TRIALS history: 5 -> 15 (CV stability) -> 10 (eval budget). The 2026-05-05 run
+# at 15 trials × 16 symbols had iters 4 and 5 timing out at 7h on high-trade-count
+# strategy variants. 10 trials × 12 symbols cuts eval ~2x; CV stability still acceptable
+# at ~10/17 trials per window.
+N_TRIALS="${N_TRIALS:-10}"
 TSV="autoresearch/results.tsv"
 BEST_SCORE_FILE="autoresearch/.best_score"
 LAST_RESULT_FILE="autoresearch/.last_result"
@@ -115,7 +116,7 @@ if [ "$ITER" -eq 0 ]; then
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into the next iteration.
     rm -f "artifacts/autoresearch/${STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 25200 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials "$N_TRIALS" 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 36000 uv run python scripts/cerberus_autoresearch.py "$STRATEGY" --n-trials "$N_TRIALS" 2>&1 || true)
     RESULT_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_RESULT" || echo "")
     BENCHMARK_LINE=$(echo "$EVAL_OUTPUT" | grep "^AUTORESEARCH_BENCHMARK" || echo "")
 
@@ -331,7 +332,7 @@ print(f'IMPORT_OK: {cls.__name__}')
     # Remove any stale latest.json from a prior crashed eval — prevents
     # extract_wfo_insights from feeding phantom data into this iteration's prompt.
     rm -f "artifacts/autoresearch/${EVAL_STRATEGY}_latest.json"
-    EVAL_OUTPUT=$(timeout 25200 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials "$N_TRIALS" $REGIME_FLAG 2>&1 || true)
+    EVAL_OUTPUT=$(timeout 36000 uv run python scripts/cerberus_autoresearch.py "$EVAL_STRATEGY" --n-trials "$N_TRIALS" $REGIME_FLAG 2>&1 || true)
     EVAL_END=$(date +%s)
     EVAL_DURATION=$(( (EVAL_END - EVAL_START) / 60 ))
     echo "[iter $ITER] Eval completed in ${EVAL_DURATION}m"

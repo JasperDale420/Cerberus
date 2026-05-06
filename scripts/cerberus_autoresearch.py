@@ -42,15 +42,15 @@ from src.analytics.optuna_harness import WalkForwardOptimizer  # noqa: E402
 
 # ── Fixed configuration ──────────────────────────────────────────────
 
-# Default symbol universe — 16 symbols, regime-diverse:
+# Default symbol universe — 12 symbols, regime-diverse, redundancy-pruned:
 #   indices: SPY, QQQ, IWM (small-cap)
-#   high-beta tech: AAPL, NVDA, TSLA, AMD, AMZN, META
-#   defensives: KO, JNJ, XLP (consumer staples), XLU (utilities)
+#   high-beta tech: AAPL, NVDA, TSLA (dropped AMD/AMZN/META — too correlated with NVDA/AAPL/QQQ)
+#   defensives: KO, JNJ (dropped XLU — redundant with XLP staples ETF)
 #   bond proxy: TLT (long Treasuries — bull-flat in bear regimes)
 #   commodity: GLD (gold — risk-off hedge)
-#   cyclical financials: XLF
-# Bear/flat-regime specialists previously had no instruments to express edge against;
-# the 8-symbol mega-cap-tech list overweighted bull regimes.
+#   sectors: XLP (consumer staples), XLF (financials)
+# 12 symbols × 17 windows × 10 trials runs ~25-50% faster than 16/15 with similar dispersion.
+# Bear/flat-regime specialists still have JNJ/KO/XLP/TLT/GLD to express edge against.
 DEFAULT_SYMBOLS = [
     "SPY",
     "QQQ",
@@ -58,13 +58,9 @@ DEFAULT_SYMBOLS = [
     "AAPL",
     "NVDA",
     "TSLA",
-    "AMD",
-    "AMZN",
-    "META",
     "KO",
     "JNJ",
     "XLP",
-    "XLU",
     "TLT",
     "GLD",
     "XLF",
@@ -193,8 +189,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cerberus Autoresearch Evaluation Runner")
     parser.add_argument("strategy", help="Strategy name to evaluate")
-    parser.add_argument("--n-trials", type=int, default=15, help="Optuna trials per window")
-    parser.add_argument("--n-symbols", type=int, default=16, help="Number of symbols")
+    parser.add_argument("--n-trials", type=int, default=10, help="Optuna trials per window")
+    parser.add_argument("--n-symbols", type=int, default=12, help="Number of symbols")
     parser.add_argument("--data-dir", default=DATA_DIR, help="Bar data directory")
     parser.add_argument("--log-dir", default="artifacts/autoresearch/logs", help="Directory for verbose WFO logs")
     parser.add_argument(
