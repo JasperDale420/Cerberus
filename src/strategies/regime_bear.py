@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.domain import Bar, MarketState, OrderSide, SymbolState, TrendRegime, VolRegime
-from src.core.logger import StructuredLogger
+from src.core.domain import Bar, MarketState, OrderSide, SymbolState, TrendRegime
 from src.data.multi_timeframe import MultiTimeframeAnalyzer
 from src.strategies.base import BaseStrategy
 
@@ -20,16 +19,11 @@ class RegimeBearStrategy(BaseStrategy):
 
     name: str = "regime_bear"
 
-    def __init__(self, config: dict[str, Any], logger: StructuredLogger) -> None:
-        super().__init__(config, logger)
-        self.higher_tf_alignment = False
-
     def _set_params(self, config: dict[str, Any]) -> None:
         super()._set_params(config)
         self.rsi_short_entry = float(config.get("rsi_short_entry", 55.0))
         self.stop_atr_mult = float(config.get("stop_atr_mult", 1.5))
         self.target_atr_mult = float(config.get("target_atr_mult", 2.5))
-        self.high_vol_target_mult = float(config.get("high_vol_target_mult", 1.5))
         self.min_bars = int(config.get("min_bars", 20))
 
     def on_bar(self, symbol: str, bar: Bar, symbol_state: SymbolState, market_state: MarketState) -> None:
@@ -53,13 +47,7 @@ class RegimeBearStrategy(BaseStrategy):
         atr = mtf.get_atr("1m", 14)
         stop_distance = atr * self.stop_atr_mult if (atr and atr > 0) else bar.close * 0.01
 
-        vol = snapshot.vol
-        target_mult = (
-            self.target_atr_mult * self.high_vol_target_mult
-            if vol in (VolRegime.HIGH, VolRegime.SHOCK)
-            else self.target_atr_mult
-        )
-        target_distance = atr * target_mult if (atr and atr > 0) else bar.close * 0.02
+        target_distance = atr * self.target_atr_mult if (atr and atr > 0) else bar.close * 0.02
 
         return self._create_signal(
             symbol=symbol,
@@ -68,5 +56,5 @@ class RegimeBearStrategy(BaseStrategy):
             market_state=market_state,
             stop_price=bar.close + stop_distance,
             target_price=bar.close - target_distance,
-            meta={"rsi_1m": round(rsi, 2) if rsi else None, "trend": "DOWN", "vol": str(vol)},
+            meta={"rsi_1m": round(rsi, 2) if rsi else None, "trend": "DOWN"},
         )
