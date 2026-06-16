@@ -156,7 +156,10 @@ async def main():
                 flush=True,
             )
             for sname, sm in r["per_strategy"].items():
-                print(f"     {sname}: PnL=${sm['pnl']:>8,.2f} PF={sm['pf']:.2f} WR={sm['wr']:.1%} T={sm['trades']}", flush=True)
+                print(
+                    f"     {sname}: PnL=${sm['pnl']:>8,.2f} PF={sm['pf']:.2f} WR={sm['wr']:.1%} T={sm['trades']}",
+                    flush=True,
+                )
         except Exception as e:
             print(f"  → FAILED: {e}", flush=True)
             results.append({"name": v["name"], "error": str(e)})

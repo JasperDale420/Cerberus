@@ -66,7 +66,7 @@ class SeedRegimeSwitchStrategy(BaseStrategy):
         subset = values[-period:]
         mean = sum(subset) / period
         variance = sum((v - mean) ** 2 for v in subset) / period
-        return variance ** 0.5
+        return variance**0.5
 
     @staticmethod
     def _rsi(closes: list[float], period: int) -> Optional[float]:
