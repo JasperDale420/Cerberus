@@ -47,8 +47,8 @@ def test_build_summary_payload_keeps_run_identity_and_metrics() -> None:
                         "max_hold_minutes": {"stable": False},
                     },
                 },
-                "artifact_dir": "artifacts/optimization/runs/trend_rider_pro/20260306T120000Z-3sym-25tr-abcd1234",
-                "result_path": "artifacts/optimization/runs/trend_rider_pro/20260306T120000Z-3sym-25tr-abcd1234/wfo_results.json",
+                "artifact_dir": "tmp/wfo/trend_rider_pro/run-alpha",
+                "result_path": "tmp/wfo/trend_rider_pro/run-alpha/wfo_results.json",
             }
         }
     )

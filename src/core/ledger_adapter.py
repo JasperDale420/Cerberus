@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import structlog
-from empire_core.ledger import LedgerWriter
+
+if TYPE_CHECKING:
+    from empire_core.ledger import LedgerWriter
+else:
+    LedgerWriter = Any
 
 _logger = structlog.get_logger(__name__)
 
