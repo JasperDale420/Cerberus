@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed (dependency safety — 2026-07-01)
+
+- Held `pandas` at `3.0.3` instead of the dependabot-proposed `3.0.4`. Release 3.0.4 is yanked on PyPI and segfaults the test suite deterministically inside pandas' C block manager (`_getitem_bool_array` → `reindex_indexer`) via `analysis/analytics.py::run_daily_aggregation`. Keeps the safe APScheduler/ruff bumps from the same group.
+
 ### Fixed (CI hygiene — 2026-06-16)
 
 - Cleaned pre-commit baseline failures by applying current Ruff formatting and replacing secret-shaped test/config placeholders with scanner-safe fixture values.
