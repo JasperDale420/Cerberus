@@ -15,7 +15,7 @@ numpy>=1.26.0,<2.6
 python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
 sqlalchemy==2.0.51
 PyYAML==6.0.3
-APScheduler==3.11.2
+APScheduler==3.11.3
 httpx>=0.20.0,<0.29.0
 pytz==2026.2
 statsmodels==0.14.6
@@ -34,7 +34,7 @@ uvicorn>=0.34
 pytest==9.1.1
 pytest-cov==7.1.0
 pytest-asyncio==1.4.0
-ruff==0.15.18
+ruff==0.15.20
 mypy==2.1.0
 black==26.5.1
 bandit==1.9.4
