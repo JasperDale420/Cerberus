@@ -4,7 +4,7 @@
 # ====================================
 # Core Runtime Dependencies
 # ====================================
-alpaca-py==0.43.4
+alpaca-py==0.43.5
 unusualwhales-python-client==5.0.1
 pydantic==2.13.4
 pydantic-settings>=2.0
