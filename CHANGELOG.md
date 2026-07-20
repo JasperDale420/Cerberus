@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Synced `CLAUDE.md` and `AGENTS.md` into one shared instruction set.
+
 ### Added (autoresearch pre-flight hardening — 2026-05-04)
 
 Pre-flight package addressing six issues found before relaunching the autoresearch loop after the 2026-05-02 20-iter run that bottomed at composite=−2.0 across all phases.
