@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.analysis.schema import Base
 from src.core.config import ConfigLoader
+from src.core.db_tuning import apply_sqlite_pragmas
 from src.core.logger import StructuredLogger
 
 
@@ -75,6 +76,7 @@ class DatabaseDatabase:
                 pass
 
         self.engine = create_engine(db_url, echo=self.config.get("db_echo", False), pool_pre_ping=True)
+        apply_sqlite_pragmas(self.engine)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         self.logger.info("Database engine initialized", url=db_url)
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed (ledger corruption fix — 2026-07-21)
+
+The paper-trade ledger corrupted to 18.5 GB ("file is not a database") and silently stopped recording trades for ~3 months. Root cause: `ledger.db` and `cerberus.db` were bind-mounted from the macOS host into the container, and SQLite's file locking is unreliable over Docker Desktop's gRPC-FUSE/virtiofs. This moves the live DBs onto reliable storage and adds a guard so silent corruption can't recur.
+
+#### Changed
+- **Live `ledger.db` and `cerberus.db` now live on a Docker named volume** (`cerberus_state`) instead of macOS host bind mounts, so SQLite runs on the Linux VM's native filesystem where locking is reliable. The trader and scheduler containers write there via `APP_LEDGER_DB_PATH` / `APP_DATABASE_URL`.
+- **SQLite connections now set `busy_timeout` (and WAL/`synchronous=NORMAL`)** on both the ledger and analytics engines, so a write blocked by the snapshot reader waits instead of failing and dropping a trade record.
+
+#### Added
+- **`cerberus-snapshot` sidecar** — every 15 min it runs `PRAGMA integrity_check` + a size sanity check on the live DBs and exports a consistent copy (`VACUUM INTO`) to `./state_export` for host readers (dashboard, Athena, Heber, `ledger_audit.py`). On corruption it logs an error and keeps the last good snapshot instead of publishing a bad file — the silent multi-month failure is now a loud log line within one interval.
+- **`scripts/migrate_ledger_to_volume.sh`** — one-time migration: seeds the named volume from the current host DBs, repoints `Cerberus/{ledger,cerberus}.db` as symlinks into `state_export/` so host readers keep working unchanged, and brings the stack back up. Run it after market close.
+
 ### Added (autoresearch pre-flight hardening — 2026-05-04)
 
 Pre-flight package addressing six issues found before relaunching the autoresearch loop after the 2026-05-02 20-iter run that bottomed at composite=−2.0 across all phases.

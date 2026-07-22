@@ -60,6 +60,9 @@ ledger.db
 *.db-wal
 *.db-shm
 *_backup_*.db
+# Host-visible snapshots exported from the named volume + migration backups
+state_export/
+*.premigration.*
 .axon/
 
 # Build / index artifacts
