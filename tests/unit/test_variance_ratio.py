@@ -17,6 +17,7 @@ from src.analysis.variance_ratio import (
 # Helper: generate synthetic price series
 # ---------------------------------------------------------------------------
 
+
 def _random_walk(n: int, start: float = 100.0, step_std: float = 0.5, seed: int = 42) -> list[float]:
     """Generate a random walk price series."""
     rng = random.Random(seed)
@@ -44,7 +45,9 @@ def _mean_reverting_series(
     return prices
 
 
-def _trending_series(n: int, start: float = 100.0, drift: float = 0.05, sigma: float = 0.2, seed: int = 42) -> list[float]:
+def _trending_series(
+    n: int, start: float = 100.0, drift: float = 0.05, sigma: float = 0.2, seed: int = 42
+) -> list[float]:
     """Generate a trending (momentum) price series."""
     rng = random.Random(seed)
     prices = [start]

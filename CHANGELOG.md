@@ -16,6 +16,17 @@ The paper-trade ledger corrupted to 18.5 GB ("file is not a database") and silen
 - **`cerberus-snapshot` sidecar** — every 15 min it runs `PRAGMA integrity_check` + a size sanity check on the live DBs and exports a consistent copy (`VACUUM INTO`) to `./state_export` for host readers (dashboard, Athena, Heber, `ledger_audit.py`). On corruption it logs an error and keeps the last good snapshot instead of publishing a bad file — the silent multi-month failure is now a loud log line within one interval.
 - **`scripts/migrate_ledger_to_volume.sh`** — one-time migration: seeds the named volume from the current host DBs, repoints `Cerberus/{ledger,cerberus}.db` as symlinks into `state_export/` so host readers keep working unchanged, and brings the stack back up. Run it after market close.
 
+### Fixed (dependency safety — 2026-07-01)
+
+- Held `pandas` at `3.0.3` instead of the dependabot-proposed `3.0.4`. Release 3.0.4 is yanked on PyPI and segfaults the test suite deterministically inside pandas' C block manager (`_getitem_bool_array` → `reindex_indexer`) via `analysis/analytics.py::run_daily_aggregation`. Keeps the safe APScheduler/ruff bumps from the same group.
+
+### Fixed (CI hygiene — 2026-06-16)
+
+- Cleaned pre-commit baseline failures by applying current Ruff formatting and replacing secret-shaped test/config placeholders with scanner-safe fixture values.
+- Allowed CI and tests to import Cerberus without the private sibling `empire_core` package by keeping local structured-logging and ledger type fallbacks.
+- Added missing direct runtime dependencies to `requirements.txt` so GitHub Actions installs packages imported during test collection.
+- Aligned the Makefile coverage gate with the current full-suite baseline so CI can report real regressions instead of failing permanently at collection/coverage setup.
+
 ### Added (autoresearch pre-flight hardening — 2026-05-04)
 
 Pre-flight package addressing six issues found before relaunching the autoresearch loop after the 2026-05-02 20-iter run that bottomed at composite=−2.0 across all phases.
@@ -136,7 +147,6 @@ A second debug session (`debug/260430-1728-autoresearch-loop/`) found 17 confirm
 - **[LOW L3] LOC counter uses AST instead of line count.** Previous `sum(1 for ln in lines if ln.strip() and not ln.strip().startswith("#"))` counted docstrings and multi-line strings as code. New AST walker counts `ast.stmt` nodes excluding bare-expression docstrings; falls back to old counter on parse error. On `regime_bear.py`: old=56, new=38.
 - **[LOW L4] Eval log sweeper added.** `find artifacts/autoresearch/logs/ -name '*.log' -mmin +1440 -delete` runs alongside the existing trial-DB sweeper at driver setup. Without it, the directory grew linearly with iterations (was 2569 files / 61MB at debug session start).
 - **[LOW L5] `--n-trials` is now configurable via `N_TRIALS` env var.** Default remains `5` to preserve driver behavior; direct `cerberus_autoresearch.py` invocations still use the harness default of `8`.
-
 ### Fixed (autoresearch infrastructure debug — 2026-04-29)
 
 A debug session (`debug/260429-2022-autoresearch-infra/`) found 7 confirmed bugs causing wasted research cycles, false-positive scores, and silent corruption. All applied via parallel-worker swarm in a single commit:

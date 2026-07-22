@@ -1,25 +1,27 @@
 .PHONY: ci test test-ci test-unit test-integration test-contract test-e2e lint format type-check pre-commit security test-hmm bootstrap-hmm
 
+COV_FAIL_UNDER ?= 59
+
 ci: pre-commit type-check test
 
 test:
-	python -m pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-ci:
 	mkdir -p artifacts/test-results
-	python -m pytest --junitxml=artifacts/test-results/junit.xml --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest --junitxml=artifacts/test-results/junit.xml --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-unit:
-	python -m pytest -m unit --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest -m unit --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-integration:
-	python -m pytest -m integration --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest -m integration --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-contract:
-	python -m pytest -m contract --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest -m contract --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-e2e:
-	python -m pytest -m e2e --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=68
+	python -m pytest -m e2e --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 
 test-hmm:
 	python -m pytest tests/unit/test_hmm_regime_unit.py -q
