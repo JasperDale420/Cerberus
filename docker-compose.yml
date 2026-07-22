@@ -11,13 +11,18 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./config:/app/config:ro
-      - ./cerberus.db:/app/cerberus.db
-      - ./ledger.db:/app/ledger.db
+      # Live SQLite DBs live on a named volume (Linux VM native FS) where POSIX
+      # locking is reliable. Never bind-mount SQLite from the macOS host — gRPC-FUSE
+      # locking is unreliable and corrupts the file. Host tools read the exported
+      # snapshot in ./state_export (see the cerberus-snapshot sidecar).
+      - cerberus_state:/app/state
       - ./data:/app/data
       - /Volumes/heber/data:/Volumes/heber/data:ro
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/New_York
+      - APP_LEDGER_DB_PATH=/app/state/ledger.db
+      - APP_DATABASE_URL=sqlite:////app/state/cerberus.db
       - CERBERUS_DATA_BACKEND=${CERBERUS_DATA_BACKEND:-gateway}
       - CERBERUS_STORAGE_BACKEND=${CERBERUS_STORAGE_BACKEND:-dual}
       - CERBERUS_FAILOVER_TO_LEGACY=${CERBERUS_FAILOVER_TO_LEGACY:-false}
@@ -31,6 +36,31 @@ services:
       timeout: 60s
       retries: 3
       start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Snapshot exporter + corruption guard.
+  # Every interval: PRAGMA integrity_check the live DBs on the named volume, then
+  # VACUUM INTO a consistent copy under ./state_export so host tools (dashboard,
+  # Athena, Heber, ledger_audit) can read them. On integrity failure it logs an
+  # error and keeps the last good snapshot instead of publishing a corrupt file.
+  cerberus-snapshot:
+    build: .
+    image: empire/cerberus:latest
+    container_name: cerberus_snapshot
+    command: python -m src.ops.ledger_snapshot --loop --interval 900
+    restart: always
+    volumes:
+      - cerberus_state:/app/state
+      - ./state_export:/app/export
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=America/New_York
+      - CERBERUS_STATE_DIR=/app/state
+      - CERBERUS_EXPORT_DIR=/app/export
     logging:
       driver: json-file
       options:
@@ -51,13 +81,14 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./config:/app/config:ro
-      - ./cerberus.db:/app/cerberus.db
-      - ./ledger.db:/app/ledger.db
+      - cerberus_state:/app/state
       - ./data:/app/data
       - /Volumes/heber/data:/Volumes/heber/data:ro
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/New_York
+      - APP_LEDGER_DB_PATH=/app/state/ledger.db
+      - APP_DATABASE_URL=sqlite:////app/state/cerberus.db
       - CERBERUS_DATA_BACKEND=${CERBERUS_DATA_BACKEND:-gateway}
       - CERBERUS_STORAGE_BACKEND=${CERBERUS_STORAGE_BACKEND:-dual}
       - CERBERUS_FAILOVER_TO_LEGACY=${CERBERUS_FAILOVER_TO_LEGACY:-false}
@@ -70,3 +101,8 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+volumes:
+  # Live SQLite DBs (ledger.db, cerberus.db). Named volume => Linux VM native FS =>
+  # reliable file locking. Seed and chown it with scripts/migrate_ledger_to_volume.sh.
+  cerberus_state:

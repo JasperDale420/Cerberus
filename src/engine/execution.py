@@ -76,6 +76,13 @@ class ExecutionEngine:
 
             ledger_db_path = config.get("ledger_db_path", "ledger.db")
             writer = LedgerWriter(db_path=ledger_db_path, system="cerberus")
+            # ponytail: tune the ledger engine here instead of forking empire_core's
+            # shared LedgerWriter — keeps WAL/busy_timeout opt-in to Cerberus, whose DB
+            # now lives on a native-FS named volume. Other systems may still be on bind
+            # mounts where WAL would make corruption worse.
+            from src.core.db_tuning import apply_sqlite_pragmas
+
+            apply_sqlite_pragmas(writer._engine)
             ledger_adapter = CerberusLedgerAdapter(ledger=writer)
             logger.info("ledger_adapter_attached", ledger_db=ledger_db_path)
         except Exception:

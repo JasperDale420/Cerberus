@@ -20,6 +20,8 @@ coverage.xml
 .coverage
 *.sqlite
 *.db
+state_export/
+*.premigration.*
 *.log
 .claude/
 .claude-flow/
