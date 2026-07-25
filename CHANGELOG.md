@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Documentation refresh (2026-07-24).** Corrected the strategy roster documented in `README.md`, `AGENTS.md`/`CLAUDE.md`, and `docs/CODEBASE_SUMMARY.md` — they previously listed the wrong strategies as "active" vs "legacy/disabled," backwards from what `config/strategies.yaml` actually enables. Corrected several docs that claimed the trading system was offline; the Docker `cerberus-trader` container is actually running in paper mode. Finished and cleaned up an abandoned documentation pass from earlier this year: renamed a set of never-committed `docs/*.md` files to the repo's `UPPERCASE_WITH_UNDERSCORES.md` convention (now `docs/ARCHITECTURE.md`, `docs/CODEBASE_SUMMARY.md`, `docs/CONFIGURATION_GUIDE.md`, `docs/DEPLOYMENT.md`), merged their content into the corresponding canonical docs, and removed the duplicates. Removed the now-redundant `PRD_RegimeUpgradePatch.md` (already fully consolidated into `PRD.md`). Fixed a stale command path in `DEVELOPER_NOTES.md` (the paper/live test harness lives in `tools/`, not the repo root) and a wrong port number in `README.md`'s backtest API example (8004 → 8002).
 - Synced `CLAUDE.md` and `AGENTS.md` into one shared instruction set.
 
 ### Changed (ledger corruption fix — 2026-07-21)

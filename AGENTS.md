@@ -43,6 +43,14 @@ uv run python scripts/bootstrap_hmm_regime.py --config config/config.yaml --inpu
 
 # Walk-forward optimization
 uv run python scripts/run_wfo.py
+
+# Make targets (see Makefile) — most wrap the pytest/ruff/mypy commands above
+make test / test-ci / test-unit / test-integration / test-contract / test-e2e
+make test-hmm       # HMM sidecar tests only
+make lint           # ruff check
+make format         # black --check . (note: not ruff format, despite `ruff format` also being valid)
+make type-check     # mypy
+make security       # bandit -ll -r src && detect-secrets-hook --baseline .secrets.baseline
 ```
 
 ## Architecture
@@ -129,11 +137,11 @@ Dual config system:
 
 ### Strategy Registry
 
-Active V2 strategies: `mean_reversion_pro`, `trend_rider_pro`, `flow_alpha`, `orb_v2`, `pair_trading_v2`, `rsi_bounce`, `momentum_fade`.
+`src/main.py` only trades the strategies listed in `config/strategies.yaml` (`enabled: true`); everything else in `src/strategies/` is defined but inactive. As of this writing, `strategies.yaml` enables 13: `vwap_reversion`, `orb`, `index_mean_reversion`, `flow_momentum`, `gap_fill`, `vwap_trend_rider`, `vix_spike_fade`, `momentum_continuation`, `regime_trend_up`, `regime_bear`, `regime_adaptive`, `regime_flat`, `autoresearch_strategy`. `config/strategies.auto.yaml` (agent Stage 2 output) can add/override entries on top of this list — check it too before assuming what's live.
 
-Legacy strategies (still registered): `vwap_reversion`, `orb`, `vwap_trend_rider`, `index_mean_reversion`, `flow_momentum`, `gap_fill`, `vix_spike_fade`, `momentum_continuation`, `fusion_v1`, `pair_trading`, `trend_pullback`, `failed_breakout`, `order_flow_imbalance`, `intraday_momentum`.
+`_build_strategy_registry()` in `src/main.py` also defines (but does not activate) a larger set of "V2" and experimental strategies — `mean_reversion_pro`, `trend_rider_pro`, `flow_alpha`, `orb_v2`, `pair_trading_v2`, `rsi_bounce`, `momentum_fade`, `daily_momentum`, `daily_mean_reversion`, `daily_vol_fade`, `fusion_v1`, `pair_trading`, `trend_pullback`, `failed_breakout`, `order_flow_imbalance`, `intraday_momentum`, and more — plus anything dropped under `src/strategies/graduated/` (dynamically loaded). These only run if added to `strategies.yaml`.
 
-All strategies extend `BaseStrategy` (ABC) and implement `generate_signal()`.
+All strategies extend `BaseStrategy` (ABC) and implement `generate_signal()`/`on_bar()`.
 
 ### Multi-Axis Regime System
 
@@ -315,12 +323,12 @@ Primary paths:
 ## Development Commands
 
 ```bash
-python -m pip install -r requirements.txt
+uv sync
 uv run pytest -q
 ruff check .
 mypy .
-python -m src.main --healthcheck
-python -m src.main --mode paper
+uv run python -m src.main --healthcheck
+uv run python -m src.main --mode paper
 uv run uvicorn src.api.backtest_api:app --port 8002
 ```
 

@@ -1,16 +1,20 @@
 # Cerberus Trading System
 
+> **Runtime status (verified 2026-07-24 — check it yourself, don't trust a static doc).** The Docker Compose `cerberus-trader` service is running in **paper mode** (not real money — `ALPACA_PAPER=true`), currently `restart: always`. The separate macOS launchd agent `com.empire.cerberus.live` has been disabled since 2026-06-05 and stays off unless explicitly re-enabled. Run `docker ps --filter "name=cerberus"` to see current state; see [`docs/RUNBOOK.md`](docs/RUNBOOK.md#check-current-status) for more. Never switch this to `--mode live` (real-money execution) without explicit user instruction.
+
 Cerberus is an intraday algorithmic trading engine for US equities. It supports paper/live modes, multi-strategy signal generation, pre-trade risk checks, execution via Alpaca, and SQLite-backed analytics.
 
+For an in-depth tour of the system, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`PRD.md`](PRD.md). AI-agent-facing standards and safety rules live in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md).
+
 - Python: `>=3.12`
-- Package/deps: `pip` + `requirements.txt`
-- Primary entrypoint: `python -m src.main`
+- Package/deps: `uv` (project is `pyproject.toml`-based)
+- Primary entrypoint: `uv run python -m src.main`
 
 ## Quick Start
 
 1. Install dependencies:
 ```bash
-python -m pip install -r requirements.txt
+uv sync
 ```
 2. Configure environment:
 ```bash
@@ -19,23 +23,27 @@ cp .env.example .env
 ```
 3. Run health check:
 ```bash
-python -m src.main --healthcheck
+uv run python -m src.main --healthcheck
 ```
-4. Run paper mode:
+4. Run paper mode (default; safe — uses gateway executor):
 ```bash
-python -m src.main --mode paper
+uv run python -m src.main --mode paper --order-executor gateway
+```
+5. Safest dry-run (signals + risk checks, no orders submitted):
+```bash
+uv run python -m src.main --mode paper --order-executor noop --run-once
 ```
 
 ## Runtime Modes
 
 | Mode | Command | Purpose |
 |---|---|---|
-| Paper loop | `python -m src.main --mode paper` | Continuous paper trading |
-| Live loop | `python -m src.main --mode live` | Real execution (high risk) |
-| One-shot | `python -m src.main --mode paper --run-once` | Validate startup + initial scan |
-| Scheduler | `python -m src.main --scheduler` | Persistent APScheduler process |
-| EOD | `python -m src.main --eod` | Run daily aggregation + agent then exit |
-| Healthcheck | `python -m src.main --healthcheck` | Validate DB and credentials |
+| Paper loop | `uv run python -m src.main --mode paper` | Continuous paper trading |
+| Live loop | `uv run python -m src.main --mode live` | Real execution (high risk) |
+| One-shot | `uv run python -m src.main --mode paper --run-once` | Validate startup + initial scan |
+| Scheduler | `uv run python -m src.main --scheduler` | Persistent APScheduler process |
+| EOD | `uv run python -m src.main --eod` | Run daily aggregation + agent then exit |
+| Healthcheck | `uv run python -m src.main --healthcheck` | Validate DB and credentials |
 
 ## Architecture
 
@@ -75,20 +83,23 @@ flowchart LR
 
 ## Strategies
 
-Runtime strategy registry in `src/main.py` currently supports:
+`src/main.py` only activates the strategies listed with `enabled: true` in `config/strategies.yaml` (`config/strategies.auto.yaml` can add/override more on top — check both, this list can drift). As of this writing, that's 13:
 
 - `vwap_reversion`
 - `orb`
-- `vwap_trend_rider`
 - `index_mean_reversion`
 - `flow_momentum`
 - `gap_fill`
+- `vwap_trend_rider`
 - `vix_spike_fade`
 - `momentum_continuation`
-- `fusion_v1`
-- `pair_trading`
+- `regime_trend_up`
+- `regime_bear`
+- `regime_adaptive`
+- `regime_flat`
+- `autoresearch_strategy`
 
-Archived strategies live under `src/strategies/archived/` and are not registered by default.
+`src/main.py`'s `_build_strategy_registry()` defines several more (`mean_reversion_pro`, `orb_v2`, `pair_trading_v2`, `fusion_v1`, `pair_trading`, `trend_pullback`, `failed_breakout`, and others) that exist in code but are **not** enabled in `config/strategies.yaml`, so they don't currently trade. Archived strategies live under `src/strategies/archived/` and are never registered. See [`docs/CODEBASE_SUMMARY.md`](docs/CODEBASE_SUMMARY.md) for the full breakdown.
 
 ## Configuration
 
@@ -105,9 +116,14 @@ Config is merged by `src/core/config.py` from (in order):
 - env var overrides via `APP_*`
 
 See:
-- Environment vars: [`docs/environment-variables.md`](docs/environment-variables.md)
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Configuration guide: [`docs/CONFIGURATION_GUIDE.md`](docs/CONFIGURATION_GUIDE.md)
+- Environment vars: [`docs/environment-variables.md`](docs/environment-variables.md)
 - API reference: [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
+- Deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- Testing: [`TESTING.md`](TESTING.md)
+- Runbook: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
+- Codebase index: [`docs/CODEBASE_SUMMARY.md`](docs/CODEBASE_SUMMARY.md)
 
 ## Hidden Markov Regime Sidecar
 
@@ -125,11 +141,10 @@ Core pieces:
 - `src/regime_models/hmm/service.py`: train, predict, and save/load HMM artifacts
 - `scripts/bootstrap_hmm_regime.py`: bootstrap a model from CSV or parquet OHLCV
 
-Quick start:
+Quick start (`pomegranate` is already a `pyproject.toml` dependency, so `uv sync` is enough — you don't need a separate install for this):
 
 ```bash
-python -m pip install -r requirements.txt
-python scripts/bootstrap_hmm_regime.py --config config/config.yaml --input /path/to/bars.parquet
+uv run python scripts/bootstrap_hmm_regime.py --config config/config.yaml --input /path/to/bars.parquet
 make test-hmm
 ```
 
@@ -139,12 +154,12 @@ Artifacts are written under `artifacts/regime_models/hmm/` by default.
 
 Run backtest:
 ```bash
-python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10
+uv run python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10
 ```
 
 Offline deterministic replay:
 ```bash
-python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/jsonl_bars
+uv run python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-03 --end-date 2024-01-10 --offline-bars-dir /path/to/jsonl_bars
 ```
 
 ### Realism Controls
@@ -164,7 +179,7 @@ python scripts/run_backtest.py --config config/config.yaml --start-date 2024-01-
 
 Backtest results are persisted as JSON and served via FastAPI:
 ```bash
-uvicorn src.api.backtest_api:app --port 8004
+uv run uvicorn src.api.backtest_api:app --port 8002
 ```
 
 Endpoints: `/api/backtest/runs`, `/api/backtest/runs/{id}/equity`, `/api/backtest/runs/{id}/trades`, `/api/backtest/runs/{id}/monte-carlo`, `/api/backtest/runs/{id}/regime-splits`
@@ -192,15 +207,17 @@ Build:
 docker build -t empire/cerberus:latest .
 ```
 
-Run paper trader:
+Run paper trader (this also brings up the `cerberus-snapshot` sidecar, which exports SQLite state from the Docker volume to `./state_export` on the host):
 ```bash
 docker compose up -d cerberus-trader
 ```
 
-Run scheduler profile:
+Run scheduler profile (off by default — only starts if you explicitly ask for it):
 ```bash
 docker compose --profile scheduler up -d cerberus-scheduler
 ```
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for day-to-day Docker operation and [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for checking current status/incident response.
 
 ## Operations and Safety
 

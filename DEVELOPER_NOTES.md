@@ -20,20 +20,20 @@
 
 ## Paper-Live Testing Commands
 
-Use the harness to verify system integrity before valid deployment.
+Use the harness (`tools/paper_live_harness.py`) to verify system integrity before valid deployment.
 
 ### Full Suite Run
 To run all checks sequentially (manual):
 
 ```bash
 # Happy Path
-python paper_live_harness.py --scenario happy --duration 2 --inject-signal
+uv run python tools/paper_live_harness.py --scenario happy --duration 2 --inject-signal
 
 # Failure Injection (Expect "PASS (Failures Caught)")
-python paper_live_harness.py --scenario failure --duration 2 --inject-signal
+uv run python tools/paper_live_harness.py --scenario failure --duration 2 --inject-signal
 
 # Risk Breach (Expect "PASS (Risk Blocked)")
-python paper_live_harness.py --scenario risk --duration 2 --inject-signal
+uv run python tools/paper_live_harness.py --scenario risk --duration 2 --inject-signal
 ```
 
 **Note**: Ensure `ALPACA_PAPER=true` is set in your `.env`.
