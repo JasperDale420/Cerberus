@@ -9,7 +9,7 @@ unusualwhales-python-client==5.0.1
 pydantic==2.13.4
 pydantic-settings>=2.0
 pyarrow==25.0.0
-pandas==3.0.3
+pandas==3.0.5
 pandas-ta==0.4.71b0
 numpy>=1.26.0,<2.6
 python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
@@ -17,7 +17,7 @@ sqlalchemy==2.0.51
 PyYAML==6.0.3
 APScheduler==3.11.3
 httpx>=0.20.0,<0.29.0
-pytz==2026.2
+pytz==2026.3.post1
 statsmodels==0.14.6
 structlog>=24.1.0
 pomegranate==1.1.2
@@ -34,7 +34,7 @@ uvicorn>=0.34
 pytest==9.1.1
 pytest-cov==7.1.0
 pytest-asyncio==1.4.0
-ruff==0.15.22
+ruff==0.16.0
 mypy==2.3.0
 black==26.5.1
 bandit==1.9.4
@@ -44,6 +44,6 @@ pre-commit>=3.0.0
 # ====================================
 # Type Stubs
 # ====================================
-types-PyYAML==6.0.12.20260518
+types-PyYAML==6.0.12.20260724
 types-requests==2.33.0.20260712
-types-pytz==2026.2.0.20260518
+types-pytz==2026.3.1.20260727
