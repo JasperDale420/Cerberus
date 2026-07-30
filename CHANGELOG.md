@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Flatten and reconciliation recognise Cerberus's own orders again** (2026-07-30): orders are submitted
+  through Data-Gateway, which namespaces every `client_order_id` as `c-{client}-{id}` — but they are read
+  back with the Alpaca SDK directly, which returns the namespaced value. Ownership matched only the bare
+  `cerberus_` form, so flatten skipped its own open orders and refused to close its own positions, and
+  reconciliation dropped its own positions from the broker snapshot. All three failed silently, because
+  "none of these are mine" is a normal outcome on an account shared with the other Empire systems. Both
+  forms are now matched; `--order-executor alpaca` still mints the bare form, so both remain valid.
+
 ### Changed
 - **Documentation refresh (2026-07-24).** Corrected the strategy roster documented in `README.md`, `AGENTS.md`/`CLAUDE.md`, and `docs/CODEBASE_SUMMARY.md` — they previously listed the wrong strategies as "active" vs "legacy/disabled," backwards from what `config/strategies.yaml` actually enables. Corrected several docs that claimed the trading system was offline; the Docker `cerberus-trader` container is actually running in paper mode. Finished and cleaned up an abandoned documentation pass from earlier this year: renamed a set of never-committed `docs/*.md` files to the repo's `UPPERCASE_WITH_UNDERSCORES.md` convention (now `docs/ARCHITECTURE.md`, `docs/CODEBASE_SUMMARY.md`, `docs/CONFIGURATION_GUIDE.md`, `docs/DEPLOYMENT.md`), merged their content into the corresponding canonical docs, and removed the duplicates. Removed the now-redundant `PRD_RegimeUpgradePatch.md` (already fully consolidated into `PRD.md`). Fixed a stale command path in `DEVELOPER_NOTES.md` (the paper/live test harness lives in `tools/`, not the repo root) and a wrong port number in `README.md`'s backtest API example (8004 → 8002).
 - Synced `CLAUDE.md` and `AGENTS.md` into one shared instruction set.

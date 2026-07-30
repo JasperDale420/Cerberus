@@ -34,6 +34,21 @@ from src.scanner.streaming_scanner import StreamingScanner
 from src.strategies.base import BaseStrategy, Signal, SymbolState
 from src.strategies.config_models import build_activation_policies_from_config
 
+# Cerberus writes orders through Data-Gateway (--order-executor defaults to
+# "gateway") but reads them back with the Alpaca SDK directly. The gateway
+# namespaces every caller-supplied client_order_id as "c-{client_id}-{coid}"
+# (gateway/api/alpaca/trading.py, _OWNERSHIP_PREFIX_FORMAT), so an order
+# submitted as "cerberus_..." is read back as "c-cerberus-cerberus_...".
+# Matching only the bare form made flatten skip its own open orders, refuse to
+# close its own positions, and drop its own positions during reconciliation.
+# --order-executor alpaca still mints the bare form, so both are ours.
+_OWN_COID_PREFIXES = ("cerberus_", "c-cerberus-cerberus_")
+
+
+def is_own_client_order_id(client_order_id: object) -> bool:
+    """True only for a client_order_id Cerberus minted, bare or gateway-wrapped."""
+    return isinstance(client_order_id, str) and client_order_id.startswith(_OWN_COID_PREFIXES)
+
 
 class ExecutionEngine:
     """
@@ -378,7 +393,7 @@ class ExecutionEngine:
         skipped = 0
         for order in open_orders:
             coid = str(getattr(order, "client_order_id", "") or "")
-            if not coid.startswith("cerberus_"):
+            if not is_own_client_order_id(coid):
                 skipped += 1
                 continue
             order_id = getattr(order, "id", None)
@@ -495,7 +510,7 @@ class ExecutionEngine:
                     symbol=sym,
                 )
                 continue
-            if not owner_coid.startswith("cerberus_"):
+            if not is_own_client_order_id(owner_coid):
                 skipped_foreign += 1
                 self.logger.info(
                     "Skipping foreign-owned position during flatten",
@@ -2273,7 +2288,7 @@ class ExecutionEngine:
         for o_list in (orders or [], closed_orders or []):
             for o in o_list if isinstance(o_list, list) else []:
                 coid = str(getattr(o, "client_order_id", "") or "")
-                if coid.startswith("cerberus_"):
+                if is_own_client_order_id(coid):
                     sym = str(getattr(o, "symbol", "") or "")
                     if sym:
                         own_order_symbols.add(sym)
