@@ -65,3 +65,7 @@ The script must:
 | `data/bars_2024` | 37 | 2024-01-02 to 2024-12-31 | 325 MB |
 | `data/bars_5yr` | 36 | 2020-01-02 to 2024-12-31 | 525 MB |
 | `data/bars_2023_2025` | 68 | 2020-01-01 to 2026-03-19 | 1.6 GB |
+
+## Adversarial Review (Required)
+
+Before presenting results as a conclusion, this analysis must get an adversarial review per the monorepo's Data Analysis Review policy (CLAUDE.md): either an Opus subagent explicitly instructed to challenge the methodology (overfitting, look-ahead/leakage, cherry-picked windows, unsupported claims), or `/codex:adversarial-review` (or the `codex` skill) run with the strongest available GPT model (currently `gpt-5.5`) at high/xhigh reasoning effort. Report the review's findings alongside the results, not as a separate follow-up.
