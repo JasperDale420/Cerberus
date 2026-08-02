@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- **Root `codebase.md`** (2026-08-02): 74,437-line generated repo dump, byte-identical to the untracked
+  `docs/research/codebase.md` (which stays on disk). `.gitignore` already excludes the pattern; the root
+  copy was only tracked because it pre-dated the ignore rule.
+
 ### Fixed
 - **Flatten and reconciliation recognise Cerberus's own orders again** (2026-07-30): orders are submitted
   through Data-Gateway, which namespaces every `client_order_id` as `c-{client}-{id}` — but they are read
