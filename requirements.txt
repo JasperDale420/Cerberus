@@ -5,14 +5,12 @@
 # Core Runtime Dependencies
 # ====================================
 alpaca-py==0.43.2
-unusualwhales-python-client==5.0.1
 pydantic==2.12.5
 pydantic-settings>=2.0
 pyarrow==23.0.1
 pandas==3.0.0
-pandas-ta==0.4.71b0
 numpy>=1.26.0,<2.3
-python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
+python-dotenv>=0.21.0
 sqlalchemy==2.0.46
 PyYAML==6.0.3
 APScheduler==3.11.2

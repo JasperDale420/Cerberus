@@ -131,15 +131,6 @@ wheels = [
 ]
 
 [[package]]
-name = "attrs"
-version = "23.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e3/fc/f800d51204003fa8ae392c4e8278f256206e7a919b708eef054f5f4b650d/attrs-23.2.0.tar.gz", hash = "sha256:935dc3b529c262f6cf76e50877d35a4bd3c1de194fd41f47a2b7ae8f19971f30", size = 780820, upload-time = "2023-12-31T06:30:32.926Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/44/827b2a91a5816512fcaf3cc4ebc465ccd5d598c45cefa6703fcf4a79018f/attrs-23.2.0-py3-none-any.whl", hash = "sha256:99b87a485a5820b23b879f04c2305b44b951b502fd64be915879d77a7e8fc6f1", size = 60752, upload-time = "2023-12-31T06:30:30.772Z" },
-]
-
-[[package]]
 name = "bandit"
 version = "1.9.3"
 source = { registry = "https://pypi.org/simple" }
@@ -171,7 +162,6 @@ dependencies = [
     { name = "numpy" },
     { name = "optuna" },
     { name = "pandas" },
-    { name = "pandas-ta" },
     { name = "pomegranate" },
     { name = "pyarrow" },
     { name = "pydantic" },
@@ -183,7 +173,6 @@ dependencies = [
     { name = "statsmodels" },
     { name = "structlog" },
     { name = "tenacity" },
-    { name = "unusualwhales-python-client" },
     { name = "uvicorn" },
 ]
 
@@ -219,7 +208,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2,<2.5" },
     { name = "optuna", specifier = ">=4.7.0" },
     { name = "pandas", specifier = ">=2.3,<4" },
-    { name = "pandas-ta", specifier = ">=0.4.71b0" },
     { name = "pomegranate", specifier = ">=1.1.2" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
@@ -239,7 +227,6 @@ requires-dist = [
     { name = "types-pytz", marker = "extra == 'dev'", specifier = ">=2025.2" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.32" },
-    { name = "unusualwhales-python-client", specifier = ">=5.0.1" },
     { name = "uvicorn", specifier = ">=0.34" },
 ]
 provides-extras = ["dev"]
@@ -589,13 +576,9 @@ requires-dist = [
     { name = "empire-core", editable = "../empire-core" },
     { name = "empire-schemas", editable = "../empire-schemas" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "websockets", specifier = ">=13.0" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1528,21 +1511,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pandas-ta"
-version = "0.4.71b0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/95/6d/60b88a0334a8c6a5be114ed2c46c8f3e164127d0eccd9ff99b50773f2b20/pandas_ta-0.4.71b0.tar.gz", hash = "sha256:782ef8a874d2e0bdf80f445136617bda084f1fc5d14d3b1c525b282a152de37a", size = 1310317, upload-time = "2025-09-14T19:08:36.151Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/2f/c67d49afd31c3b02a02ecb5dd07399ed35298042e1b50d166efe2068bb0e/pandas_ta-0.4.71b0-py3-none-any.whl", hash = "sha256:b1f37831811462685be3ef456cfebc0615ce9c8a4eb31bbaa6b341e1a7767a84", size = 240265, upload-time = "2025-09-14T19:08:34.83Z" },
-]
-
-[[package]]
 name = "pathspec"
 version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2446,21 +2414,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761, upload-time = "2025-03-05T21:17:41.549Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/14/e2a54fabd4f08cd7af1c07030603c3356b74da07f7cc056e600436edfa17/tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d", size = 18026, upload-time = "2025-03-05T21:17:39.857Z" },
-]
-
-[[package]]
-name = "unusualwhales-python-client"
-version = "5.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "httpx" },
-    { name = "python-dateutil" },
-    { name = "python-dotenv" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/b9/24820fee7edd393de8c26868bf1be042cd78dcad331f6705a155f353f403/unusualwhales_python_client-5.0.1.tar.gz", hash = "sha256:ee144ec59092eb2d9aa0417045a24ec5372e55571d584d04464b08c86b45f296", size = 102462, upload-time = "2024-05-21T23:12:11.279Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/85/cbdaf5e175abbd7a4911217586006a577b4ebba17b2af94b8692d10290a2/unusualwhales_python_client-5.0.1-py3-none-any.whl", hash = "sha256:5b8cc235c2785ca73edfb285daa750b8093a86a371e198d3bc82ce0404387566", size = 256420, upload-time = "2024-05-21T23:12:09.446Z" },
 ]
 
 [[package]]

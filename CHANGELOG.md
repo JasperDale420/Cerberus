@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Removed
+- **Unused dependencies `unusualwhales-python-client` and `pandas-ta`** (2026-08-02): removed from
+  `pyproject.toml`, `requirements.txt`, and `uv.lock` (with orphaned transitive `attrs`). Neither is
+  imported anywhere — `src/data/unusual_whales.py` talks to the UW API directly over httpx, and no
+  strategy (static or dynamically loaded from `src/strategies/` / `graduated/`) uses `pandas_ta`.
+  Shrinks the live Docker image on its next rebuild (the image installs from `requirements.txt`).
 - **Root `codebase.md`** (2026-08-02): 74,437-line generated repo dump, byte-identical to the untracked
   `docs/research/codebase.md` (which stays on disk). `.gitignore` already excludes the pattern; the root
   copy was only tracked because it pre-dated the ignore rule.
