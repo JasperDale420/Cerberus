@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
   `docs/research/codebase.md` (which stays on disk). `.gitignore` already excludes the pattern; the root
   copy was only tracked because it pre-dated the ignore rule.
 
+### Changed
+- **Unusual Whales client now uses the shared HTTP client factory with retry** (2026-08-02):
+  `src/data/unusual_whales.py` builds its default client via `create_async_http_client()` (standard
+  timeouts, redirect following, debug request/response logging) instead of a bare `httpx.AsyncClient`,
+  and every GET goes through the shared `@http_retry` policy — up to 3 attempts with exponential
+  backoff on transient transport/timeout failures before degrading to neutral flow. A brief network
+  blip no longer instantly zeroes out option-flow data for that fetch.
+
 ### Fixed
 - **Flatten and reconciliation recognise Cerberus's own orders again** (2026-07-30): orders are submitted
   through Data-Gateway, which namespaces every `client_order_id` as `c-{client}-{id}` — but they are read

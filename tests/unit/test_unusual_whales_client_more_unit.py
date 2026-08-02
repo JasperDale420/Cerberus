@@ -70,6 +70,56 @@ async def test_unusual_whales_client_degrades_to_empty_on_http_error() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_unusual_whales_client_default_client_comes_from_core_factory() -> None:
+    """Without an injected client, the shared core factory builds the AsyncClient.
+
+    The factory sets follow_redirects=True and registers logging event hooks;
+    a bare httpx.AsyncClient does neither.
+    """
+    cfg = MagicMock()
+    cfg.get_env.return_value = ""
+    logger = MagicMock()
+
+    uw = UnusualWhalesClient(cfg, logger)
+    try:
+        assert uw._client.follow_redirects is True
+        assert uw._client.event_hooks["request"], "factory logging hooks missing"
+        assert uw._client.timeout.read == 15.0
+    finally:
+        await uw.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unusual_whales_client_retries_transient_transport_error() -> None:
+    """A single transient transport failure is retried, not degraded to neutral flow."""
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectError("transient connection failure")
+        return httpx.Response(200, json=[{"x": 1}])
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url="https://uw.test")
+
+    cfg = _Cfg()
+    logger = MagicMock()
+    uw = UnusualWhalesClient(
+        cfg,  # type: ignore
+        logger,
+        client=client,
+        config={"unusual_whales": {"flow_url_template": "https://uw.test/{symbol}"}},
+    )  # type: ignore
+
+    out = await uw.get_option_flow("AAPL", "2025-01-01")
+    assert out == [{"x": 1}]
+    assert calls["n"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_unusual_whales_client_warns_on_unexpected_payload_shape() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"unexpected": True})

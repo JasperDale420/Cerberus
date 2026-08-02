@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from src.core.config import ConfigLoader
+from src.core.http_client import create_async_http_client, http_retry
 from src.core.logger import StructuredLogger
 
 
@@ -13,7 +14,7 @@ class UnusualWhalesClient:
     Wrapper for Unusual Whales option flow.
 
     Supports two modes:
-    1) `UW_API_TOKEN` (preferred): uses the bundled `unusualwhales-python-client`.
+    1) `UW_API_TOKEN` (preferred): authenticated GET against the UW REST API.
     2) `UNUSUAL_WHALES_FLOW_URL_TEMPLATE`: direct HTTP GET to a caller-provided URL template.
     """
 
@@ -43,7 +44,12 @@ class UnusualWhalesClient:
 
         from_env = str(config_loader.get_env("UNUSUAL_WHALES_FLOW_URL_TEMPLATE", "")).strip()
         self.flow_url_template = from_env or from_cfg
-        self._client = client or httpx.AsyncClient(timeout=15.0)
+        self._client = client or create_async_http_client(timeout=15.0)
+
+    @http_retry
+    async def _get(self, url: str, **kwargs: Any) -> httpx.Response:
+        """HTTP GET with the shared retry policy for transient transport failures."""
+        return await self._client.get(url, **kwargs)
 
     async def get_option_flow(self, symbol: str, date: str) -> Any:
         """
@@ -51,13 +57,13 @@ class UnusualWhalesClient:
         """
         sym = str(symbol).strip().upper()
 
-        # Preferred: use UW API token with the bundled python client.
+        # Preferred: authenticated GET against the UW REST API.
         # Note: this endpoint returns "latest" flow and does not accept a date parameter.
         if self.api_token:
             try:
                 url = f"{self.base_url.rstrip('/')}/api/stock/{sym}/flow-recent"
                 headers = {"Authorization": f"Bearer {self.api_token}"}
-                resp = await self._client.get(url, headers=headers)
+                resp = await self._get(url, headers=headers)
                 resp.raise_for_status()
                 payload = resp.json()
                 if isinstance(payload, list):
@@ -92,7 +98,7 @@ class UnusualWhalesClient:
 
         url = self.flow_url_template.format(symbol=sym)
         try:
-            resp = await self._client.get(url, params={"date": str(date)})
+            resp = await self._get(url, params={"date": str(date)})
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, list):
@@ -130,7 +136,7 @@ class UnusualWhalesClient:
         try:
             url = f"{self.base_url.rstrip('/')}/api/stock/{sym}/greek-exposure/strike"
             headers = {"Authorization": f"Bearer {self.api_token}"}
-            resp = await self._client.get(url, headers=headers)
+            resp = await self._get(url, headers=headers)
             resp.raise_for_status()
             payload = resp.json()
 
