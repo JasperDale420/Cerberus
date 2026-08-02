@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.
   blip no longer instantly zeroes out option-flow data for that fetch.
 
 ### Fixed
+- **Backtest result timestamps are now timezone-aware UTC** (2026-08-02): `save_backtest_result()`
+  stamped results with naive `datetime.utcnow()`; it now uses `datetime.now(timezone.utc)`, so saved
+  `timestamp` fields carry an explicit `+00:00` offset per the monorepo's timezone-aware contract.
 - **Flatten and reconciliation recognise Cerberus's own orders again** (2026-07-30): orders are submitted
   through Data-Gateway, which namespaces every `client_order_id` as `c-{client}-{id}` — but they are read
   back with the Alpaca SDK directly, which returns the namespaced value. Ownership matched only the bare

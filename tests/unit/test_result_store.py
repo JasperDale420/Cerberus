@@ -1,6 +1,18 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from src.backtest.result_store import list_backtest_runs, load_backtest_result, save_backtest_result
+
+
+@pytest.mark.unit
+def test_saved_timestamp_is_timezone_aware_utc(tmp_path):
+    run_id = save_backtest_result({}, {"s": "a"}, "2024-01-01", "2024-06-01", results_dir=tmp_path)
+    loaded = load_backtest_result(run_id, results_dir=tmp_path)
+    assert loaded is not None
+    ts = datetime.fromisoformat(loaded["timestamp"])
+    assert ts.tzinfo is not None, "timestamp must be timezone-aware"
+    assert ts.utcoffset() == timezone.utc.utcoffset(None)
 
 
 @pytest.mark.unit
