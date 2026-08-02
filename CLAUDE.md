@@ -18,7 +18,7 @@ uv run pytest -m e2e                       # full system flow
 uv run pytest --cov=src --cov-fail-under=68  # with coverage gate
 ruff check .                               # lint
 ruff format .                              # auto-format
-mypy                                       # type check (excludes src/data/alpaca.py, src/data/pipeline.py)
+mypy                                       # type check (excludes src/data/pipeline.py)
 
 # Run trading (paper mode is default)
 uv run python -m src.main --mode paper --order-executor noop
