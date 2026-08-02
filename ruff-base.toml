@@ -5,6 +5,13 @@
 line-length = 120
 target-version = "py311"
 
+exclude = [
+    ".refs",           # Vendored reference code (e.g., Atlas/.refs/AlphaAgent)
+    "qlib-main",       # Vendored qlib library
+    "**/archive/**",   # Archived/legacy code
+    "**/src/alpaca/**", # Vendored alpaca-py SDK (Orion)
+]
+
 [lint]
 select = [
     "E",    # pycodestyle errors
