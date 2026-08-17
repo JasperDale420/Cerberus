@@ -4,16 +4,16 @@
 # ====================================
 # Core Runtime Dependencies
 # ====================================
-alpaca-py==0.43.5
+alpaca-py==0.44.0
 unusualwhales-python-client==5.0.1
 pydantic==2.13.4
 pydantic-settings>=2.0
-pyarrow==25.0.0
+pyarrow==25.0.1
 pandas==3.0.5
 pandas-ta==0.4.71b0
 numpy>=1.26.0,<2.6
 python-dotenv>=0.21.0  # Flexible for unusualwhales-python-client compatibility
-sqlalchemy==2.0.51
+sqlalchemy==2.0.52
 PyYAML==6.0.3
 APScheduler==3.11.3
 httpx>=0.20.0,<0.29.0
@@ -34,7 +34,7 @@ uvicorn>=0.34
 pytest==9.1.1
 pytest-cov==7.1.0
 pytest-asyncio==1.4.0
-ruff==0.16.2
+ruff==0.16.3
 mypy==2.3.0
 black==26.5.1
 bandit==1.9.4
